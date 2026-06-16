@@ -1,65 +1,108 @@
-import Image from "next/image";
+import { db } from '../src/db';
+import { scenarios, users } from '../src/schema';
+import { eq } from 'drizzle-orm';
+import Link from 'next/link';
 
-export default function Home() {
+async function getRoleplaysAndEnsureUser() {
+  try {
+    // 1. Check if our default test user (ID: 1) exists in Neon
+    const [existingUser] = await db.select().from(users).where(eq(users.id, 1));
+
+    // 2. If the user doesn't exist, seed them automatically to satisfy foreign keys
+    if (!existingUser) {
+      console.log("👤 Test user missing. Creating default profile...");
+      await db.insert(users).values({
+        id: 1, // Explicitly force ID 1 to match our frontend logic
+        name: 'Amina',
+        email: 'amina@ai-dojo.io',
+        level: 'beginner'
+      });
+    }
+
+    // 3. Fetch the available roleplay scenarios
+    const list = await db.select().from(scenarios);
+    return list;
+  } catch (error) {
+    console.error("Error fetching scenarios or seeding user:", error);
+    return [];
+  }
+}
+
+export default async function DashboardPage() {
+  const roleplays = await getRoleplaysAndEnsureUser();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+      <div style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+        <header style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <h1 style={{ fontSize: '2.5rem', color: '#1a202c', marginBottom: '10px' }}>🥋 AI DOJO — Interactive Japanese Arena</h1>
+          <p style={{ color: '#4a5568', fontSize: '1.1rem' }}>
+            Select a real-world scenario below to begin your personalized, dynamic AI roleplay session.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        </header>
+
+        {roleplays.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px', background: '#fff5f5', color: '#c53030', borderRadius: '8px' }}>
+              <strong>No scenarios found!</strong> Make sure you have run <code>npm run db:seed</code> to populate your Neon tables.
+            </div>
+        ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+              {roleplays.map((scenario) => (
+                  <div
+                      key={scenario.id}
+                      style={{
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        padding: '24px',
+                        background: '#fff',
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between'
+                      }}
+                  >
+                    <div>
+                <span style={{
+                  background: scenario.difficulty === 'beginner' ? '#e6fffa' : '#feebc8',
+                  color: scenario.difficulty === 'beginner' ? '#234e52' : '#744210',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase'
+                }}>
+                  {scenario.difficulty}
+                </span>
+
+                      <h3 style={{ fontSize: '1.3rem', margin: '12px 0 8px 0', color: '#2d3748' }}>{scenario.title}</h3>
+                      <p style={{ color: '#718096', fontSize: '0.9rem', lineHeight: '1.5', height: '90px', overflow: 'hidden' }}>
+                        {scenario.context}
+                      </p>
+
+                      <div style={{ fontSize: '0.85rem', color: '#4a5568', background: '#f7fafc', padding: '10px', borderRadius: '6px', marginTop: '10px' }}>
+                        <strong>🎯 Goal:</strong> {scenario.learningGoals}
+                      </div>
+                    </div>
+
+                    <Link href={`/chat/${scenario.id}`} style={{ textDecoration: 'none' }}>
+                      <button style={{
+                        width: '100%',
+                        background: '#000',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '12px',
+                        borderRadius: '6px',
+                        marginTop: '20px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        fontSize: '1rem'
+                      }}>
+                        Enter Dojo &rarr;
+                      </button>
+                    </Link>
+                  </div>
+              ))}
+            </div>
+        )}
+      </div>
   );
 }
