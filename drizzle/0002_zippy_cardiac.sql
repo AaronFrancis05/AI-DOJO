@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "teaching_note" text;

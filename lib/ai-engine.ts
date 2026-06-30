@@ -24,6 +24,7 @@ interface AIResponseAnalysis {
         task: number;
     };
     feedback: string;
+    teachingNote: string;
     nextAiReply: {
         japanese: string;
         romaji: string;
@@ -98,6 +99,13 @@ YOUR TWO JOBS:
 ===== SCENARIO COMPLETION RULE =====
 Set scenarioComplete to true ONLY when ALL goals in the list above show [COVERED] (meaning each has been addressed in a prior turn or in this turn). If even one goal remains [PENDING], scenarioComplete must be false. This flag is the trigger for scoring and closing — be precise: do not mark complete early.
 
+===== TEACHING NOTE (per-turn language coaching — separate from the in-character reply) =====
+Populate teachingNote as a short, helpful coaching aside for the learner. Rules:
+- If the user made a grammar, vocabulary, or phrasing error in Japanese/romaji, write a brief correction (e.g. "Tip: 'wa' is the topic particle, not 'ha'." or "Actually, 'kirei' is a na-adjective, so it's 'kirei na hito'.").
+- If the user responded in English instead of Japanese, show them how to say it in Japanese (e.g. "In Japanese you could say: コーヒーをください (Koohii o kudasai).").
+- If the user's Japanese was already correct and natural, leave teachingNote as an empty string "" — do not force a correction.
+- teachingNote is separate from nextAiReply: nextAiReply is the in-character dialogue driving the scenario forward; teachingNote is the out-of-character language coach aside. Never merge them.
+
 Provide your response strictly as a single JSON object matching this schema blueprint:
 {
   "messageEn": "English translation of what the user said",
@@ -105,6 +113,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "isValidInContext": true,
   "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
   "feedback": "Constructive linguistic analysis coaching string feedback targeted at the learner",
+  "teachingNote": "Short per-turn language coaching aside (empty string if no correction needed)",
   "nextAiReply": {
     "japanese": "The next conversational sentence spoken by ${scenario.aiCharacterName} in natural Japanese",
     "romaji": "Romaji transcription of that AI response sentence",
