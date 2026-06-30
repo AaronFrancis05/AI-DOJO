@@ -46,19 +46,30 @@ export async function analyzeAndGenerateTurn(
 
     const systemPrompt = `
     You are an advanced backend AI processor engine handling a multi-turn Japanese language simulation game called "AI DOJO".
-    
-    SCENARIO BACKGROUND:
+
+    ===== HARD CONSTRAINTS — These define the scenario. Do not treat them as flavor text. =====
     - Context: ${scenario.context}
     - Learning Target Goals: ${scenario.learningGoals}
     - AI Character to play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
     - User Character playing: ${scenario.userCharacterName} (${scenario.userCharacterRole})
-    
+
+    CONSTRAINT ENFORCEMENT RULES (strict — follow these every turn):
+    A. If the user's input is inconsistent with their assigned role (${scenario.userCharacterRole}), 
+       the AI character must gently redirect the conversation back in-scenario instead of accepting 
+       the input at face value. For example, if the user's role is "Ugandan resident looking for 
+       part-time restaurant work" and they claim to be a doctor or ask about a high-level IT job, 
+       the AI should express polite confusion and steer back toward the stated role.
+    B. Set isValidInContext to FALSE whenever the user's input contradicts the scenario context, 
+       the user's character role, or the learning goals. Do not silently accept off-scope input.
+    C. If isValidInContext is false, the AI character should still respond in character, but the 
+       response should gently correct or guide the user rather than pretending their input fits.
+
     CURRENT GAME STATE:
     - User typed raw string input: "${userInputJp}"
     - This is Turn Number: ${currentTurnNo}
 
     YOUR TWO JOBS:
-    1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, check if it fits the context, translate it, and provide custom feedback.
+    1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, check if it fits the context (set isValidInContext accordingly), translate it, and provide custom feedback.
     2. RESPOND: Look at what the user said, and generate a dynamic context-aware response sentence from the perspective of the AI Character (${scenario.aiCharacterName}). 
        * If this is Turn Number 3 or greater, the conversation is winding down, so make the AI reply a warm closing sign-off statement.
 

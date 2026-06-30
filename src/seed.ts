@@ -163,14 +163,14 @@ async function seed() {
             },
             {
                 title: 'Asking for a Job',
-                context: 'Amina is looking for part-time work in Japan and visits an employment agency. She must communicate what kind of work she is looking for, express her experience level, and respond to the recruiter\'s basic questions. This scenario reflects a realistic situation for Ugandans working in Japan.',
+                context: 'Amina is looking for part-time restaurant work in Japan and visits an employment agency. She must communicate that she wants restaurant work (e.g., dishwasher, waiter, kitchen assistant), express her experience level, and respond to the recruiter\'s basic questions. This scenario reflects a realistic situation for Ugandans working in Japan.',
                 businessType: 'Employment / Daily Life',
                 difficulty: 'beginner',
                 aiCharacterName: 'Recruiter Tanaka',
                 aiCharacterRole: 'Staff Recruiter at Osaka Employment Agency',
                 userCharacterName: 'Amina',
                 userCharacterRole: 'Ugandan resident in Japan looking for part-time restaurant work',
-                learningGoals: 'Ask and answer questions about job seeking, describe preferred work type, use oshigoto vocabulary, express encouragement phrases'
+                learningGoals: 'Ask and answer questions about job seeking, describe preferred work type (restaurant/hospitality), use oshigoto vocabulary, express encouragement phrases'
             },
             {
                 title: 'Seeking Medical Attention',
