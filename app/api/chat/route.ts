@@ -23,6 +23,13 @@ export async function POST(req: Request) {
         const numericScenarioId = Number(scenarioId);
         const numericTurnNo = Number(currentTurnNo);
 
+        if (isNaN(numericUserId) || isNaN(numericScenarioId) || isNaN(numericTurnNo)) {
+            return Response.json(
+                { error: 'Non-numeric field in userId, scenarioId, or currentTurnNo' },
+                { status: 400 }
+            );
+        }
+
         // 2. Fetch static reference context parameters from database seed
         const [scenario] = await db
             .select()
@@ -90,11 +97,18 @@ export async function POST(req: Request) {
             notes: `Dynamic AI text from character: ${scenario.aiCharacterName}`
         });
 
-        // 8. Record goal completions for this turn
+        // 8. Record goal completions for this turn (idempotent: skip already-completed + dedupe within turn)
         if (mlPipelineOutput.goalsAddressedThisTurn?.length > 0) {
             const goalsMap = new Map(goals.map(g => [g.sequenceOrder, g.id]));
+            const seen = new Set<number>();
             const completionRows = mlPipelineOutput.goalsAddressedThisTurn
                 .filter(seqOrder => goalsMap.has(seqOrder))
+                .filter(seqOrder => !completedSequenceOrders.includes(seqOrder))
+                .filter(seqOrder => {
+                    if (seen.has(seqOrder)) return false;
+                    seen.add(seqOrder);
+                    return true;
+                })
                 .map(seqOrder => ({
                     conversationId: userConversation.id,
                     scenarioGoalId: goalsMap.get(seqOrder)!,
@@ -123,11 +137,12 @@ export async function POST(req: Request) {
             });
         }
 
-        // 10. Return the complete response
+        // 10. Return the complete response (reflect the server's final completion decision)
         return Response.json({
             success: true,
             analysis: {
                 ...mlPipelineOutput,
+                scenarioComplete: shouldComplete,
                 scenarioUserRole: scenario.userCharacterRole,
                 scenarioUserName: scenario.userCharacterName
             }

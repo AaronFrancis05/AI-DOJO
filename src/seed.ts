@@ -118,7 +118,8 @@
 // seed();
 
 import { db } from './db';
-import { users, scenarios, vocabulary, conversations, evaluations, scenarioGoals } from './schema';
+import { eq } from 'drizzle-orm';
+import { users, scenarios, vocabulary, conversations, evaluations, scenarioGoals, goalCompletions } from './schema';
 
 async function seed() {
     try {
@@ -522,7 +523,7 @@ async function seed() {
         // 5. SEED SAMPLE CONVERSATION TURNS
         // ============================================================
         console.log('Inserting chat logs into conversations table...');
-        await db.insert(conversations).values([
+        const [s1AiTurn, s1UserTurn, s2AiTurn] = await db.insert(conversations).values([
             {
                 scenarioId: sIds[0],
                 userId: userMap['Lynnette'],
@@ -553,7 +554,27 @@ async function seed() {
                 messageEn: 'Hello. What kind of job are you looking for?',
                 notes: 'Recruiter starts counseling desk interaction.'
             }
-        ]);
+        ]).returning({ id: conversations.id });
+
+        // Insert matching goal completions for the historical user turn (Lynnette, Scenario 1)
+        // This user turn covered: hajimemashite (goal 1), name intro (goal 2), yoroshiku (goal 3)
+        const s1Goals = await db
+            .select({ id: scenarioGoals.id, seqOrder: scenarioGoals.sequenceOrder })
+            .from(scenarioGoals)
+            .where(eq(scenarioGoals.scenarioId, sIds[0]));
+        const s1CoveredSeqOrders = [1, 2, 3];
+        const s1CompletionRows = s1Goals
+            .filter(g => s1CoveredSeqOrders.includes(g.seqOrder))
+            .map(g => ({
+                conversationId: s1UserTurn.id,
+                scenarioGoalId: g.id,
+                userId: userMap['Lynnette'],
+                achieved: true,
+                evidenceNote: `Seeded historical turn — Lynnette introduced herself in Japanese`
+            }));
+        if (s1CompletionRows.length > 0) {
+            await db.insert(goalCompletions).values(s1CompletionRows);
+        }
 
         // ============================================================
         // 6. SEED HISTORICAL EVALUATIONS

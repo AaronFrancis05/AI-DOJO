@@ -95,6 +95,9 @@ YOUR TWO JOBS:
 1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above (only false for genuine situation mismatches, never for using different wording or real personal details). Determine which of the scenario goals this specific user turn addresses (if any) and list their sequenceOrder numbers in goalsAddressedThisTurn.
 2. RESPOND: Generate a dynamic context-aware response from the perspective of ${scenario.aiCharacterName}. Based on the goals, drive the conversation forward naturally.
 
+===== SCENARIO COMPLETION RULE =====
+Set scenarioComplete to true ONLY when ALL goals in the list above show [COVERED] (meaning each has been addressed in a prior turn or in this turn). If even one goal remains [PENDING], scenarioComplete must be false. This flag is the trigger for scoring and closing — be precise: do not mark complete early.
+
 Provide your response strictly as a single JSON object matching this schema blueprint:
 {
   "messageEn": "English translation of what the user said",
