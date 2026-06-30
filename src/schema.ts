@@ -49,6 +49,7 @@ export const conversations = pgTable('conversations', {
   messageRomaji: text('message_romaji'),
   messageEn: text('message_en').notNull(),
   notes: text('notes'),
+  teachingNote: text('teaching_note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
