@@ -75,10 +75,14 @@ export async function POST(req: Request) {
             });
         }
 
-        // 7. Return the complete response (including nextAiReply) back to the client UI safely
+        // 7. Return the complete response (including nextAiReply + user role context) back to the client UI safely
         return Response.json({
             success: true,
-            analysis: mlPipelineOutput
+            analysis: {
+                ...mlPipelineOutput,
+                scenarioUserRole: scenario.userCharacterRole,
+                scenarioUserName: scenario.userCharacterName
+            }
         });
 
     } catch (error) {

@@ -44,43 +44,48 @@ export async function analyzeAndGenerateTurn(
     }
 ): Promise<AIResponseAnalysis> {
 
-    const systemPrompt = `
-    You are an advanced backend AI processor engine handling a multi-turn Japanese language simulation game called "AI DOJO".
-    
-    SCENARIO BACKGROUND:
-    - Context: ${scenario.context}
-    - Learning Target Goals: ${scenario.learningGoals}
-    - AI Character to play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
-    - User Character playing: ${scenario.userCharacterName} (${scenario.userCharacterRole})
-    
-    CURRENT GAME STATE:
-    - User typed raw string input: "${userInputJp}"
-    - This is Turn Number: ${currentTurnNo}
+    const systemInstruction = `
+You are an advanced backend AI processor engine handling a multi-turn Japanese language simulation game called "AI DOJO".
 
-    YOUR TWO JOBS:
-    1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, check if it fits the context, translate it, and provide custom feedback.
-    2. RESPOND: Look at what the user said, and generate a dynamic context-aware response sentence from the perspective of the AI Character (${scenario.aiCharacterName}). 
-       * If this is Turn Number 3 or greater, the conversation is winding down, so make the AI reply a warm closing sign-off statement.
+===== HARD CONSTRAINTS — These define the scenario. Do not treat them as flavor text. =====
+- Context: ${scenario.context}
+- Learning Target Goals: ${scenario.learningGoals}
+- AI Character to play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
+- User Character playing: ${scenario.userCharacterName} (${scenario.userCharacterRole})
 
-    Provide your response strictly as a single JSON object matching this schema blueprint:
-    {
-      "messageEn": "English translation of what the user said",
-      "messageRomaji": "Romaji transcription of what the user said",
-      "isValidInContext": true,
-      "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
-      "feedback": "Constructive linguistic analysis coaching string feedback targeted at the learner",
-      "nextAiReply": {
-        "japanese": "The next conversational sentence spoken by ${scenario.aiCharacterName} in natural Japanese",
-        "romaji": "Romaji transcription of that AI response sentence",
-        "english": "English translation of that AI response sentence"
-      }
-    }
-  `;
+CONSTRAINT ENFORCEMENT RULES (strict — follow these every turn):
+A. If the user's input is inconsistent with their assigned role (${scenario.userCharacterRole}), the AI character must gently redirect the conversation back in-scenario instead of accepting the input at face value. For example, if the user's role is "Ugandan resident looking for part-time restaurant work" and they claim to be a doctor or ask about a high-level IT job, the AI should express polite confusion and steer back toward the stated role.
+B. Set isValidInContext to FALSE whenever the user's input contradicts the scenario context, the user's character role, or the learning goals. Do not silently accept off-scope input.
+C. If isValidInContext is false, the AI character should still respond in character, but the response should gently correct or guide the user rather than pretending their input fits.
+
+YOUR TWO JOBS:
+1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, check if it fits the context (set isValidInContext accordingly), translate it, and provide custom feedback.
+2. RESPOND: Look at what the user said, and generate a dynamic context-aware response sentence from the perspective of the AI Character (${scenario.aiCharacterName}). If this is Turn Number 3 or greater, the conversation is winding down, so make the AI reply a warm closing sign-off statement.
+
+Provide your response strictly as a single JSON object matching this schema blueprint:
+{
+  "messageEn": "English translation of what the user said",
+  "messageRomaji": "Romaji transcription of what the user said",
+  "isValidInContext": true,
+  "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
+  "feedback": "Constructive linguistic analysis coaching string feedback targeted at the learner",
+  "nextAiReply": {
+    "japanese": "The next conversational sentence spoken by ${scenario.aiCharacterName} in natural Japanese",
+    "romaji": "Romaji transcription of that AI response sentence",
+    "english": "English translation of that AI response sentence"
+  }
+}
+`;
+
+    const userContent = `CURRENT GAME STATE:
+- User typed raw string input: "${userInputJp}"
+- This is Turn Number: ${currentTurnNo}`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: systemPrompt,
+        contents: userContent,
         config: {
+            systemInstruction: systemInstruction,
             responseMimeType: 'application/json'
         }
     });
