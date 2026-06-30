@@ -85,7 +85,7 @@ export async function POST(req: Request) {
             notes: `Dynamically processed user turn: ${mlPipelineOutput.isValidInContext ? 'Valid' : 'Off-context'}`
         }).returning({ id: conversations.id });
 
-        // 7. Persist the AI character's fluid response
+        // 7. Persist the AI character's fluid response (including per-turn teaching note)
         await db.insert(conversations).values({
             scenarioId: numericScenarioId,
             userId: numericUserId,
@@ -94,7 +94,8 @@ export async function POST(req: Request) {
             messageJp: mlPipelineOutput.nextAiReply?.japanese || '分かりました。',
             messageRomaji: mlPipelineOutput.nextAiReply?.romaji || 'Wakarimashita.',
             messageEn: mlPipelineOutput.nextAiReply?.english || 'I understand.',
-            notes: `Dynamic AI text from character: ${scenario.aiCharacterName}`
+            notes: `Dynamic AI text from character: ${scenario.aiCharacterName}`,
+            teachingNote: mlPipelineOutput.teachingNote || null
         });
 
         // 8. Record goal completions for this turn (idempotent: skip already-completed + dedupe within turn)

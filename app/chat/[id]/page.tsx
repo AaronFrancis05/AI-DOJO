@@ -8,6 +8,7 @@ interface ChatBubble {
     text: string;
     romaji?: string;
     english?: string;
+    teachingNote?: string;
 }
 
 interface ScenarioDetails {
@@ -114,7 +115,8 @@ export default function AI_Dojo_Chatroom() {
                         sender: 'ai',
                         text: data.analysis.nextAiReply.japanese,
                         romaji: data.analysis.nextAiReply.romaji,
-                        english: data.analysis.nextAiReply.english
+                        english: data.analysis.nextAiReply.english,
+                        teachingNote: data.analysis.teachingNote
                     }
                 ]);
 
@@ -164,6 +166,11 @@ export default function AI_Dojo_Chatroom() {
                             {(msg.romaji || msg.english) && (
                                 <div style={{ opacity: 0.8, fontSize: '12px', marginTop: '6px', borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: '6px' }}>
                                     <i>{msg.romaji}</i> <br /> {msg.english}
+                                </div>
+                            )}
+                            {msg.sender === 'ai' && msg.teachingNote && (
+                                <div style={{ marginTop: '8px', padding: '8px 10px', background: '#fffbea', borderRadius: '8px', border: '1px solid #f6e05e', fontSize: '13px', color: '#744210' }}>
+                                    <strong>💡 Language Tip:</strong> {msg.teachingNote}
                                 </div>
                             )}
                         </div>

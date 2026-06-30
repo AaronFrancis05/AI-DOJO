@@ -15,6 +15,13 @@
       "when": 1782809525185,
       "tag": "0001_sour_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782816635743,
+      "tag": "0002_zippy_cardiac",
+      "breakpoints": true
     }
   ]
 }
