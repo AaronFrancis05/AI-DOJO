@@ -2,7 +2,7 @@
 
 AI DOJO is an interactive, virtual roleplay simulation platform built to help Ugandan software engineers rapidly learn practical Japanese for offshore IT business environments. 
 
-Instead of focusing purely on generic casual phrases, the application drops developers directly into simulated offshore workflows (such as daily standups, code reviews, and project alignments) to learn business Japanese (*Keigo*), structural syntax, and cultural communication protocols dynamically.
+Instead of focusing purely on generic casual phrases, the application drops developers directly into simulated offshore workflows (such as daily standups, code reviews, and project alignments) to learn Japanese business (*Keigo*), structural syntax, and cultural communication protocols dynamically.
 
 ---
 
