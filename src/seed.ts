@@ -118,7 +118,8 @@
 // seed();
 
 import { db } from './db';
-import { users, scenarios, vocabulary, conversations, evaluations } from './schema';
+import { eq } from 'drizzle-orm';
+import { users, scenarios, vocabulary, conversations, evaluations, scenarioGoals, goalCompletions } from './schema';
 
 async function seed() {
     try {
@@ -394,10 +395,135 @@ async function seed() {
         ]);
 
         // ============================================================
-        // 4. SEED SAMPLE CONVERSATION TURNS
+        // 4. BACKFILL DISCRETE SCENARIO GOALS
+        // ============================================================
+        console.log('Inserting decomposed scenario goals...');
+        await db.insert(scenarioGoals).values([
+            // Scenario 1: First Meeting a Japanese AI Tutor
+            { scenarioId: sIds[0], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Recognize and use "hajimemashite" as a first-meeting greeting', targetPhraseJp: 'はじめまして' },
+            { scenarioId: sIds[0], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself using the "watashi wa ___ desu" pattern', targetPhraseJp: 'わたしは〇〇です' },
+            { scenarioId: sIds[0], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Respond with "yoroshiku onegaishimasu" after an introduction', targetPhraseJp: 'よろしくおねがいします' },
+            { scenarioId: sIds[0], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Exchange basic closing greeting responses naturally', targetPhraseJp: null },
+
+            // Scenario 2: Asking for a Job
+            { scenarioId: sIds[1], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Express that you are looking for a job using "oshigoto wo sagashite imasu"', targetPhraseJp: 'おしごとをさがしています' },
+            { scenarioId: sIds[1], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe preferred work type (restaurant/hospitality) using appropriate vocabulary', targetPhraseJp: null },
+            { scenarioId: sIds[1], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand and respond to the recruiter\'s job-related questions', targetPhraseJp: null },
+            { scenarioId: sIds[1], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use and respond to encouragement phrases like "ganbatte kudasai"', targetPhraseJp: 'がんばってください' },
+
+            // Scenario 3: Seeking Medical Attention
+            { scenarioId: sIds[2], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "dou shimashita ka" (what is wrong?) from medical staff', targetPhraseJp: 'どうしましたか' },
+            { scenarioId: sIds[2], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe physical symptoms using body-part + "ga itai desu" pattern', targetPhraseJp: 'あたまがいたいです' },
+            { scenarioId: sIds[2], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Respond to health questions using "kibun" and "daijoubu" vocabulary', targetPhraseJp: null },
+            { scenarioId: sIds[2], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a clinic visit with polite closing expressions', targetPhraseJp: null },
+
+            // Scenario 4: At the Bus Station
+            { scenarioId: sIds[3], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'State a destination using the "___ e ikimasu" pattern', targetPhraseJp: '〜へ行きます' },
+            { scenarioId: sIds[3], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Ask and understand arrival times using "nanji" vocabulary', targetPhraseJp: 'なんじ' },
+            { scenarioId: sIds[3], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Respond to basic transport questions from station staff', targetPhraseJp: null },
+            { scenarioId: sIds[3], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete the bus station interaction with a polite closing', targetPhraseJp: null },
+
+            // Scenario 5: Buying Water at a Convenience Store
+            { scenarioId: sIds[4], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "irasshaimase" as a store welcome greeting', targetPhraseJp: 'いらっしゃいませ' },
+            { scenarioId: sIds[4], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Use "kudasai" to request an item', targetPhraseJp: '〜をください' },
+            { scenarioId: sIds[4], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Confirm quantity with the counter word "ippon" (one bottle)', targetPhraseJp: 'いっぽん' },
+            { scenarioId: sIds[4], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a polite konbini purchase exchange', targetPhraseJp: null },
+
+            // Scenario 6: Looking for a Hotel
+            { scenarioId: sIds[5], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand and respond to "oheya ga hitsuyou desu ka"', targetPhraseJp: 'おへやがひつようですか' },
+            { scenarioId: sIds[5], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Express "hitori" (alone) when asked about party size', targetPhraseJp: 'ひとり' },
+            { scenarioId: sIds[5], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Confirm understanding with "wakarimashita"', targetPhraseJp: 'わかりました' },
+            { scenarioId: sIds[5], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use hotel check-in vocabulary to complete the process', targetPhraseJp: null },
+
+            // Scenario 7: Ordering Food at a Restaurant
+            { scenarioId: sIds[6], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "nan o tabemasu ka" (what will you eat?)', targetPhraseJp: 'なにをたべますか' },
+            { scenarioId: sIds[6], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order specific food items using appropriate phrases', targetPhraseJp: null },
+            { scenarioId: sIds[6], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Respond to the server\'s follow-up questions about food or drink', targetPhraseJp: null },
+            { scenarioId: sIds[6], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "itadakimasu" before eating and "oishii" dining expressions', targetPhraseJp: 'いただきます' },
+
+            // Scenario 8: Meeting a Neighbour
+            { scenarioId: sIds[7], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "ohayo gozaimasu" as a morning greeting', targetPhraseJp: 'おはようございます' },
+            { scenarioId: sIds[7], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "ogenki desu ka" (how are you?)', targetPhraseJp: 'おげんきですか' },
+            { scenarioId: sIds[7], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Respond with "genki desu" (I am fine)', targetPhraseJp: 'げんきです' },
+            { scenarioId: sIds[7], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "yokatta" (great) as a positive social response', targetPhraseJp: 'よかった' },
+
+            // Scenario 9: Shopping at the Market
+            { scenarioId: sIds[8], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask about price using "ikura desu ka"', targetPhraseJp: 'いくらですか' },
+            { scenarioId: sIds[8], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand price responses quoted in yen', targetPhraseJp: null },
+            { scenarioId: sIds[8], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Use "takai" (expensive) and "chotto" (a little) in price conversation', targetPhraseJp: 'たかい' },
+            { scenarioId: sIds[8], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a polite market purchase interaction', targetPhraseJp: null },
+
+            // Scenario 10: Asking for Directions
+            { scenarioId: sIds[9], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "sumimasen" to politely interrupt a passerby', targetPhraseJp: 'すみません' },
+            { scenarioId: sIds[9], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "doko desu ka" (where is it?) for a location', targetPhraseJp: 'どこですか' },
+            { scenarioId: sIds[9], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand the directional response "asoko" (over there)', targetPhraseJp: 'あそこ' },
+            { scenarioId: sIds[9], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Respond with "arigatou gozaimasu" and "dou itashimashite"', targetPhraseJp: 'ありがとうございます' },
+
+            // Scenario 11: At School
+            { scenarioId: sIds[10], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand and respond to "gakusei desu ka" (are you a student?)', targetPhraseJp: 'がくせいですか' },
+            { scenarioId: sIds[10], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Use "gakusei" (student) vocabulary in response', targetPhraseJp: 'がくせい' },
+            { scenarioId: sIds[10], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Answer "nani o benkyou shimasu ka" (what do you study?)', targetPhraseJp: 'なにをべんきょうしますか' },
+            { scenarioId: sIds[10], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Name "nihongo" (Japanese language) as the subject of study', targetPhraseJp: 'にほんご' },
+
+            // Scenario 12: Visiting a Friend
+            { scenarioId: sIds[11], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "irasshai" (welcome, visitor) at the door', targetPhraseJp: 'いらっしゃい' },
+            { scenarioId: sIds[11], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Respond to "ocha wa ikaga desu ka" (would you like tea?)', targetPhraseJp: 'おちゃはいかがですか' },
+            { scenarioId: sIds[11], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Use "onegaishimasu" politely when accepting an offer', targetPhraseJp: 'おねがいします' },
+            { scenarioId: sIds[11], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Practice casual home-visit conversation and closing', targetPhraseJp: null },
+
+            // Scenario 13: Playing Football in the Park
+            { scenarioId: sIds[12], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Respond to "sakka ga suki desu ka" (do you like football?)', targetPhraseJp: 'サッカーがすきですか' },
+            { scenarioId: sIds[12], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Express "suki desu" (I like it)', targetPhraseJp: 'すきです' },
+            { scenarioId: sIds[12], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Answer "doko de purei shimasu ka" (where do you play?)', targetPhraseJp: 'どこでプレイしますか' },
+            { scenarioId: sIds[12], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Name "kouen" (park) as the playing location', targetPhraseJp: 'こうえん' },
+
+            // Scenario 14: At the Airport
+            { scenarioId: sIds[13], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "pasupooto o misete kudasai" (please show your passport)', targetPhraseJp: 'パスポートをみせてください' },
+            { scenarioId: sIds[13], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Respond with "douzo" (here you are) when handing over passport', targetPhraseJp: 'どうぞ' },
+            { scenarioId: sIds[13], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Complete a basic immigration exchange with appropriate responses', targetPhraseJp: null },
+            { scenarioId: sIds[13], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "arigatou gozaimasu" appropriately to close the exchange', targetPhraseJp: 'ありがとうございます' },
+
+            // Scenario 15: Going Shoe Shopping
+            { scenarioId: sIds[14], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "nani ga hoshii desu ka" (what do you want?)', targetPhraseJp: 'なにがほしいですか' },
+            { scenarioId: sIds[14], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Express "kutsu ga hoshii desu" (I want shoes)', targetPhraseJp: 'くつがほしいです' },
+            { scenarioId: sIds[14], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand "koko ni arimasu" (they are here) from the assistant', targetPhraseJp: 'ここにあります' },
+            { scenarioId: sIds[14], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a basic shopping interaction politely', targetPhraseJp: null },
+
+            // Scenario 16: At the Library
+            { scenarioId: sIds[15], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Respond to "hon o sagashite imasu ka" (looking for a book?)', targetPhraseJp: 'ほんをさがしていますか' },
+            { scenarioId: sIds[15], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Describe the type of book using "donna hon" (what kind of book)', targetPhraseJp: 'どんなほん' },
+            { scenarioId: sIds[15], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Name "nihongo no hon" (Japanese language book) as what you need', targetPhraseJp: 'にほんごのほん' },
+            { scenarioId: sIds[15], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use library interaction vocabulary and close the exchange politely', targetPhraseJp: null },
+
+            // Scenario 17: At the Pharmacy
+            { scenarioId: sIds[16], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Describe symptoms using "atama ga itai desu" (my head hurts)', targetPhraseJp: 'あたまがいたいです' },
+            { scenarioId: sIds[16], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand "kusuri ga arimasu" (there is medicine) from the pharmacist', targetPhraseJp: 'くすりがあります' },
+            { scenarioId: sIds[16], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Complete a pharmacy transaction with appropriate phrases', targetPhraseJp: null },
+            { scenarioId: sIds[16], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "arigatou gozaimasu" to close the pharmacy transaction', targetPhraseJp: 'ありがとうございます' },
+
+            // Scenario 18: Asking the Time
+            { scenarioId: sIds[17], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask "ima nanji desu ka" (what time is it now?)', targetPhraseJp: 'いまなんじですか' },
+            { scenarioId: sIds[17], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand time responses using counter words like "ku ji" (9 o\'clock)', targetPhraseJp: 'くじ' },
+            { scenarioId: sIds[17], sequenceOrder: 3, goalType: 'social_closing', goalText: 'Use "arigatou" and "dou itashimashite" in a brief street exchange', targetPhraseJp: null },
+
+            // Scenario 19: At a Café
+            { scenarioId: sIds[18], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Respond to "nani o nomimasu ka" (what will you drink?)', targetPhraseJp: 'なにをのみますか' },
+            { scenarioId: sIds[18], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order "koohii" (coffee) using an appropriate ordering phrase', targetPhraseJp: 'コーヒー' },
+            { scenarioId: sIds[18], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Confirm the order with the barista', targetPhraseJp: null },
+            { scenarioId: sIds[18], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "arigatou" to close a simple café transaction', targetPhraseJp: 'ありがとう' },
+
+            // Scenario 20: Introducing Yourself Again
+            { scenarioId: sIds[19], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Consolidate "hajimemashite" as a confident first-meeting opening', targetPhraseJp: 'はじめまして' },
+            { scenarioId: sIds[19], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself confidently using "watashi wa ___ desu"', targetPhraseJp: 'わたしは〜です' },
+            { scenarioId: sIds[19], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Respond naturally to "yoroshiku onegaishimasu"', targetPhraseJp: 'よろしくおねがいします' },
+            { scenarioId: sIds[19], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Practice smooth multi-person self-introduction flow across brief interactions', targetPhraseJp: null },
+        ]);
+
+        // ============================================================
+        // 5. SEED SAMPLE CONVERSATION TURNS
         // ============================================================
         console.log('Inserting chat logs into conversations table...');
-        await db.insert(conversations).values([
+        const [s1AiTurn, s1UserTurn, s2AiTurn] = await db.insert(conversations).values([
             {
                 scenarioId: sIds[0],
                 userId: userMap['Lynnette'],
@@ -428,10 +554,30 @@ async function seed() {
                 messageEn: 'Hello. What kind of job are you looking for?',
                 notes: 'Recruiter starts counseling desk interaction.'
             }
-        ]);
+        ]).returning({ id: conversations.id });
+
+        // Insert matching goal completions for the historical user turn (Lynnette, Scenario 1)
+        // This user turn covered: hajimemashite (goal 1), name intro (goal 2), yoroshiku (goal 3)
+        const s1Goals = await db
+            .select({ id: scenarioGoals.id, seqOrder: scenarioGoals.sequenceOrder })
+            .from(scenarioGoals)
+            .where(eq(scenarioGoals.scenarioId, sIds[0]));
+        const s1CoveredSeqOrders = [1, 2, 3];
+        const s1CompletionRows = s1Goals
+            .filter(g => s1CoveredSeqOrders.includes(g.seqOrder))
+            .map(g => ({
+                conversationId: s1UserTurn.id,
+                scenarioGoalId: g.id,
+                userId: userMap['Lynnette'],
+                achieved: true,
+                evidenceNote: `Seeded historical turn — Lynnette introduced herself in Japanese`
+            }));
+        if (s1CompletionRows.length > 0) {
+            await db.insert(goalCompletions).values(s1CompletionRows);
+        }
 
         // ============================================================
-        // 5. SEED HISTORICAL EVALUATIONS
+        // 6. SEED HISTORICAL EVALUATIONS
         // ============================================================
         console.log('Inserting baseline user evaluations...');
         await db.insert(evaluations).values([

@@ -29,6 +29,8 @@ interface AIResponseAnalysis {
         romaji: string;
         english: string;
     };
+    goalsAddressedThisTurn: number[];
+    scenarioComplete: boolean;
 }
 
 export async function analyzeAndGenerateTurn(
@@ -41,19 +43,36 @@ export async function analyzeAndGenerateTurn(
         aiCharacterRole: string;
         userCharacterName: string;
         userCharacterRole: string;
-    }
+    },
+    goals: Array<{
+        id: number;
+        sequenceOrder: number;
+        goalText: string;
+        goalType: string;
+        targetPhraseJp: string | null;
+    }>,
+    completedGoalSequenceOrders: number[]
 ): Promise<AIResponseAnalysis> {
+
+    const goalsBlock = goals.map(g => {
+        const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
+        const status = done ? '[COVERED]' : '[PENDING]';
+        const phrase = g.targetPhraseJp ? ` (target phrase: "${g.targetPhraseJp}")` : '';
+        return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${g.goalText}${phrase}`;
+    }).join('\n');
 
     const systemInstruction = `
 You are an advanced backend AI processor engine handling a multi-turn Japanese language simulation game called "AI DOJO".
 
 ===== NARRATIVE CONTEXT (background for your roleplay — not literal constraints on the user) =====
 - Scenario context: ${scenario.context}
-- Learning goals: ${scenario.learningGoals}
 - AI character you play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
 - The scenario has a placeholder user character named "${scenario.userCharacterName}" with role "${scenario.userCharacterRole}".
 
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
+
+===== SCENARIO GOALS (guide the conversation naturally toward these) =====
+${goalsBlock}
 
 ===== VALIDATION RULE (how to set isValidInContext) =====
 isValidInContext must be set to TRUE unless the user's input is genuinely off-topic or inconsistent with the SCENARIO SITUATION. Examples of what is VALID (isValidInContext = true):
@@ -70,11 +89,14 @@ Examples of what is INVALID (isValidInContext = false):
 - Play ${scenario.aiCharacterName} (${scenario.aiCharacterRole}) consistently.
 - If the user provides their own real name instead of "${scenario.userCharacterName}", accept it gracefully and use the user's actual stated name in your replies going forward. Treat this as fully correct behavior.
 - If the user's input is genuinely off-situation (rare), gently redirect back to the scenario.
-- If this is Turn Number 3 or greater, the conversation is winding down, so make the AI reply a warm closing sign-off statement.
+- Hold a natural, flowing conversation as the AI character. Do NOT rush to close. Each turn, check which goals remain [PENDING], and steer your next reply toward naturally drawing out the next uncovered goal through realistic dialogue — not by listing it mechanically. Only move toward a warm closing statement once all goals show [COVERED].
 
 YOUR TWO JOBS:
-1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above (only false for genuine situation mismatches, never for using different wording or real personal details).
-2. RESPOND: Generate a dynamic context-aware response from the perspective of ${scenario.aiCharacterName}.
+1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above (only false for genuine situation mismatches, never for using different wording or real personal details). Determine which of the scenario goals this specific user turn addresses (if any) and list their sequenceOrder numbers in goalsAddressedThisTurn.
+2. RESPOND: Generate a dynamic context-aware response from the perspective of ${scenario.aiCharacterName}. Based on the goals, drive the conversation forward naturally.
+
+===== SCENARIO COMPLETION RULE =====
+Set scenarioComplete to true ONLY when ALL goals in the list above show [COVERED] (meaning each has been addressed in a prior turn or in this turn). If even one goal remains [PENDING], scenarioComplete must be false. This flag is the trigger for scoring and closing — be precise: do not mark complete early.
 
 Provide your response strictly as a single JSON object matching this schema blueprint:
 {
@@ -87,7 +109,9 @@ Provide your response strictly as a single JSON object matching this schema blue
     "japanese": "The next conversational sentence spoken by ${scenario.aiCharacterName} in natural Japanese",
     "romaji": "Romaji transcription of that AI response sentence",
     "english": "English translation of that AI response sentence"
-  }
+  },
+  "goalsAddressedThisTurn": [],
+  "scenarioComplete": false
 }
 `;
 

@@ -118,7 +118,7 @@ export default function AI_Dojo_Chatroom() {
                     }
                 ]);
 
-                if (turn >= 3) {
+                if (data.analysis.scenarioComplete) {
                     setFinalEvaluation(data.analysis);
                 } else {
                     setTurn(prev => prev + 1);

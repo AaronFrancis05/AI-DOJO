@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp, integer } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // 1. USERS TABLE
@@ -76,6 +76,7 @@ export const scenariosRelations = relations(scenarios, ({ many }) => ({
   vocabularies: many(vocabulary),
   conversations: many(conversations),
   evaluations: many(evaluations),
+  goals: many(scenarioGoals),
 }));
 
 export const vocabularyRelations = relations(vocabulary, ({ one }) => ({
@@ -87,7 +88,40 @@ export const conversationsRelations = relations(conversations, ({ one }) => ({
   user: one(users, { fields: [conversations.userId], references: [users.id] }),
 }));
 
+// 6. SCENARIO GOALS TABLE
+export const scenarioGoals = pgTable('scenario_goals', {
+  id: serial('id').primaryKey(),
+  scenarioId: integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }),
+  sequenceOrder: integer('sequence_order').notNull(),
+  goalText: text('goal_text').notNull(),
+  goalType: varchar('goal_type', { length: 30 }).notNull(),
+  targetPhraseJp: varchar('target_phrase_jp', { length: 200 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 7. GOAL COMPLETIONS TABLE
+export const goalCompletions = pgTable('goal_completions', {
+  id: serial('id').primaryKey(),
+  conversationId: integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
+  scenarioGoalId: integer('scenario_goal_id').references(() => scenarioGoals.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  achieved: boolean('achieved').default(true).notNull(),
+  evidenceNote: text('evidence_note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const evaluationsRelations = relations(evaluations, ({ one }) => ({
   user: one(users, { fields: [evaluations.userId], references: [users.id] }),
   scenario: one(scenarios, { fields: [evaluations.scenarioId], references: [scenarios.id] }),
+}));
+
+export const scenarioGoalsRelations = relations(scenarioGoals, ({ one, many }) => ({
+  scenario: one(scenarios, { fields: [scenarioGoals.scenarioId], references: [scenarios.id] }),
+  completions: many(goalCompletions),
+}));
+
+export const goalCompletionsRelations = relations(goalCompletions, ({ one }) => ({
+  conversation: one(conversations, { fields: [goalCompletions.conversationId], references: [conversations.id] }),
+  scenarioGoal: one(scenarioGoals, { fields: [goalCompletions.scenarioGoalId], references: [scenarioGoals.id] }),
+  user: one(users, { fields: [goalCompletions.userId], references: [users.id] }),
 }));
