@@ -17,7 +17,9 @@ async function runTest() {
         const result = await analyzeAndGenerateTurn(
             'すみません、ホットラテをください。', // User Input
             1, // Current Turn
-            mockScenario
+            mockScenario,
+            [], // No structured goals for test
+            []  // No completed goals
         );
 
         console.log('✅ AI response test successful!');
