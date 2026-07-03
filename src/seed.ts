@@ -1,613 +1,885 @@
-// import { db } from './db';
-// import { users, scenarios, vocabulary } from './schema';
-//
-// async function seed() {
-//     try {
-//         console.log('🌱 Starting AI DOJO database seeding via HTTP...');
-//
-//         // 1. Seed sample learners
-//         console.log('Inserting user profiles...');
-//         const insertedUsers = await db.insert(users).values([
-//             { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', level: 'beginner' },
-//             { name: 'Aaron', email: 'aarontaremwa8@gmail.com', level: 'beginner' },
-//             { name: 'Desire', email: 'desirehope82@gmail.com', level: 'beginner' },
-//             { name: 'Derrick', email: 'alaxdero1@gmail.com', level: 'beginner' }
-//         ]).returning();
-//
-//         // 2. Seed Interactive Scenarios
-//         console.log('Inserting learning scenarios...');
-//         const insertedScenarios = await db.insert(scenarios).values([
-//             {
-//                 title: 'First Meeting a Japanese AI Tutor',
-//                 context: 'Amina launches the JapanBridge app for the first time and is greeted by Hana, an AI Japanese tutor. This introductory scenario teaches the absolute basics: saying hello, exchanging names, and using the most fundamental greetings. It is the entry point for all new Ugandan players.',
-//                 businessType: 'Daily Life / Language Learning',
-//                 difficulty: 'beginner',
-//                 aiCharacterName: 'Hana',
-//                 aiCharacterRole: 'AI Japanese Language Tutor on JapanBridge',
-//                 userCharacterName: 'Amina',
-//                 userCharacterRole: 'Ugandan beginner player starting their Japanese learning journey',
-//                 learningGoals: 'Learn hajimemashite, yoroshiku onegaishimasu, name introduction with watashi wa...desu, and basic greeting responses'
-//             },
-//             {
-//                 title: 'Asking for a Job',
-//                 context: 'Amina is looking for part-time work in Japan and visits an employment agency. She must communicate what kind of work she is looking for, express her experience level, and respond to the recruiter\'s basic questions. This scenario reflects a realistic situation for Ugandans working in Japan.',
-//                 businessType: 'Employment / Daily Life',
-//                 difficulty: 'beginner',
-//                 aiCharacterName: 'Recruiter Tanaka',
-//                 aiCharacterRole: 'Staff Recruiter at Osaka Employment Agency',
-//                 userCharacterName: 'Amina',
-//                 userCharacterRole: 'Ugandan resident in Japan looking for part-time restaurant work',
-//                 learningGoals: 'Ask and answer questions about job seeking, describe preferred work type, use oshigoto vocabulary, express encouragement phrases'
-//             },
-//             {
-//                 title: 'Seeking Medical Attention',
-//                 context: 'Amina feels unwell and visits a local clinic in Japan. She must describe her symptoms to the receptionist and doctor, respond to basic health questions, and understand key phrases about her wellbeing. Health vocabulary is critical for safety and daily survival in Japan.',
-//                 businessType: 'Healthcare / Daily Life',
-//                 difficulty: 'beginner',
-//                 aiCharacterName: 'Nurse Yamada',
-//                 aiCharacterRole: 'Receptionist and Nurse at Sakura Clinic',
-//                 userCharacterName: 'Amina',
-//                 userCharacterRole: 'Ugandan resident in Japan feeling unwell and visiting a clinic',
-//                 learningGoals: 'Describe physical symptoms, respond to health questions, understand dou shimashita ka (what is wrong), use kibun and daijoubu vocabulary'
-//             }
-//         ]).returning();
-//
-//         // 3. Seed Targeted Vocabulary Setup Linked to Scenarios
-//         console.log('Linking vocabulary metadata maps...');
-//
-//         // Scenario 1 Vocab Mapping
-//         await db.insert(vocabulary).values([
-//             {
-//                 scenarioId: insertedScenarios[0].id,
-//                 japanese: 'こんにちは',
-//                 romaji: 'Konnichiwa',
-//                 english: 'Hello / Good afternoon',
-//                 category: 'greeting',
-//                 usageTip: 'The most common Japanese greeting. Used any time from mid-morning to early evening.',
-//                 formalityLevel: 'polite'
-//             },
-//             {
-//                 scenarioId: insertedScenarios[0].id,
-//                 japanese: 'はじめまして',
-//                 romaji: 'Hajimemashite',
-//                 english: 'Nice to meet you (first meeting only)',
-//                 category: 'greeting',
-//                 usageTip: 'Only used when meeting someone for the very first time. It signals a brand new introduction.',
-//                 formalityLevel: 'polite'
-//             },
-//             {
-//                 scenarioId: insertedScenarios[0].id,
-//                 japanese: 'よろしくおねがいします',
-//                 romaji: 'Yoroshiku onegaishimasu',
-//                 english: 'Pleased to meet you / I look forward to working with you',
-//                 category: 'greeting',
-//                 usageTip: 'Said at the end of an introduction. It expresses goodwill and a desire for a good relationship.',
-//                 formalityLevel: 'polite'
-//             }
-//         ]);
-//
-//         // Scenario 2 Vocab Mapping
-//         await db.insert(vocabulary).values([
-//             {
-//                 scenarioId: insertedScenarios[1].id,
-//                 japanese: 'おしごとをさがしています',
-//                 romaji: 'Oshigoto wo sagashite imasu',
-//                 english: 'I am looking for a job',
-//                 category: 'employment',
-//                 usageTip: 'The essential phrase to use at an employment agency or when job hunting in Japan.',
-//                 formalityLevel: 'polite'
-//             },
-//             {
-//                 scenarioId: insertedScenarios[1].id,
-//                 japanese: 'がんばってください',
-//                 romaji: 'Ganbatte kudasai',
-//                 english: 'Please do your best / Good luck',
-//                 category: 'encouragement',
-//                 usageTip: 'A warm expression of encouragement given to someone who is trying hard or facing a challenge.',
-//                 formalityLevel: 'polite'
-//             }
-//         ]);
-//
-//         console.log('🚀 AI DOJO Seed data processing completed successfully.');
-//     } catch (error) {
-//         console.error('❌ Error during database seeding process:', error);
-//         process.exit(1);
-//     }
-// }
-//
-// seed();
-
 import { db } from './db';
+import { hashPassword } from '../lib/auth';
 import { eq } from 'drizzle-orm';
-import { users, scenarios, vocabulary, conversations, evaluations, scenarioGoals, goalCompletions } from './schema';
+import {
+  users, scenarios, vocabulary, scenarioGoals,
+  sessions, conversations, corrections, evaluations,
+  goalCompletions, vocabularyEncounters
+} from './schema';
 
 async function seed() {
-    try {
-        console.log('🌱 Starting comprehensive AI DOJO database seeding...');
+  try {
+    console.log('🌱 Starting AI DOJO database seeding...');
 
-        // Clear existing data safely (Ordered sequentially by constraints)
-        console.log('Cleaning existing table data...');
-        await db.delete(evaluations);
-        await db.delete(conversations);
-        await db.delete(vocabulary);
-        await db.delete(scenarios);
-        await db.delete(users);
+    // Clear tables in FK-safe order
+    console.log('Clearing existing data...');
+    await db.delete(vocabularyEncounters);
+    await db.delete(goalCompletions);
+    await db.delete(corrections);
+    await db.delete(evaluations);
+    await db.delete(conversations);
+    await db.delete(sessions);
+    await db.delete(scenarioGoals);
+    await db.delete(vocabulary);
+    await db.delete(scenarios);
+    await db.delete(users);
 
-        // ============================================================
-        // 1. SEED USERS
-        // ============================================================
-        console.log('Inserting user profiles...');
-        const insertedUsers = await db.insert(users).values([
-            { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', level: 'beginner' },
-            { name: 'Aaron', email: 'aarontaremwa8@gmail.com', level: 'beginner' },
-            { name: 'Desire', email: 'desirehope82@gmail.com', level: 'beginner' },
-            { name: 'Derrick', email: 'alaxdero1@gmail.com', level: 'beginner' }
-        ]).returning();
+    // ================================================================
+    // 1. USERS
+    // ================================================================
+    console.log('Inserting users...');
 
-        const userMap = Object.fromEntries(insertedUsers.map(u => [u.name, u.id]));
+    // Dev-only default password: changeme123
+    // In production, users should register with their own passwords.
+    const defaultPwHash = await hashPassword('changeme123');
 
-        // ============================================================
-        // 2. SEED ALL 20 SCENARIOS
-        // ============================================================
-        console.log('Inserting 20 daily-life scenarios...');
-        const insertedScenarios = await db.insert(scenarios).values([
-            {
-                title: 'First Meeting a Japanese AI Tutor',
-                context: 'Amina launches the JapanBridge app for the first time and is greeted by Hana, an AI Japanese tutor. This introductory scenario teaches the absolute basics: saying hello, exchanging names, and using the most fundamental greetings. It is the entry point for all new Ugandan players.',
-                businessType: 'Daily Life / Language Learning',
-                difficulty: 'beginner',
-                aiCharacterName: 'Hana',
-                aiCharacterRole: 'AI Japanese Language Tutor on JapanBridge',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan beginner player starting their Japanese learning journey',
-                learningGoals: 'Learn hajimemashite, yoroshiku onegaishimasu, name introduction with watashi wa...desu, and basic greeting responses'
-            },
-            {
-                title: 'Asking for a Job',
-                context: 'Amina is looking for part-time restaurant work in Japan and visits an employment agency. She must communicate that she wants restaurant work (e.g., dishwasher, waiter, kitchen assistant), express her experience level, and respond to the recruiter\'s basic questions. This scenario reflects a realistic situation for Ugandans working in Japan.',
-                businessType: 'Employment / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Recruiter Tanaka',
-                aiCharacterRole: 'Staff Recruiter at Osaka Employment Agency',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident in Japan looking for part-time restaurant work',
-                learningGoals: 'Ask and answer questions about job seeking, describe preferred work type (restaurant/hospitality), use oshigoto vocabulary, express encouragement phrases'
-            },
-            {
-                title: 'Seeking Medical Attention',
-                context: 'Amina feels unwell and visits a local clinic in Japan. She must describe her symptoms to the receptionist and doctor, respond to basic health questions, and understand key phrases about her wellbeing. Health vocabulary is critical for safety and daily survival in Japan.',
-                businessType: 'Healthcare / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Nurse Yamada',
-                aiCharacterRole: 'Receptionist and Nurse at Sakura Clinic',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident in Japan feeling unwell and visiting a clinic',
-                learningGoals: 'Describe physical symptoms, respond to health questions, understand dou shimashita ka (what is wrong), use kibun and daijoubu vocabulary'
-            },
-            {
-                title: 'At the Bus Station',
-                context: 'Joseph needs to get to school and approaches the bus information desk at a Japanese bus station. He must state his destination, ask about arrival times, and understand the response. Public transport navigation is an essential daily life skill for newcomers in Japan.',
-                businessType: 'Transportation / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Station Staff Kimura',
-                aiCharacterRole: 'Bus Information Desk Staff at Namba Bus Terminal',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student in Japan navigating public transport to school',
-                learningGoals: 'State a destination using e ikimasu (going to), ask and understand arrival times, use nanji vocabulary, respond to basic transport questions'
-            },
-            {
-                title: 'Buying Water at a Convenience Store',
-                context: 'Amina enters a Japanese convenience store (konbini) to buy a bottle of water. She must respond to the standard shop greeting, request an item, confirm the quantity, and complete a polite purchase transaction. Konbini interactions happen daily in Japan.',
-                businessType: 'Shopping / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Shop Clerk Sato',
-                aiCharacterRole: 'Convenience Store Clerk at Lawson Convenience Store',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident making her first purchase at a Japanese convenience store',
-                learningGoals: 'Understand irasshaimase (welcome), use kudasai to request items, confirm quantities with ippon, complete a polite purchase exchange'
-            },
-            {
-                title: 'Looking for a Hotel',
-                context: 'Joseph arrives in a new Japanese city and needs accommodation. He visits a hotel front desk to inquire about a room, confirm he is travelling alone, and complete the check-in process. Hotel interactions require polite language and understanding of basic accommodation terms.',
-                businessType: 'Accommodation / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Hotel Receptionist Fujita',
-                aiCharacterRole: 'Front Desk Receptionist at Kyoto Garden Hotel',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan traveller checking into a hotel alone in Kyoto',
-                learningGoals: 'Understand and respond to oheya ga hitsuyou desu ka (do you need a room), express hitori (alone), confirm with wakarimashita, use hotel check-in vocabulary'
-            },
-            {
-                title: 'Ordering Food at a Restaurant',
-                context: 'Amina visits a traditional Japanese restaurant for the first time. She must read the menu with help, order food using appropriate phrases, respond to the server\'s questions, and use dining etiquette expressions. Food vocabulary connects directly to daily survival and cultural participation.',
-                businessType: 'Food & Dining / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Waiter Tanaka',
-                aiCharacterRole: 'Server at Sakura Japanese Restaurant',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident dining at a Japanese restaurant for the first time',
-                learningGoals: 'Use nan o tabemasu ka (what will you eat) structure, order food items, respond to server questions, use itadakimasu and oishii expressions'
-            },
-            {
-                title: 'Meeting a Neighbour',
-                context: 'Joseph meets his Japanese neighbour for the first time in the morning outside their apartment building. This scenario covers morning greetings, asking about wellbeing, and casual neighbourhood conversation. Building relationships with neighbours is important for newcomers in Japan.',
-                businessType: 'Social Life / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Neighbour Suzuki',
-                aiCharacterRole: 'Japanese Neighbour living in the same apartment building',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student who just moved into a Japanese apartment',
-                learningGoals: 'Use ohayo gozaimasu (good morning), ask and respond to ogenki desu ka (how are you), express genki desu, use yokatta (great) socially'
-            },
-            {
-                title: 'Shopping at the Market',
-                context: 'Amina visits a local Japanese market to buy goods. She must ask the price of items, respond to price statements, and engage in light price conversation. Understanding market transactions and price vocabulary is an everyday skill for life in Japan.',
-                businessType: 'Shopping / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Market Vendor Nakamura',
-                aiCharacterRole: 'Fruit and Vegetable Vendor at Osaka Kuromon Market',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident shopping for groceries at a Japanese market',
-                learningGoals: 'Use ikura desu ka (how much is this), understand price responses in yen, use takai (expensive) and chotto (a little), engage in polite market conversation'
-            },
-            {
-                title: 'Asking for Directions',
-                context: 'Joseph is lost and needs to find the train station. He approaches a passerby on the street to ask for directions to the eki (station). This scenario covers polite interruption with sumimasen, asking where something is, understanding directional responses, and expressing gratitude.',
-                businessType: 'Navigation / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Passerby Watanabe',
-                aiCharacterRole: 'Helpful Japanese Passerby on a street in Tokyo',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student who is lost and looking for the train station in Tokyo',
-                learningGoals: 'Use sumimasen to politely interrupt, ask doko desu ka (where is it), understand asoko (over there), respond with arigatou gozaimasu and dou itashimashite'
-            },
-            {
-                title: 'At School',
-                context: 'Amina attends a Japanese language class and the teacher asks about her student status and study subject. This scenario covers educational vocabulary, answering questions about being a student, and naming one\'s subject of study. School is a major environment for Ugandan newcomers in Japan.',
-                businessType: 'Education / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Teacher Hayashi',
-                aiCharacterRole: 'Japanese Language Teacher at Osaka International School',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan student attending Japanese language classes in Osaka',
-                learningGoals: 'Respond to gakusei desu ka (are you a student), use gakusei vocabulary, answer nani o benkyou shimasu ka (what do you study), name nihongo as a subject'
-            },
-            {
-                title: 'Visiting a Friend',
-                context: 'Joseph visits his Japanese classmate\'s home for the first time. The friend welcomes him at the door, offers tea, and engages in warm casual conversation. Home visit etiquette is deeply important in Japanese culture and involves specific phrases at the entrance and as a guest.',
-                businessType: 'Social Life / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Friend Kenji',
-                aiCharacterRole: 'Joseph\'s Japanese classmate who lives in Osaka',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student visiting a Japanese friend\'s home for the first time',
-                learningGoals: 'Understand and use irasshai (welcome, visitor), respond to ocha wa ikaga desu ka (would you like tea), use onegaishimasu politely, practice casual home-visit conversation'
-            },
-            {
-                title: 'Playing Football in the Park',
-                context: 'Joseph and his friends play football at a local Japanese park. He meets a Japanese boy who wants to talk about football. This scenario covers sports vocabulary, expressing likes and dislikes, and naming locations — all in a fun and casual context that resonates with Ugandan players.',
-                businessType: 'Sports & Recreation / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Yuta',
-                aiCharacterRole: 'Japanese boy playing at the park in Osaka',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student who loves football and plays regularly at the local park',
-                learningGoals: 'Respond to sakka ga suki desu ka (do you like football), express suki desu (I like it), answer doko de purei shimasu ka (where do you play), name kouen (park)'
-            },
-            {
-                title: 'At the Airport',
-                context: 'Amina arrives at a Japanese airport and goes through immigration control. The immigration officer asks to see her passport and completes the entry formalities. Understanding airport procedures in Japanese is essential for new arrivals and is often the very first Japanese conversation a newcomer has.',
-                businessType: 'Travel / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Immigration Officer Kondo',
-                aiCharacterRole: 'Immigration Control Officer at Kansai International Airport',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan national arriving in Japan for the first time at Kansai Airport',
-                learningGoals: 'Understand pasupooto o misete kudasai (please show your passport), respond with douzo (here you are), complete a basic immigration exchange, use arigatou gozaimasu appropriately'
-            },
-            {
-                title: 'Going Shoe Shopping',
-                context: 'Amina visits a Japanese shoe shop to buy a pair of shoes. She must express what she wants, understand the sales assistant\'s guidance to the correct section, and complete a basic shopping transaction. Shopping vocabulary is immediately useful for daily life in Japan.',
-                businessType: 'Shopping / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Shop Assistant Ono',
-                aiCharacterRole: 'Sales Assistant at ABC Shoe Store in Osaka',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident buying shoes at a Japanese shoe shop for the first time',
-                learningGoals: 'Use nani ga hoshii desu ka (what do you want), express kutsu ga hoshii desu (I want shoes), understand koko ni arimasu (they are here), complete a basic shopping interaction'
-            },
-            {
-                title: 'At the Library',
-                context: 'Joseph visits a public library in Japan to find a Japanese language book. The librarian helps him by asking what kind of book he needs. This scenario covers library vocabulary, expressing what you are looking for, and describing book types — practical for students studying in Japan.',
-                businessType: 'Education / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Librarian Inoue',
-                aiCharacterRole: 'Librarian at Osaka Municipal Library',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student looking for a Japanese language study book at the library',
-                learningGoals: 'Respond to hon o sagashite imasu ka (are you looking for a book), describe the type of book using donna hon, name nihongo no hon, use library interaction vocabulary'
-            },
-            {
-                title: 'At the Pharmacy',
-                context: 'Amina has a headache and visits a Japanese pharmacy to get medicine. She must describe her symptom to the pharmacist, understand the response about available medicine, and complete a polite purchase. Health-related vocabulary is critical for safety and daily comfort in Japan.',
-                businessType: 'Healthcare / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Pharmacist Kato',
-                aiCharacterRole: 'Pharmacist at Matsumoto Kiyoshi Pharmacy',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident visiting a Japanese pharmacy with a headache',
-                learningGoals: 'Describe symptoms using atama ga itai desu (my head hurts), understand kusuri ga arimasu (there is medicine), complete a pharmacy transaction, use arigatou gozaimasu to close'
-            },
-            {
-                title: 'Asking the Time',
-                context: 'Joseph is running late for class and realises he left his phone at home. He stops a passerby on the street to ask what time it is. This scenario covers one of the most basic and universally useful Japanese interactions: asking and telling the time politely.',
-                businessType: 'Daily Life / Navigation',
-                difficulty: 'beginner',
-                aiCharacterName: 'Passerby Nishida',
-                aiCharacterRole: 'Helpful Japanese Passerby on a street in Osaka',
-                userCharacterName: 'Joseph',
-                userCharacterRole: 'Ugandan student who needs to know the time urgently before class',
-                learningGoals: 'Ask ima nanji desu ka (what time is it now), understand time responses using ku ji (9 o\'clock), use arigatou and dou itashimashite in a brief street exchange'
-            },
-            {
-                title: 'At a Café',
-                context: 'Amina visits a Japanese café for the first time and orders a coffee. The barista asks what she would like to drink, she orders, and the transaction is completed. Café vocabulary is immediately practical and is often one of the first real-world interactions for newcomers in Japan.',
-                businessType: 'Food & Dining / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Barista Mori',
-                aiCharacterRole: 'Barista at Hana Coffee Café in Osaka',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident ordering her first coffee at a Japanese café',
-                learningGoals: 'Respond to nani o nomimasu ka (what will you drink), order koohii (coffee), confirm order, use arigatou to close a simple café transaction'
-            },
-            {
-                title: 'Introducing Yourself Again',
-                context: 'Amina attends a Japanese community welcome event and meets several new people in a row. She must introduce herself repeatedly using the correct first-meeting phrases and respond gracefully to others\' introductions. This scenario reinforces and consolidates self-introduction skills across multiple brief interactions.',
-                businessType: 'Social Life / Daily Life',
-                difficulty: 'beginner',
-                aiCharacterName: 'Community Host Yuki',
-                aiCharacterRole: 'Community Event Host at Osaka International Friendship Centre',
-                userCharacterName: 'Amina',
-                userCharacterRole: 'Ugandan resident attending a Japanese community welcome event in Osaka',
-                learningGoals: 'Consolidate hajimemashite opening, use watashi wa Amina desu confidently, respond to yoroshiku onegaishimasu, practice smooth multi-person self-introduction flow'
-            }
-        ]).returning();
+    const insertedUsers = await db.insert(users).values([
+      { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', passwordHash: defaultPwHash, level: 'beginner', consentToDataSharing: true },
+      { name: 'Aaron', email: 'aarontaremwa8@gmail.com', passwordHash: defaultPwHash, level: 'beginner', consentToDataSharing: true },
+      { name: 'Desire', email: 'desirehope82@gmail.com', passwordHash: defaultPwHash, level: 'intermediate', consentToDataSharing: true },
+      { name: 'Derrick', email: 'alaxdero1@gmail.com', passwordHash: defaultPwHash, level: 'beginner', consentToDataSharing: true },
+    ]).returning();
 
-        // Mapping generated table database primary IDs sequentially
-        const sIds = insertedScenarios.map(s => s.id);
+    const userMap = Object.fromEntries(insertedUsers.map(u => [u.name, u.id]));
 
-        // ============================================================
-        // 3. SEED CORE VOCABULARY METADATA
-        // ============================================================
-        console.log('Inserting contextual vocabulary items...');
-        await db.insert(vocabulary).values([
-            { scenarioId: sIds[0], japanese: 'こんにちは', romaji: 'Konnichiwa', english: 'Hello / Good afternoon', category: 'greeting', usageTip: 'The most common Japanese greeting.', formalityLevel: 'polite' },
-            { scenarioId: sIds[0], japanese: 'はじめまして', romaji: 'Hajimemashite', english: 'Nice to meet you (first meeting only)', category: 'greeting', usageTip: 'Only used when meeting someone for the very first time.', formalityLevel: 'polite' },
-            { scenarioId: sIds[0], japanese: 'おなまえはなんですか', 'romaji': 'Onamae wa nan desu ka', english: 'What is your name?', category: 'question', usageTip: 'A polite way to ask someone\'s name.', formalityLevel: 'polite' },
-            { scenarioId: sIds[0], japanese: 'わたしは〇〇です', romaji: 'Watashi wa ___ desu', english: 'I am ___', category: 'self-introduction', usageTip: 'Replace ___ with your name.', formalityLevel: 'polite' },
-            { scenarioId: sIds[0], japanese: 'よろしくおねがいします', romaji: 'Yoroshiku onegaishimasu', english: 'Pleased to meet you', category: 'greeting', usageTip: 'Said at the end of an introduction.', formalityLevel: 'polite' },
+    // ================================================================
+    // 2. SCENARIOS (20 upgraded scenarios)
+    // ================================================================
+    console.log('Inserting 20 scenarios...');
+    const insertedScenarios = await db.insert(scenarios).values([
+      {
+        title: 'First Meeting & Self Introduction',
+        context: 'A Ugandan learner arrives at a community welcome event in Tokyo and meets Hana, a cultural exchange coordinator. This initial encounter requires a proper self-introduction using Japanese etiquette: bowing, stating one\'s name, origin, and expressing the desire for a good relationship. First impressions matter deeply in Japanese culture, and using the correct set phrases signals respect and willingness to integrate.',
+        businessType: 'Social / Language Learning', difficulty: 'beginner', domain: 'social',
+        aiCharacterName: 'Hana', aiCharacterRole: 'Cultural exchange coordinator at Tokyo International Centre',
+        userCharacterName: 'Sarah', userCharacterRole: 'Ugandan learner attending her first community welcome event in Tokyo',
+        learningGoals: 'Master hajimemashite, watashi wa ___ desu structure, yoroshiku onegaishimasu, and polite self-introduction flow',
+        displayOrder: 1,
+      },
+      {
+        title: 'Buying a Snack at Konbini',
+        context: 'After a long day, a Ugandan learner stops at a Lawson convenience store to buy a snack and a drink. The clerk greets with the standard irasshaimase, and the learner must request items, confirm the quantity, pay, and receive change. Konbini interactions are the most frequent daily transactions in Japan, making this foundational vocabulary essential.',
+        businessType: 'Shopping / Daily Life', difficulty: 'beginner', domain: 'shopping',
+        aiCharacterName: 'Sato', aiCharacterRole: 'Lawson convenience store clerk in Tokyo',
+        userCharacterName: 'Grace', userCharacterRole: 'Ugandan learner stopping for a snack at a Japanese konbini',
+        learningGoals: 'Understand irasshaimase, use ___ o kudasai to request items, confirm quantity with counter words, complete a polite purchase',
+        displayOrder: 2,
+      },
+      {
+        title: 'Asking for Directions to the Station',
+        context: 'A Ugandan learner is lost in Shinjuku and needs to find the nearest train station. They must politely interrupt a passerby with sumimasen, state their destination, and understand the directional response. This scenario builds confidence in asking for help in public — a critical skill for navigating Japan\'s sprawling urban centres.',
+        businessType: 'Navigation / Daily Life', difficulty: 'beginner', domain: 'transport',
+        aiCharacterName: 'Watanabe', aiCharacterRole: 'Helpful passerby on a street in Shinjuku',
+        userCharacterName: 'David', userCharacterRole: 'Ugandan learner lost in Shinjuku looking for the train station',
+        learningGoals: 'Use sumimasen to get attention, ask ___ wa doko desu ka, understand directional words like migi/hidari/massugu, close with arigatou gozaimasu',
+        displayOrder: 3,
+      },
+      {
+        title: 'Visiting a Medical Clinic',
+        context: 'A Ugandan learner wakes up with a fever and sore throat and visits a local clinic in Osaka. They must check in at reception, describe symptoms to the nurse, and understand basic instructions. Medical interactions require precise symptom vocabulary and the ability to understand simple health questions — essential knowledge for living independently in Japan.',
+        businessType: 'Healthcare / Daily Life', difficulty: 'beginner', domain: 'healthcare',
+        aiCharacterName: 'Nurse Yamada', aiCharacterRole: 'Receptionist and triage nurse at Sakura Clinic in Osaka',
+        userCharacterName: 'Faith', userCharacterRole: 'Ugandan learner feeling unwell and visiting a clinic in Osaka',
+        learningGoals: 'Describe symptoms with ___ ga itai desu / netsu ga arimasu, understand dou shimashita ka, respond to health questions, complete registration',
+        displayOrder: 4,
+      },
+      {
+        title: 'Ordering Food at a Restaurant',
+        context: 'A Ugandan learner visits a traditional izakaya with a friend and must order food in Japanese. The server asks what they would like to eat and drink, and the learner must navigate the menu, use ordering phrases, and employ dining etiquette like itadakimasu and gochisousama. Food culture is central to Japanese social life.',
+        businessType: 'Food & Dining / Daily Life', difficulty: 'beginner', domain: 'daily_life',
+        aiCharacterName: 'Server Tanaka', aiCharacterRole: 'Waitstaff at Sakura Izakaya in Osaka',
+        userCharacterName: 'Michael', userCharacterRole: 'Ugandan learner dining at a Japanese izakaya for the first time',
+        learningGoals: 'Use ___ o onegaishimasu / ___ o kudasai to order, understand osusume wa nan desu ka, say itadakimasu before eating, thank the staff',
+        displayOrder: 5,
+      },
+      {
+        title: 'Shopping at a Supermarket',
+        context: 'A Ugandan learner goes grocery shopping at a Japanese supermarket. They need to find ingredients, ask the staff where specific items are located, weigh produce, and go through the checkout. Supermarket vocabulary is essential for daily independent living.',
+        businessType: 'Shopping / Daily Life', difficulty: 'beginner', domain: 'shopping',
+        aiCharacterName: 'Staff Nakamura', aiCharacterRole: 'Supermarket employee at Life Supermarket in Tokyo',
+        userCharacterName: 'Esther', userCharacterRole: 'Ugandan learner shopping for groceries at a Japanese supermarket',
+        learningGoals: 'Ask ___ wa doko desu ka for item locations, understand price inquiries, handle checkout and payment phrases, use common food vocabulary',
+        displayOrder: 6,
+      },
+      {
+        title: 'Buying a Ticket at the Train Station',
+        context: 'A Ugandan learner needs to take the JR train from Tokyo to Yokohama. They must approach the ticket machine or counter, state their destination, buy the correct ticket, and understand platform announcements. Japan\'s rail system is the backbone of transport, and navigating it independently is a key milestone.',
+        businessType: 'Transport / Daily Life', difficulty: 'beginner', domain: 'transport',
+        aiCharacterName: 'Station Staff Kimura', aiCharacterRole: 'JR station attendant at Tokyo Station',
+        userCharacterName: 'James', userCharacterRole: 'Ugandan learner buying a train ticket from Tokyo to Yokohama',
+        learningGoals: 'State destination using ___ made onegaishimasu, understand fare and ticket type questions, ask about platform (nanbansen), confirm departure time',
+        displayOrder: 7,
+      },
+      {
+        title: 'Checking into a Hotel',
+        context: 'A Ugandan learner arrives at a business hotel in Kyoto for a short stay. They must check in at the front desk, provide their reservation details, confirm the length of stay, and understand the hotel\'s amenities and rules. Hotel check-in is a common scenario for any traveller in Japan.',
+        businessType: 'Accommodation / Daily Life', difficulty: 'beginner', domain: 'services',
+        aiCharacterName: 'Receptionist Fujita', aiCharacterRole: 'Front desk receptionist at Kyoto Business Hotel',
+        userCharacterName: 'Peter', userCharacterRole: 'Ugandan traveller checking into a hotel in Kyoto for two nights',
+        learningGoals: 'Confirm reservation with yoyaku shite imasu, state duration (___ haku), understand key and breakfast information, use polite check-in phrases',
+        displayOrder: 8,
+      },
+      {
+        title: 'Meeting Your Neighbour',
+        context: 'A Ugandan learner encounters their Japanese neighbour in the apartment building hallway for the first time. They exchange morning greetings, introduce themselves as residents, and share a brief friendly conversation. Good neighbourly relations are valued in Japan, and knowing the correct greetings builds community.',
+        businessType: 'Social Life / Daily Life', difficulty: 'beginner', domain: 'social',
+        aiCharacterName: 'Suzuki-san', aiCharacterRole: 'Neighbour living in the same apartment building',
+        userCharacterName: 'Harriet', userCharacterRole: 'Ugandan learner who just moved into a Japanese apartment building',
+        learningGoals: 'Use ohayo gozaimasu / konnichiwa appropriately, introduce yourself as a neighbour, ask ogenki desu ka, use casual friendly phrases',
+        displayOrder: 9,
+      },
+      {
+        title: 'Home Visit & Omotenashi',
+        context: 'A Ugandan learner is invited to a Japanese colleague\'s home for dinner. Upon arrival, they must greet the host properly, present a small gift (omiyage), accept the offered slippers and tea, and engage in polite dinner conversation. Home visits follow a specific etiquette script that reflects the Japanese value of omotenashi (wholehearted hospitality).',
+        businessType: 'Social / Cultural', difficulty: 'intermediate', domain: 'social',
+        aiCharacterName: 'Yamamoto-san', aiCharacterRole: 'Japanese colleague hosting dinner at their home',
+        userCharacterName: 'Robert', userCharacterRole: 'Ugandan learner invited to a Japanese colleague\'s home for dinner',
+        learningGoals: 'Use ojama shimasu when entering, present omiyage with tsumaranai mono desu ga, accept ocha politely, use itadakimasu and gochisousama',
+        displayOrder: 10,
+      },
+      {
+        title: 'Nomikai — Company Drinks Party',
+        context: 'A Ugandan learner attends a company nomikai (after-work drinking party) with colleagues. The party has a casual yet structured flow: opening remarks (kanpai), self-introductions, informal conversation, and closing remarks. Nomikai is central to Japanese workplace bonding, and knowing the etiquette helps newcomers integrate socially.',
+        businessType: 'Workplace / Social', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Kato-bucho', aiCharacterRole: 'Department manager organizing the nomikai',
+        userCharacterName: 'Takeshi (the learner chooses their own name)', userCharacterRole: 'Ugandan learner attending their first company nomikai in Tokyo',
+        learningGoals: 'Participate in kanpai toast, introduce yourself to colleagues, use casual workplace drinking vocabulary, understand the flow of nomikai from start to closing',
+        displayOrder: 11,
+      },
+      {
+        title: 'Community Welcome Party',
+        context: 'A Ugandan learner attends a community welcome party for new international residents. They must circulate, introduce themselves to multiple people, respond to the same questions (name, country, reason for being in Japan) gracefully each time, and remember names. This scenario builds endurance in repeated self-introductions.',
+        businessType: 'Social / Community', difficulty: 'beginner', domain: 'social',
+        aiCharacterName: 'Yuki', aiCharacterRole: 'Community event host at the International Friendship Centre',
+        userCharacterName: 'Amina', userCharacterRole: 'Ugandan learner attending a community welcome event for new international residents',
+        learningGoals: 'Repeat confident self-introduction across multiple interactions, vary responses slightly each time, use listening cues like ee and sou desu ne, close each exchange naturally',
+        displayOrder: 12,
+      },
+      {
+        title: 'Job Interview at a Japanese Company',
+        context: 'A Ugandan learner has a job interview for an entry-level position at a Japanese IT company. They must enter the meeting room properly, greet the interviewers, answer questions about their background and skills, express motivation, and close the interview with the correct phrases. Job interviews in Japan follow strict etiquette regarding bowing, sitting, and speech register.',
+        businessType: 'Employment / Formal', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Tanaka-shachō', aiCharacterRole: 'Company president conducting the job interview',
+        userCharacterName: 'Joseph', userCharacterRole: 'Ugandan learner interviewing for an entry-level position at a Japanese IT company',
+        learningGoals: 'Use formal keigo greetings (hajimemashite, yoroshiku onegaishimasu), answer shigoto keiken/questions with appropriate humility, express motivation with ganbarimasu, close with arigatou gozaimashita',
+        displayOrder: 13,
+      },
+      {
+        title: 'First Day at the Office',
+        context: 'On their first day at a Japanese company, a Ugandan learner is introduced to the team by their supervisor. They must greet each colleague, remember names and roles, learn the office layout, and understand basic workplace norms like seating and break times. This scenario covers onboarding vocabulary and office social dynamics.',
+        businessType: 'Workplace / Onboarding', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Sato-senpai', aiCharacterRole: 'Senior colleague assigned to mentor the new hire',
+        userCharacterName: 'David', userCharacterRole: 'Ugandan learner starting their first day at a Japanese company in Tokyo',
+        learningGoals: 'Respond to team introductions with proper greetings, use senpai/kouhai awareness, understand office-related vocabulary (tsukue, kaigi, kyūkei), ask basic workplace questions politely',
+        displayOrder: 14,
+      },
+      {
+        title: 'Business Meeting & Keigo',
+        context: 'A Ugandan learner participates in a weekly team meeting at their Japanese company. They must contribute a status update, respond to questions from the manager, and use appropriate keigo (honorific language) when addressing superiors. This scenario introduces business meeting structure and hierarchical language.',
+        businessType: 'Workplace / Meetings', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Yamada-kachō', aiCharacterRole: 'Section manager leading the weekly team meeting',
+        userCharacterName: 'Michael', userCharacterRole: 'Ugandan learner giving a status update at a Japanese company team meeting',
+        learningGoals: 'Use formal desu/masu consistently, report progress with shinkyou houkoku, respond to manager questions with hai and appropriate keigo, close updates with ijou desu',
+        displayOrder: 15,
+      },
+      {
+        title: 'Business Card Exchange (Meishi)',
+        context: 'A Ugandan learner attends a business networking event and must exchange meishi (business cards) with several professionals. The exchange follows a precise ritual: presenting the card with both hands, reading the other person\'s card carefully, commenting on the company, and placing the card respectfully in the card case. Meishi etiquette is a core Japanese business skill.',
+        businessType: 'Workplace / Networking', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Ishida-shachō', aiCharacterRole: 'Executive from a partner company at a networking event',
+        userCharacterName: 'Sarah', userCharacterRole: 'Ugandan learner attending a business networking event and exchanging meishi',
+        learningGoals: 'Present meishi with both hands and proper bow, read and acknowledge the other card, use choushi wa ikaga desu ka, handle dozo and o-taku phrases, respect the card hierarchy',
+        displayOrder: 16,
+      },
+      {
+        title: 'Video Conference with Tokyo HQ',
+        context: 'A Ugandan learner working remotely joins a video conference with colleagues in Tokyo HQ. They must greet the remote team, share their screen to present a report, handle technical difficulties politely, and close the call with appropriate sign-off. Video meeting etiquette — including timing, camera etiquette, and turn-taking — is essential for modern distributed work.',
+        businessType: 'Workplace / Remote', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Nakamura-kaichō', aiCharacterRole: 'Tokyo HQ department head leading the remote video conference',
+        userCharacterName: 'Grace', userCharacterRole: 'Ugandan learner joining a video conference with Tokyo HQ from their remote office',
+        learningGoals: 'Use remote meeting greetings (ohayou gozaimasu from anywhere), handle screen share with kore ga... desu, manage technical apologies (sumimasen, koe ga...), close with otsukaresama desu',
+        displayOrder: 17,
+      },
+      {
+        title: 'Post Office — Sending a Parcel',
+        context: 'A Ugandan learner needs to send a care package back home from a Japanese post office. They must select the shipping method, fill out the customs form, confirm the address, and pay for the service. Post office vocabulary is practical for anyone living in Japan who needs to send documents or packages internationally.',
+        businessType: 'Services / Daily Life', difficulty: 'beginner', domain: 'services',
+        aiCharacterName: 'Postal Clerk Ito', aiCharacterRole: 'Japan Post counter staff at Shinjuku Post Office',
+        userCharacterName: 'Esther', userCharacterRole: 'Ugandan learner sending a parcel home from a Japanese post office',
+        learningGoals: 'State shipping purpose with kore o okuritai desu, select method (funa-bin / koukuu-bin), fill out customs forms, understand weight and price questions',
+        displayOrder: 18,
+      },
+      {
+        title: 'Opening a Bank Account',
+        context: 'A Ugandan learner needs to open a bank account at a Japanese bank to receive their salary. They must provide identification, explain their purpose, choose an account type, and understand basic banking terms. Bank account opening is a critical step for anyone working or living long-term in Japan.',
+        businessType: 'Finance / Services', difficulty: 'intermediate', domain: 'services',
+        aiCharacterName: 'Bank Clerk Yoshida', aiCharacterRole: 'Bank teller at Mizuho Bank in Shinjuku',
+        userCharacterName: 'James', userCharacterRole: 'Ugandan learner opening a bank account to receive their salary in Japan',
+        learningGoals: 'Use kouza o hirakitai desu, provide identification and explain zairyuu card, understand yokin / furikomi / kouza bangou terms, complete application politely',
+        displayOrder: 19,
+      },
+      {
+        title: 'Farewell & Saying Goodbye',
+        context: 'A Ugandan learner\'s colleague is transferring to another branch, and a small farewell gathering is held at the office. The learner must express gratitude, share a brief farewell message, and participate in the closing ceremony. Saying goodbye properly in Japanese involves specific phrases that acknowledge the relationship and express continued goodwill.',
+        businessType: 'Workplace / Social', difficulty: 'intermediate', domain: 'workplace',
+        aiCharacterName: 'Tanaka-san', aiCharacterRole: 'Colleague who is transferring to the Osaka branch',
+        userCharacterName: 'Peter', userCharacterRole: 'Ugandan learner saying farewell to a colleague at their Japanese company',
+        learningGoals: 'Express gratitude with osewa ni narimashita, use sabishii desu ne naturally, give a brief farewell message, close with otagai ni genki de / gokigen you',
+        displayOrder: 20,
+      },
+    ]).returning();
 
-            { scenarioId: sIds[1], japanese: 'おしごとをさがしています', romaji: 'Oshigoto wo sagashite imasu', english: 'I am looking for a job', category: 'employment', usageTip: 'Essential phrase when job hunting.', formalityLevel: 'polite' },
-            { scenarioId: sIds[1], japanese: 'がんばってください', romaji: 'Ganbatte kudasai', english: 'Please do your best / Good luck', category: 'encouragement', usageTip: 'Warm expression of encouragement.', formalityLevel: 'polite' },
+    const sIds = insertedScenarios.map(s => s.id);
 
-            { scenarioId: sIds[2], japanese: 'どうしましたか', romaji: 'Dou shimashita ka', english: 'What is wrong?', category: 'medical', usageTip: 'The standard medical presentation question.', formalityLevel: 'polite' },
-            { scenarioId: sIds[2], japanese: 'あたまがいたいです', romaji: 'Atama ga itai desu', english: 'My head hurts', category: 'medical', usageTip: 'Core physical symptom description template.', formalityLevel: 'polite' }
-        ]);
+    // ================================================================
+    // 3. VOCABULARY (5-8 items per scenario)
+    // ================================================================
+    console.log('Inserting vocabulary...');
+    await db.insert(vocabulary).values([
+      // Scenario 1: First Meeting
+      { scenarioId: sIds[0], japanese: 'はじめまして', romaji: 'Hajimemashite', english: 'Nice to meet you (first meeting only)', category: 'greeting', usageTip: 'Only used the very first time you meet someone. Never used again with the same person.', formalityLevel: 'polite' },
+      { scenarioId: sIds[0], japanese: 'わたしは___です', romaji: 'Watashi wa ___ desu', english: 'I am ___', category: 'self-introduction', usageTip: 'The standard self-introduction template. Say your name where ___ is, then bow slightly.', formalityLevel: 'polite' },
+      { scenarioId: sIds[0], japanese: 'よろしくおねがいします', romaji: 'Yoroshiku onegaishimasu', english: 'Pleased to meet you / I look forward to your kindness', category: 'greeting', usageTip: 'The all-purpose closer for introductions. It expresses gratitude in advance for the relationship.', formalityLevel: 'polite' },
+      { scenarioId: sIds[0], japanese: 'ウガンダからきました', romaji: 'Uganda kara kimashita', english: 'I came from Uganda', category: 'origin', usageTip: 'Use this to state where you are from. Replaces kara with other country names.', formalityLevel: 'polite' },
+      { scenarioId: sIds[0], japanese: 'おなまえはなんですか', romaji: 'O-namae wa nan desu ka', english: 'What is your name?', category: 'question', usageTip: 'The polite way to ask someone\'s name. The o- prefix makes it respectful.', formalityLevel: 'polite' },
+      { scenarioId: sIds[0], japanese: 'どうぞよろしく', romaji: 'Douzo yoroshiku', english: 'Pleased to meet you (casual)', category: 'greeting', usageTip: 'A slightly less formal version of yoroshiku onegaishimasu. Fine for social settings.', formalityLevel: 'casual' },
+      // Scenario 2: Konbini
+      { scenarioId: sIds[1], japanese: 'いらっしゃいませ', romaji: 'Irasshaimase', english: 'Welcome to the store', category: 'greeting', usageTip: 'You will hear this everywhere. No need to respond — just smile or nod.', formalityLevel: 'polite' },
+      { scenarioId: sIds[1], japanese: '___をください', romaji: '___ o kudasai', english: 'Please give me ___', category: 'request', usageTip: 'The simplest way to order or request an item. Replace ___ with what you want.', formalityLevel: 'polite' },
+      { scenarioId: sIds[1], japanese: 'おみず', romaji: 'O-mizu', english: 'Water', category: 'food-drink', usageTip: 'Add o- to mizu for politeness. Omizu kudasai is a natural way to ask for water.', formalityLevel: 'polite' },
+      { scenarioId: sIds[1], japanese: 'いっぽん', romaji: 'Ippon', english: 'One (bottle/counted item)', category: 'counter', usageTip: 'Japanese uses counters. -hon/-pon/-bon is for long cylindrical items like bottles and pens.', formalityLevel: 'polite' },
+      { scenarioId: sIds[1], japanese: 'いくらですか', romaji: 'Ikura desu ka', english: 'How much is it?', category: 'question', usageTip: 'Essential for any purchase. Point at the item and say this if you cannot see a price tag.', formalityLevel: 'polite' },
+      { scenarioId: sIds[1], japanese: 'ありがとうございます', romaji: 'Arigatou gozaimasu', english: 'Thank you very much', category: 'thanks', usageTip: 'Use this when receiving change or your items. The gozaimasu makes it formal.', formalityLevel: 'polite' },
+      // Scenario 3: Directions
+      { scenarioId: sIds[2], japanese: 'すみません', romaji: 'Sumimasen', english: 'Excuse me / Sorry', category: 'polite-expression', usageTip: 'Your most useful word. Use it to get attention, apologize, or say thank you in daily life.', formalityLevel: 'polite' },
+      { scenarioId: sIds[2], japanese: 'えきはどこですか', romaji: 'Eki wa doko desu ka', english: 'Where is the station?', category: 'question', usageTip: 'Template: replace eki (station) with any destination name.', formalityLevel: 'polite' },
+      { scenarioId: sIds[2], japanese: 'みぎ', romaji: 'Migi', english: 'Right', category: 'direction', usageTip: 'One of the three key directional words. Practise with: migi (right), hidari (left), massugu (straight).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[2], japanese: 'まっすぐ', romaji: 'Massugu', english: 'Straight ahead', category: 'direction', usageTip: 'Combine with: massugu itte kudasai (please go straight).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[2], japanese: '___までどのくらいですか', romaji: '___ made dono kurai desu ka', english: 'How far is it to ___?', category: 'question', usageTip: 'Use this to ask about distance or time to a destination.', formalityLevel: 'polite' },
+      // Scenario 4: Medical Clinic
+      { scenarioId: sIds[3], japanese: 'どうしましたか', romaji: 'Dou shimashita ka', english: 'What is wrong? / What happened?', category: 'medical', usageTip: 'The standard question a doctor or nurse will ask when you arrive.', formalityLevel: 'polite' },
+      { scenarioId: sIds[3], japanese: 'ねつがあります', romaji: 'Netsu ga arimasu', english: 'I have a fever', category: 'medical', usageTip: 'Use this pattern: ___ ga arimasu (I have ___). Replace netsu with other symptoms.', formalityLevel: 'polite' },
+      { scenarioId: sIds[3], japanese: 'のどがいたいです', romaji: 'Nodo ga itai desu', english: 'My throat hurts', category: 'medical', usageTip: 'Body part + ga itai desu = my ___ hurts. Extremely useful template.', formalityLevel: 'polite' },
+      { scenarioId: sIds[3], japanese: 'くすり', romaji: 'Kusuri', english: 'Medicine', category: 'medical', usageTip: 'Used in: kusuri o kudasai (please give me medicine).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[3], japanese: 'かぜをひきました', romaji: 'Kaze o hikimashita', english: 'I caught a cold', category: 'medical', usageTip: 'The natural way to say you have a cold. Doctors will understand immediately.', formalityLevel: 'polite' },
+      // Scenario 5: Restaurant
+      { scenarioId: sIds[4], japanese: 'おすすめはなんですか', romaji: 'Osusume wa nan desu ka', english: 'What do you recommend?', category: 'dining', usageTip: 'Great for izakaya or restaurants where you want guidance from the staff.', formalityLevel: 'polite' },
+      { scenarioId: sIds[4], japanese: '___をください', romaji: '___ o kudasai', english: 'Please give me ___', category: 'ordering', usageTip: 'The most common ordering phrase in restaurants. Polite and direct.', formalityLevel: 'polite' },
+      { scenarioId: sIds[4], japanese: 'いただきます', romaji: 'Itadakimasu', english: 'I humbly receive (said before eating)', category: 'etiquette', usageTip: 'Always say this before the first bite. It expresses gratitude for the food and everyone involved.', formalityLevel: 'polite' },
+      { scenarioId: sIds[4], japanese: 'おいしいです', romaji: 'Oishii desu', english: 'It is delicious', category: 'dining', usageTip: 'A simple compliment the cook or server will appreciate. Oishii alone is fine too.', formalityLevel: 'polite' },
+      { scenarioId: sIds[4], japanese: 'ごちそうさまでした', romaji: 'Gochisousama deshita', english: 'Thank you for the meal (after eating)', category: 'etiquette', usageTip: 'Say this when leaving the restaurant or finishing the meal. Staff will often respond with a smile.', formalityLevel: 'polite' },
+      // Scenario 6: Supermarket
+      { scenarioId: sIds[5], japanese: '___はどこですか', romaji: '___ wa doko desu ka', english: 'Where is ___?', category: 'question', usageTip: 'Replace ___ with the item you need. Point at a sign or shelf for extra clarity.', formalityLevel: 'polite' },
+      { scenarioId: sIds[5], japanese: 'いくらですか', romaji: 'Ikura desu ka', english: 'How much is it?', category: 'shopping', usageTip: 'Point at the price tag or item. Works anywhere.', formalityLevel: 'polite' },
+      { scenarioId: sIds[5], japanese: 'ふくろはいりますか', romaji: 'Fukuro wa irimasu ka', english: 'Do you need a bag?', category: 'shopping', usageTip: 'The cashier will ask this. Say hai (yes) or iie (no). Bring your own to save ¥3-5.', formalityLevel: 'polite' },
+      { scenarioId: sIds[5], japanese: 'かしこまりました', romaji: 'Kashikomarimashita', english: 'Certainly / Understood', category: 'polite-expression', usageTip: 'Staff often say this. It means "certainly" — more formal than wakarimashita.', formalityLevel: 'polite' },
+      { scenarioId: sIds[5], japanese: 'おかいけい', romaji: 'O-kaikei', english: 'Checkout / Bill', category: 'shopping', usageTip: 'You can say o-kaikei onegaishimasu to ask for the bill at a restaurant too.', formalityLevel: 'polite' },
+      // Scenario 7: Train Station
+      { scenarioId: sIds[6], japanese: '___までおねがいします', romaji: '___ made onegaishimasu', english: 'To ___, please (buying a ticket)', category: 'transport', usageTip: 'Say the destination + made + onegaishimasu. Staff will tell you the fare.', formalityLevel: 'polite' },
+      { scenarioId: sIds[6], japanese: 'なんばんせん', romaji: 'Nanbansen', english: 'What platform number?', category: 'transport', usageTip: 'Ask: ___ wa nanbansen desu ka (what platform for ___?). Critical for train stations.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[6], japanese: 'おうふく', romaji: 'Oufuku', english: 'Round trip', category: 'transport', usageTip: 'Say oufuku when you want a return ticket. Katamichi is one-way.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[6], japanese: 'つぎの___', romaji: 'Tsugi no ___', english: 'The next ___', category: 'transport', usageTip: 'Combine with densha (train) or basu (bus) to ask about the next departure.', formalityLevel: 'neutral' },
+      // Scenario 8: Hotel
+      { scenarioId: sIds[7], japanese: 'よやくしています', romaji: 'Yoyaku shite imasu', english: 'I have a reservation', category: 'hotel', usageTip: 'Say this first at check-in. Have your reservation confirmation ready to show.', formalityLevel: 'polite' },
+      { scenarioId: sIds[7], japanese: 'にょこう', romaji: 'Niyokou (haku)', english: '___ night(s)', category: 'hotel', usageTip: 'Use counter: ippaku (1 night), nihaku (2 nights). Ask: nan-nichi (how many days?).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[7], japanese: 'へや', romaji: 'Heya', english: 'Room', category: 'hotel', usageTip: 'Used in: heya wa itsu demo daijoubu desu ka (when is check-in).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[7], japanese: 'チェックアウト', romaji: 'Chekkuauto', english: 'Check-out', category: 'hotel', usageTip: 'English loanword commonly used. Check-in is also chekkuin.', formalityLevel: 'neutral' },
+      // Scenario 9: Neighbour
+      { scenarioId: sIds[8], japanese: 'おはようございます', romaji: 'Ohayou gozaimasu', english: 'Good morning', category: 'greeting', usageTip: 'Use until about 10-11am. Dropping gozaimasu makes it casual.', formalityLevel: 'polite' },
+      { scenarioId: sIds[8], japanese: 'こんにちは', romaji: 'Konnichiwa', english: 'Hello / Good afternoon', category: 'greeting', usageTip: 'The standard daytime greeting from late morning to evening.', formalityLevel: 'polite' },
+      { scenarioId: sIds[8], japanese: 'おげんきですか', romaji: 'O-genki desu ka', english: 'How are you?', category: 'greeting', usageTip: 'A polite way to ask about someone\'s wellbeing. Answer: genki desu.', formalityLevel: 'polite' },
+      { scenarioId: sIds[8], japanese: 'となり', romaji: 'Tonari', english: 'Next door / Neighbour', category: 'location', usageTip: 'Use: tonari ni sunde imasu (I live next door). Great for neighbourhood introductions.', formalityLevel: 'neutral' },
+      // Scenario 10: Home Visit
+      { scenarioId: sIds[9], japanese: 'おじゃまします', romaji: 'Ojama shimasu', english: 'Sorry for intruding (said when entering a home)', category: 'etiquette', usageTip: 'Always say this at the entrance before stepping inside. It is a key politeness marker.', formalityLevel: 'polite' },
+      { scenarioId: sIds[9], japanese: 'つまらないものですが', romaji: 'Tsumaranai mono desu ga', english: 'This is a small gift (modest expression)', category: 'gift-giving', usageTip: 'The standard humble phrase when presenting a gift. The gift is never actually "boring".', formalityLevel: 'polite' },
+      { scenarioId: sIds[9], japanese: 'おちゃはいかがですか', romaji: 'Ocha wa ikaga desu ka', english: 'Would you like some tea?', category: 'hospitality', usageTip: 'You will hear this often as a guest. Accept with hai, onegaishimasu.', formalityLevel: 'polite' },
+      { scenarioId: sIds[9], japanese: 'すみませんが', romaji: 'Sumimasen ga', english: 'Excuse me but...', category: 'polite-expression', usageTip: 'Use this to preface a request or question politely. Softer than just sumimasen.', formalityLevel: 'polite' },
+      { scenarioId: sIds[9], japanese: 'ごちそうさまでした', romaji: 'Gochisousama deshita', english: 'Thank you for the meal/hospitality', category: 'etiquette', usageTip: 'Say this to the host after a meal. It expresses gratitude for the food and hospitality.', formalityLevel: 'polite' },
+      // Scenario 11: Nomikai
+      { scenarioId: sIds[10], japanese: 'かんぱい', romaji: 'Kanpai', english: 'Cheers!', category: 'social', usageTip: 'Wait for the most senior person to initiate kanpai before drinking. Never start alone.', formalityLevel: 'casual' },
+      { scenarioId: sIds[10], japanese: 'おつかれさまです', romaji: 'Otsukaresama desu', english: 'Thank you for your hard work (workplace greeting)', category: 'workplace', usageTip: 'The all-purpose workplace greeting. Use it at nomikai to acknowledge colleagues.', formalityLevel: 'polite' },
+      { scenarioId: sIds[10], japanese: 'もういっぱい', romaji: 'Mou ippai', english: 'One more (drink)', category: 'social', usageTip: 'Say: mou ippai onegaishimasu to order another drink. Slurred slightly is acceptable at nomikai.', formalityLevel: 'casual' },
+      { scenarioId: sIds[10], japanese: 'おだいじに', romaji: 'O-daiji ni', english: 'Take care (of yourself)', category: 'social', usageTip: 'Use when someone is leaving or if they mention feeling unwell from drinking.', formalityLevel: 'polite' },
+      // Scenario 12: Community Welcome Party
+      { scenarioId: sIds[11], japanese: 'はじめまして', romaji: 'Hajimemashite', english: 'Nice to meet you', category: 'greeting', usageTip: 'Repeat this with each new person you meet. It never gets old at a welcome party.', formalityLevel: 'polite' },
+      { scenarioId: sIds[11], japanese: 'どこからきましたか', romaji: 'Doko kara kimashita ka', english: 'Where are you from?', category: 'question', usageTip: 'The most common question at international events. Have your answer ready.', formalityLevel: 'polite' },
+      { scenarioId: sIds[11], japanese: 'にほんの___がすきです', romaji: 'Nihon no ___ ga suki desu', english: 'I like Japanese ___', category: 'expression', usageTip: 'Great conversation starter. Fill in: tabemono (food), eiga (movies), ongaku (music).', formalityLevel: 'polite' },
+      { scenarioId: sIds[11], japanese: 'またあいましょう', romaji: 'Mata aimashou', english: 'Let\'s meet again', category: 'farewell', usageTip: 'A friendly way to end a conversation. Less formal: mata ne.', formalityLevel: 'polite' },
+      // Scenario 13: Job Interview
+      { scenarioId: sIds[12], japanese: 'しつれいします', romaji: 'Shitsurei shimasu', english: 'Excuse me (entering a room)', category: 'etiquette', usageTip: 'Say this before entering an interview room. Knock first, wait, then enter and say it.', formalityLevel: 'formal' },
+      { scenarioId: sIds[12], japanese: 'がんばります', romaji: 'Ganbarimasu', english: 'I will do my best', category: 'workplace', usageTip: 'Use this to express determination and commitment. Interviewers love hearing it.', formalityLevel: 'polite' },
+      { scenarioId: sIds[12], japanese: 'しごとけいけん', romaji: 'Shigoto keiken', english: 'Work experience', category: 'interview', usageTip: 'You may be asked: shigoto keiken wa arimasu ka? (Do you have work experience?)', formalityLevel: 'polite' },
+      { scenarioId: sIds[12], japanese: 'よろしくおねがいします', romaji: 'Yoroshiku onegaishimasu', english: 'Please treat me favourably', category: 'greeting', usageTip: 'Crucial at the end of an interview. It replaces a "thank you for this opportunity."', formalityLevel: 'formal' },
+      // Scenario 14: First Day at Office
+      { scenarioId: sIds[13], japanese: 'はじめまして', romaji: 'Hajimemashite', english: 'Nice to meet you', category: 'greeting', usageTip: 'Use this with each new colleague during the team introduction.', formalityLevel: 'polite' },
+      { scenarioId: sIds[13], japanese: '___せんぱい', romaji: '___-senpai', english: 'Senior colleague', category: 'workplace', usageTip: 'Add -senpai to the name of more experienced colleagues. Shows respect for seniority.', formalityLevel: 'polite' },
+      { scenarioId: sIds[13], japanese: 'つくえ', romaji: 'Tsukue', english: 'Desk', category: 'office', usageTip: 'You may be shown: kochira ga anata no tsukue desu (this is your desk).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[13], japanese: 'きゅうけい', romaji: 'Kyuukei', english: 'Break', category: 'office', usageTip: 'Ask: kyuukei wa nanji desu ka (what time is break?).', formalityLevel: 'neutral' },
+      // Scenario 15: Business Meeting
+      { scenarioId: sIds[14], japanese: 'しんこうほうこく', romaji: 'Shinkou houkoku', english: 'Progress report', category: 'business', usageTip: 'Say: shinkou houkoku o shimasu (I will give a progress report).', formalityLevel: 'formal' },
+      { scenarioId: sIds[14], japanese: 'いじょうです', romaji: 'Ijō desu', english: 'That is all / Over to you', category: 'business', usageTip: 'The standard way to end a presentation or update. Signals you are finished.', formalityLevel: 'formal' },
+      { scenarioId: sIds[14], japanese: 'ぎょうむ', romaji: 'Gyoumu', english: 'Business / Work duties', category: 'business', usageTip: 'Used in formal meeting contexts. E.g.: gyoumu no shinkyou ni tsuite (about work progress).', formalityLevel: 'formal' },
+      { scenarioId: sIds[14], japanese: 'はい、わかりました', romaji: 'Hai, wakarimashita', english: 'Yes, I understand', category: 'workplace', usageTip: 'The default response to any instruction. Always acknowledge before asking questions.', formalityLevel: 'polite' },
+      // Scenario 16: Meishi Exchange
+      { scenarioId: sIds[15], japanese: 'めいし', romaji: 'Meishi', english: 'Business card', category: 'business', usageTip: 'Always carry meishi. Present with both hands, text facing the recipient.', formalityLevel: 'formal' },
+      { scenarioId: sIds[15], japanese: 'ちょうしはいかがですか', romaji: 'Choushi wa ikaga desu ka', english: 'How is business?', category: 'business', usageTip: 'A polite conversation starter after exchanging cards. Shows professional interest.', formalityLevel: 'formal' },
+      { scenarioId: sIds[15], japanese: 'どうぞ', romaji: 'Douzo', english: 'Here you are / Please', category: 'polite-expression', usageTip: 'Say douzo when presenting your card. It means "please, go ahead."', formalityLevel: 'polite' },
+      { scenarioId: sIds[15], japanese: 'おたく', romaji: 'O-taku', english: 'Your company (polite)', category: 'business', usageTip: 'Use o-taku instead of anata no kaisha in business contexts. Much more polite.', formalityLevel: 'formal' },
+      // Scenario 17: Video Conference
+      { scenarioId: sIds[16], japanese: 'おはようございます', romaji: 'Ohayou gozaimasu', english: 'Good morning', category: 'greeting', usageTip: 'Use at the start of a morning video call even if you are in different time zones.', formalityLevel: 'polite' },
+      { scenarioId: sIds[16], japanese: 'こえがきこえますか', romaji: 'Koe ga kikoemasu ka', english: 'Can you hear me?', category: 'tech', usageTip: 'Essential for remote meetings. Alternative: mieru (can see) for video issues.', formalityLevel: 'polite' },
+      { scenarioId: sIds[16], japanese: 'これが___です', romaji: 'Kore ga ___ desu', english: 'This is ___ (while screen sharing)', category: 'presentation', usageTip: 'Use when sharing your screen. Point to the relevant document or chart.', formalityLevel: 'polite' },
+      { scenarioId: sIds[16], japanese: 'おつかれさまでした', romaji: 'Otsukaresama deshita', english: 'Thank you for your hard work (past tense)', category: 'workplace', usageTip: 'Use at the end of a meeting or work day. The all-purpose thanks for effort.', formalityLevel: 'polite' },
+      // Scenario 18: Post Office
+      { scenarioId: sIds[17], japanese: 'これをおくりたいです', romaji: 'Kore o okuritai desu', english: 'I want to send this', category: 'postal', usageTip: 'Point at your parcel and say this. The clerk will guide you through the rest.', formalityLevel: 'polite' },
+      { scenarioId: sIds[17], japanese: 'ふなびん', romaji: 'Funa-bin', english: 'Sea mail (surface shipping)', category: 'postal', usageTip: 'Cheapest but slowest (1-3 months). Good for non-urgent parcels.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[17], japanese: 'こうくうびん', romaji: 'Koukuu-bin', english: 'Airmail', category: 'postal', usageTip: 'Fast but more expensive. Takes about 1 week internationally.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[17], japanese: 'おもさ', romaji: 'Omosa', english: 'Weight', category: 'postal', usageTip: 'The clerk may ask about weight. Let them weigh it — omosa o hakari ni norete mo ii desu ka?', formalityLevel: 'neutral' },
+      // Scenario 19: Bank Account
+      { scenarioId: sIds[18], japanese: 'こうざをひらきたいです', romaji: 'Kouza o hirakitai desu', english: 'I want to open an account', category: 'banking', usageTip: 'Say this first at the bank counter. Have your residence card (zairyuu card) ready.', formalityLevel: 'polite' },
+      { scenarioId: sIds[18], japanese: 'ざいりゅうカード', romaji: 'Zairyuu kaado', english: 'Residence card', category: 'banking', usageTip: 'The most important ID in Japan. Required for bank accounts, phone contracts, etc.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[18], japanese: 'よきん', romaji: 'Yokin', english: 'Deposit / Savings', category: 'banking', usageTip: 'Choose: futsuu yokin (ordinary savings) for everyday accounts.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[18], japanese: 'ふりこみ', romaji: 'Furikomi', english: 'Bank transfer', category: 'banking', usageTip: 'Ask about: furikomi wa dekimasu ka (can I do transfers?). Standard for salary accounts.', formalityLevel: 'neutral' },
+      // Scenario 20: Farewell
+      { scenarioId: sIds[19], japanese: 'おせわになりました', romaji: 'Osewa ni narimashita', english: 'Thank you for your support/care', category: 'farewell', usageTip: 'The most important farewell phrase. Say this to anyone who helped you — boss, colleagues, mentor.', formalityLevel: 'polite' },
+      { scenarioId: sIds[19], japanese: 'さびしいですね', romaji: 'Sabishii desu ne', english: 'It\'s sad, isn\'t it?', category: 'farewell', usageTip: 'A natural empathetic response when someone is leaving. Shows emotional connection.', formalityLevel: 'polite' },
+      { scenarioId: sIds[19], japanese: 'おたがいにげんきで', romaji: 'Otagai ni genki de', english: 'Take care of yourselves', category: 'farewell', usageTip: 'A warm closing phrase. Use when parting ways, especially for long separations.', formalityLevel: 'polite' },
+      { scenarioId: sIds[19], japanese: 'いってらっしゃい', romaji: 'Itterasshai', english: 'Take care / Have a good one (said to someone leaving)', category: 'farewell', usageTip: 'Say this when someone leaves the office or home. Response: ittekimasu.', formalityLevel: 'polite' },
+    ]);
 
-        // ============================================================
-        // 4. BACKFILL DISCRETE SCENARIO GOALS
-        // ============================================================
-        console.log('Inserting decomposed scenario goals...');
-        await db.insert(scenarioGoals).values([
-            // Scenario 1: First Meeting a Japanese AI Tutor
-            { scenarioId: sIds[0], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Recognize and use "hajimemashite" as a first-meeting greeting', targetPhraseJp: 'はじめまして' },
-            { scenarioId: sIds[0], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself using the "watashi wa ___ desu" pattern', targetPhraseJp: 'わたしは〇〇です' },
-            { scenarioId: sIds[0], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Respond with "yoroshiku onegaishimasu" after an introduction', targetPhraseJp: 'よろしくおねがいします' },
-            { scenarioId: sIds[0], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Exchange basic closing greeting responses naturally', targetPhraseJp: null },
+    // ================================================================
+    // 4. SCENARIO GOALS (4-6 per scenario)
+    // ================================================================
+    console.log('Inserting scenario goals...');
+    await db.insert(scenarioGoals).values([
+      // Scenario 1: First Meeting
+      { scenarioId: sIds[0], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Recognize and use "hajimemashite" as a first-meeting greeting', targetPhraseJp: 'はじめまして' },
+      { scenarioId: sIds[0], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself using "watashi wa ___ desu" with own name', targetPhraseJp: 'わたしは___です' },
+      { scenarioId: sIds[0], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'State country of origin with "___ kara kimashita"', targetPhraseJp: '〜からきました' },
+      { scenarioId: sIds[0], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Respond with "yoroshiku onegaishimasu" after introduction', targetPhraseJp: 'よろしくおねがいします' },
+      { scenarioId: sIds[0], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a polite self-introduction flowing from opening to closing', targetPhraseJp: null },
+      // Scenario 2: Konbini
+      { scenarioId: sIds[1], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "irasshaimase" as store welcome', targetPhraseJp: 'いらっしゃいませ' },
+      { scenarioId: sIds[1], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Request items using "___ o kudasai"', targetPhraseJp: '〜をください' },
+      { scenarioId: sIds[1], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Use counter "ippon" for bottle-shaped items', targetPhraseJp: 'いっぽん' },
+      { scenarioId: sIds[1], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Confirm price with "ikura desu ka"', targetPhraseJp: 'いくらですか' },
+      { scenarioId: sIds[1], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a polite purchase exchange including thanks', targetPhraseJp: null },
+      // Scenario 3: Directions
+      { scenarioId: sIds[2], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "sumimasen" to politely get someone\'s attention', targetPhraseJp: 'すみません' },
+      { scenarioId: sIds[2], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "___ wa doko desu ka" for a location', targetPhraseJp: '〜はどこですか' },
+      { scenarioId: sIds[2], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Understand directional words: migi, hidari, massugu', targetPhraseJp: null },
+      { scenarioId: sIds[2], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand the distance question "___ made dono kurai desu ka"', targetPhraseJp: '〜までどのくらいですか' },
+      { scenarioId: sIds[2], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Use "arigatou gozaimasu" and respond to "dou itashimashite"', targetPhraseJp: 'ありがとうございます' },
+      // Scenario 4: Medical Clinic
+      { scenarioId: sIds[3], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "dou shimashita ka" from medical staff', targetPhraseJp: 'どうしましたか' },
+      { scenarioId: sIds[3], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe symptom using "___ ga itai desu" pattern', targetPhraseJp: '〜がいたいです' },
+      { scenarioId: sIds[3], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Say "netsu ga arimasu" to indicate fever', targetPhraseJp: 'ねつがあります' },
+      { scenarioId: sIds[3], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Respond to basic health questions from nurse or doctor', targetPhraseJp: null },
+      { scenarioId: sIds[3], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete clinic visit with polite thanks', targetPhraseJp: null },
+      // Scenario 5: Restaurant
+      { scenarioId: sIds[4], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "nan o tabemasu ka" or "nan ni shimasu ka"', targetPhraseJp: 'なにをたべますか' },
+      { scenarioId: sIds[4], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order using "___ o onegaishimasu" or "___ o kudasai"', targetPhraseJp: '〜をください' },
+      { scenarioId: sIds[4], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Ask "osusume wa nan desu ka" for recommendations', targetPhraseJp: 'おすすめはなんですか' },
+      { scenarioId: sIds[4], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Say "itadakimasu" before eating', targetPhraseJp: 'いただきます' },
+      { scenarioId: sIds[4], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Say "gochisousama deshita" after the meal', targetPhraseJp: 'ごちそうさまでした' },
+      // Scenario 6: Supermarket
+      { scenarioId: sIds[5], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask "___ wa doko desu ka" to locate items', targetPhraseJp: '〜はどこですか' },
+      { scenarioId: sIds[5], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "ikura desu ka" for price', targetPhraseJp: 'いくらですか' },
+      { scenarioId: sIds[5], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand "fukuro wa irimasu ka" at checkout', targetPhraseJp: 'ふくろはいりますか' },
+      { scenarioId: sIds[5], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand "kashikomarimashita" as confirmation', targetPhraseJp: 'かしこまりました' },
+      { scenarioId: sIds[5], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a polite supermarket checkout interaction', targetPhraseJp: null },
+      // Scenario 7: Train Station
+      { scenarioId: sIds[6], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask for ticket using "___ made onegaishimasu"', targetPhraseJp: '〜までおねがいします' },
+      { scenarioId: sIds[6], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask about platform: "___ wa nanbansen desu ka"', targetPhraseJp: '〜はなんばんせんですか' },
+      { scenarioId: sIds[6], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Distinguish oufuku (round trip) vs katamichi (one-way)', targetPhraseJp: 'おうふく' },
+      { scenarioId: sIds[6], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand departure time information from station staff', targetPhraseJp: null },
+      { scenarioId: sIds[6], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Thank the station staff and proceed correctly', targetPhraseJp: null },
+      // Scenario 8: Hotel
+      { scenarioId: sIds[7], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'State "yoyaku shite imasu" to confirm reservation', targetPhraseJp: 'よやくしています' },
+      { scenarioId: sIds[7], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Use counter "___ haku" for length of stay', targetPhraseJp: '〜はく' },
+      { scenarioId: sIds[7], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand check-in and check-out timing information', targetPhraseJp: null },
+      { scenarioId: sIds[7], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete hotel check-in with appropriate polite phrases', targetPhraseJp: null },
+      // Scenario 9: Neighbour
+      { scenarioId: sIds[8], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "ohayou gozaimasu" / "konnichiwa" appropriately', targetPhraseJp: 'おはようございます' },
+      { scenarioId: sIds[8], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "ogenki desu ka" and respond with "genki desu"', targetPhraseJp: 'おげんきですか' },
+      { scenarioId: sIds[8], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Use "tonari" to indicate neighbour relationship', targetPhraseJp: 'となり' },
+      { scenarioId: sIds[8], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a friendly neighbourly conversation naturally', targetPhraseJp: null },
+      // Scenario 10: Home Visit
+      { scenarioId: sIds[9], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Say "ojama shimasu" when entering the home', targetPhraseJp: 'おじゃまします' },
+      { scenarioId: sIds[9], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Present omiyage with "tsumaranai mono desu ga"', targetPhraseJp: 'つまらないものですが' },
+      { scenarioId: sIds[9], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Respond to "ocha wa ikaga desu ka" appropriately', targetPhraseJp: 'おちゃはいかがですか' },
+      { scenarioId: sIds[9], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Practice home-visit etiquette and closing', targetPhraseJp: null },
+      { scenarioId: sIds[9], sequenceOrder: 5, goalType: 'cultural', goalText: 'Demonstrate understanding of omotenashi hospitality culture', targetPhraseJp: null },
+      // Scenario 11: Nomikai
+      { scenarioId: sIds[10], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Participate in "kanpai" toast at the right moment', targetPhraseJp: 'かんぱい' },
+      { scenarioId: sIds[10], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Use "otsukaresama desu" when greeting colleagues', targetPhraseJp: 'おつかれさまです' },
+      { scenarioId: sIds[10], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Order another drink with "mou ippai onegaishimasu"', targetPhraseJp: 'もういっぱいおねがいします' },
+      { scenarioId: sIds[10], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Navigate the opening to closing flow of nomikai', targetPhraseJp: null },
+      { scenarioId: sIds[10], sequenceOrder: 5, goalType: 'cultural', goalText: 'Demonstrate understanding of nomikai social hierarchy and etiquette', targetPhraseJp: null },
+      // Scenario 12: Community Welcome Party
+      { scenarioId: sIds[11], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Initiate with "hajimemashite" confidently to new people', targetPhraseJp: 'はじめまして' },
+      { scenarioId: sIds[11], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand and answer "doko kara kimashita ka"', targetPhraseJp: 'どこからきましたか' },
+      { scenarioId: sIds[11], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Share interests with "nihon no ___ ga suki desu"', targetPhraseJp: 'にほんの〜がすきです' },
+      { scenarioId: sIds[11], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Close exchanges with "mata aimashou"', targetPhraseJp: 'またあいましょう' },
+      { scenarioId: sIds[11], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a multi-person introduction circuit', targetPhraseJp: null },
+      // Scenario 13: Job Interview
+      { scenarioId: sIds[12], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Use "shitsurei shimasu" upon entering the interview room', targetPhraseJp: 'しつれいします' },
+      { scenarioId: sIds[12], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Express motivation with "ganbarimasu" and related phrases', targetPhraseJp: 'がんばります' },
+      { scenarioId: sIds[12], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Answer questions about work experience and background', targetPhraseJp: null },
+      { scenarioId: sIds[12], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Close the interview with formal thanks and bow', targetPhraseJp: null },
+      { scenarioId: sIds[12], sequenceOrder: 5, goalType: 'cultural', goalText: 'Demonstrate understanding of Japanese interview etiquette (bows, seating, timing)', targetPhraseJp: null },
+      // Scenario 14: First Day
+      { scenarioId: sIds[13], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Greet new colleagues with "hajimemashite" and self-introduction', targetPhraseJp: 'はじめまして' },
+      { scenarioId: sIds[13], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Use "-senpai" appropriately for senior colleagues', targetPhraseJp: '〜せんぱい' },
+      { scenarioId: sIds[13], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Understand office vocabulary: tsukue, kaigi, kyuukei', targetPhraseJp: null },
+      { scenarioId: sIds[13], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand workspace orientation information', targetPhraseJp: null },
+      { scenarioId: sIds[13], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a smooth first day interaction cycle', targetPhraseJp: null },
+      // Scenario 15: Business Meeting
+      { scenarioId: sIds[14], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Begin meeting participation with proper greeting', targetPhraseJp: null },
+      { scenarioId: sIds[14], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Deliver a progress report using "shinkou houkoku" vocabulary', targetPhraseJp: 'しんこうほうこく' },
+      { scenarioId: sIds[14], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'End an update with "ijou desu"', targetPhraseJp: 'いじょうです' },
+      { scenarioId: sIds[14], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Respond to manager questions with "hai, wakarimashita"', targetPhraseJp: 'はい、わかりました' },
+      { scenarioId: sIds[14], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Use keigo appropriately with superiors in the meeting', targetPhraseJp: null },
+      // Scenario 16: Meishi Exchange
+      { scenarioId: sIds[15], sequenceOrder: 1, goalType: 'cultural', goalText: 'Present meishi with both hands and correct orientation', targetPhraseJp: 'めいし' },
+      { scenarioId: sIds[15], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Respond with "choushi wa ikaga desu ka" after receiving card', targetPhraseJp: 'ちょうしはいかがですか' },
+      { scenarioId: sIds[15], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Use "o-taku" to refer to the other person\'s company', targetPhraseJp: 'おたく' },
+      { scenarioId: sIds[15], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Say "douzo" when presenting own card', targetPhraseJp: 'どうぞ' },
+      { scenarioId: sIds[15], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a full meishi exchange cycle politely', targetPhraseJp: null },
+      // Scenario 17: Video Conference
+      { scenarioId: sIds[16], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Greet remote team with "ohayou gozaimasu"', targetPhraseJp: 'おはようございます' },
+      { scenarioId: sIds[16], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Handle screen share with "kore ga ___ desu"', targetPhraseJp: 'これが〜です' },
+      { scenarioId: sIds[16], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Handle technical issues with "koe ga kikoemasu ka"', targetPhraseJp: 'こえがきこえますか' },
+      { scenarioId: sIds[16], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Close the call with "otsukaresama deshita"', targetPhraseJp: 'おつかれさまでした' },
+      { scenarioId: sIds[16], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Demonstrate proper video meeting etiquette (timing, mute, camera)', targetPhraseJp: null },
+      // Scenario 18: Post Office
+      { scenarioId: sIds[17], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Say "kore o okuritai desu" to start the transaction', targetPhraseJp: 'これを おくりたいです' },
+      { scenarioId: sIds[17], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Distinguish funa-bin vs koukuu-bin shipping', targetPhraseJp: 'ふなびん' },
+      { scenarioId: sIds[17], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand weight and address confirmation questions', targetPhraseJp: null },
+      { scenarioId: sIds[17], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Fill out customs form with basic information', targetPhraseJp: null },
+      { scenarioId: sIds[17], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a post office transaction politely', targetPhraseJp: null },
+      // Scenario 19: Bank Account
+      { scenarioId: sIds[18], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Request "kouza o hirakitai desu" at the bank', targetPhraseJp: 'こうざを ひらきたいです' },
+      { scenarioId: sIds[18], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Present "zairyuu kaado" as identification', targetPhraseJp: 'ざいりゅうカード' },
+      { scenarioId: sIds[18], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Understand basic banking terms: yokin, furikomi', targetPhraseJp: null },
+      { scenarioId: sIds[18], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand application form instructions', targetPhraseJp: null },
+      { scenarioId: sIds[18], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete bank application with polite closing', targetPhraseJp: null },
+      // Scenario 20: Farewell
+      { scenarioId: sIds[19], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Express "osewa ni narimashita" with gratitude', targetPhraseJp: 'おせわになりました' },
+      { scenarioId: sIds[19], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Use "sabishii desu ne" to empathize naturally', targetPhraseJp: 'さびしいですね' },
+      { scenarioId: sIds[19], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Say "otagai ni genki de" as a warm closing', targetPhraseJp: 'おたがいにげんきで' },
+      { scenarioId: sIds[19], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Use "itterasshai" / "ittekimasu" pair appropriately', targetPhraseJp: 'いってらっしゃい' },
+      { scenarioId: sIds[19], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Deliver a complete and heartfelt farewell speech', targetPhraseJp: null },
+    ]);
 
-            // Scenario 2: Asking for a Job
-            { scenarioId: sIds[1], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Express that you are looking for a job using "oshigoto wo sagashite imasu"', targetPhraseJp: 'おしごとをさがしています' },
-            { scenarioId: sIds[1], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe preferred work type (restaurant/hospitality) using appropriate vocabulary', targetPhraseJp: null },
-            { scenarioId: sIds[1], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand and respond to the recruiter\'s job-related questions', targetPhraseJp: null },
-            { scenarioId: sIds[1], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use and respond to encouragement phrases like "ganbatte kudasai"', targetPhraseJp: 'がんばってください' },
+    // ================================================================
+    // 5. EXAMPLE SESSIONS with full data
+    // ================================================================
+    console.log('Inserting example sessions and conversation data...');
 
-            // Scenario 3: Seeking Medical Attention
-            { scenarioId: sIds[2], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "dou shimashita ka" (what is wrong?) from medical staff', targetPhraseJp: 'どうしましたか' },
-            { scenarioId: sIds[2], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe physical symptoms using body-part + "ga itai desu" pattern', targetPhraseJp: 'あたまがいたいです' },
-            { scenarioId: sIds[2], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Respond to health questions using "kibun" and "daijoubu" vocabulary', targetPhraseJp: null },
-            { scenarioId: sIds[2], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a clinic visit with polite closing expressions', targetPhraseJp: null },
+    // Session 1: Lynnette plays Scenario 1 (First Meeting)
+const [s1Row] = await db.insert(sessions).values({
+      userId: userMap['Lynnette'],
+      scenarioId: sIds[0],
+      sessionNumber: 1,
+      status: 'completed',
+      totalTurns: 3,
+      vocabularyScore: 28,
+      grammarScore: 22,
+      fluencyScore: 19,
+      culturalScore: 15,
+      taskScore: 10,
+      feedback: 'Lynnette demonstrated excellent self-introduction skills.',
+      completedAt: new Date(),
+    }).returning();
 
-            // Scenario 4: At the Bus Station
-            { scenarioId: sIds[3], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'State a destination using the "___ e ikimasu" pattern', targetPhraseJp: '〜へ行きます' },
-            { scenarioId: sIds[3], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Ask and understand arrival times using "nanji" vocabulary', targetPhraseJp: 'なんじ' },
-            { scenarioId: sIds[3], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Respond to basic transport questions from station staff', targetPhraseJp: null },
-            { scenarioId: sIds[3], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete the bus station interaction with a polite closing', targetPhraseJp: null },
+    const s1Turn1Ai = await db.insert(conversations).values({
+      sessionId: s1Row.id, turnNo: 1, speaker: 'ai',
+      messageJp: 'はじめまして！私はハナです。日本へようこそ！お名前は何ですか？',
+      messageRomaji: 'Hajimemashite! Watashi wa Hana desu. Nihon e youkoso! O-namae wa nan desu ka?',
+      messageEn: 'Nice to meet you! I am Hana. Welcome to Japan! What is your name?',
+      emotionTone: 'warm-friendly', gestureHint: 'slight bow with a welcoming smile',
+      isValidInContext: true,
+    }).returning();
 
-            // Scenario 5: Buying Water at a Convenience Store
-            { scenarioId: sIds[4], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "irasshaimase" as a store welcome greeting', targetPhraseJp: 'いらっしゃいませ' },
-            { scenarioId: sIds[4], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Use "kudasai" to request an item', targetPhraseJp: '〜をください' },
-            { scenarioId: sIds[4], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Confirm quantity with the counter word "ippon" (one bottle)', targetPhraseJp: 'いっぽん' },
-            { scenarioId: sIds[4], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a polite konbini purchase exchange', targetPhraseJp: null },
+    const s1Turn1User = await db.insert(conversations).values({
+      sessionId: s1Row.id, turnNo: 1, speaker: 'user',
+      messageJp: 'はじめまして。リネットです。ウガンダから来ました。よろしくおねがいします！',
+      messageRomaji: 'Hajimemashite. Rinetto desu. Uganda kara kimashita. Yoroshiku onegaishimasu!',
+      messageEn: 'Nice to meet you. I\'m Lynnette. I came from Uganda. Pleased to meet you!',
+      emotionTone: 'polite-enthusiastic', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
 
-            // Scenario 6: Looking for a Hotel
-            { scenarioId: sIds[5], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand and respond to "oheya ga hitsuyou desu ka"', targetPhraseJp: 'おへやがひつようですか' },
-            { scenarioId: sIds[5], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Express "hitori" (alone) when asked about party size', targetPhraseJp: 'ひとり' },
-            { scenarioId: sIds[5], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Confirm understanding with "wakarimashita"', targetPhraseJp: 'わかりました' },
-            { scenarioId: sIds[5], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use hotel check-in vocabulary to complete the process', targetPhraseJp: null },
+    // Correction: user wrote "Rinetto" which is the correct katakana approximation
+    await db.insert(corrections).values({
+      conversationId: s1Turn1User[0].id,
+      correctionType: 'romaji_spelling',
+      originalText: 'Rinetto',
+      correctedText: 'Rinetto (correct)',
+      explanation: 'Your name in katakana is perfectly written. Rinetto follows the standard katakana pattern for Lynnette.',
+      severity: 'minor',
+    });
 
-            // Scenario 7: Ordering Food at a Restaurant
-            { scenarioId: sIds[6], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "nan o tabemasu ka" (what will you eat?)', targetPhraseJp: 'なにをたべますか' },
-            { scenarioId: sIds[6], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order specific food items using appropriate phrases', targetPhraseJp: null },
-            { scenarioId: sIds[6], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Respond to the server\'s follow-up questions about food or drink', targetPhraseJp: null },
-            { scenarioId: sIds[6], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "itadakimasu" before eating and "oishii" dining expressions', targetPhraseJp: 'いただきます' },
+    const s1Turn2Ai = await db.insert(conversations).values({
+      sessionId: s1Row.id, turnNo: 2, speaker: 'ai',
+      messageJp: 'リネットさん、はじめまして！ウガンダからなんですね。どんなことを勉強していますか？',
+      messageRomaji: 'Rinetto-san, hajimemashite! Uganda kara nan desu ne. Donna koto o benkyou shite imasu ka?',
+      messageEn: 'Lynnette, nice to meet you! So you are from Uganda. What are you studying?',
+      emotionTone: 'curious-engaged', gestureHint: 'tilts head slightly with interest',
+      isValidInContext: true,
+    }).returning();
 
-            // Scenario 8: Meeting a Neighbour
-            { scenarioId: sIds[7], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "ohayo gozaimasu" as a morning greeting', targetPhraseJp: 'おはようございます' },
-            { scenarioId: sIds[7], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "ogenki desu ka" (how are you?)', targetPhraseJp: 'おげんきですか' },
-            { scenarioId: sIds[7], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Respond with "genki desu" (I am fine)', targetPhraseJp: 'げんきです' },
-            { scenarioId: sIds[7], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "yokatta" (great) as a positive social response', targetPhraseJp: 'よかった' },
+    const s1Turn2User = await db.insert(conversations).values({
+      sessionId: s1Row.id, turnNo: 2, speaker: 'user',
+      messageJp: 'にほんごを勉強しています。はなすことがすきです。',
+      messageRomaji: 'Nihongo o benkyou shite imasu. Hanasu koto ga suki desu.',
+      messageEn: 'I am studying Japanese. I like speaking.',
+      emotionTone: 'eager', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
 
-            // Scenario 9: Shopping at the Market
-            { scenarioId: sIds[8], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask about price using "ikura desu ka"', targetPhraseJp: 'いくらですか' },
-            { scenarioId: sIds[8], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand price responses quoted in yen', targetPhraseJp: null },
-            { scenarioId: sIds[8], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Use "takai" (expensive) and "chotto" (a little) in price conversation', targetPhraseJp: 'たかい' },
-            { scenarioId: sIds[8], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a polite market purchase interaction', targetPhraseJp: null },
+    await db.insert(corrections).values({
+      conversationId: s1Turn2User[0].id,
+      correctionType: 'particle_usage',
+      originalText: 'はなすことがすきです',
+      correctedText: '話すことが好きです',
+      explanation: 'Your particle usage is correct! "Koto ga suki" is the right way to say you like doing something.',
+      severity: 'minor',
+    });
 
-            // Scenario 10: Asking for Directions
-            { scenarioId: sIds[9], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "sumimasen" to politely interrupt a passerby', targetPhraseJp: 'すみません' },
-            { scenarioId: sIds[9], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "doko desu ka" (where is it?) for a location', targetPhraseJp: 'どこですか' },
-            { scenarioId: sIds[9], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand the directional response "asoko" (over there)', targetPhraseJp: 'あそこ' },
-            { scenarioId: sIds[9], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Respond with "arigatou gozaimasu" and "dou itashimashite"', targetPhraseJp: 'ありがとうございます' },
+    const s1Turn3Ai = await db.insert(conversations).values({
+      sessionId: s1Row.id, turnNo: 3, speaker: 'ai',
+      messageJp: '素晴らしいです！日本語で話すのはとても楽しいですね。今日は会えて本当に嬉しかったです。また会いましょう！',
+      messageRomaji: 'Subarashii desu! Nihongo de hanasu no wa totemo tanoshii desu ne. Kyou wa aete hontou ni ureshikatta desu. Mata aimashou!',
+      messageEn: 'Wonderful! Speaking in Japanese is very fun, isn\'t it? I was truly happy to meet you today. Let\'s meet again!',
+      emotionTone: 'warm-encouraging', gestureHint: 'small bow with both hands clasped',
+      isValidInContext: true,
+    }).returning();
 
-            // Scenario 11: At School
-            { scenarioId: sIds[10], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand and respond to "gakusei desu ka" (are you a student?)', targetPhraseJp: 'がくせいですか' },
-            { scenarioId: sIds[10], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Use "gakusei" (student) vocabulary in response', targetPhraseJp: 'がくせい' },
-            { scenarioId: sIds[10], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Answer "nani o benkyou shimasu ka" (what do you study?)', targetPhraseJp: 'なにをべんきょうしますか' },
-            { scenarioId: sIds[10], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Name "nihongo" (Japanese language) as the subject of study', targetPhraseJp: 'にほんご' },
+    const s1Turn3User = await db.insert(conversations).values({
+      sessionId: s1Row.id, turnNo: 3, speaker: 'user',
+      messageJp: 'ありがとうございました！またあいましょう。',
+      messageRomaji: 'Arigatou gozaimashita! Mata aimashou.',
+      messageEn: 'Thank you very much! Let\'s meet again.',
+      emotionTone: 'grateful', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
 
-            // Scenario 12: Visiting a Friend
-            { scenarioId: sIds[11], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "irasshai" (welcome, visitor) at the door', targetPhraseJp: 'いらっしゃい' },
-            { scenarioId: sIds[11], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Respond to "ocha wa ikaga desu ka" (would you like tea?)', targetPhraseJp: 'おちゃはいかがですか' },
-            { scenarioId: sIds[11], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Use "onegaishimasu" politely when accepting an offer', targetPhraseJp: 'おねがいします' },
-            { scenarioId: sIds[11], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Practice casual home-visit conversation and closing', targetPhraseJp: null },
+    // Goal completions for Session 1
+    const s1Goals = await db.select({ id: scenarioGoals.id, seq: scenarioGoals.sequenceOrder })
+      .from(scenarioGoals).where(eq(scenarioGoals.scenarioId, sIds[0]));
+    const s1GoalMap = new Map(s1Goals.map(g => [g.seq, g.id]));
+    await db.insert(goalCompletions).values([
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, scenarioGoalId: s1GoalMap.get(1)!, achieved: true, evidenceNote: 'Used hajimemashite correctly in turn 1' },
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, scenarioGoalId: s1GoalMap.get(2)!, achieved: true, evidenceNote: 'Introduced herself as "Rinetto desu"' },
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, scenarioGoalId: s1GoalMap.get(3)!, achieved: true, evidenceNote: 'Stated origin with "Uganda kara kimashita"' },
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, scenarioGoalId: s1GoalMap.get(4)!, achieved: true, evidenceNote: 'Used "yoroshiku onegaishimasu" to close introduction' },
+      { sessionId: s1Row.id, conversationId: s1Turn3User[0].id, scenarioGoalId: s1GoalMap.get(5)!, achieved: true, evidenceNote: 'Completed the conversation flow with "mata aimashou"' },
+    ]);
 
-            // Scenario 13: Playing Football in the Park
-            { scenarioId: sIds[12], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Respond to "sakka ga suki desu ka" (do you like football?)', targetPhraseJp: 'サッカーがすきですか' },
-            { scenarioId: sIds[12], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Express "suki desu" (I like it)', targetPhraseJp: 'すきです' },
-            { scenarioId: sIds[12], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Answer "doko de purei shimasu ka" (where do you play?)', targetPhraseJp: 'どこでプレイしますか' },
-            { scenarioId: sIds[12], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Name "kouen" (park) as the playing location', targetPhraseJp: 'こうえん' },
+    await db.insert(evaluations).values({
+      sessionId: s1Row.id, vocabularyScore: 28, grammarScore: 22, fluencyScore: 19,
+      culturalScore: 15, taskScore: 10,
+      feedback: 'Lynnette passed with distinction! Her self-introduction was natural and culturally appropriate. The polite register was maintained throughout.',
+    });
 
-            // Scenario 14: At the Airport
-            { scenarioId: sIds[13], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "pasupooto o misete kudasai" (please show your passport)', targetPhraseJp: 'パスポートをみせてください' },
-            { scenarioId: sIds[13], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Respond with "douzo" (here you are) when handing over passport', targetPhraseJp: 'どうぞ' },
-            { scenarioId: sIds[13], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Complete a basic immigration exchange with appropriate responses', targetPhraseJp: null },
-            { scenarioId: sIds[13], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "arigatou gozaimasu" appropriately to close the exchange', targetPhraseJp: 'ありがとうございます' },
+    // Session 2: Aaron plays Scenario 2 (Konbini)
+    const [s2Row] = await db.insert(sessions).values({
+      userId: userMap['Aaron'],
+      scenarioId: sIds[1],
+      sessionNumber: 1,
+      status: 'completed',
+      totalTurns: 2,
+      vocabularyScore: 20,
+      grammarScore: 18,
+      fluencyScore: 14,
+      culturalScore: 10,
+      taskScore: 8,
+      feedback: 'Aaron demonstrated basic konbini vocabulary. Needs to practice counter words and polite purchase completion.',
+      completedAt: new Date(),
+    }).returning();
 
-            // Scenario 15: Going Shoe Shopping
-            { scenarioId: sIds[14], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "nani ga hoshii desu ka" (what do you want?)', targetPhraseJp: 'なにがほしいですか' },
-            { scenarioId: sIds[14], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Express "kutsu ga hoshii desu" (I want shoes)', targetPhraseJp: 'くつがほしいです' },
-            { scenarioId: sIds[14], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand "koko ni arimasu" (they are here) from the assistant', targetPhraseJp: 'ここにあります' },
-            { scenarioId: sIds[14], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete a basic shopping interaction politely', targetPhraseJp: null },
+    const s2Turn1Ai = await db.insert(conversations).values({
+      sessionId: s2Row.id, turnNo: 1, speaker: 'ai',
+      messageJp: 'いらっしゃいませ！何をお探しですか？',
+      messageRomaji: 'Irasshaimase! Nani o osagashi desu ka?',
+      messageEn: 'Welcome! What are you looking for?',
+      emotionTone: 'cheerful-service', gestureHint: 'friendly nod from behind the counter',
+      isValidInContext: true,
+    }).returning();
 
-            // Scenario 16: At the Library
-            { scenarioId: sIds[15], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Respond to "hon o sagashite imasu ka" (looking for a book?)', targetPhraseJp: 'ほんをさがしていますか' },
-            { scenarioId: sIds[15], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Describe the type of book using "donna hon" (what kind of book)', targetPhraseJp: 'どんなほん' },
-            { scenarioId: sIds[15], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Name "nihongo no hon" (Japanese language book) as what you need', targetPhraseJp: 'にほんごのほん' },
-            { scenarioId: sIds[15], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use library interaction vocabulary and close the exchange politely', targetPhraseJp: null },
+    const s2Turn1User = await db.insert(conversations).values({
+      sessionId: s2Row.id, turnNo: 1, speaker: 'user',
+      messageJp: 'おみずをください。',
+      messageRomaji: 'O-mizu o kudasai.',
+      messageEn: 'Please give me water.',
+      emotionTone: 'polite', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
 
-            // Scenario 17: At the Pharmacy
-            { scenarioId: sIds[16], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Describe symptoms using "atama ga itai desu" (my head hurts)', targetPhraseJp: 'あたまがいたいです' },
-            { scenarioId: sIds[16], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand "kusuri ga arimasu" (there is medicine) from the pharmacist', targetPhraseJp: 'くすりがあります' },
-            { scenarioId: sIds[16], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Complete a pharmacy transaction with appropriate phrases', targetPhraseJp: null },
-            { scenarioId: sIds[16], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "arigatou gozaimasu" to close the pharmacy transaction', targetPhraseJp: 'ありがとうございます' },
+    const s2Turn2Ai = await db.insert(conversations).values({
+      sessionId: s2Row.id, turnNo: 2, speaker: 'ai',
+      messageJp: 'かしこまりました。１本でよろしいですか？',
+      messageRomaji: 'Kashikomarimashita. Ippon de yoroshii desu ka?',
+      messageEn: 'Certainly. Is one bottle okay?',
+      emotionTone: 'polite-service', gestureHint: 'reaches toward the drink cooler',
+      isValidInContext: true,
+    }).returning();
 
-            // Scenario 18: Asking the Time
-            { scenarioId: sIds[17], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask "ima nanji desu ka" (what time is it now?)', targetPhraseJp: 'いまなんじですか' },
-            { scenarioId: sIds[17], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand time responses using counter words like "ku ji" (9 o\'clock)', targetPhraseJp: 'くじ' },
-            { scenarioId: sIds[17], sequenceOrder: 3, goalType: 'social_closing', goalText: 'Use "arigatou" and "dou itashimashite" in a brief street exchange', targetPhraseJp: null },
+    const s2Turn2User = await db.insert(conversations).values({
+      sessionId: s2Row.id, turnNo: 2, speaker: 'user',
+      messageJp: 'はい、いっぽんください。',
+      messageRomaji: 'Hai, ippon kudasai.',
+      messageEn: 'Yes, one bottle please.',
+      emotionTone: 'certain', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
 
-            // Scenario 19: At a Café
-            { scenarioId: sIds[18], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Respond to "nani o nomimasu ka" (what will you drink?)', targetPhraseJp: 'なにをのみますか' },
-            { scenarioId: sIds[18], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order "koohii" (coffee) using an appropriate ordering phrase', targetPhraseJp: 'コーヒー' },
-            { scenarioId: sIds[18], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Confirm the order with the barista', targetPhraseJp: null },
-            { scenarioId: sIds[18], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Use "arigatou" to close a simple café transaction', targetPhraseJp: 'ありがとう' },
+    await db.insert(corrections).values({
+      conversationId: s2Turn2User[0].id,
+      correctionType: 'grammar',
+      originalText: 'いっぽんください',
+      correctedText: 'いっぽんください (correct)',
+      explanation: 'Perfect use of the counter "ippon" for a bottle. Your confirmation was clear and polite.',
+      severity: 'minor',
+    });
 
-            // Scenario 20: Introducing Yourself Again
-            { scenarioId: sIds[19], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Consolidate "hajimemashite" as a confident first-meeting opening', targetPhraseJp: 'はじめまして' },
-            { scenarioId: sIds[19], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself confidently using "watashi wa ___ desu"', targetPhraseJp: 'わたしは〜です' },
-            { scenarioId: sIds[19], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Respond naturally to "yoroshiku onegaishimasu"', targetPhraseJp: 'よろしくおねがいします' },
-            { scenarioId: sIds[19], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Practice smooth multi-person self-introduction flow across brief interactions', targetPhraseJp: null },
-        ]);
+    const s2Goals = await db.select({ id: scenarioGoals.id, seq: scenarioGoals.sequenceOrder })
+      .from(scenarioGoals).where(eq(scenarioGoals.scenarioId, sIds[1]));
+    const s2GoalMap = new Map(s2Goals.map(g => [g.seq, g.id]));
+    await db.insert(goalCompletions).values([
+      { sessionId: s2Row.id, conversationId: s2Turn1User[0].id, scenarioGoalId: s2GoalMap.get(1)!, achieved: true, evidenceNote: 'Understood irasshaimase greeting' },
+      { sessionId: s2Row.id, conversationId: s2Turn1User[0].id, scenarioGoalId: s2GoalMap.get(2)!, achieved: true, evidenceNote: 'Used "o-mizu o kudasai" to request' },
+      { sessionId: s2Row.id, conversationId: s2Turn2User[0].id, scenarioGoalId: s2GoalMap.get(3)!, achieved: true, evidenceNote: 'Used "ippon" as counter for bottle' },
+    ]);
 
-        // ============================================================
-        // 5. SEED SAMPLE CONVERSATION TURNS
-        // ============================================================
-        console.log('Inserting chat logs into conversations table...');
-        const [s1AiTurn, s1UserTurn, s2AiTurn] = await db.insert(conversations).values([
-            {
-                scenarioId: sIds[0],
-                userId: userMap['Lynnette'],
-                turnNo: 1,
-                speaker: 'ai',
-                messageJp: 'はじめまして！私はハナです。日本へようこそ！お名前は何ですか？',
-                messageRomaji: 'Hajimemashite! Watashi wa Hana desu. Nihon e youkoso! O-namae wa nan desu ka?',
-                messageEn: 'Nice to meet you! I am Hana. Welcome to Japan! What is your name?',
-                notes: 'AI character Hana initiates introduction.'
-            },
-            {
-                scenarioId: sIds[0],
-                userId: userMap['Lynnette'],
-                turnNo: 2,
-                speaker: 'user',
-                messageJp: 'はじめまして。私はリネットです。ウガンダから来ました。よろしくおねがいします！',
-                messageRomaji: 'Hajimemashite. Watashi wa Rinetto desu. Uganda kara kimashite. Yoroshiku onegaishimasu!',
-                messageEn: 'Nice to meet you. I am Lynnette. I came from Uganda. Pleased to meet you!',
-                notes: 'User responds with relational background parameters.'
-            },
-            {
-                scenarioId: sIds[1],
-                userId: userMap['Aaron'],
-                turnNo: 1,
-                speaker: 'ai',
-                messageJp: 'こんにちは。どのようなお仕事を探していますか？',
-                messageRomaji: 'Konnichiwa. Dono you na o-shigoto wo sagashite imasu ka?',
-                messageEn: 'Hello. What kind of job are you looking for?',
-                notes: 'Recruiter starts counseling desk interaction.'
-            }
-        ]).returning({ id: conversations.id });
+    await db.insert(evaluations).values({
+      sessionId: s2Row.id, vocabularyScore: 20, grammarScore: 18, fluencyScore: 14,
+      culturalScore: 10, taskScore: 8,
+      feedback: 'Aaron completed the konbini transaction successfully. The request and confirmation were clear. More practice with polite closing would strengthen the interaction.',
+    });
 
-        // Insert matching goal completions for the historical user turn (Lynnette, Scenario 1)
-        // This user turn covered: hajimemashite (goal 1), name intro (goal 2), yoroshiku (goal 3)
-        const s1Goals = await db
-            .select({ id: scenarioGoals.id, seqOrder: scenarioGoals.sequenceOrder })
-            .from(scenarioGoals)
-            .where(eq(scenarioGoals.scenarioId, sIds[0]));
-        const s1CoveredSeqOrders = [1, 2, 3];
-        const s1CompletionRows = s1Goals
-            .filter(g => s1CoveredSeqOrders.includes(g.seqOrder))
-            .map(g => ({
-                conversationId: s1UserTurn.id,
-                scenarioGoalId: g.id,
-                userId: userMap['Lynnette'],
-                achieved: true,
-                evidenceNote: `Seeded historical turn — Lynnette introduced herself in Japanese`
-            }));
-        if (s1CompletionRows.length > 0) {
-            await db.insert(goalCompletions).values(s1CompletionRows);
-        }
+    // Session 3: Desire plays Scenario 13 (Job Interview) - intermediate
+    const [s3Row] = await db.insert(sessions).values({
+      userId: userMap['Desire'],
+      scenarioId: sIds[12],
+      sessionNumber: 1,
+      status: 'completed',
+      totalTurns: 4,
+      vocabularyScore: 25,
+      grammarScore: 20,
+      fluencyScore: 16,
+      culturalScore: 13,
+      taskScore: 9,
+      feedback: 'Desire demonstrated solid keigo usage during the interview. Good understanding of formal register, though some verb conjugations need refinement.',
+      completedAt: new Date(),
+    }).returning();
 
-        // ============================================================
-        // 6. SEED HISTORICAL EVALUATIONS
-        // ============================================================
-        console.log('Inserting baseline user evaluations...');
-        await db.insert(evaluations).values([
-            {
-                userId: userMap['Lynnette'],
-                scenarioId: sIds[0],
-                vocabularyScore: 28,
-                grammarScore: 22,
-                fluencyScore: 19,
-                culturalScore: 15,
-                taskScore: 10,
-                feedback: 'Lynnette passed with an absolute distinction! Her response built natural cultural rapport with Hana.'
-            },
-            {
-                userId: userMap['Aaron'],
-                scenarioId: sIds[1],
-                vocabularyScore: 24,
-                grammarScore: 21,
-                fluencyScore: 16,
-                culturalScore: 13,
-                taskScore: 9,
-                feedback: 'Aaron demonstrated excellent vocabulary regarding employment structures.'
-            }
-        ]);
+    const s3Turn1Ai = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 1, speaker: 'ai',
+      messageJp: 'どうぞお入りください。初めまして、採用担当の田中と申します。よろしくお願いいたします。',
+      messageRomaji: 'Douzo o-hairi kudasai. Hajimemashite, saiyou tantou no Tanaka to moushimasu. Yoroshiku onegai itashimasu.',
+      messageEn: 'Please come in. Nice to meet you, I am Tanaka from recruitment. Pleased to meet you.',
+      emotionTone: 'formal-respectful', gestureHint: 'gestures to the seat with open hand',
+      isValidInContext: true,
+    }).returning();
 
-        console.log('🚀 AI DOJO complete seed configuration processed successfully!');
-    } catch (error) {
-        console.error('❌ Error executing automated seed arrays:', error);
-        process.exit(1);
-    }
+    const s3Turn1User = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 1, speaker: 'user',
+      messageJp: '失礼します。初めまして、デザイアと申します。本日はお時間をいただきありがとうございます。よろしくお願いいたします。',
+      messageRomaji: 'Shitsurei shimasu. Hajimemashite, Dezaia to moushimasu. Honjitsu wa o-jikan o itadaki arigatou gozaimasu. Yoroshiku onegai itashimasu.',
+      messageEn: 'Excuse me. Nice to meet you, I am Desire. Thank you for giving me your time today. Pleased to meet you.',
+      emotionTone: 'formal-humble', gestureHint: 'slight bow while standing',
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
+
+    await db.insert(corrections).values({
+      conversationId: s3Turn1User[0].id,
+      correctionType: 'verb_conjugation',
+      originalText: 'いただきありがとうございます',
+      correctedText: 'いただきありがとうございます (correct in context)',
+      explanation: 'Good use of humble form "itadaki"! For extra formality in interviews, "itadakimashite" works too.',
+      severity: 'minor',
+    });
+
+    const s3Turn2Ai = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 2, speaker: 'ai',
+      messageJp: 'デザイアさん、これまでの職歴について教えていただけますか？',
+      messageRomaji: 'Dezaia-san, kore made no shokureki ni tsuite oshiete itadakemasu ka?',
+      messageEn: 'Desire, could you tell me about your work experience so far?',
+      emotionTone: 'polite-interview', gestureHint: 'sits forward with poised posture',
+      isValidInContext: true,
+    }).returning();
+
+    const s3Turn2User = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 2, speaker: 'user',
+      messageJp: 'はい。ウガンダで３年間、日本語を使ったカスタマーサポートの仕事をしていました。',
+      messageRomaji: 'Hai. Uganda de san-nenkan, nihongo o tsukatta kasutamaa sapooto no shigoto o shite imashita.',
+      messageEn: 'Yes. For three years in Uganda, I was doing customer support work using Japanese.',
+      emotionTone: 'professional-confident', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
+
+    const s3Turn3Ai = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 3, speaker: 'ai',
+      messageJp: 'なるほど。では、日本語で仕事をする上で、一番大切だと思うことは何ですか？',
+      messageRomaji: 'Naruhodo. Dewa, nihongo de shigoto o suru ue de, ichiban taisetsu da to omou koto wa nan desu ka?',
+      messageEn: 'I see. So, what do you think is the most important thing when working in Japanese?',
+      emotionTone: 'thoughtful-probing', gestureHint: 'nods slowly while listening',
+      isValidInContext: true,
+    }).returning();
+
+    const s3Turn3User = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 3, speaker: 'user',
+      messageJp: 'コミュニケーションだと思います。正しい敬語を使うことと、相手の気持ちを理解することが大事です。',
+      messageRomaji: 'Komyunikeeshon da to omoimasu. Tadashii keigo o tsukau koto to, aite no kimochi o rikai suru koto ga daiji desu.',
+      messageEn: 'I think communication is. Using correct keigo and understanding the other person\'s feelings are important.',
+      emotionTone: 'thoughtful-sincere', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
+
+    const s3Turn4Ai = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 4, speaker: 'ai',
+      messageJp: '素晴らしい考えですね。では、最後に—この会社でどんなことを実現したいですか？',
+      messageRomaji: 'Subarashii kangae desu ne. Dewa, saigo ni — kono kaisha de donna koto o jitsugen shitai desu ka?',
+      messageEn: 'That\'s a wonderful perspective. Then, finally — what do you want to achieve at this company?',
+      emotionTone: 'impressed-warm', gestureHint: 'smiles appreciatively',
+      isValidInContext: true,
+    }).returning();
+
+    const s3Turn4User = await db.insert(conversations).values({
+      sessionId: s3Row.id, turnNo: 4, speaker: 'user',
+      messageJp: 'はい。日本のIT技術を学んで、ウガンダと日本の架け橋になりたいです。がんばります！',
+      messageRomaji: 'Hai. Nihon no IT gijutsu o manande, Uganda to Nihon no kakehashi ni naritai desu. Ganbarimasu!',
+      messageEn: 'Yes. I want to learn Japanese IT technology and become a bridge between Uganda and Japan. I will do my best!',
+      emotionTone: 'determined-aspiring', gestureHint: 'small determined nod',
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
+
+    await db.insert(corrections).values({
+      conversationId: s3Turn4User[0].id,
+      correctionType: 'vocabulary',
+      originalText: 'か...け...は...し？',
+      correctedText: '架け橋 (kakehashi) - bridge',
+      explanation: '"Kakehashi" (bridge) is a beautiful metaphor here. Your pronunciation was clear — keep using this word!',
+      severity: 'minor',
+    });
+
+    const s3Goals = await db.select({ id: scenarioGoals.id, seq: scenarioGoals.sequenceOrder })
+      .from(scenarioGoals).where(eq(scenarioGoals.scenarioId, sIds[12]));
+    const s3GoalMap = new Map(s3Goals.map(g => [g.seq, g.id]));
+    await db.insert(goalCompletions).values([
+      { sessionId: s3Row.id, conversationId: s3Turn1User[0].id, scenarioGoalId: s3GoalMap.get(1)!, achieved: true, evidenceNote: 'Said "shitsurei shimasu" upon entering' },
+      { sessionId: s3Row.id, conversationId: s3Turn4User[0].id, scenarioGoalId: s3GoalMap.get(2)!, achieved: true, evidenceNote: 'Expressed "ganbarimasu" showing determination' },
+      { sessionId: s3Row.id, conversationId: s3Turn2User[0].id, scenarioGoalId: s3GoalMap.get(3)!, achieved: true, evidenceNote: 'Answered work experience question clearly' },
+      { sessionId: s3Row.id, conversationId: s3Turn4User[0].id, scenarioGoalId: s3GoalMap.get(4)!, achieved: true, evidenceNote: 'Closed interview with polite expression' },
+      { sessionId: s3Row.id, conversationId: s3Turn1User[0].id, scenarioGoalId: s3GoalMap.get(5)!, achieved: true, evidenceNote: 'Demonstrated interview etiquette throughout' },
+    ]);
+
+    await db.insert(evaluations).values({
+      sessionId: s3Row.id, vocabularyScore: 25, grammarScore: 20, fluencyScore: 16,
+      culturalScore: 13, taskScore: 9,
+      feedback: 'Desire demonstrated strong interview skills. The keigo usage was appropriate and natural. The bridge metaphor (kakehashi) was culturally resonant and showed advanced communication instinct.',
+    });
+
+    // Session 4: Derrick plays Scenario 5 (Restaurant) - beginner
+    const [s4Row] = await db.insert(sessions).values({
+      userId: userMap['Derrick'],
+      scenarioId: sIds[4],
+      sessionNumber: 1,
+      status: 'completed',
+      totalTurns: 2,
+      vocabularyScore: 18,
+      grammarScore: 15,
+      fluencyScore: 12,
+      culturalScore: 8,
+      taskScore: 7,
+      feedback: 'Derrick managed the basic ordering flow but should practice itadakimasu and gochisousama. The core vocabulary request was functional.',
+      completedAt: new Date(),
+    }).returning();
+
+    const s4Turn1Ai = await db.insert(conversations).values({
+      sessionId: s4Row.id, turnNo: 1, speaker: 'ai',
+      messageJp: 'いらっしゃいませ！何名様ですか？',
+      messageRomaji: 'Irasshaimase! Nan-mei-sama desu ka?',
+      messageEn: 'Welcome! How many people?',
+      emotionTone: 'cheerful', gestureHint: 'holds out menu with both hands',
+      isValidInContext: true,
+    }).returning();
+
+    const s4Turn1User = await db.insert(conversations).values({
+      sessionId: s4Row.id, turnNo: 1, speaker: 'user',
+      messageJp: 'ひとりです。メニューを見せてください。',
+      messageRomaji: 'Hitori desu. Menyuu o misete kudasai.',
+      messageEn: 'I\'m alone. Please show me the menu.',
+      emotionTone: 'polite', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
+
+    const s4Turn2Ai = await db.insert(conversations).values({
+      sessionId: s4Row.id, turnNo: 2, speaker: 'ai',
+      messageJp: 'かしこまりました。こちらがメニューでございます。ご注文がお決まりになりましたらお呼びください。',
+      messageRomaji: 'Kashikomarimashita. Kochira ga menyuu de gozaimasu. Go-chuumon ga o-kimari ni narimashitara o-yobi kudasai.',
+      messageEn: 'Certainly. Here is our menu. Please call me when you have decided your order.',
+      emotionTone: 'polite-service', gestureHint: 'places menu on table with both hands',
+      isValidInContext: true,
+    }).returning();
+
+    const s4Turn2User = await db.insert(conversations).values({
+      sessionId: s4Row.id, turnNo: 2, speaker: 'user',
+      messageJp: 'すみません、注文してもいいですか？ラーメンをください。',
+      messageRomaji: 'Sumimasen, chuumon shite mo ii desu ka? Raamen o kudasai.',
+      messageEn: 'Excuse me, may I order? Please give me ramen.',
+      emotionTone: 'polite', gestureHint: null,
+      isEnglishWhenExpected: false, isValidInContext: true,
+    }).returning();
+
+    await db.insert(corrections).values({
+      conversationId: s4Turn2User[0].id,
+      correctionType: 'politeness_level',
+      originalText: '注文してもいいですか',
+      correctedText: '注文してもよろしいですか',
+      explanation: 'In a restaurant, "yoi desu ka" is slightly more polite than "ii desu ka". Both are fine, but "yoi" sounds more refined.',
+      severity: 'minor',
+    });
+
+    const s4Goals = await db.select({ id: scenarioGoals.id, seq: scenarioGoals.sequenceOrder })
+      .from(scenarioGoals).where(eq(scenarioGoals.scenarioId, sIds[4]));
+    const s4GoalMap = new Map(s4Goals.map(g => [g.seq, g.id]));
+    await db.insert(goalCompletions).values([
+      { sessionId: s4Row.id, conversationId: s4Turn1User[0].id, scenarioGoalId: s4GoalMap.get(1)!, achieved: true, evidenceNote: 'Understood service greeting' },
+      { sessionId: s4Row.id, conversationId: s4Turn2User[0].id, scenarioGoalId: s4GoalMap.get(2)!, achieved: true, evidenceNote: 'Ordered using "raamen o kudasai"' },
+    ]);
+
+    await db.insert(evaluations).values({
+      sessionId: s4Row.id, vocabularyScore: 18, grammarScore: 15, fluencyScore: 12,
+      culturalScore: 8, taskScore: 7,
+      feedback: 'Derrick successfully completed the ordering process. The request structure was correct. Future focus: pre-meal and post-meal etiquette phrases (itadakimasu, gochisousama).',
+    });
+
+    // Vocabulary encounters for Session 1
+    const s1Vocab = await db.select({ id: vocabulary.id })
+      .from(vocabulary).where(eq(vocabulary.scenarioId, sIds[0])).limit(3);
+    await db.insert(vocabularyEncounters).values([
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, vocabularyId: s1Vocab[0].id, usedCorrectly: true },
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, vocabularyId: s1Vocab[1].id, usedCorrectly: true },
+      { sessionId: s1Row.id, conversationId: s1Turn1User[0].id, vocabularyId: s1Vocab[2].id, usedCorrectly: true },
+    ]);
+
+    // Vocabulary encounters for Session 2
+    const s2Vocab = await db.select({ id: vocabulary.id })
+      .from(vocabulary).where(eq(vocabulary.scenarioId, sIds[1])).limit(2);
+    await db.insert(vocabularyEncounters).values([
+      { sessionId: s2Row.id, conversationId: s2Turn1User[0].id, vocabularyId: s2Vocab[0].id, usedCorrectly: true },
+      { sessionId: s2Row.id, conversationId: s2Turn1User[0].id, vocabularyId: s2Vocab[1].id, usedCorrectly: true },
+    ]);
+
+    console.log('🚀 AI DOJO seed completed successfully!');
+  } catch (error) {
+    console.error('❌ Error during seeding:', error);
+    process.exit(1);
+  }
 }
 
 seed();
