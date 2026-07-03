@@ -1,7 +1,12 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+function getJwtSecret(): string {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is not set on the server');
+  }
+  return process.env.JWT_SECRET;
+}
 const JWT_EXPIRY = '7d';
 const COOKIE_NAME = 'ai_dojo_token';
 
@@ -14,12 +19,12 @@ export async function verifyPassword(password: string, hash: string) {
 }
 
 export function signJwt(payload: { userId: number; email: string }) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: JWT_EXPIRY });
 }
 
 export function verifyJwt(token: string): { userId: number; email: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: number; email: string };
+    return jwt.verify(token, getJwtSecret()) as { userId: number; email: string };
   } catch {
     return null;
   }
