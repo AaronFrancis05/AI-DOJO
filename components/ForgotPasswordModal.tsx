@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { authClient } from '@/lib/auth/client';
 import { MailIcon, LoaderIcon, CheckCircleIcon } from './Icons';
 
 export default function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
@@ -14,16 +15,16 @@ export default function ForgotPasswordModal({ onClose }: { onClose: () => void }
     setError('');
     setLoading(true);
     try {
-      // See docs/AUTH_BACKEND_PLAN.md — this endpoint looks up the user in
-      // Neon, stores a hashed reset token + expiry, and emails a reset link.
-      const res = await fetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+      // Neon Auth looks up the email, generates + stores the reset
+      // token, and sends the email itself (from auth@mail.myneon.app
+      // on the free "shared" email provider). No custom route needed.
+      const { error: resetError } = await authClient.requestPasswordReset({
+        email,
+        redirectTo: `${window.location.origin}/auth/reset`,
       });
       // Always show success, even on unknown email, to avoid leaking
       // which addresses are registered.
-      if (res.ok || res.status === 404) setSent(true);
+      if (!resetError || resetError.status === 404) setSent(true);
       else setError('Something went wrong. Please try again.');
     } catch {
       setError('Network error. Please try again.');

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authClient } from '@/lib/auth/client';
 import PasswordInput from '@/components/PasswordInput';
 import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { MailIcon, UserIcon, LoaderIcon, AlertCircleIcon, GoogleLogo } from '@/components/Icons';
@@ -23,27 +24,29 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const body: Record<string, unknown> = { email, password };
-      if (!isLogin) {
-        body.name = name;
-        body.consentToDataSharing = consent;
-      }
+      const { error: authError } = isLogin
+        ? await authClient.signIn.email({ email, password })
+        : await authClient.signUp.email({
+            email,
+            password,
+            name,
+            // If your Neon Auth user schema has a custom field for this,
+            // pass it as additional data here per Neon's "additional
+            // fields" docs — signUp.email only guarantees email/password/name.
+          });
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong');
+      if (authError) {
+        setError(authError.message || 'Something went wrong');
         return;
       }
 
+      // TODO: if you keep a `consentToDataSharing` flag, persist it here
+      // via a server action / API call now that the user exists, since
+      // Neon Auth's signUp doesn't know about your app-specific fields.
+      void consent;
+
       router.push('/');
+      router.refresh();
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -51,12 +54,11 @@ export default function AuthPage() {
     }
   }
 
-  function handleGoogleAuth() {
-    // Backend route to implement — see docs/AUTH_BACKEND_PLAN.md.
-    // Redirects to Google's OAuth consent screen, then back to
-    // /api/auth/google/callback which issues the same session cookie
-    // your credentials login already sets.
-    window.location.href = '/api/auth/google';
+  async function handleGoogleAuth() {
+    await authClient.signIn.social({
+      provider: 'google',
+      callbackURL: '/',
+    });
   }
 
   return (
@@ -73,7 +75,6 @@ export default function AuthPage() {
         </div>
 
         <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-          {/* Tab switcher */}
           <div className="mb-6 flex rounded-lg bg-neutral-100 p-1">
             {(['login', 'register'] as const).map((mode) => (
               <button
@@ -94,7 +95,6 @@ export default function AuthPage() {
             ))}
           </div>
 
-          {/* OAuth */}
           <button
             type="button"
             onClick={handleGoogleAuth}
