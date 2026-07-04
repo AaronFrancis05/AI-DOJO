@@ -1,35 +1,19 @@
 import { db } from '../src/db';
-import { scenarios, users } from '../src/schema';
-import { eq } from 'drizzle-orm';
+import { scenarios } from '../src/schema';
 import Link from 'next/link';
 
-async function getRoleplaysAndEnsureUser() {
+async function getRoleplays() {
   try {
-    // 1. Check if our default test user (ID: 1) exists in Neon
-    const [existingUser] = await db.select().from(users).where(eq(users.id, 1));
-
-    // 2. If the user doesn't exist, seed them automatically to satisfy foreign keys
-    if (!existingUser) {
-      console.log("👤 Test user missing. Creating default profile...");
-      await db.insert(users).values({
-        id: 1, // Explicitly force ID 1 to match our frontend logic
-        name: 'Amina',
-        email: 'amina@ai-dojo.io',
-        level: 'beginner'
-      });
-    }
-
-    // 3. Fetch the available roleplay scenarios
     const list = await db.select().from(scenarios);
     return list;
   } catch (error) {
-    console.error("Error fetching scenarios or seeding user:", error);
+    console.error("Error fetching scenarios:", error);
     return [];
   }
 }
 
 export default async function DashboardPage() {
-  const roleplays = await getRoleplaysAndEnsureUser();
+  const roleplays = await getRoleplays();
 
   return (
       <div style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>

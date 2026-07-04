@@ -2,30 +2,36 @@ import { db } from '../../../src/db';
 import { conversations, evaluations, scenarios, scenarioGoals, goalCompletions } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import { eq, and } from 'drizzle-orm';
+import { getAuthUser } from '../../../lib/auth/server';
 
 const SAFETY_CAP_TURN = 10;
 
 export async function POST(req: Request) {
     try {
+        const user = await getAuthUser();
+        if (!user) {
+            return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         // 1. Unpack body safely
         const body = await req.json();
-        const { userId, scenarioId, userRawInputJp, currentTurnNo } = body;
+        const { scenarioId, userRawInputJp, currentTurnNo } = body;
 
         // Validation Guardrails
-        if (!userId || !scenarioId || !userRawInputJp || !currentTurnNo) {
+        if (!scenarioId || !userRawInputJp || !currentTurnNo) {
             return Response.json(
                 { error: 'Missing required parameters in request body' },
                 { status: 400 }
             );
         }
 
-        const numericUserId = Number(userId);
+        const uid = user.id;
         const numericScenarioId = Number(scenarioId);
         const numericTurnNo = Number(currentTurnNo);
 
-        if (isNaN(numericUserId) || isNaN(numericScenarioId) || isNaN(numericTurnNo)) {
+        if (isNaN(numericScenarioId) || isNaN(numericTurnNo)) {
             return Response.json(
-                { error: 'Non-numeric field in userId, scenarioId, or currentTurnNo' },
+                { error: 'Non-numeric field in scenarioId or currentTurnNo' },
                 { status: 400 }
             );
         }
@@ -57,7 +63,7 @@ export async function POST(req: Request) {
             .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
             .where(
                 and(
-                    eq(goalCompletions.userId, numericUserId),
+                    eq(goalCompletions.userId, uid),
                     eq(scenarioGoals.scenarioId, numericScenarioId)
                 )
             );
@@ -75,27 +81,24 @@ export async function POST(req: Request) {
 
         // 6. Persist the dynamic user conversation turn and capture its ID
         const [userConversation] = await db.insert(conversations).values({
-            scenarioId: numericScenarioId,
-            userId: numericUserId,
+            sessionId: numericScenarioId,
+            userId: uid,
             turnNo: numericTurnNo,
             speaker: 'user',
             messageJp: userRawInputJp,
             messageRomaji: mlPipelineOutput.messageRomaji,
-            messageEn: mlPipelineOutput.messageEn,
-            notes: `Dynamically processed user turn: ${mlPipelineOutput.isValidInContext ? 'Valid' : 'Off-context'}`
+            messageEn: mlPipelineOutput.messageEn
         }).returning({ id: conversations.id });
 
         // 7. Persist the AI character's fluid response (including per-turn teaching note)
         await db.insert(conversations).values({
-            scenarioId: numericScenarioId,
-            userId: numericUserId,
+            sessionId: numericScenarioId,
+            userId: uid,
             turnNo: numericTurnNo,
             speaker: 'ai',
             messageJp: mlPipelineOutput.nextAiReply?.japanese || '分かりました。',
             messageRomaji: mlPipelineOutput.nextAiReply?.romaji || 'Wakarimashita.',
-            messageEn: mlPipelineOutput.nextAiReply?.english || 'I understand.',
-            notes: `Dynamic AI text from character: ${scenario.aiCharacterName}`,
-            teachingNote: mlPipelineOutput.teachingNote || null
+            messageEn: mlPipelineOutput.nextAiReply?.english || 'I understand.'
         });
 
         // 8. Record goal completions for this turn (idempotent: skip already-completed + dedupe within turn)
@@ -111,9 +114,10 @@ export async function POST(req: Request) {
                     return true;
                 })
                 .map(seqOrder => ({
+                    sessionId: numericScenarioId,
                     conversationId: userConversation.id,
                     scenarioGoalId: goalsMap.get(seqOrder)!,
-                    userId: numericUserId,
+                    userId: uid,
                     achieved: true,
                     evidenceNote: `Addressed in turn ${numericTurnNo}: "${userRawInputJp.substring(0, 80)}"`
                 }));
@@ -127,8 +131,8 @@ export async function POST(req: Request) {
 
         if (shouldComplete) {
             await db.insert(evaluations).values({
-                userId: numericUserId,
-                scenarioId: numericScenarioId,
+                userId: uid,
+                sessionId: numericScenarioId,
                 vocabularyScore: mlPipelineOutput.scores.vocabulary,
                 grammarScore: mlPipelineOutput.scores.grammar,
                 fluencyScore: mlPipelineOutput.scores.fluency,

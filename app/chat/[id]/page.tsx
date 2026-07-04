@@ -75,7 +75,6 @@ export default function AI_Dojo_Chatroom() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: 1, // Relational target fallback tracking index
                     scenarioId: scenarioId,
                     userRawInputJp: dynamicUserTurn,
                     currentTurnNo: turn

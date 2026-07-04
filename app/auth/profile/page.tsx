@@ -32,19 +32,19 @@ export default function ProfilePage() {
   useEffect(() => {
     (async () => {
       const { data } = await authClient.getSession();
-      if (!data?.session?.user) {
+      if (!data?.user) {
         router.push('/auth?redirect=/profile');
         return;
       }
-      setUser(data.session.user as SessionUser);
-      setName(data.session.user.name ?? '');
+      setUser(data.user as SessionUser);
+      setName(data.user.name ?? '');
       setLoadingUser(false);
     })();
   }, [router]);
 
   async function refreshUser() {
     const { data } = await authClient.getSession();
-    if (data?.session?.user) setUser(data.session.user as SessionUser);
+    if (data?.user) setUser(data.user as SessionUser);
   }
 
   async function handleUpdateProfile(e: React.FormEvent) {

@@ -5,10 +5,10 @@ import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 
 const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL;
+const COOKIE_SECRET = process.env.NEON_AUTH_COOKIE_SECRET;
 
-if (!NEON_AUTH_BASE_URL) {
-  console.error('ERROR: NEON_AUTH_BASE_URL is not set. Add it to .env first.');
-  console.error('Get it from Neon Console → your project → Auth → Configuration.');
+if (!NEON_AUTH_BASE_URL || !COOKIE_SECRET) {
+  console.error('ERROR: NEON_AUTH_BASE_URL and NEON_AUTH_COOKIE_SECRET must be set in .env');
   process.exit(1);
 }
 
@@ -16,25 +16,6 @@ async function getExistingUsers() {
   const result = await db.select({ id: users.id, name: users.name, email: users.email }).from(users);
   console.log(`Found ${result.length} existing users in the database.\n`);
   return result;
-}
-
-async function createNeonAuthUser(email: string, name: string) {
-  const password = crypto.randomBytes(24).toString('hex');
-  const res = await fetch(`${NEON_AUTH_BASE_URL}/sign-up/email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, name }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Failed to create Neon Auth account for ${email}: ${res.status} ${body}`);
-  }
-  const data = await res.json();
-  const newId: string = data?.user?.id || data?.id;
-  if (!newId) {
-    throw new Error(`No user id returned for ${email}. Response: ${JSON.stringify(data)}`);
-  }
-  return { newId, email };
 }
 
 async function ensureMigrationMapTable() {
@@ -58,13 +39,13 @@ async function storeMapping(oldUserId: number, newUserId: string, email: string)
 }
 
 async function getMigrationCount() {
-  const result = await db.execute(sql`SELECT COUNT(*) as count FROM user_id_migration_map;`);
-  return Number(result.rows[0]?.count || 0);
+  const result = await db.execute(sql`SELECT COUNT(*)::int as count FROM user_id_migration_map;`);
+  return result.rows[0]?.count as number ?? 0;
 }
 
 async function getUserCount() {
-  const result = await db.execute(sql`SELECT COUNT(*) as count FROM users;`);
-  return Number(result.rows[0]?.count || 0);
+  const result = await db.execute(sql`SELECT COUNT(*)::int as count FROM users;`);
+  return result.rows[0]?.count as number ?? 0;
 }
 
 async function main() {
@@ -82,18 +63,48 @@ async function main() {
     console.log('All users already migrated. Moving to verification...');
   } else {
     console.log(`Migrating ${toMigrate.length} users...\n`);
+
+    const baseOrigin = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:3000`;
     const failed: Array<{ email: string; error: string }> = [];
 
     for (let i = 0; i < toMigrate.length; i++) {
       const user = toMigrate[i];
       process.stdout.write(`  [${i + 1}/${toMigrate.length}] ${user.email}... `);
       try {
-        const { newId } = await createNeonAuthUser(user.email, user.name);
+        const password = crypto.randomBytes(24).toString('hex');
+
+        // Try calling the sign-up endpoint through our own Next.js dev server.
+        // If a dev server is running on port 3000, it will proxy to Neon Auth
+        // and the callback URL will match localhost.
+        const res = await fetch(`${NEON_AUTH_BASE_URL}/sign-up/email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Origin': baseOrigin,
+          },
+          body: JSON.stringify({
+            email: user.email,
+            password,
+            name: user.name,
+          }),
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(`${res.status} ${body}`);
+        }
+
+        const data = await res.json();
+        const newId: string = data?.user?.id || data?.id;
+        if (!newId) {
+          throw new Error(`No id in response: ${JSON.stringify(data)}`);
+        }
+
         await storeMapping(user.id, newId, user.email);
         console.log(`OK (id: ${newId})`);
       } catch (err: any) {
         console.log(`FAILED`);
-        failed.push({ email: user.email, error: err.message });
+        failed.push({ email: user.email, error: err.message || String(err) });
       }
     }
 
@@ -101,6 +112,17 @@ async function main() {
       console.log(`\n${failed.length} user(s) failed to migrate:`);
       for (const f of failed) {
         console.log(`  - ${f.email}: ${f.error}`);
+      }
+
+      const callbackErrors = failed.filter(f =>
+        f.error.includes('INVALID_CALLBACKURL')
+      );
+      if (callbackErrors.length > 0) {
+        console.log(`\n💡 Tip: In the Neon Console at https://console.neon.tech:`);
+        console.log(`   1. Select your project`);
+        console.log(`   2. Go to Auth → Configuration`);
+        console.log(`   3. Add "${baseOrigin}" to the allowed callback URLs / origins list`);
+        console.log(`   4. Then retry: npx tsx scripts/migrate-users.ts`);
       }
       process.exit(1);
     }

@@ -2,7 +2,7 @@ import { pgTable, serial, varchar, text, timestamp, integer, boolean } from 'dri
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
-  id:                    serial('id').primaryKey(),
+  id:                    text('id').primaryKey(),
   name:                  varchar('name', { length: 100 }).notNull(),
   email:                 varchar('email', { length: 150 }).notNull().unique(),
   passwordHash:          varchar('password_hash', { length: 255 }).notNull(),
@@ -51,7 +51,7 @@ export const scenarioGoals = pgTable('scenario_goals', {
 
 export const sessions = pgTable('sessions', {
   id:              serial('id').primaryKey(),
-  userId:          integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   scenarioId:      integer('scenario_id').references(() => scenarios.id).notNull(),
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
@@ -69,6 +69,7 @@ export const sessions = pgTable('sessions', {
 export const conversations = pgTable('conversations', {
   id:                    serial('id').primaryKey(),
   sessionId:             integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull(),
+  userId:                text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   turnNo:                integer('turn_no').notNull(),
   speaker:               varchar('speaker', { length: 20 }).notNull(),
   messageJp:             text('message_jp').notNull(),
@@ -95,6 +96,7 @@ export const corrections = pgTable('corrections', {
 export const evaluations = pgTable('evaluations', {
   id:              serial('id').primaryKey(),
   sessionId:       integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull().unique(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   vocabularyScore: integer('vocabulary_score').default(0).notNull(),
   grammarScore:    integer('grammar_score').default(0).notNull(),
   fluencyScore:    integer('fluency_score').default(0).notNull(),
@@ -108,6 +110,7 @@ export const goalCompletions = pgTable('goal_completions', {
   id:              serial('id').primaryKey(),
   sessionId:       integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull(),
   conversationId:  integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   scenarioGoalId:  integer('scenario_goal_id').references(() => scenarioGoals.id, { onDelete: 'cascade' }).notNull(),
   achieved:        boolean('achieved').default(true).notNull(),
   evidenceNote:    text('evidence_note'),
@@ -131,7 +134,10 @@ export const shareTokens = pgTable('share_tokens', {
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
-  sessions: many(sessions),
+  sessions:         many(sessions),
+  conversations:    many(conversations),
+  evaluations:      many(evaluations),
+  goalCompletions:  many(goalCompletions),
 }));
 
 export const scenariosRelations = relations(scenarios, ({ many }) => ({
@@ -162,6 +168,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({
   session:     one(sessions, { fields: [conversations.sessionId], references: [sessions.id] }),
+  user:        one(users,    { fields: [conversations.userId],   references: [users.id] }),
   corrections: many(corrections),
 }));
 
@@ -171,11 +178,13 @@ export const correctionsRelations = relations(corrections, ({ one }) => ({
 
 export const evaluationsRelations = relations(evaluations, ({ one }) => ({
   session: one(sessions, { fields: [evaluations.sessionId], references: [sessions.id] }),
+  user:    one(users,    { fields: [evaluations.userId],     references: [users.id] }),
 }));
 
 export const goalCompletionsRelations = relations(goalCompletions, ({ one }) => ({
   session:      one(sessions,      { fields: [goalCompletions.sessionId],      references: [sessions.id] }),
   conversation: one(conversations, { fields: [goalCompletions.conversationId], references: [conversations.id] }),
+  user:         one(users,         { fields: [goalCompletions.userId],         references: [users.id] }),
   scenarioGoal: one(scenarioGoals, { fields: [goalCompletions.scenarioGoalId], references: [scenarioGoals.id] }),
 }));
 
