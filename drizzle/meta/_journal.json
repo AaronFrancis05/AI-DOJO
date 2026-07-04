@@ -22,6 +22,13 @@
       "when": 1782816635743,
       "tag": "0002_zippy_cardiac",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783155998480,
+      "tag": "0002_hard_speedball",
+      "breakpoints": true
     }
   ]
 }
