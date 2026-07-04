@@ -1,16 +1,16 @@
 import { db } from '../../../src/db';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
-import { getAuthUser } from '../../../lib/auth';
 import { eq, and, asc } from 'drizzle-orm';
+import { getAuthUser } from '../../../lib/auth/server';
 
 const SAFETY_CAP_TURN = 10;
 
 export async function POST(req: Request) {
   try {
-    const auth = getAuthUser(req);
-    if (!auth) {
-      return Response.json({ error: 'Not authenticated' }, { status: 401 });
+    const user = await getAuthUser();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (session.userId !== auth.userId) {
+    if (session.userId !== user.id) {
       return Response.json({ error: 'Forbidden - this session does not belong to you' }, { status: 403 });
     }
 

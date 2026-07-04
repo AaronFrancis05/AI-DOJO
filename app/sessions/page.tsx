@@ -32,14 +32,6 @@ export default function SessionsPage() {
 
   useEffect(() => {
     async function load() {
-      const meRes = await fetch('/api/auth/me');
-      if (!meRes.ok) {
-        router.push('/auth');
-        return;
-      }
-      const meData = await meRes.json();
-      setUser(meData.user);
-
       const sesRes = await fetch('/api/sessions');
       const sesData = await sesRes.json();
       if (sesData.success) {

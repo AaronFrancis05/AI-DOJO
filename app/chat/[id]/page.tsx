@@ -68,12 +68,6 @@ export default function AI_Dojo_Chatroom() {
 
     async function init() {
       try {
-        const meRes = await fetch('/api/auth/me');
-        if (!meRes.ok) {
-          router.push('/auth');
-          return;
-        }
-
         const scRes = await fetch(`/api/scenario/${scenarioId}`);
         const scData = await scRes.json();
         if (!scData.success) {

@@ -1,14 +1,14 @@
 import { db } from '../../../../src/db';
 import { sessions, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabularyEncounters, vocabulary } from '../../../../src/schema';
-import { getAuthUser } from '../../../../lib/auth';
+import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc } from 'drizzle-orm';
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = getAuthUser(req);
-  if (!auth) {
+  const user = await getAuthUser();
+  if (!user) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -23,7 +23,7 @@ export async function GET(
     return Response.json({ error: 'Session not found' }, { status: 404 });
   }
 
-  if (session.userId !== auth.userId) {
+  if (session.userId !== user.id) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -76,8 +76,8 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = getAuthUser(req);
-  if (!auth) {
+  const user = await getAuthUser();
+  if (!user) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -92,7 +92,7 @@ export async function DELETE(
     return Response.json({ error: 'Session not found' }, { status: 404 });
   }
 
-  if (session.userId !== auth.userId) {
+  if (session.userId !== user.id) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 

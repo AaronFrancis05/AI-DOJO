@@ -1,11 +1,11 @@
 import { db } from '../../../src/db';
 import { sessions, scenarios, evaluations } from '../../../src/schema';
-import { getAuthUser } from '../../../lib/auth';
+import { getAuthUser } from '../../../lib/auth/server';
 import { eq, and, count, desc } from 'drizzle-orm';
 
 export async function GET(req: Request) {
-  const auth = getAuthUser(req);
-  if (!auth) {
+  const user = await getAuthUser();
+  if (!user) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -13,30 +13,13 @@ export async function GET(req: Request) {
   const scenarioIdFilter = url.searchParams.get('scenarioId');
   const statusFilter = url.searchParams.get('status');
 
-  const conditions = [eq(sessions.userId, auth.userId)];
+  const conditions = [eq(sessions.userId, user.id)];
   if (scenarioIdFilter) conditions.push(eq(sessions.scenarioId, Number(scenarioIdFilter)));
   if (statusFilter) conditions.push(eq(sessions.status, statusFilter));
 
   const list = await db
-    .select({
-      id: sessions.id,
-      scenarioId: sessions.scenarioId,
-      scenarioTitle: scenarios.title,
-      scenarioDomain: scenarios.domain,
-      sessionNumber: sessions.sessionNumber,
-      status: sessions.status,
-      totalTurns: sessions.totalTurns,
-      vocabularyScore: sessions.vocabularyScore,
-      grammarScore: sessions.grammarScore,
-      fluencyScore: sessions.fluencyScore,
-      culturalScore: sessions.culturalScore,
-      taskScore: sessions.taskScore,
-      feedback: sessions.feedback,
-      startedAt: sessions.startedAt,
-      completedAt: sessions.completedAt,
-    })
+    .select()
     .from(sessions)
-    .innerJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
     .where(and(...conditions))
     .orderBy(desc(sessions.startedAt));
 
@@ -44,8 +27,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = getAuthUser(req);
-  if (!auth) {
+  const user = await getAuthUser();
+  if (!user) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -68,12 +51,12 @@ export async function POST(req: Request) {
   const [result] = await db
     .select({ count: count() })
     .from(sessions)
-    .where(and(eq(sessions.userId, auth.userId), eq(sessions.scenarioId, numericScenarioId)));
+    .where(and(eq(sessions.userId, user.id), eq(sessions.scenarioId, numericScenarioId)));
 
   const sessionNumber = (result?.count ?? 0) + 1;
 
   const [session] = await db.insert(sessions).values({
-    userId: auth.userId,
+    userId: user.id,
     scenarioId: numericScenarioId,
     sessionNumber,
     status: 'active',
