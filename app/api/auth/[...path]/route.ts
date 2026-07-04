@@ -5,7 +5,7 @@ const builtin = auth.handler();
 
 async function forwardToNeon(request: NextRequest, path: string) {
   const baseUrl = process.env.NEON_AUTH_BASE_URL!;
-  const upstreamUrl = `${baseUrl}/auth/${path}${new URL(request.url).search}`;
+  const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
 
   const headers = new Headers();
   const forwardHeaders = ['user-agent', 'authorization', 'referer', 'content-type'];
@@ -28,8 +28,10 @@ async function forwardToNeon(request: NextRequest, path: string) {
       method: 'GET',
       redirect: 'manual',
       headers,
+      signal: AbortSignal.timeout(10_000),
     });
-  } catch {
+  } catch (err) {
+    console.error('[forwardToNeon] fetch failed', { path, url: upstreamUrl, error: String(err) });
     return new Response(
       JSON.stringify({ error: 'Failed to reach auth server' }),
       { status: 502, headers: { 'content-type': 'application/json' } },
@@ -81,14 +83,18 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
 
   if (modifiedUrl === oauthUrl) return response;
 
-  return Response.json(
-    { ...body, url: modifiedUrl },
-    {
-      status: response.status,
-      statusText: response.statusText,
-      headers: cloned.headers,
-    },
-  );
+  // Build response with cookies via Headers (handles multi-value Set-Cookie)
+  const newHeaders = new Headers();
+  newHeaders.set('content-type', 'application/json');
+  for (const cookie of cloned.headers.getSetCookie()) {
+    newHeaders.append('Set-Cookie', cookie);
+  }
+
+  return new Response(JSON.stringify({ ...body, url: modifiedUrl }), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
 }
 
 async function handleGET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
