@@ -103,28 +103,10 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
   const path = (await params).path.join('/');
 
   // For init and callback paths, use manual redirect forwarding
+  // NOTE: redirect_uri is NOT modified — Google redirects directly to the
+  // upstream callback, and Better Auth's verifier exchange creates a local session
   if (path === 'sign-in/social/init' || path.startsWith('callback/')) {
-    const response = await forwardToNeon(request, path);
-
-    // For init responses with Google OAuth redirect, rewrite redirect_uri
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('Location');
-      if (location && location.includes('accounts.google.com')) {
-        const googleUrl = new URL(location);
-        googleUrl.searchParams.set(
-          'redirect_uri',
-          `${new URL(request.url).origin}/api/auth/callback/google`,
-        );
-        const headers = new Headers(response.headers);
-        headers.set('Location', googleUrl.toString());
-        return new Response(null, {
-          status: response.status,
-          headers,
-        });
-      }
-    }
-
-    return response;
+    return await forwardToNeon(request, path);
   }
 
   return builtin.GET!(request, { params });
