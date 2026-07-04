@@ -22,23 +22,32 @@ async function forwardToNeon(request: NextRequest, path: string) {
   if (neonCookies) headers.set('cookie', neonCookies);
   headers.set('origin', new URL(request.url).origin);
 
-  const upstream = await fetch(upstreamUrl, {
-    method: 'GET',
-    redirect: 'manual',
-    headers,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    console.error('[forwardToNeon] fetch failed', { path, url: upstreamUrl, error: String(err) });
+    return new Response(
+      JSON.stringify({ error: 'Failed to reach auth server' }),
+      { status: 502, headers: { 'content-type': 'application/json' } },
+    );
+  }
 
   const responseHeaders = new Headers(upstream.headers);
 
-  // Remove Domain from Set-Cookie to make cookies host-only for our domain
   const setCookies = responseHeaders.getSetCookie();
   if (setCookies.length > 0) {
     responseHeaders.delete('Set-Cookie');
     for (const cookie of setCookies) {
-      responseHeaders.append(
-        'Set-Cookie',
-        cookie.replace(/;\s*Domain\s*=[^;]+/gi, ''),
-      );
+      let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
+      fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
+      fixed += '; Path=/';
+      responseHeaders.append('Set-Cookie', fixed);
     }
   }
 
@@ -73,14 +82,21 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
 
   if (modifiedUrl === oauthUrl) return response;
 
-  return Response.json(
-    { ...body, url: modifiedUrl },
-    {
-      status: response.status,
-      statusText: response.statusText,
-      headers: cloned.headers,
-    },
-  );
+  // Build response with cookies via Headers (handles multi-value Set-Cookie, rewrites Path for our domain)
+  const newHeaders = new Headers();
+  newHeaders.set('content-type', 'application/json');
+  for (const cookie of cloned.headers.getSetCookie()) {
+    let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
+    fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
+    fixed += '; Path=/';
+    newHeaders.append('Set-Cookie', fixed);
+  }
+
+  return new Response(JSON.stringify({ ...body, url: modifiedUrl }), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
 }
 
 async function handleGET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
