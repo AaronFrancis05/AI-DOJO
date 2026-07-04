@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import PasswordInput from '@/components/PasswordInput';
@@ -9,6 +9,13 @@ import { MailIcon, UserIcon, LoaderIcon, AlertCircleIcon, GoogleLogo } from '@/c
 
 export default function AuthPage() {
   const router = useRouter();
+
+  useEffect(() => {
+    authClient.getSession().then(({ data }) => {
+      if (data?.user) router.push('/');
+    });
+  }, [router]);
+
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
