@@ -40,15 +40,14 @@ async function forwardToNeon(request: NextRequest, path: string) {
 
   const responseHeaders = new Headers(upstream.headers);
 
-  // Remove Domain from Set-Cookie to make cookies host-only for our domain
   const setCookies = responseHeaders.getSetCookie();
   if (setCookies.length > 0) {
     responseHeaders.delete('Set-Cookie');
     for (const cookie of setCookies) {
-      responseHeaders.append(
-        'Set-Cookie',
-        cookie.replace(/;\s*Domain\s*=[^;]+/gi, ''),
-      );
+      let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
+      fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
+      fixed += '; Path=/';
+      responseHeaders.append('Set-Cookie', fixed);
     }
   }
 
@@ -83,11 +82,14 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
 
   if (modifiedUrl === oauthUrl) return response;
 
-  // Build response with cookies via Headers (handles multi-value Set-Cookie)
+  // Build response with cookies via Headers (handles multi-value Set-Cookie, rewrites Path for our domain)
   const newHeaders = new Headers();
   newHeaders.set('content-type', 'application/json');
   for (const cookie of cloned.headers.getSetCookie()) {
-    newHeaders.append('Set-Cookie', cookie);
+    let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
+    fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
+    fixed += '; Path=/';
+    newHeaders.append('Set-Cookie', fixed);
   }
 
   return new Response(JSON.stringify({ ...body, url: modifiedUrl }), {
