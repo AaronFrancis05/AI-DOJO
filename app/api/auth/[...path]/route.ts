@@ -44,10 +44,19 @@ async function forwardToNeon(request: NextRequest, path: string) {
   if (setCookies.length > 0) {
     responseHeaders.delete('Set-Cookie');
     for (const cookie of setCookies) {
-      let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
-      fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
-      fixed += '; Path=/';
-      responseHeaders.append('Set-Cookie', fixed);
+      // Forward upstream cookie as-is (with Domain) so the upstream
+      // receives the challenge cookie during the callback
+      responseHeaders.append('Set-Cookie', cookie);
+
+      // Also add a domainless copy, so our middleware can use it for the
+      // verifier exchange when the upstream redirects back to our app
+      if (cookie.includes('session_challange')) {
+        const localCopy = cookie
+          .replace(/;\s*Domain\s*=[^;]+/gi, '')
+          .replace(/;\s*Path\s*=[^;]+/gi, '')
+          + '; Path=/';
+        responseHeaders.append('Set-Cookie', localCopy);
+      }
     }
   }
 
