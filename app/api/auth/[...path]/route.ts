@@ -5,7 +5,7 @@ const builtin = auth.handler();
 
 async function forwardToNeon(request: NextRequest, path: string) {
   const baseUrl = process.env.NEON_AUTH_BASE_URL!;
-  const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
+  const upstreamUrl = `${baseUrl}/auth/${path}${new URL(request.url).search}`;
 
   const headers = new Headers();
   const forwardHeaders = ['user-agent', 'authorization', 'referer', 'content-type'];
@@ -22,11 +22,19 @@ async function forwardToNeon(request: NextRequest, path: string) {
   if (neonCookies) headers.set('cookie', neonCookies);
   headers.set('origin', new URL(request.url).origin);
 
-  const upstream = await fetch(upstreamUrl, {
-    method: 'GET',
-    redirect: 'manual',
-    headers,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers,
+    });
+  } catch {
+    return new Response(
+      JSON.stringify({ error: 'Failed to reach auth server' }),
+      { status: 502, headers: { 'content-type': 'application/json' } },
+    );
+  }
 
   const responseHeaders = new Headers(upstream.headers);
 
