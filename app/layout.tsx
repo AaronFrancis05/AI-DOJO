@@ -13,15 +13,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI DOJO — JapaGanda",
-  description: "A fast, practical virtual simulation arena training Ugandan software engineers for Japanese offshore development, business communication, and technical collaboration.",
+  title: "AI DOJO — Japanese Role-Play Training",
+  description: "A practical virtual simulation arena for Ugandan learners to practice Japanese through realistic AI role-play: office scenarios, social situations, and daily-life interactions.",
   keywords: [
     "AI Dojo",
-    "Japanese for Engineers",
-    "Offshore IT Japan",
-    "Japan Connect",
-    "Victoria Frontier"
-  ],}
+    "Japanese Language",
+    "Role-Play",
+    "Uganda Japan",
+    "Language Learning"
+  ],
+}
 
 export default function RootLayout({
   children,

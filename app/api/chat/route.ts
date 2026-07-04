@@ -1,163 +1,199 @@
 import { db } from '../../../src/db';
-import { conversations, evaluations, scenarios, scenarioGoals, goalCompletions } from '../../../src/schema';
+import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { getAuthUser } from '../../../lib/auth/server';
 
 const SAFETY_CAP_TURN = 10;
 
 export async function POST(req: Request) {
-    try {
-        const user = await getAuthUser();
-        if (!user) {
-            return Response.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        // 1. Unpack body safely
-        const body = await req.json();
-        const { scenarioId, userRawInputJp, currentTurnNo } = body;
-
-        // Validation Guardrails
-        if (!scenarioId || !userRawInputJp || !currentTurnNo) {
-            return Response.json(
-                { error: 'Missing required parameters in request body' },
-                { status: 400 }
-            );
-        }
-
-        const uid = user.id;
-        const numericScenarioId = Number(scenarioId);
-        const numericTurnNo = Number(currentTurnNo);
-
-        if (isNaN(numericScenarioId) || isNaN(numericTurnNo)) {
-            return Response.json(
-                { error: 'Non-numeric field in scenarioId or currentTurnNo' },
-                { status: 400 }
-            );
-        }
-
-        // 2. Fetch static reference context parameters from database seed
-        const [scenario] = await db
-            .select()
-            .from(scenarios)
-            .where(eq(scenarios.id, numericScenarioId));
-
-        if (!scenario) {
-            return Response.json(
-                { error: `Scenario configuration ID ${scenarioId} not found` },
-                { status: 404 }
-            );
-        }
-
-        // 3. Fetch structured goals for this scenario
-        const goals = await db
-            .select()
-            .from(scenarioGoals)
-            .where(eq(scenarioGoals.scenarioId, numericScenarioId))
-            .orderBy(scenarioGoals.sequenceOrder);
-
-        // 4. Fetch already-completed goal sequence orders for this user+scenario
-        const existingCompletions = await db
-            .select({ seqOrder: scenarioGoals.sequenceOrder })
-            .from(goalCompletions)
-            .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
-            .where(
-                and(
-                    eq(goalCompletions.userId, uid),
-                    eq(scenarioGoals.scenarioId, numericScenarioId)
-                )
-            );
-
-        const completedSequenceOrders = existingCompletions.map(c => c.seqOrder);
-
-        // 5. Call the goal-aware ML pipeline
-        const mlPipelineOutput = await analyzeAndGenerateTurn(
-            userRawInputJp,
-            numericTurnNo,
-            scenario,
-            goals,
-            completedSequenceOrders
-        );
-
-        // 6. Persist the dynamic user conversation turn and capture its ID
-        const [userConversation] = await db.insert(conversations).values({
-            sessionId: numericScenarioId,
-            userId: uid,
-            turnNo: numericTurnNo,
-            speaker: 'user',
-            messageJp: userRawInputJp,
-            messageRomaji: mlPipelineOutput.messageRomaji,
-            messageEn: mlPipelineOutput.messageEn
-        }).returning({ id: conversations.id });
-
-        // 7. Persist the AI character's fluid response (including per-turn teaching note)
-        await db.insert(conversations).values({
-            sessionId: numericScenarioId,
-            userId: uid,
-            turnNo: numericTurnNo,
-            speaker: 'ai',
-            messageJp: mlPipelineOutput.nextAiReply?.japanese || '分かりました。',
-            messageRomaji: mlPipelineOutput.nextAiReply?.romaji || 'Wakarimashita.',
-            messageEn: mlPipelineOutput.nextAiReply?.english || 'I understand.'
-        });
-
-        // 8. Record goal completions for this turn (idempotent: skip already-completed + dedupe within turn)
-        if (mlPipelineOutput.goalsAddressedThisTurn?.length > 0) {
-            const goalsMap = new Map(goals.map(g => [g.sequenceOrder, g.id]));
-            const seen = new Set<number>();
-            const completionRows = mlPipelineOutput.goalsAddressedThisTurn
-                .filter(seqOrder => goalsMap.has(seqOrder))
-                .filter(seqOrder => !completedSequenceOrders.includes(seqOrder))
-                .filter(seqOrder => {
-                    if (seen.has(seqOrder)) return false;
-                    seen.add(seqOrder);
-                    return true;
-                })
-                .map(seqOrder => ({
-                    sessionId: numericScenarioId,
-                    conversationId: userConversation.id,
-                    scenarioGoalId: goalsMap.get(seqOrder)!,
-                    userId: uid,
-                    achieved: true,
-                    evidenceNote: `Addressed in turn ${numericTurnNo}: "${userRawInputJp.substring(0, 80)}"`
-                }));
-            if (completionRows.length > 0) {
-                await db.insert(goalCompletions).values(completionRows);
-            }
-        }
-
-        // 9. Determine if conversation is complete
-        const shouldComplete = mlPipelineOutput.scenarioComplete || numericTurnNo >= SAFETY_CAP_TURN;
-
-        if (shouldComplete) {
-            await db.insert(evaluations).values({
-                userId: uid,
-                sessionId: numericScenarioId,
-                vocabularyScore: mlPipelineOutput.scores.vocabulary,
-                grammarScore: mlPipelineOutput.scores.grammar,
-                fluencyScore: mlPipelineOutput.scores.fluency,
-                culturalScore: mlPipelineOutput.scores.cultural,
-                taskScore: mlPipelineOutput.scores.task,
-                feedback: mlPipelineOutput.feedback
-            });
-        }
-
-        // 10. Return the complete response (reflect the server's final completion decision)
-        return Response.json({
-            success: true,
-            analysis: {
-                ...mlPipelineOutput,
-                scenarioComplete: shouldComplete,
-                scenarioUserRole: scenario.userCharacterRole,
-                scenarioUserName: scenario.userCharacterName
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Crash detected in active conversation API pipeline:', error);
-        return Response.json(
-            { error: 'Internal pipeline processing transaction failure' },
-            { status: 500 }
-        );
+  try {
+    const user = await getAuthUser();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const body = await req.json();
+    const { sessionId, userRawInputJp } = body;
+
+    if (!sessionId || !userRawInputJp) {
+      return Response.json({ error: 'sessionId and userRawInputJp are required' }, { status: 400 });
+    }
+
+    const numericSessionId = Number(sessionId);
+    if (isNaN(numericSessionId)) {
+      return Response.json({ error: 'Invalid sessionId' }, { status: 400 });
+    }
+
+    const [session] = await db.select().from(sessions).where(eq(sessions.id, numericSessionId));
+    if (!session) {
+      return Response.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    if (session.userId !== user.id) {
+      return Response.json({ error: 'Forbidden - this session does not belong to you' }, { status: 403 });
+    }
+
+    if (session.status !== 'active') {
+      return Response.json({ error: 'Session is already completed' }, { status: 400 });
+    }
+
+    const { scenarioId } = session;
+
+    const [currentScenario] = await db
+      .select()
+      .from(scenarios)
+      .where(eq(scenarios.id, scenarioId));
+
+    if (!currentScenario) {
+      return Response.json({ error: 'Scenario not found' }, { status: 404 });
+    }
+
+    const goals = await db
+      .select()
+      .from(scenarioGoals)
+      .where(eq(scenarioGoals.scenarioId, scenarioId))
+      .orderBy(asc(scenarioGoals.sequenceOrder));
+
+    const existingCompletions = await db
+      .select({ seqOrder: scenarioGoals.sequenceOrder })
+      .from(goalCompletions)
+      .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
+      .where(and(eq(goalCompletions.sessionId, numericSessionId), eq(scenarioGoals.scenarioId, scenarioId)));
+
+    const completedSequenceOrders = existingCompletions.map(c => c.seqOrder);
+
+    const conversationRows = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.sessionId, numericSessionId))
+      .orderBy(asc(conversations.turnNo));
+
+    const currentTurnNo = conversationRows.length > 0
+      ? Math.max(...conversationRows.map(c => c.turnNo)) + 1
+      : 1;
+
+    const conversationHistory = conversationRows.map(row => ({
+      role: row.speaker === 'ai' ? 'model' as const : 'user' as const,
+      parts: [{ text: row.messageJp }]
+    }));
+
+    const mlPipelineOutput = await analyzeAndGenerateTurn(
+      userRawInputJp,
+      currentTurnNo,
+      currentScenario,
+      goals,
+      completedSequenceOrders,
+      conversationHistory
+    );
+
+    const [userConversation] = await db.insert(conversations).values({
+      sessionId: numericSessionId,
+      turnNo: currentTurnNo,
+      speaker: 'user',
+      messageJp: userRawInputJp,
+      messageRomaji: mlPipelineOutput.messageRomaji,
+      messageEn: mlPipelineOutput.messageEn,
+      emotionTone: mlPipelineOutput.emotionTone ?? null,
+      gestureHint: mlPipelineOutput.gestureHint ?? null,
+      isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
+      isValidInContext: mlPipelineOutput.isValidInContext,
+    }).returning({ id: conversations.id });
+
+    if (mlPipelineOutput.corrections && mlPipelineOutput.corrections.length > 0) {
+      await db.insert(corrections).values(
+        mlPipelineOutput.corrections.map(c => ({
+          conversationId: userConversation.id,
+          correctionType: c.correctionType,
+          originalText: c.originalText,
+          correctedText: c.correctedText,
+          explanation: c.explanation,
+          severity: c.severity,
+        }))
+      );
+    }
+
+    await db.insert(conversations).values({
+      sessionId: numericSessionId,
+      turnNo: currentTurnNo,
+      speaker: 'ai',
+      messageJp: mlPipelineOutput.nextAiReply.japanese || '分かりました。',
+      messageRomaji: mlPipelineOutput.nextAiReply.romaji || 'Wakarimashita.',
+      messageEn: mlPipelineOutput.nextAiReply.english || 'I understand.',
+      emotionTone: mlPipelineOutput.nextAiReply.emotionTone ?? null,
+      gestureHint: mlPipelineOutput.nextAiReply.gestureHint ?? null,
+      isValidInContext: true,
+    });
+
+    if (mlPipelineOutput.goalsAddressedThisTurn?.length > 0) {
+      const goalsMap = new Map(goals.map(g => [g.sequenceOrder, g.id]));
+      const seen = new Set<number>();
+      const completionRows = mlPipelineOutput.goalsAddressedThisTurn
+        .filter(seqOrder => goalsMap.has(seqOrder))
+        .filter(seqOrder => !completedSequenceOrders.includes(seqOrder))
+        .filter(seqOrder => {
+          if (seen.has(seqOrder)) return false;
+          seen.add(seqOrder);
+          return true;
+        })
+        .map(seqOrder => ({
+          sessionId: numericSessionId,
+          conversationId: userConversation.id,
+          scenarioGoalId: goalsMap.get(seqOrder)!,
+          achieved: true,
+          evidenceNote: `Addressed in turn ${currentTurnNo}: "${userRawInputJp.substring(0, 80)}"`
+        }));
+      if (completionRows.length > 0) {
+        await db.insert(goalCompletions).values(completionRows);
+      }
+    }
+
+    const shouldComplete = mlPipelineOutput.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN;
+
+    if (shouldComplete) {
+      await db.update(sessions).set({
+        status: 'completed',
+        totalTurns: currentTurnNo,
+        vocabularyScore: mlPipelineOutput.scores.vocabulary,
+        grammarScore: mlPipelineOutput.scores.grammar,
+        fluencyScore: mlPipelineOutput.scores.fluency,
+        culturalScore: mlPipelineOutput.scores.cultural,
+        taskScore: mlPipelineOutput.scores.task,
+        feedback: mlPipelineOutput.feedback,
+        completedAt: new Date(),
+      }).where(eq(sessions.id, numericSessionId));
+
+      await db.insert(evaluations).values({
+        sessionId: numericSessionId,
+        vocabularyScore: mlPipelineOutput.scores.vocabulary,
+        grammarScore: mlPipelineOutput.scores.grammar,
+        fluencyScore: mlPipelineOutput.scores.fluency,
+        culturalScore: mlPipelineOutput.scores.cultural,
+        taskScore: mlPipelineOutput.scores.task,
+        feedback: mlPipelineOutput.feedback,
+      });
+    } else {
+      await db.update(sessions).set({
+        totalTurns: currentTurnNo,
+      }).where(eq(sessions.id, numericSessionId));
+    }
+
+    return Response.json({
+      success: true,
+      analysis: {
+        ...mlPipelineOutput,
+        scenarioComplete: shouldComplete,
+        scenarioUserRole: currentScenario.userCharacterRole,
+        scenarioUserName: currentScenario.userCharacterName,
+        aiCharacterName: currentScenario.aiCharacterName,
+      }
+    });
+
+  } catch (error) {
+    console.error('Chat API error:', error);
+    return Response.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }

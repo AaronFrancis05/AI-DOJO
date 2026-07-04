@@ -5,6 +5,7 @@ async function runTest() {
 
     // Created a mock scenario object matching the new signature requirements
     const mockScenario = {
+        id: 1,
         context: 'At a cafe ordering coffee.',
         learningGoals: 'Practice ordering a hot latte using polite language.',
         aiCharacterName: 'Mori',

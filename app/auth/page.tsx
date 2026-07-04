@@ -30,9 +30,6 @@ export default function AuthPage() {
             email,
             password,
             name,
-            // If your Neon Auth user schema has a custom field for this,
-            // pass it as additional data here per Neon's "additional
-            // fields" docs — signUp.email only guarantees email/password/name.
           });
 
       if (authError) {
@@ -40,9 +37,6 @@ export default function AuthPage() {
         return;
       }
 
-      // TODO: if you keep a `consentToDataSharing` flag, persist it here
-      // via a server action / API call now that the user exists, since
-      // Neon Auth's signUp doesn't know about your app-specific fields.
       void consent;
 
       router.push('/');

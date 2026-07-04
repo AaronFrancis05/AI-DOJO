@@ -1,34 +1,49 @@
 import { db } from '../../../../src/db';
-import { scenarios } from '../../../../src/schema';
-import { eq } from 'drizzle-orm';
+import { scenarios, vocabulary, scenarioGoals } from '../../../../src/schema';
+import { eq, asc } from 'drizzle-orm';
 
-// Note: Ensure the function type maps params as a Promise wrapper matching Next.js specifications
 export async function GET(
-    req: Request,
-    { params }: { params: Promise<{ id: string }> }
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-    try {
-        // 1. Explicitly await the asynchronous params object to unwrap the route ID safely
-        const resolvedParams = await params;
-        const id = resolvedParams.id;
+  try {
+    const { id } = await params;
+    const numericId = Number(id);
 
-        if (!id || isNaN(Number(id))) {
-            return Response.json({ success: false, error: 'Invalid or missing Scenario ID' }, { status: 400 });
-        }
-
-        // 2. Execute database lookup against the safely extracted integer
-        const [scenario] = await db
-            .select()
-            .from(scenarios)
-            .where(eq(scenarios.id, Number(id)));
-
-        if (!scenario) {
-            return Response.json({ success: false, error: 'Scenario variant missing' }, { status: 404 });
-        }
-
-        return Response.json({ success: true, scenario });
-    } catch (error) {
-        console.error("❌ Failed handling single scenario GET track:", error);
-        return Response.json({ success: false, error: 'Internal fetch break' }, { status: 500 });
+    if (!id || isNaN(numericId)) {
+      return Response.json({ success: false, error: 'Invalid or missing Scenario ID' }, { status: 400 });
     }
+
+    const [scenario] = await db
+      .select()
+      .from(scenarios)
+      .where(eq(scenarios.id, numericId));
+
+    if (!scenario) {
+      return Response.json({ success: false, error: 'Scenario not found' }, { status: 404 });
+    }
+
+    const vocabItems = await db
+      .select()
+      .from(vocabulary)
+      .where(eq(vocabulary.scenarioId, numericId));
+
+    const goals = await db
+      .select()
+      .from(scenarioGoals)
+      .where(eq(scenarioGoals.scenarioId, numericId))
+      .orderBy(asc(scenarioGoals.sequenceOrder));
+
+    return Response.json({
+      success: true,
+      scenario: {
+        ...scenario,
+        vocabulary: vocabItems,
+        goals,
+      }
+    });
+  } catch (error) {
+    console.error("Failed fetching scenario:", error);
+    return Response.json({ success: false, error: 'Internal server error' }, { status: 500 });
+  }
 }

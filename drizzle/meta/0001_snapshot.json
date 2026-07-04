@@ -1,6 +1,6 @@
 {
-  "id": "d193f4b9-d3ab-4d4a-bea8-53bea111808a",
-  "prevId": "8994bce9-1180-4904-8f56-9757713b546c",
+  "id": "fbe8661f-324b-43a6-8546-49541a1cd492",
+  "prevId": "f4b03523-09d1-4c63-a672-90b76c61f631",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14,17 +14,11 @@
           "primaryKey": true,
           "notNull": true
         },
-        "scenario_id": {
-          "name": "scenario_id",
+        "session_id": {
+          "name": "session_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "turn_no": {
           "name": "turn_no",
@@ -56,11 +50,31 @@
           "primaryKey": false,
           "notNull": true
         },
-        "notes": {
-          "name": "notes",
-          "type": "text",
+        "emotion_tone": {
+          "name": "emotion_tone",
+          "type": "varchar(40)",
           "primaryKey": false,
           "notNull": false
+        },
+        "gesture_hint": {
+          "name": "gesture_hint",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_english_when_expected": {
+          "name": "is_english_when_expected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_valid_in_context": {
+          "name": "is_valid_in_context",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -72,30 +86,94 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "conversations_scenario_id_scenarios_id_fk": {
-          "name": "conversations_scenario_id_scenarios_id_fk",
+        "conversations_session_id_sessions_id_fk": {
+          "name": "conversations_session_id_sessions_id_fk",
           "tableFrom": "conversations",
-          "tableTo": "scenarios",
+          "tableTo": "sessions",
           "columnsFrom": [
-            "scenario_id"
+            "session_id"
           ],
           "columnsTo": [
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.corrections": {
+      "name": "corrections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
         },
-        "conversations_user_id_users_id_fk": {
-          "name": "conversations_user_id_users_id_fk",
-          "tableFrom": "conversations",
-          "tableTo": "users",
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correction_type": {
+          "name": "correction_type",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_text": {
+          "name": "original_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "corrected_text": {
+          "name": "corrected_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "explanation": {
+          "name": "explanation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'minor'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "corrections_conversation_id_conversations_id_fk": {
+          "name": "corrections_conversation_id_conversations_id_fk",
+          "tableFrom": "corrections",
+          "tableTo": "conversations",
           "columnsFrom": [
-            "user_id"
+            "conversation_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -115,17 +193,11 @@
           "primaryKey": true,
           "notNull": true
         },
-        "user_id": {
-          "name": "user_id",
+        "session_id": {
+          "name": "session_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "scenario_id": {
-          "name": "scenario_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "vocabulary_score": {
           "name": "vocabulary_score",
@@ -178,25 +250,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "evaluations_user_id_users_id_fk": {
-          "name": "evaluations_user_id_users_id_fk",
+        "evaluations_session_id_sessions_id_fk": {
+          "name": "evaluations_session_id_sessions_id_fk",
           "tableFrom": "evaluations",
-          "tableTo": "users",
+          "tableTo": "sessions",
           "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "evaluations_scenario_id_scenarios_id_fk": {
-          "name": "evaluations_scenario_id_scenarios_id_fk",
-          "tableFrom": "evaluations",
-          "tableTo": "scenarios",
-          "columnsFrom": [
-            "scenario_id"
+            "session_id"
           ],
           "columnsTo": [
             "id"
@@ -206,7 +265,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "evaluations_session_id_unique": {
+          "name": "evaluations_session_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "session_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -221,6 +288,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "session_id": {
+          "name": "session_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "conversation_id": {
           "name": "conversation_id",
           "type": "integer",
@@ -231,13 +304,7 @@
           "name": "scenario_goal_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "achieved": {
           "name": "achieved",
@@ -262,6 +329,19 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "goal_completions_session_id_sessions_id_fk": {
+          "name": "goal_completions_session_id_sessions_id_fk",
+          "tableFrom": "goal_completions",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "goal_completions_conversation_id_conversations_id_fk": {
           "name": "goal_completions_conversation_id_conversations_id_fk",
           "tableFrom": "goal_completions",
@@ -287,19 +367,6 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "goal_completions_user_id_users_id_fk": {
-          "name": "goal_completions_user_id_users_id_fk",
-          "tableFrom": "goal_completions",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -322,7 +389,7 @@
           "name": "scenario_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "sequence_order": {
           "name": "sequence_order",
@@ -390,7 +457,7 @@
         },
         "title": {
           "name": "title",
-          "type": "varchar(100)",
+          "type": "varchar(120)",
           "primaryKey": false,
           "notNull": true
         },
@@ -413,6 +480,13 @@
           "notNull": true,
           "default": "'beginner'"
         },
+        "domain": {
+          "name": "domain",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'daily_life'"
+        },
         "ai_character_name": {
           "name": "ai_character_name",
           "type": "varchar(80)",
@@ -421,7 +495,7 @@
         },
         "ai_character_role": {
           "name": "ai_character_role",
-          "type": "varchar(120)",
+          "type": "varchar(150)",
           "primaryKey": false,
           "notNull": true
         },
@@ -433,7 +507,7 @@
         },
         "user_character_role": {
           "name": "user_character_role",
-          "type": "varchar(120)",
+          "type": "varchar(150)",
           "primaryKey": false,
           "notNull": true
         },
@@ -442,6 +516,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_at": {
           "name": "created_at",
@@ -455,6 +536,200 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sessions": {
+      "name": "sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scenario_id": {
+          "name": "scenario_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_number": {
+          "name": "session_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "total_turns": {
+          "name": "total_turns",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "vocabulary_score": {
+          "name": "vocabulary_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grammar_score": {
+          "name": "grammar_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fluency_score": {
+          "name": "fluency_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cultural_score": {
+          "name": "cultural_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "task_score": {
+          "name": "task_score",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedback": {
+          "name": "feedback",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "sessions_user_id_users_id_fk": {
+          "name": "sessions_user_id_users_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "sessions_scenario_id_scenarios_id_fk": {
+          "name": "sessions_scenario_id_scenarios_id_fk",
+          "tableFrom": "sessions",
+          "tableTo": "scenarios",
+          "columnsFrom": [
+            "scenario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.share_tokens": {
+      "name": "share_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "share_tokens_session_id_sessions_id_fk": {
+          "name": "share_tokens_session_id_sessions_id_fk",
+          "tableFrom": "share_tokens",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "share_tokens_session_id_unique": {
+          "name": "share_tokens_session_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "session_id"
+          ]
+        },
+        "share_tokens_token_unique": {
+          "name": "share_tokens_token_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -481,12 +756,25 @@
           "primaryKey": false,
           "notNull": true
         },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "level": {
           "name": "level",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true,
           "default": "'beginner'"
+        },
+        "consent_to_data_sharing": {
+          "name": "consent_to_data_sharing",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -526,7 +814,7 @@
           "name": "scenario_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "japanese": {
           "name": "japanese",
@@ -563,7 +851,7 @@
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'formal'"
+          "default": "'polite'"
         },
         "created_at": {
           "name": "created_at",
@@ -586,6 +874,96 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.vocabulary_encounters": {
+      "name": "vocabulary_encounters",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vocabulary_id": {
+          "name": "vocabulary_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "used_correctly": {
+          "name": "used_correctly",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "vocabulary_encounters_session_id_sessions_id_fk": {
+          "name": "vocabulary_encounters_session_id_sessions_id_fk",
+          "tableFrom": "vocabulary_encounters",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vocabulary_encounters_conversation_id_conversations_id_fk": {
+          "name": "vocabulary_encounters_conversation_id_conversations_id_fk",
+          "tableFrom": "vocabulary_encounters",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vocabulary_encounters_vocabulary_id_vocabulary_id_fk": {
+          "name": "vocabulary_encounters_vocabulary_id_vocabulary_id_fk",
+          "tableFrom": "vocabulary_encounters",
+          "tableTo": "vocabulary",
+          "columnsFrom": [
+            "vocabulary_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
