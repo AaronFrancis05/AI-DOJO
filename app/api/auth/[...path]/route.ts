@@ -74,77 +74,54 @@ async function proxyToUpstream(request: NextRequest, path: string) {
 }
 
 async function proxyGoogleInitRedirect(request: NextRequest) {
-  const { baseUrl } = getConfig();
+  const requestUrl = new URL(request.url);
+  const origin = requestUrl.origin;
 
-  const headers = new Headers();
-  const forwardHeaders = ['user-agent', 'authorization', 'referer', 'content-type'];
-  for (const h of forwardHeaders) {
-    const v = request.headers.get(h);
-    if (v) headers.set(h, v);
-  }
-  headers.set('origin', new URL(request.url).origin);
-  headers.set('content-type', 'application/json');
-  headers.set('x-neon-auth-middleware', 'true');
+  const cookieHeader = request.headers.get('cookie') || '';
 
-  const body = JSON.stringify({
-    provider: 'google',
-    callbackURL: '/api/auth/oauth/callback',
-    disableRedirect: false,
+  const syntheticRequest = new Request(new URL('/api/auth/sign-in/social', origin), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'origin': origin,
+      'cookie': cookieHeader,
+      'user-agent': request.headers.get('user-agent') || '',
+      'referer': request.headers.get('referer') || '',
+    },
+    body: JSON.stringify({
+      provider: 'google',
+      callbackURL: '/api/auth/oauth/callback',
+    }),
   });
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(`${baseUrl}/sign-in/social`, {
-      method: 'POST',
-      headers,
-      body,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch (err) {
-    console.error('[google-init] fetch failed', { error: String(err) });
-    return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
-  }
+  const proxyResponse = await proxyToUpstream(syntheticRequest as any, 'sign-in/social');
 
-  if (!upstream.ok) {
-    const text = await upstream.text().catch(() => '');
-    console.error('[google-init] upstream error', { status: upstream.status, body: text });
-    return NextResponse.redirect(new URL('/auth?error=init_upstream_error', request.url));
-  }
-
-  const location = upstream.headers.get('Location');
+  const location = proxyResponse.headers.get('Location');
   if (location) {
     const response = NextResponse.redirect(location);
-    const setCookies = upstream.headers.getSetCookie();
-    for (const cookie of setCookies) {
+    for (const cookie of proxyResponse.headers.getSetCookie()) {
       response.headers.append('Set-Cookie', cookie);
-      const localCopy = rewriteSetCookieForLocalDomain(cookie);
-      response.headers.append('Set-Cookie', localCopy);
     }
     return response;
   }
 
-  let bodyJson: any;
+  let body: any;
   try {
-    bodyJson = await upstream.json();
+    body = await proxyResponse.clone().json();
   } catch {
-    console.error('[google-init] upstream returned non-JSON body', { status: upstream.status });
+    console.error('[google-init] failed to parse upstream response');
     return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
   }
 
-  const url = bodyJson?.url;
+  const url = body?.url;
   if (!url) {
-    console.error('[google-init] no url in upstream JSON body', { body: bodyJson });
+    console.error('[google-init] no url in upstream JSON', { body });
     return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
   }
 
-  console.log('[google-init] using url from JSON body', { url: url.slice(0, 80) });
   const response = NextResponse.redirect(url);
-  const setCookies = upstream.headers.getSetCookie();
-  for (const cookie of setCookies) {
+  for (const cookie of proxyResponse.headers.getSetCookie()) {
     response.headers.append('Set-Cookie', cookie);
-    const localCopy = rewriteSetCookieForLocalDomain(cookie);
-    response.headers.append('Set-Cookie', localCopy);
   }
   return response;
 }

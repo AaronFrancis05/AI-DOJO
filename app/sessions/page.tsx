@@ -56,7 +56,7 @@ export default function SessionsPage() {
       if (data.success) {
         const link = `${window.location.origin}/share/${data.token}`;
         setShareState(prev => ({ ...prev, [sessionId]: link }));
-        navigator.clipboard.writeText(link);
+        navigator.clipboard.writeText(link).catch(() => {});
       }
     } catch (e) {
       console.error('Share failed:', e);
