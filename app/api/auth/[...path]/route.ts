@@ -1,11 +1,11 @@
-import { auth } from '@/lib/auth/server';
+import { auth, getConfig } from '@/lib/auth/server';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 const builtin = auth.handler();
 
-async function forwardToNeon(request: NextRequest, path: string) {
-  const baseUrl = process.env.NEON_AUTH_BASE_URL!;
+async function proxyToUpstream(request: NextRequest, path: string) {
+  const { baseUrl } = getConfig();
   const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
 
   const headers = new Headers();
@@ -14,6 +14,7 @@ async function forwardToNeon(request: NextRequest, path: string) {
     const v = request.headers.get(h);
     if (v) headers.set(h, v);
   }
+
   const cookies = request.headers.get('cookie') || '';
   const neonCookies = cookies
     .split(';')
@@ -23,16 +24,19 @@ async function forwardToNeon(request: NextRequest, path: string) {
   if (neonCookies) headers.set('cookie', neonCookies);
   headers.set('origin', new URL(request.url).origin);
 
+  const body = request.method === 'POST' ? await request.text().catch(() => undefined) : undefined;
+
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {
-      method: 'GET',
+      method: request.method,
       redirect: 'manual',
       headers,
+      body,
       signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
-    console.error('[forwardToNeon] fetch failed', { path, url: upstreamUrl, error: String(err) });
+    console.error('[proxy] fetch failed', { path, url: upstreamUrl, error: String(err) });
     return new Response(
       JSON.stringify({ error: 'Failed to reach auth server' }),
       { status: 502, headers: { 'content-type': 'application/json' } },
@@ -46,7 +50,6 @@ async function forwardToNeon(request: NextRequest, path: string) {
     responseHeaders.delete('Set-Cookie');
     for (const cookie of setCookies) {
       responseHeaders.append('Set-Cookie', cookie);
-
       const localCopy = cookie
         .replace(/;\s*Domain\s*=[^;]+/gi, '')
         .replace(/;\s*Secure\s*=/gi, '')
@@ -63,11 +66,14 @@ async function forwardToNeon(request: NextRequest, path: string) {
 }
 
 async function handleOAuthExchange(request: NextRequest) {
-  const baseUrl = process.env.NEON_AUTH_BASE_URL!;
+  const { baseUrl } = getConfig();
   const url = new URL(request.url);
 
   const verifier = url.searchParams.get('neon_auth_session_verifier');
+  console.log('[oauth] callback received', { verifier: verifier?.slice(0, 20), path: url.pathname });
+
   if (!verifier) {
+    console.log('[oauth] no verifier found, redirecting to /auth');
     return NextResponse.redirect(new URL('/auth?error=no_verifier', request.url));
   }
 
@@ -78,6 +84,7 @@ async function handleOAuthExchange(request: NextRequest) {
     const v = request.headers.get(h);
     if (v) headers.set(h, v);
   }
+
   const cookies = request.headers.get('cookie') || '';
   const neonCookies = cookies
     .split(';')
@@ -85,16 +92,19 @@ async function handleOAuthExchange(request: NextRequest) {
     .filter(c => c.startsWith('__Secure-neon-auth'))
     .join('; ');
   if (neonCookies) headers.set('cookie', neonCookies);
+  console.log('[oauth] forwarding cookies to upstream', { neonCookies: neonCookies.length > 0 });
   headers.set('origin', new URL(request.url).origin);
 
   let upstream: Response;
   try {
+    console.log('[oauth] fetching upstream', { url: upstreamUrl });
     upstream = await fetch(upstreamUrl, {
       method: 'GET',
       redirect: 'manual',
       headers,
       signal: AbortSignal.timeout(10_000),
     });
+    console.log('[oauth] upstream response', { status: upstream.status, ok: upstream.ok });
   } catch (err) {
     console.error('[oauth-exchange] fetch failed', { url: upstreamUrl, error: String(err) });
     return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
@@ -107,7 +117,9 @@ async function handleOAuthExchange(request: NextRequest) {
   }
 
   const responseHeaders = new Headers();
-  for (const cookie of upstream.headers.getSetCookie()) {
+  const setCookies = upstream.headers.getSetCookie();
+  console.log('[oauth] session cookies from upstream', { count: setCookies.length });
+  for (const cookie of setCookies) {
     const fixed = cookie
       .replace(/;\s*Domain\s*=[^;]+/gi, '')
       .replace(/;\s*SameSite\s*=[^;]+/gi, '')
@@ -127,13 +139,19 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
   }
 
   if (path === 'sign-in/social/init') {
-    return forwardToNeon(request, path);
+    return proxyToUpstream(request, path);
   }
 
   return builtin.GET!(request, { params });
 }
 
 async function handlePOST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const path = (await params).path.join('/');
+
+  if (path === 'sign-in/social') {
+    return proxyToUpstream(request, path);
+  }
+
   const response = await builtin.POST!(request, { params });
 
   if (!response.ok || response.status !== 200) return response;
