@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import NavBar from '@/components/NavBar';
 
 interface SessionRecord {
   id: number;
@@ -82,7 +83,9 @@ export default function SessionsPage() {
   if (loading) return <div style={{ textAlign: 'center', padding: '50px' }}>Loading...</div>;
 
   return (
-    <div style={{ maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+    <>
+      <NavBar />
+      <div style={{ maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
         <h1 style={{ margin: 0 }}>📋 My Sessions</h1>
         <Link href="/" style={{ textDecoration: 'none' }}>
@@ -169,5 +172,6 @@ export default function SessionsPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

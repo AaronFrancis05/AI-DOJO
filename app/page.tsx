@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import NavBar from '@/components/NavBar';
 
 interface Scenario {
   id: number;
@@ -66,7 +67,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+    <>
+      <NavBar />
+      <div style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <header style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ fontSize: '2.5rem', color: '#1a202c', marginBottom: '10px' }}>🥋 AI DOJO — Interactive Japanese Arena</h1>
         <p style={{ color: '#4a5568', fontSize: '1.1rem' }}>
@@ -121,5 +124,6 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
