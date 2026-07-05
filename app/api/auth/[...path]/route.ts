@@ -6,13 +6,15 @@ const builtin = auth.handler();
 
 function rewriteSetCookieForLocalDomain(cookie: string): string {
   const needsSecure = /__Secure-/.test(cookie);
+  const isChallengeCookie = cookie.includes('session_challange');
   let cleaned = cookie
     .replace(/;\s*Domain\s*=[^;]+/gi, '')
     .replace(/;\s*SameSite\s*=[^;]+/gi, '');
   if (!needsSecure) {
     cleaned = cleaned.replace(/;\s*Secure/gi, '');
   }
-  return cleaned + '; SameSite=Lax; Path=/';
+  const sameSite = isChallengeCookie ? 'None' : 'Lax';
+  return cleaned + `; SameSite=${sameSite}; Path=/`;
 }
 
 async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
