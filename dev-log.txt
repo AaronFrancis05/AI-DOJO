@@ -31,7 +31,7 @@
  GET /auth 200 in 879ms (next.js: 209ms, application-code: 670ms)
  GET /api/auth/get-session 200 in 3.6s (next.js: 2.6s, application-code: 964ms)
  POST /api/auth/sign-in/social 200 in 406ms (next.js: 38ms, application-code: 367ms)
- GET /api/auth/oauth/callback?neon_auth_session_verifier=VQd7BaTssTQ8wm0U 404 in 1164ms (next.js: 81ms, application-code: 1084ms)
+ GET /api/auth/oauth/callback?neon_auth_session_verifier=REDACTED 404 in 1164ms (next.js: 81ms, application-code: 1084ms)
  POST /api/auth/sign-in/email 200 in 2.6s (next.js: 94ms, application-code: 2.5s)
  GET / 200 in 53ms (next.js: 10ms, application-code: 43ms)
  GET / 200 in 103ms (next.js: 29ms, application-code: 74ms)

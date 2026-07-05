@@ -32,6 +32,7 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
     .filter(c => c.startsWith('__Secure-neon-auth'))
     .join('; ');
   if (neonCookies) headers.set('cookie', neonCookies);
+  headers.set('x-neon-auth-middleware', 'true');
 
   let upstream: Response;
   try {
@@ -43,6 +44,12 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
     });
   } catch (err) {
     console.error('[oauth-init] fetch failed', { url: upstreamUrl, error: String(err) });
+    return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
+  }
+
+  if (upstream.status >= 400) {
+    const text = await upstream.text().catch(() => '');
+    console.error('[oauth-init] upstream error', { status: upstream.status, bodyPreview: text.slice(0, 100) });
     return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
   }
 
@@ -64,7 +71,7 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
   });
 }
 
-async function proxyToUpstream(request: NextRequest, path: string) {
+async function proxyToUpstream(request: NextRequest, path: string, options?: { redirect?: 'follow' | 'error' | 'manual' }) {
   const { baseUrl } = getConfig();
   const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
 
@@ -93,6 +100,7 @@ async function proxyToUpstream(request: NextRequest, path: string) {
       method: request.method,
       headers,
       body,
+      redirect: options?.redirect,
       signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {
@@ -105,7 +113,7 @@ async function proxyToUpstream(request: NextRequest, path: string) {
 
   if (upstream.status >= 400 && upstream.status < 600) {
     const text = await upstream.text().catch(() => '');
-    console.error('[proxy] upstream error', { status: upstream.status, path, body: text });
+    console.error('[proxy] upstream error', { status: upstream.status, path, bodyPreview: text.slice(0, 100) });
     return new Response(
       JSON.stringify({ error: 'Auth server error' }),
       { status: upstream.status, headers: { 'content-type': 'application/json' } },
@@ -152,7 +160,7 @@ async function proxyGoogleInitRedirect(request: NextRequest) {
     }),
   });
 
-  const proxyResponse = await proxyToUpstream(syntheticRequest as any, 'sign-in/social');
+  const proxyResponse = await proxyToUpstream(syntheticRequest as any, 'sign-in/social', { redirect: 'manual' });
 
   const location = proxyResponse.headers.get('Location');
   if (location) {
@@ -216,6 +224,7 @@ async function handleOAuthExchange(request: NextRequest) {
   headers.set('origin', new URL(request.url).origin);
 
   let upstream: Response;
+  let bodyText = '';
   try {
     console.log('[oauth] fetching upstream', { url: upstreamUrl });
     upstream = await fetch(upstreamUrl, {
@@ -223,12 +232,12 @@ async function handleOAuthExchange(request: NextRequest) {
       headers,
       signal: AbortSignal.timeout(10_000),
     });
-    const bodyText = await upstream.text().catch(() => '');
+    bodyText = await upstream.text().catch(() => '');
     console.log('[oauth] upstream response', {
       status: upstream.status,
       ok: upstream.ok,
       contentType: upstream.headers.get('content-type'),
-      bodyPreview: bodyText.slice(0, 300),
+      bodyPreview: bodyText.slice(0, 100),
       location: upstream.headers.get('location'),
     });
   } catch (err) {
@@ -236,14 +245,19 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
   }
 
-  if (upstream.status >= 400) {
-    const text = await upstream.text().catch(() => '');
-    console.error('[oauth-exchange] upstream error', { status: upstream.status, statusText: upstream.statusText, body: text });
+  const setCookies = upstream.headers.getSetCookie();
+
+  if (upstream.status >= 400 || upstream.redirected || setCookies.length === 0) {
+    console.error('[oauth-exchange] exchange failed or invalid session', {
+      status: upstream.status,
+      redirected: upstream.redirected,
+      cookieCount: setCookies.length,
+      bodyPreview: bodyText.slice(0, 100),
+    });
     return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
   }
 
   const responseHeaders = new Headers();
-  const setCookies = upstream.headers.getSetCookie();
   console.log('[oauth] session cookies from upstream', { count: setCookies.length });
   for (const cookie of setCookies) {
     const fixed = rewriteSetCookieForLocalDomain(cookie);
