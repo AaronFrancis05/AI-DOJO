@@ -15,6 +15,55 @@ function rewriteSetCookieForLocalDomain(cookie: string): string {
   return cleaned + '; SameSite=Lax; Path=/';
 }
 
+async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
+  const { baseUrl } = getConfig();
+  const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
+
+  const headers = new Headers();
+  for (const h of ['user-agent', 'referer']) {
+    const v = request.headers.get(h);
+    if (v) headers.set(h, v);
+  }
+
+  const cookies = request.headers.get('cookie') || '';
+  const neonCookies = cookies
+    .split(';')
+    .map(c => c.trim())
+    .filter(c => c.startsWith('__Secure-neon-auth'))
+    .join('; ');
+  if (neonCookies) headers.set('cookie', neonCookies);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    console.error('[oauth-init] fetch failed', { url: upstreamUrl, error: String(err) });
+    return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
+  }
+
+  const responseHeaders = new Headers(upstream.headers);
+
+  const setCookies = responseHeaders.getSetCookie();
+  if (setCookies.length > 0) {
+    responseHeaders.delete('Set-Cookie');
+    for (const cookie of setCookies) {
+      responseHeaders.append('Set-Cookie', cookie);
+      responseHeaders.append('Set-Cookie', rewriteSetCookieForLocalDomain(cookie));
+    }
+  }
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: responseHeaders,
+  });
+}
+
 async function proxyToUpstream(request: NextRequest, path: string) {
   const { baseUrl } = getConfig();
   const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
@@ -42,7 +91,6 @@ async function proxyToUpstream(request: NextRequest, path: string) {
   try {
     upstream = await fetch(upstreamUrl, {
       method: request.method,
-      redirect: 'manual',
       headers,
       body,
       signal: AbortSignal.timeout(10_000),
@@ -52,6 +100,15 @@ async function proxyToUpstream(request: NextRequest, path: string) {
     return new Response(
       JSON.stringify({ error: 'Failed to reach auth server' }),
       { status: 502, headers: { 'content-type': 'application/json' } },
+    );
+  }
+
+  if (upstream.status >= 400 && upstream.status < 600) {
+    const text = await upstream.text().catch(() => '');
+    console.error('[proxy] upstream error', { status: upstream.status, path, body: text });
+    return new Response(
+      JSON.stringify({ error: 'Auth server error' }),
+      { status: upstream.status, headers: { 'content-type': 'application/json' } },
     );
   }
 
@@ -166,13 +223,20 @@ async function handleOAuthExchange(request: NextRequest) {
       headers,
       signal: AbortSignal.timeout(10_000),
     });
-    console.log('[oauth] upstream response', { status: upstream.status, ok: upstream.ok });
+    const bodyText = await upstream.text().catch(() => '');
+    console.log('[oauth] upstream response', {
+      status: upstream.status,
+      ok: upstream.ok,
+      contentType: upstream.headers.get('content-type'),
+      bodyPreview: bodyText.slice(0, 300),
+      location: upstream.headers.get('location'),
+    });
   } catch (err) {
     console.error('[oauth-exchange] fetch failed', { url: upstreamUrl, error: String(err) });
     return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
   }
 
-  if (!upstream.ok) {
+  if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');
     console.error('[oauth-exchange] upstream error', { status: upstream.status, statusText: upstream.statusText, body: text });
     return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
@@ -198,7 +262,7 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
   }
 
   if (path === 'sign-in/social/init') {
-    return proxyToUpstream(request, path);
+    return proxyOAuthInitRedirect(request, path);
   }
 
   if (path === 'google/init') {

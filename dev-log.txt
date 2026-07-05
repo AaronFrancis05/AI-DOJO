@@ -1,0 +1,62 @@
+
+> ai_dojo@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.9 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.19.16.1:3000
+- Environments: .env
+✓ Ready in 1699ms
+
+ GET / 200 in 1434ms (next.js: 730ms, application-code: 705ms)
+ GET /api/scenarios 200 in 3.2s (next.js: 419ms, application-code: 2.8s)
+ GET / 200 in 144ms (next.js: 21ms, application-code: 124ms)
+ GET /api/scenarios 200 in 583ms (next.js: 19ms, application-code: 564ms)
+ GET / 200 in 170ms (next.js: 17ms, application-code: 154ms)
+ GET /api/scenarios 200 in 1720ms (next.js: 10ms, application-code: 1710ms)
+ POST /api/sessions 401 in 5.0s (next.js: 3.4s, application-code: 1671ms)
+○ Compiling /chat/[id] ...
+ GET /chat/42 200 in 6.5s (next.js: 6.2s, application-code: 342ms)
+ GET /api/scenario/42 200 in 7.0s (next.js: 2.9s, application-code: 4.1s)
+ GET /api/scenario/42 200 in 875ms (next.js: 59ms, application-code: 816ms)
+ GET /api/sessions?scenarioId=42&status=active 401 in 1563ms (next.js: 107ms, application-code: 1456ms)
+ POST /api/sessions 401 in 391ms (next.js: 4ms, application-code: 386ms)
+ GET /chat/42 200 in 415ms (next.js: 83ms, application-code: 332ms)
+ GET /api/scenario/42 200 in 2.3s (next.js: 70ms, application-code: 2.2s)
+ GET /api/sessions?scenarioId=42&status=active 401 in 851ms (next.js: 4ms, application-code: 846ms)
+ POST /api/sessions 401 in 395ms (next.js: 4ms, application-code: 391ms)
+ GET / 200 in 49ms (next.js: 10ms, application-code: 39ms)
+ GET /api/scenarios 200 in 1665ms (next.js: 13ms, application-code: 1652ms)
+ GET /api/scenarios 200 in 312ms (next.js: 5ms, application-code: 307ms)
+ GET /auth 200 in 879ms (next.js: 209ms, application-code: 670ms)
+ GET /api/auth/get-session 200 in 3.6s (next.js: 2.6s, application-code: 964ms)
+ POST /api/auth/sign-in/social 200 in 406ms (next.js: 38ms, application-code: 367ms)
+ GET /api/auth/oauth/callback?neon_auth_session_verifier=VQd7BaTssTQ8wm0U 404 in 1164ms (next.js: 81ms, application-code: 1084ms)
+ POST /api/auth/sign-in/email 200 in 2.6s (next.js: 94ms, application-code: 2.5s)
+ GET / 200 in 53ms (next.js: 10ms, application-code: 43ms)
+ GET / 200 in 103ms (next.js: 29ms, application-code: 74ms)
+ GET /api/scenarios 200 in 5.0s (next.js: 18ms, application-code: 5.0s)
+ GET /api/scenarios 200 in 297ms (next.js: 6ms, application-code: 292ms)
+ POST /api/sessions 201 in 1953ms (next.js: 4ms, application-code: 1949ms)
+ GET /chat/42?sessionId=19 200 in 149ms (next.js: 64ms, application-code: 85ms)
+ GET /api/scenario/42 200 in 861ms (next.js: 43ms, application-code: 818ms)
+ GET /api/scenario/42 200 in 890ms (next.js: 15ms, application-code: 875ms)
+ GET /api/sessions?scenarioId=42&status=active 200 in 294ms (next.js: 7ms, application-code: 286ms)
+ GET /api/scenario/42 200 in 919ms (next.js: 58ms, application-code: 862ms)
+ GET /api/sessions/19 200 in 4.6s (next.js: 3.4s, application-code: 1181ms)
+ GET /api/sessions/19 200 in 1365ms (next.js: 124ms, application-code: 1241ms)
+○ Compiling /api/chat ...
+Chat API error: Error [ApiError]: {"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}
+    at async analyzeAndGenerateTurn (lib\ai-engine.ts:172:20)
+    at async POST (app\api\chat\route.ts:81:30)
+  170 |   ];
+  171 |
+> 172 |   const response = await ai.models.generateContent({
+      |                    ^
+  173 |     model: 'gemini-2.5-flash',
+  174 |     contents,
+  175 |     config: { {
+  status: 503
+}
+ POST /api/chat 500 in 12.7s (next.js: 4.5s, application-code: 8.2s)
+[?25h
