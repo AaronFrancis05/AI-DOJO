@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth/server';
 import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const builtin = auth.handler();
 
@@ -44,10 +45,13 @@ async function forwardToNeon(request: NextRequest, path: string) {
   if (setCookies.length > 0) {
     responseHeaders.delete('Set-Cookie');
     for (const cookie of setCookies) {
-      let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
-      fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
-      fixed += '; Path=/';
-      responseHeaders.append('Set-Cookie', fixed);
+      responseHeaders.append('Set-Cookie', cookie);
+
+      const localCopy = cookie
+        .replace(/;\s*Domain\s*=[^;]+/gi, '')
+        .replace(/;\s*Secure\s*=/gi, '')
+        + '; Path=/';
+      responseHeaders.append('Set-Cookie', localCopy);
     }
   }
 
@@ -58,8 +62,80 @@ async function forwardToNeon(request: NextRequest, path: string) {
   });
 }
 
+async function handleOAuthExchange(request: NextRequest) {
+  const baseUrl = process.env.NEON_AUTH_BASE_URL!;
+  const url = new URL(request.url);
+
+  const verifier = url.searchParams.get('neon_auth_session_verifier');
+  if (!verifier) {
+    return NextResponse.redirect(new URL('/auth?error=no_verifier', request.url));
+  }
+
+  const upstreamUrl = `${baseUrl}/get-session${url.search}`;
+
+  const headers = new Headers();
+  for (const h of ['user-agent', 'content-type', 'origin']) {
+    const v = request.headers.get(h);
+    if (v) headers.set(h, v);
+  }
+  const cookies = request.headers.get('cookie') || '';
+  const neonCookies = cookies
+    .split(';')
+    .map(c => c.trim())
+    .filter(c => c.startsWith('__Secure-neon-auth'))
+    .join('; ');
+  if (neonCookies) headers.set('cookie', neonCookies);
+  headers.set('origin', new URL(request.url).origin);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    console.error('[oauth-exchange] fetch failed', { url: upstreamUrl, error: String(err) });
+    return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
+  }
+
+  if (!upstream.ok) {
+    const text = await upstream.text().catch(() => '');
+    console.error('[oauth-exchange] upstream error', { status: upstream.status, statusText: upstream.statusText, body: text });
+    return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
+  }
+
+  const responseHeaders = new Headers();
+  for (const cookie of upstream.headers.getSetCookie()) {
+    const fixed = cookie
+      .replace(/;\s*Domain\s*=[^;]+/gi, '')
+      .replace(/;\s*SameSite\s*=[^;]+/gi, '')
+      + '; SameSite=Lax';
+    responseHeaders.append('Set-Cookie', fixed);
+  }
+  responseHeaders.set('Location', '/');
+
+  return new Response(null, { status: 302, headers: responseHeaders });
+}
+
+async function handleGET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const path = (await params).path.join('/');
+
+  if (path === 'oauth/callback') {
+    return handleOAuthExchange(request);
+  }
+
+  if (path === 'sign-in/social/init') {
+    return forwardToNeon(request, path);
+  }
+
+  return builtin.GET!(request, { params });
+}
+
 async function handlePOST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const response = await builtin.POST!(request, { params });
+
   if (!response.ok || response.status !== 200) return response;
 
   const cloned = response.clone();
@@ -73,7 +149,6 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
   const oauthUrl = body?.url;
   if (!oauthUrl) return response;
 
-  // Replace Neon Auth domain with our proxy URL in the init redirect
   const proxyUrl = `${new URL(request.url).origin}/api/auth`;
   const modifiedUrl = oauthUrl.replace(
     /https?:\/\/[^/]+\/neondb\/auth/g,
@@ -82,52 +157,13 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
 
   if (modifiedUrl === oauthUrl) return response;
 
-  // Build response with cookies via Headers (handles multi-value Set-Cookie, rewrites Path for our domain)
-  const newHeaders = new Headers();
-  newHeaders.set('content-type', 'application/json');
-  for (const cookie of cloned.headers.getSetCookie()) {
-    let fixed = cookie.replace(/;\s*Domain\s*=[^;]+/gi, '');
-    fixed = fixed.replace(/;\s*Path\s*=[^;]+/gi, '');
-    fixed += '; Path=/';
-    newHeaders.append('Set-Cookie', fixed);
-  }
-
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
   return new Response(JSON.stringify({ ...body, url: modifiedUrl }), {
     status: response.status,
     statusText: response.statusText,
-    headers: newHeaders,
+    headers,
   });
-}
-
-async function handleGET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-  const path = (await params).path.join('/');
-
-  // For init and callback paths, use manual redirect forwarding
-  if (path === 'sign-in/social/init' || path.startsWith('callback/')) {
-    const response = await forwardToNeon(request, path);
-
-    // For init responses with Google OAuth redirect, rewrite redirect_uri
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get('Location');
-      if (location && location.includes('accounts.google.com')) {
-        const googleUrl = new URL(location);
-        googleUrl.searchParams.set(
-          'redirect_uri',
-          `${new URL(request.url).origin}/api/auth/callback/google`,
-        );
-        const headers = new Headers(response.headers);
-        headers.set('Location', googleUrl.toString());
-        return new Response(null, {
-          status: response.status,
-          headers,
-        });
-      }
-    }
-
-    return response;
-  }
-
-  return builtin.GET!(request, { params });
 }
 
 export const GET = handleGET;
