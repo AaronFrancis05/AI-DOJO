@@ -84,10 +84,12 @@ async function proxyGoogleInitRedirect(request: NextRequest) {
   }
   headers.set('origin', new URL(request.url).origin);
   headers.set('content-type', 'application/json');
+  headers.set('x-neon-auth-middleware', 'true');
 
   const body = JSON.stringify({
     provider: 'google',
     callbackURL: '/api/auth/oauth/callback',
+    disableRedirect: false,
   });
 
   let upstream: Response;
@@ -104,20 +106,46 @@ async function proxyGoogleInitRedirect(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
   }
 
+  if (!upstream.ok) {
+    const text = await upstream.text().catch(() => '');
+    console.error('[google-init] upstream error', { status: upstream.status, body: text });
+    return NextResponse.redirect(new URL('/auth?error=init_upstream_error', request.url));
+  }
+
   const location = upstream.headers.get('Location');
-  if (!location) {
-    console.error('[google-init] no Location header from upstream');
+  if (location) {
+    const response = NextResponse.redirect(location);
+    const setCookies = upstream.headers.getSetCookie();
+    for (const cookie of setCookies) {
+      response.headers.append('Set-Cookie', cookie);
+      const localCopy = rewriteSetCookieForLocalDomain(cookie);
+      response.headers.append('Set-Cookie', localCopy);
+    }
+    return response;
+  }
+
+  let bodyJson: any;
+  try {
+    bodyJson = await upstream.json();
+  } catch {
+    console.error('[google-init] upstream returned non-JSON body', { status: upstream.status });
     return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
   }
 
-  const response = NextResponse.redirect(location);
+  const url = bodyJson?.url;
+  if (!url) {
+    console.error('[google-init] no url in upstream JSON body', { body: bodyJson });
+    return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
+  }
+
+  console.log('[google-init] using url from JSON body', { url: url.slice(0, 80) });
+  const response = NextResponse.redirect(url);
   const setCookies = upstream.headers.getSetCookie();
   for (const cookie of setCookies) {
     response.headers.append('Set-Cookie', cookie);
     const localCopy = rewriteSetCookieForLocalDomain(cookie);
     response.headers.append('Set-Cookie', localCopy);
   }
-
   return response;
 }
 
