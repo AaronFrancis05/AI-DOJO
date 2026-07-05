@@ -34,6 +34,7 @@ async function proxyToUpstream(request: NextRequest, path: string) {
     .join('; ');
   if (neonCookies) headers.set('cookie', neonCookies);
   headers.set('origin', new URL(request.url).origin);
+  headers.set('x-neon-auth-middleware', 'true');
 
   const body = request.method === 'POST' ? await request.text().catch(() => undefined) : undefined;
 
@@ -145,6 +146,7 @@ async function handleOAuthExchange(request: NextRequest) {
     const v = request.headers.get(h);
     if (v) headers.set(h, v);
   }
+  headers.set('x-neon-auth-middleware', 'true');
 
   const cookies = request.headers.get('cookie') || '';
   const neonCookies = cookies
@@ -161,7 +163,6 @@ async function handleOAuthExchange(request: NextRequest) {
     console.log('[oauth] fetching upstream', { url: upstreamUrl });
     upstream = await fetch(upstreamUrl, {
       method: 'GET',
-      redirect: 'manual',
       headers,
       signal: AbortSignal.timeout(10_000),
     });
