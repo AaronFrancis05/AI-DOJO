@@ -58,7 +58,7 @@ export default function AuthPage() {
   async function handleGoogleAuth() {
     await authClient.signIn.social({
       provider: 'google',
-      callbackURL: '/',
+      callbackURL: '/api/auth/oauth/callback',
     });
   }
 
