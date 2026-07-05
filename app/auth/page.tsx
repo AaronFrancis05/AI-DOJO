@@ -46,7 +46,11 @@ export default function AuthPage() {
 
       void consent;
 
-      router.push('/');
+      if (isLogin) {
+        router.push('/');
+      } else {
+        router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`);
+      }
       router.refresh();
     } catch {
       setError('Network error. Please try again.');

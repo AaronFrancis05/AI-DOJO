@@ -1,5 +1,5 @@
 import { createNeonAuth } from '@neondatabase/auth/next/server';
-import type { NextRequest } from 'next/server';
+import { syncUser } from './sync-user';
 
 function getConfig() {
   const baseUrl = process.env.NEON_AUTH_BASE_URL;
@@ -8,14 +8,22 @@ function getConfig() {
   if (!baseUrl) throw new Error('NEON_AUTH_BASE_URL is not set');
   if (!cookieSecret) throw new Error('NEON_AUTH_COOKIE_SECRET is not set');
 
-  return { baseUrl, cookies: { secret: cookieSecret } };
+  return { baseUrl, cookies: { secret: cookieSecret, sameSite: 'lax' as const } };
 }
+
+export { getConfig };
 
 export const auth = createNeonAuth(getConfig());
 
 export async function getAuthUser() {
   const { data: session } = await auth.getSession();
-  return session?.user ?? null;
+  const user = session?.user ?? null;
+  if (user) {
+    await syncUser({ id: user.id, email: user.email!, name: user.name! }).catch(
+      (err) => console.error('[sync-user] failed', err),
+    );
+  }
+  return user;
 }
 
 export async function requireAuthUser() {

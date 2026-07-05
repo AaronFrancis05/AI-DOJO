@@ -5,9 +5,11 @@ export const users = pgTable('users', {
   id:                    text('id').primaryKey(),
   name:                  varchar('name', { length: 100 }).notNull(),
   email:                 varchar('email', { length: 150 }).notNull().unique(),
-  passwordHash:          varchar('password_hash', { length: 255 }).notNull(),
+  passwordHash:          varchar('password_hash', { length: 255 }),
   level:                 varchar('level', { length: 20 }).default('beginner').notNull(),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
+  authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
+  googleId:              varchar('google_id', { length: 255 }),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
 });
 
