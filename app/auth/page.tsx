@@ -59,11 +59,8 @@ export default function AuthPage() {
     }
   }
 
-  async function handleGoogleAuth() {
-    await authClient.signIn.social({
-      provider: 'google',
-      callbackURL: '/api/auth/oauth/callback',
-    });
+  function handleGoogleAuth() {
+    window.location.href = '/api/auth/google/init';
   }
 
   return (
