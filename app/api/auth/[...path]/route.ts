@@ -52,8 +52,9 @@ async function proxyToUpstream(request: NextRequest, path: string) {
       responseHeaders.append('Set-Cookie', cookie);
       const localCopy = cookie
         .replace(/;\s*Domain\s*=[^;]+/gi, '')
-        .replace(/;\s*Secure\s*=/gi, '')
-        + '; Path=/';
+        .replace(/;\s*SameSite\s*=[^;]+/gi, '')
+        .replace(/;\s*Secure/gi, '')
+        + '; SameSite=Lax; Path=/';
       responseHeaders.append('Set-Cookie', localCopy);
     }
   }
