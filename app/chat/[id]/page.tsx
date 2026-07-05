@@ -200,7 +200,7 @@ export default function AI_Dojo_Chatroom() {
       if (data.success) {
         const link = `${window.location.origin}/share/${data.token}`;
         setShareLink(link);
-        navigator.clipboard.writeText(link);
+        navigator.clipboard.writeText(link).catch(() => {});
       }
     } catch (e) {
       console.error('Share failed:', e);
