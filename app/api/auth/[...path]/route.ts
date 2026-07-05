@@ -4,6 +4,17 @@ import { NextResponse } from 'next/server';
 
 const builtin = auth.handler();
 
+function rewriteSetCookieForLocalDomain(cookie: string): string {
+  const needsSecure = /__Secure-/.test(cookie);
+  let cleaned = cookie
+    .replace(/;\s*Domain\s*=[^;]+/gi, '')
+    .replace(/;\s*SameSite\s*=[^;]+/gi, '');
+  if (!needsSecure) {
+    cleaned = cleaned.replace(/;\s*Secure/gi, '');
+  }
+  return cleaned + '; SameSite=Lax; Path=/';
+}
+
 async function proxyToUpstream(request: NextRequest, path: string) {
   const { baseUrl } = getConfig();
   const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
@@ -50,11 +61,7 @@ async function proxyToUpstream(request: NextRequest, path: string) {
     responseHeaders.delete('Set-Cookie');
     for (const cookie of setCookies) {
       responseHeaders.append('Set-Cookie', cookie);
-      const localCopy = cookie
-        .replace(/;\s*Domain\s*=[^;]+/gi, '')
-        .replace(/;\s*SameSite\s*=[^;]+/gi, '')
-        .replace(/;\s*Secure/gi, '')
-        + '; SameSite=Lax; Path=/';
+      const localCopy = rewriteSetCookieForLocalDomain(cookie);
       responseHeaders.append('Set-Cookie', localCopy);
     }
   }
@@ -64,6 +71,54 @@ async function proxyToUpstream(request: NextRequest, path: string) {
     statusText: upstream.statusText,
     headers: responseHeaders,
   });
+}
+
+async function proxyGoogleInitRedirect(request: NextRequest) {
+  const { baseUrl } = getConfig();
+
+  const headers = new Headers();
+  const forwardHeaders = ['user-agent', 'authorization', 'referer', 'content-type'];
+  for (const h of forwardHeaders) {
+    const v = request.headers.get(h);
+    if (v) headers.set(h, v);
+  }
+  headers.set('origin', new URL(request.url).origin);
+  headers.set('content-type', 'application/json');
+
+  const body = JSON.stringify({
+    provider: 'google',
+    callbackURL: '/api/auth/oauth/callback',
+  });
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${baseUrl}/sign-in/social`, {
+      method: 'POST',
+      headers,
+      body,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    console.error('[google-init] fetch failed', { error: String(err) });
+    return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
+  }
+
+  const location = upstream.headers.get('Location');
+  if (!location) {
+    console.error('[google-init] no Location header from upstream');
+    return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
+  }
+
+  const response = NextResponse.redirect(location);
+  const setCookies = upstream.headers.getSetCookie();
+  for (const cookie of setCookies) {
+    response.headers.append('Set-Cookie', cookie);
+    const localCopy = rewriteSetCookieForLocalDomain(cookie);
+    response.headers.append('Set-Cookie', localCopy);
+  }
+
+  return response;
 }
 
 async function handleOAuthExchange(request: NextRequest) {
@@ -121,10 +176,7 @@ async function handleOAuthExchange(request: NextRequest) {
   const setCookies = upstream.headers.getSetCookie();
   console.log('[oauth] session cookies from upstream', { count: setCookies.length });
   for (const cookie of setCookies) {
-    const fixed = cookie
-      .replace(/;\s*Domain\s*=[^;]+/gi, '')
-      .replace(/;\s*SameSite\s*=[^;]+/gi, '')
-      + '; SameSite=Lax';
+    const fixed = rewriteSetCookieForLocalDomain(cookie);
     responseHeaders.append('Set-Cookie', fixed);
   }
   responseHeaders.set('Location', '/');
@@ -141,6 +193,10 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
 
   if (path === 'sign-in/social/init') {
     return proxyToUpstream(request, path);
+  }
+
+  if (path === 'google/init') {
+    return proxyGoogleInitRedirect(request);
   }
 
   return builtin.GET!(request, { params });
