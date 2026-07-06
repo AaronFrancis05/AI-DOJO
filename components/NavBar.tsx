@@ -30,7 +30,7 @@ export default function NavBar() {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-1">
           <Link
-            href="/"
+            href="/dashboard"
             className="mr-4 text-lg font-semibold tracking-tight text-neutral-900"
           >
             🥋 AI DOJO
@@ -39,11 +39,10 @@ export default function NavBar() {
             <ListIcon className="h-4 w-4" />
             Sessions
           </Link>
-          <Link href="/auth/profile" className={linkClass('/auth/profile')}>
-            <UserIcon className="h-4 w-4" />
-            Profile
-          </Link>
+          
         </div>
+        <div className="flex items-center gap-2">
+
         <button
           onClick={handleLogout}
           disabled={loggingOut}
@@ -56,6 +55,11 @@ export default function NavBar() {
           )}
           Log out
         </button>
+        <Link href="/auth/profile" className={linkClass('/auth/profile')}>
+            <UserIcon className="h-4 w-4" />
+            Profile
+          </Link>
+        </div>
       </div>
     </nav>
   );

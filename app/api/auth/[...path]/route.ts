@@ -227,7 +227,7 @@ async function handleOAuthExchange(request: NextRequest) {
   }
 
   const responseHeaders = new Headers(builtinResponse.headers);
-  responseHeaders.set('Location', '/');
+  responseHeaders.set('Location', '/dashboard');
 
   console.log('[oauth] session cookies from builtin handler', {
     count: builtinResponse.headers.getSetCookie().length,

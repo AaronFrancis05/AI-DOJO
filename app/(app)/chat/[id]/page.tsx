@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { TypingIndicator, ChatPageSkeleton, ChatPageShell } from '@/components/Skeleton';
 
 interface ChatBubble {
   sender: 'user' | 'ai';
@@ -37,6 +38,11 @@ export default function AI_Dojo_Chatroom() {
   const [finalEvaluation, setFinalEvaluation] = useState<any | null>(null);
   const [error, setError] = useState('');
   const [shareLink, setShareLink] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
   // Get sessionId from URL query param via window.location
   const sessionIdFromUrl = typeof window !== 'undefined'
@@ -279,17 +285,17 @@ export default function AI_Dojo_Chatroom() {
   };
 
   if (initLoading) {
-    return <div style={{ textAlign: 'center', padding: '50px', fontFamily: 'sans-serif' }}>Loading Dojo Scenario Context...</div>;
+    return <ChatPageSkeleton />;
   }
 
   if (error && !scenario) {
     return (
-      <div style={{ maxWidth: '650px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+      <ChatPageShell>
         <p style={{ color: '#c53030', background: '#fff5f5', padding: '16px', borderRadius: '8px' }}>{error}</p>
-        <button onClick={() => router.push('/')} style={{ background: '#000', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}>
+        <button onClick={() => router.push('/dashboard')} style={{ background: '#000', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}>
           Back to Scenarios
         </button>
-      </div>
+      </ChatPageShell>
     );
   }
 
@@ -301,16 +307,16 @@ export default function AI_Dojo_Chatroom() {
     if (!sessionId || !confirm('Delete this session? This cannot be undone.')) return;
     try {
       const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-      if (res.ok) router.push('/');
+      if (res.ok) router.push('/dashboard');
     } catch (e) {
       console.error('Delete failed:', e);
     }
   }
 
   return (
-    <div style={{ maxWidth: '650px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+    <ChatPageShell>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#0070f3', cursor: 'pointer', fontSize: '1rem' }}>
+        <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: '#0070f3', cursor: 'pointer', fontSize: '1rem' }}>
           &larr; Back to Role-plays
         </button>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -390,6 +396,12 @@ export default function AI_Dojo_Chatroom() {
             </div>
           ))
         )}
+        {loading && (
+          <div style={{ textAlign: 'left', margin: '15px 0' }}>
+            <TypingIndicator />
+          </div>
+        )}
+        <div ref={messagesEndRef} />
       </div>
 
       {!finalEvaluation && !isReadOnly ? (
@@ -438,6 +450,6 @@ export default function AI_Dojo_Chatroom() {
           )}
         </div>
       )}
-    </div>
+    </ChatPageShell>
   );
 }

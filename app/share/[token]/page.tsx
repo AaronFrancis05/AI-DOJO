@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { SharedSessionSkeleton } from '@/components/Skeleton';
 
 export default function SharedSessionPage() {
   const params = useParams();
@@ -32,8 +33,8 @@ export default function SharedSessionPage() {
 
   if (loading) {
     return (
-      <div style={{ maxWidth: '700px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-        <p>Loading shared session...</p>
+      <div style={{ maxWidth: '700px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+        <SharedSessionSkeleton />
       </div>
     );
   }

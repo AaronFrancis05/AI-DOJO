@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import { ScenarioGridSkeleton } from '@/components/Skeleton';
 
 interface Scenario {
   id: number;
@@ -60,9 +61,12 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px', fontFamily: 'sans-serif', color: '#666' }}>
-        Loading scenarios...
-      </div>
+      <>
+        <NavBar />
+        <div style={{ maxWidth: '1000px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+          <ScenarioGridSkeleton count={12} />
+        </div>
+      </>
     );
   }
 

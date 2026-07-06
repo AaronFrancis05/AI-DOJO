@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NavBar from '@/components/NavBar';
+import { SessionListSkeleton } from '@/components/Skeleton';
 
 interface SessionRecord {
   id: number;
@@ -80,7 +81,16 @@ export default function SessionsPage() {
     }
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '50px' }}>Loading...</div>;
+  if (loading) {
+    return (
+      <>
+        <NavBar />
+        <div style={{ maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+          <SessionListSkeleton count={4} />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -88,7 +98,7 @@ export default function SessionsPage() {
       <div style={{ maxWidth: '900px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
         <h1 style={{ margin: 0 }}>📋 My Sessions</h1>
-        <Link href="/" style={{ textDecoration: 'none' }}>
+        <Link href="/dashboard" style={{ textDecoration: 'none' }}>
           <button style={{ padding: '8px 16px', background: '#000', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
             &larr; Back to Scenarios
           </button>
