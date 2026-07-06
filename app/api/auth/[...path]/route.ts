@@ -195,9 +195,7 @@ async function proxyGoogleInitRedirect(request: NextRequest) {
 }
 
 async function handleOAuthExchange(request: NextRequest) {
-  const { baseUrl } = getConfig();
   const url = new URL(request.url);
-
   const verifier = url.searchParams.get('neon_auth_session_verifier');
   console.log('[oauth] callback received', { verifier: verifier?.slice(0, 20), path: url.pathname });
 
@@ -206,66 +204,35 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth?error=no_verifier', request.url));
   }
 
-  const upstreamUrl = `${baseUrl}/get-session${url.search}`;
+  // Route through the SDK's built-in handler that processes get-session.
+  // This goes through handleAuthProxyRequest which:
+  //   1. Tries trySessionCache() (misses — no session_data yet on OAuth callback)
+  //   2. Calls handleAuthRequest() → upstream GET /get-session with verifier
+  //   3. Calls handleAuthResponse() → prepareResponseHeaders() + mintSessionDataFromResponse()
+  //   4. mintSessionDataFromResponse() calls mintSessionDataCookie() → session_data cookie minted
+  //
+  // This ensures the session_data cache cookie is created on successful OAuth login,
+  // avoiding the fragile 3-second upstream timeout on subsequent session checks.
+  const builtinResponse = await builtin.GET!(request, {
+    params: Promise.resolve({ path: ['get-session'] }),
+  });
 
-  const headers = new Headers();
-  for (const h of ['user-agent', 'content-type', 'origin']) {
-    const v = request.headers.get(h);
-    if (v) headers.set(h, v);
-  }
-  headers.set('x-neon-auth-middleware', 'true');
-
-  const cookies = request.headers.get('cookie') || '';
-  const neonCookies = cookies
-    .split(';')
-    .map(c => c.trim())
-    .filter(c => c.startsWith('__Secure-neon-auth'))
-    .join('; ');
-  if (neonCookies) headers.set('cookie', neonCookies);
-  console.log('[oauth] forwarding cookies to upstream', { neonCookies: neonCookies.length > 0 });
-  headers.set('origin', new URL(request.url).origin);
-
-  let upstream: Response;
-  let bodyText = '';
-  try {
-    console.log('[oauth] fetching upstream', { url: upstreamUrl });
-    upstream = await fetch(upstreamUrl, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(10_000),
-    });
-    bodyText = await upstream.text().catch(() => '');
-    console.log('[oauth] upstream response', {
-      status: upstream.status,
-      ok: upstream.ok,
-      contentType: upstream.headers.get('content-type'),
-      bodyPreview: bodyText.slice(0, 100),
-      location: upstream.headers.get('location'),
-    });
-  } catch (err) {
-    console.error('[oauth-exchange] fetch failed', { url: upstreamUrl, error: String(err) });
-    return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
-  }
-
-  const setCookies = upstream.headers.getSetCookie();
-
-  if (upstream.status >= 400 || upstream.redirected || setCookies.length === 0) {
-    console.error('[oauth-exchange] exchange failed or invalid session', {
-      status: upstream.status,
-      redirected: upstream.redirected,
-      cookieCount: setCookies.length,
-      bodyPreview: bodyText.slice(0, 100),
+  if (!builtinResponse.ok || builtinResponse.status >= 400) {
+    const body = await builtinResponse.text().catch(() => '');
+    console.error('[oauth] builtin handler error', {
+      status: builtinResponse.status,
+      bodyPreview: body.slice(0, 100),
     });
     return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
   }
 
-  const responseHeaders = new Headers();
-  console.log('[oauth] session cookies from upstream', { count: setCookies.length });
-  for (const cookie of setCookies) {
-    const fixed = rewriteSetCookieForLocalDomain(cookie);
-    responseHeaders.append('Set-Cookie', fixed);
-  }
-  responseHeaders.set('Location', '/');
+  const responseHeaders = new Headers(builtinResponse.headers);
+  responseHeaders.set('Location', '/dashboard');
+
+  console.log('[oauth] session cookies from builtin handler', {
+    count: builtinResponse.headers.getSetCookie().length,
+    names: builtinResponse.headers.getSetCookie().map((c) => c.split('=')[0]),
+  });
 
   return new Response(null, { status: 302, headers: responseHeaders });
 }
@@ -293,6 +260,16 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
 
   if (path === 'sign-in/social') {
     return proxyToUpstream(request, path);
+  }
+
+  if (path === 'sign-out') {
+    console.log('[sign-out] request received', {
+      referer: request.headers.get('referer'),
+      userAgent: request.headers.get('user-agent')?.slice(0, 80),
+      timestamp: Date.now(),
+      method: request.method,
+      hasCookie: !!request.headers.get('cookie'),
+    });
   }
 
   const response = await builtin.POST!(request, { params });

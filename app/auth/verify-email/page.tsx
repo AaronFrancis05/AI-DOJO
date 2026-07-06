@@ -60,7 +60,7 @@ export default function VerifyEmailPage(props: {
         setError(verifyError.message || 'Verification failed');
       } else {
         setVerified(true);
-        setTimeout(() => router.push('/'), 2000);
+        setTimeout(() => router.push('/dashboard'), 2000);
       }
     } catch (err: any) {
       setError(err.message || 'Network error');
@@ -77,7 +77,7 @@ export default function VerifyEmailPage(props: {
 
   if (verified) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
+      <div className="flex min-h-dvh items-center justify-center bg-neutral-50 px-4">
         <div className="w-full max-w-sm text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
             <CheckCircleIcon className="h-7 w-7 text-emerald-600" />
@@ -90,7 +90,7 @@ export default function VerifyEmailPage(props: {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12">
+    <div className="flex min-h-dvh items-center justify-center bg-neutral-50 px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-900 text-2xl">
