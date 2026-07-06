@@ -31,7 +31,7 @@ export default function NavBar() {
         <div className="flex items-center gap-1">
           <Link
             href="/dashboard"
-            className="mr-4 text-lg font-semibold tracking-tight text-neutral-900"
+            className="mr-4 whitespace-nowrap flex-shrink-0 text-lg font-semibold tracking-tight text-neutral-900"
           >
             🥋 AI DOJO
           </Link>
