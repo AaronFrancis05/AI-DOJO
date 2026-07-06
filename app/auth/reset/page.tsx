@@ -50,7 +50,7 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-12">
+    <div className="flex min-h-dvh items-center justify-center bg-neutral-50 px-4 py-12">
       <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
         {!done ? (
           <>

@@ -103,14 +103,14 @@ export default function ProfilePage() {
 
   if (loadingUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50">
+      <div className="flex min-h-dvh items-center justify-center bg-neutral-50">
         <LoaderIcon className="h-6 w-6 text-neutral-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="min-h-dvh bg-neutral-50">
       <NavBar />
       <div className="mx-auto max-w-xl px-4 py-12">
         <div className="mb-8 flex items-center gap-4">

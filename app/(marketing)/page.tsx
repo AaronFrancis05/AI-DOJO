@@ -10,7 +10,7 @@ export default async function LandingPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       <header className="border-b border-neutral-200">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <span className="text-lg font-semibold tracking-tight text-neutral-900">

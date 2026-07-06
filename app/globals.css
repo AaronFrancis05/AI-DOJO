@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,18 +20,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* iOS Safari 100dvh polyfill — tracks the visible viewport as the browser
+   chrome expands/collapses, unlike 100vh which uses the full max viewport. */
+@utility min-h-dvh {
+  min-height: 100dvh;
 }
 /* Animation keyframes — referenced by Skeleton.tsx via utility classes below */
 
