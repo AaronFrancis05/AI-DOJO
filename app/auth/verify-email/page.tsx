@@ -60,7 +60,7 @@ export default function VerifyEmailPage(props: {
         setError(verifyError.message || 'Verification failed');
       } else {
         setVerified(true);
-        setTimeout(() => router.push('/'), 2000);
+        setTimeout(() => router.push('/dashboard'), 2000);
       }
     } catch (err: any) {
       setError(err.message || 'Network error');
