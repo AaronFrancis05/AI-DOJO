@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { TypingIndicator, ChatPageSkeleton } from '@/components/Skeleton';
+import { TypingIndicator, ChatPageSkeleton, ChatPageShell } from '@/components/Skeleton';
 
 interface ChatBubble {
   sender: 'user' | 'ai';
@@ -38,6 +38,11 @@ export default function AI_Dojo_Chatroom() {
   const [finalEvaluation, setFinalEvaluation] = useState<any | null>(null);
   const [error, setError] = useState('');
   const [shareLink, setShareLink] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
 
   // Get sessionId from URL query param via window.location
   const sessionIdFromUrl = typeof window !== 'undefined'
@@ -285,12 +290,12 @@ export default function AI_Dojo_Chatroom() {
 
   if (error && !scenario) {
     return (
-      <div style={{ maxWidth: '650px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+      <ChatPageShell>
         <p style={{ color: '#c53030', background: '#fff5f5', padding: '16px', borderRadius: '8px' }}>{error}</p>
         <button onClick={() => router.push('/dashboard')} style={{ background: '#000', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}>
           Back to Scenarios
         </button>
-      </div>
+      </ChatPageShell>
     );
   }
 
@@ -309,7 +314,7 @@ export default function AI_Dojo_Chatroom() {
   }
 
   return (
-    <div style={{ maxWidth: '650px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
+    <ChatPageShell>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: '#0070f3', cursor: 'pointer', fontSize: '1rem' }}>
           &larr; Back to Role-plays
@@ -396,6 +401,7 @@ export default function AI_Dojo_Chatroom() {
             <TypingIndicator />
           </div>
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {!finalEvaluation && !isReadOnly ? (
@@ -444,6 +450,6 @@ export default function AI_Dojo_Chatroom() {
           )}
         </div>
       )}
-    </div>
+    </ChatPageShell>
   );
 }

@@ -38,12 +38,12 @@ export function Skeleton({
 }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-md bg-neutral-200/70 dark:bg-neutral-800 ${className}`}
+      className={`relative overflow-hidden rounded-md bg-neutral-200/70 dark:bg-neutral-800 animate-shimmer-sweep ${className}`}
+      role="presentation"
       style={{
         backgroundImage:
           'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.65) 50%, rgba(255,255,255,0) 100%)',
         backgroundSize: '200% 100%',
-        animation: 'shimmer-sweep 1.6s ease-in-out infinite',
         animationDelay: `${delay}ms`,
       }}
     />
@@ -71,7 +71,8 @@ export function ScenarioCardSkeleton({ delay = 0 }: { delay?: number }) {
 
 export function ScenarioGridSkeleton({ count = 6 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-live="polite">
+      <span className="sr-only">Loading scenarios…</span>
       {Array.from({ length: count }).map((_, i) => (
         <ScenarioCardSkeleton key={i} delay={(i % 3) * 90} />
       ))}
@@ -102,7 +103,8 @@ export function SessionRowSkeleton({ delay = 0 }: { delay?: number }) {
 
 export function SessionListSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" role="status" aria-live="polite">
+      <span className="sr-only">Loading sessions…</span>
       {Array.from({ length: count }).map((_, i) => (
         <SessionRowSkeleton key={i} delay={i * 70} />
       ))}
@@ -157,41 +159,57 @@ export function ChatSkeleton() {
   );
 }
 
+// Shared layout shell used by ChatPageSkeleton and the live chat page.
+// Extracted so layout changes (maxWidth, padding, etc.) need only one update.
+export const CHAT_PAGE_SHELL_STYLE = {
+  maxWidth: '650px',
+  margin: '40px auto',
+  padding: '20px',
+  fontFamily: 'sans-serif',
+} as const;
+
+export function ChatPageShell({ children }: { children: React.ReactNode }) {
+  return <div style={CHAT_PAGE_SHELL_STYLE}>{children}</div>;
+}
+
 // Full chat-page skeleton: mirrors real page chrome (header, scroll area,
 // pinned composer) inside the same max-width container as the live page —
 // this is the direct fix for the orphaned-box look in your screenshots.
 export function ChatPageSkeleton() {
   return (
-    <div style={{ maxWidth: '650px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      {/* header: back link + action buttons, matches real chat header */}
-      <div className="mb-[10px] flex items-center justify-between">
-        <Skeleton className="h-4 w-20" />
-        <div className="flex gap-2">
-          <Skeleton className="h-[34px] w-[58px] rounded-md" delay={30} />
-          <Skeleton className="h-[34px] w-[34px] rounded-md" delay={60} />
-          <Skeleton className="h-[34px] w-[96px] rounded-md" delay={90} />
+    <div role="status" aria-live="polite">
+      <span className="sr-only">Loading chat…</span>
+      <ChatPageShell>
+        {/* header: back link + action buttons, matches real chat header */}
+        <div className="mb-[10px] flex items-center justify-between">
+          <Skeleton className="h-4 w-20" />
+          <div className="flex gap-2">
+            <Skeleton className="h-[34px] w-[58px] rounded-md" delay={30} />
+            <Skeleton className="h-[34px] w-[34px] rounded-md" delay={60} />
+            <Skeleton className="h-[34px] w-[96px] rounded-md" delay={90} />
+          </div>
         </div>
-      </div>
 
-      {/* scenario title */}
-      <Skeleton className="mb-1 h-6 w-48" delay={20} />
+        {/* scenario title */}
+        <Skeleton className="mb-1 h-6 w-48" delay={20} />
 
-      {/* character info */}
-      <Skeleton className="mb-1 h-4 w-72" delay={50} />
+        {/* character info */}
+        <Skeleton className="mb-1 h-4 w-72" delay={50} />
 
-      {/* you-are info banner */}
-      <Skeleton className="mb-5 h-9 w-full rounded-md" delay={80} />
+        {/* you-are info banner */}
+        <Skeleton className="mb-5 h-9 w-full rounded-md" delay={80} />
 
-      {/* message area */}
-      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800">
-        <ChatSkeleton />
-      </div>
+        {/* message area */}
+        <div className="rounded-xl border border-neutral-200 dark:border-neutral-800">
+          <ChatSkeleton />
+        </div>
 
-      {/* pinned composer */}
-      <div className="mt-4 flex items-center gap-2">
-        <Skeleton className="h-11 flex-1 rounded-md" delay={120} />
-        <Skeleton className="h-11 w-[72px] rounded-md" delay={160} />
-      </div>
+        {/* pinned composer */}
+        <div className="mt-4 flex items-center gap-2">
+          <Skeleton className="h-11 flex-1 rounded-md" delay={120} />
+          <Skeleton className="h-11 w-[72px] rounded-md" delay={160} />
+        </div>
+      </ChatPageShell>
     </div>
   );
 }
@@ -200,19 +218,14 @@ export function ChatPageSkeleton() {
 
 export function TypingIndicator() {
   return (
-    <div className="flex w-fit gap-1 rounded-2xl rounded-bl-sm bg-neutral-100 px-4 py-3 dark:bg-neutral-800">
+    <div className="flex w-fit gap-1 rounded-2xl rounded-bl-sm bg-neutral-100 px-4 py-3 dark:bg-neutral-800" role="status" aria-label="AI is typing">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="h-2 w-2 rounded-full bg-neutral-400 dark:bg-neutral-500"
-          style={{
-            animation: 'typing-bounce 1s ease-in-out infinite',
-            animationDelay: `${i * 0.15}s`,
-          }}
+          className="h-2 w-2 rounded-full bg-neutral-400 dark:bg-neutral-500 animate-typing-bounce"
+          style={{ animationDelay: `${i * 0.15}s` }}
         />
       ))}
-      {/* @keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5 }
-          30% { transform: translateY(-4px); opacity: 1 } } — add to globals.css */}
     </div>
   );
 }
@@ -221,7 +234,8 @@ export function TypingIndicator() {
 
 export function SharedSessionSkeleton() {
   return (
-    <div>
+    <div role="status" aria-live="polite">
+      <span className="sr-only">Loading shared session…</span>
       <div className="mb-6 text-center">
         <Skeleton className="mx-auto h-6 w-56" />
         <Skeleton className="mx-auto mt-2 h-4 w-40" delay={40} />
@@ -253,13 +267,7 @@ export function SharedSessionSkeleton() {
 export function TopProgressBar() {
   return (
     <div className="fixed left-0 top-0 z-50 h-[2px] w-full overflow-hidden bg-transparent">
-      <div
-        className="h-full w-full bg-neutral-900 dark:bg-white"
-        style={{
-          transformOrigin: 'left',
-          animation: 'progress-indeterminate 1.1s ease-in-out infinite',
-        }}
-      />
+      <div className="h-full w-full bg-neutral-900 dark:bg-white animate-progress-indeterminate" />
     </div>
   );
 }

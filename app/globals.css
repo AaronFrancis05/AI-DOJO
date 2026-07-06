@@ -25,8 +25,7 @@ body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
-/* Add once to globals.css. Powers the shimmer sweep, typing dots, and
-   top progress bar used in Skeleton.tsx. */
+/* Animation keyframes — referenced by Skeleton.tsx via utility classes below */
 
 @keyframes shimmer-sweep {
   0%   { background-position: -150% 0; }
@@ -44,10 +43,27 @@ body {
   100% { transform: translateX(120%) scaleX(0.4); }
 }
 
+/* Utility classes — used by Skeleton.tsx for animations.
+   These class-name selectors are the stable contract that the reduced-motion
+   override targets, avoiding fragile [style*="..."] substring matching. */
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 1.6s ease-in-out infinite;
+}
+
+.animate-typing-bounce {
+  animation: typing-bounce 1s ease-in-out infinite;
+}
+
+.animate-progress-indeterminate {
+  animation: progress-indeterminate 1.1s ease-in-out infinite;
+  transform-origin: left;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  [style*="shimmer-sweep"],
-  [style*="typing-bounce"],
-  [style*="progress-indeterminate"] {
+  .animate-shimmer-sweep,
+  .animate-typing-bounce,
+  .animate-progress-indeterminate {
     animation: none !important;
   }
 }

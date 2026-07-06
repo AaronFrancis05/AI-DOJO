@@ -34,19 +34,20 @@ export async function getAuthUser() {
  *  would attempt `cookieStore.set()` — which Next.js forbids outside
  *  Server Actions and Route Handlers.
  *
- *  Returns the user or null — no cookie rotation, no upstream call. */
+ *  Returns the user or null — no cookie rotation, no upstream call.
+ *  Used only for non-sensitive gating (landing page redirect). */
 export async function getAuthUserReadOnly() {
-  try {
-    const cookieStore = await cookies();
-    const sessionDataValue = cookieStore.get('__Secure-neon-auth.local.session_data')?.value;
-    if (!sessionDataValue) return null;
+  const cookieStore = await cookies();
+  const sessionDataValue = cookieStore.get('__Secure-neon-auth.local.session_data')?.value;
+  if (!sessionDataValue) return null;
 
+  try {
     const config = getConfig();
     const secret = new TextEncoder().encode(config.cookies.secret);
     const { payload } = await jwtVerify(sessionDataValue, secret, { algorithms: ['HS256'] });
-
     return (payload as Record<string, unknown>)?.user ?? null;
-  } catch {
+  } catch (err) {
+    console.error('[getAuthUserReadOnly] Unexpected error:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }
