@@ -6,7 +6,7 @@
 'use client';
 
 import { Card } from '@/components/ui/Card';
-import { domains } from '@/lib/mock-data/domains';
+import { domains } from '@/lib/data/domains';
 import Link from 'next/link';
 import {
   UtensilsCrossed,

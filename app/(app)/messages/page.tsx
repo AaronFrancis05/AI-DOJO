@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { messageThreads } from '@/lib/mock-data/sessions';
+import { messageThreads } from '@/lib/data/sessions';
 import { ArrowLeft, Send } from 'lucide-react';
 
 export default function MessagesPage() {

@@ -13,6 +13,48 @@ export const users = pgTable('users', {
   createdAt:             timestamp('created_at').defaultNow().notNull(),
 });
 
+// ── Domains ──────────────────────────────────────────────
+export const domains = pgTable('domains', {
+  id:               serial('id').primaryKey(),
+  slug:             varchar('slug', { length: 40 }).notNull().unique(),
+  name:             varchar('name', { length: 60 }).notNull(),
+  description:      text('description').notNull(),
+  icon:             varchar('icon', { length: 40 }).notNull(),
+  heroGradientFrom: varchar('hero_gradient_from', { length: 20 }).notNull(),
+  heroGradientTo:   varchar('hero_gradient_to', { length: 20 }).notNull(),
+  situationCount:   integer('situation_count').default(0).notNull(),
+  displayOrder:     integer('display_order').default(0).notNull(),
+  createdAt:        timestamp('created_at').defaultNow().notNull(),
+});
+
+// ── Situations ───────────────────────────────────────────
+export const situations = pgTable('situations', {
+  id:            serial('id').primaryKey(),
+  domainId:      integer('domain_id').references(() => domains.id, { onDelete: 'cascade' }).notNull(),
+  title:         varchar('title', { length: 120 }).notNull(),
+  context:       text('context').notNull(),
+  skillLevel:    varchar('skill_level', { length: 20 }).default('beginner').notNull(),
+  behaviorMode:  varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
+  learningGoals: text('learning_goals').notNull(),
+  focusPills:    text('focus_pills').notNull(),
+  displayOrder:  integer('display_order').default(0).notNull(),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+});
+
+// ── Characters ──────────────────────────────────────────
+export const characters = pgTable('characters', {
+  id:            serial('id').primaryKey(),
+  name:          varchar('name', { length: 60 }).notNull(),
+  role:          varchar('role', { length: 150 }).notNull(),
+  personality:   text('personality').notNull(),
+  avatarColor:   varchar('avatar_color', { length: 20 }).notNull(),
+  avatarIcon:    varchar('avatar_icon', { length: 40 }).notNull(),
+  voiceType:     varchar('voice_type', { length: 80 }).notNull(),
+  defaultForDomainId: integer('default_for_domain_id').references(() => domains.id, { onDelete: 'set null' }),
+  displayOrder:  integer('display_order').default(0).notNull(),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+});
+
 export const scenarios = pgTable('scenarios', {
   id:                 serial('id').primaryKey(),
   title:              varchar('title', { length: 120 }).notNull(),
@@ -25,6 +67,7 @@ export const scenarios = pgTable('scenarios', {
   userCharacterName:  varchar('user_character_name', { length: 80 }).notNull(),
   userCharacterRole:  varchar('user_character_role', { length: 150 }).notNull(),
   learningGoals:      text('learning_goals').notNull(),
+  situationId:        integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   displayOrder:       integer('display_order').default(0).notNull(),
   createdAt:          timestamp('created_at').defaultNow().notNull(),
 });
@@ -55,6 +98,9 @@ export const sessions = pgTable('sessions', {
   id:              serial('id').primaryKey(),
   userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   scenarioId:      integer('scenario_id').references(() => scenarios.id).notNull(),
+  situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
+  characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
+  behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
   totalTurns:      integer('total_turns').default(0).notNull(),
@@ -135,6 +181,8 @@ export const shareTokens = pgTable('share_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// ── Relations ────────────────────────────────────────────
+
 export const usersRelations = relations(users, ({ many }) => ({
   sessions:         many(sessions),
   conversations:    many(conversations),
@@ -142,7 +190,22 @@ export const usersRelations = relations(users, ({ many }) => ({
   goalCompletions:  many(goalCompletions),
 }));
 
-export const scenariosRelations = relations(scenarios, ({ many }) => ({
+export const domainsRelations = relations(domains, ({ many }) => ({
+  situations: many(situations),
+}));
+
+export const situationsRelations = relations(situations, ({ one, many }) => ({
+  domain:     one(domains, { fields: [situations.domainId], references: [domains.id] }),
+  scenarios:  many(scenarios),
+  sessions:   many(sessions),
+}));
+
+export const charactersRelations = relations(characters, ({ one }) => ({
+  defaultForDomain: one(domains, { fields: [characters.defaultForDomainId], references: [domains.id] }),
+}));
+
+export const scenariosRelations = relations(scenarios, ({ one, many }) => ({
+  situation:     one(situations, { fields: [scenarios.situationId], references: [situations.id] }),
   sessions:      many(sessions),
   vocabularies:  many(vocabulary),
   goals:         many(scenarioGoals),
@@ -161,6 +224,8 @@ export const scenarioGoalsRelations = relations(scenarioGoals, ({ one, many }) =
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   user:                one(users,     { fields: [sessions.userId],     references: [users.id] }),
   scenario:            one(scenarios, { fields: [sessions.scenarioId], references: [scenarios.id] }),
+  situation:           one(situations, { fields: [sessions.situationId], references: [situations.id] }),
+  character:           one(characters, { fields: [sessions.characterId], references: [characters.id] }),
   conversations:       many(conversations),
   evaluation:          one(evaluations),
   goalCompletions:     many(goalCompletions),

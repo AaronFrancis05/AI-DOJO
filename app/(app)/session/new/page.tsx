@@ -12,9 +12,9 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { Avatar } from '@/components/ui/Avatar';
-import { characters } from '@/lib/mock-data/characters';
-import { getSituationById } from '@/lib/mock-data/situations';
-import { domains } from '@/lib/mock-data/domains';
+import { characters } from '@/lib/data/characters';
+import { domains } from '@/lib/data/domains';
+import { situations } from '@/lib/data/situations';
 import type { SkillLevel } from '@/lib/design-tokens';
 import {
   ArrowLeft,
@@ -48,7 +48,7 @@ function RoleplayRoomPage() {
   const characterId = Number(searchParams.get('character') ?? 0);
   const mode = searchParams.get('mode') ?? 'standard';
 
-  const situation = getSituationById(situationId);
+  const situation = situations.find(s => s.id === situationId);
   const character = characters.find((c) => c.id === characterId);
   const domain = domains.find((d) => d.slug === domainSlug);
 

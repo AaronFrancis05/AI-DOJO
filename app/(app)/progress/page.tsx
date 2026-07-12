@@ -11,7 +11,7 @@ import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { TrendValue } from '@/components/ui/TrendValue';
 import { RadarChart, type RadarDataPoint } from '@/components/ui/RadarChart';
-import { userStats, weeklyActivity, sessionHistory } from '@/lib/mock-data/sessions';
+import { userStats, weeklyActivity, sessionHistory } from '@/lib/data/sessions';
 import {
   BarChart,
   Bar,

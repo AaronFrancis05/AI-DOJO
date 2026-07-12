@@ -13,8 +13,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pill } from '@/components/ui/Pill';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
-import { getSituationById } from '@/lib/mock-data/situations';
-import { domains } from '@/lib/mock-data/domains';
+import { situations } from '@/lib/data/situations';
+import { domains } from '@/lib/data/domains';
 import type { SkillLevel, BehaviorMode } from '@/lib/design-tokens';
 import { ArrowLeft, Target, ChevronRight } from 'lucide-react';
 
@@ -23,7 +23,7 @@ export default function SituationPickerPage() {
   const domainSlug = params.domainSlug as string;
   const situationId = Number(params.situationId);
 
-  const situation = getSituationById(situationId);
+  const situation = situations.find((s) => s.id === situationId);
   const domain = domains.find((d) => d.slug === domainSlug);
 
   const [behaviorMode, setBehaviorMode] = useState<BehaviorMode>(
