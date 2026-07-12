@@ -204,17 +204,13 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth?error=no_verifier', request.url));
   }
 
-  // Route through the SDK's built-in handler that processes get-session.
-  // This goes through handleAuthProxyRequest which:
-  //   1. Tries trySessionCache() (misses — no session_data yet on OAuth callback)
+  // Route through the SDK's built-in handler which:
+  //   1. Detects OAuth callback via needsSessionVerification()
   //   2. Calls handleAuthRequest() → upstream GET /get-session with verifier
   //   3. Calls handleAuthResponse() → prepareResponseHeaders() + mintSessionDataFromResponse()
-  //   4. mintSessionDataFromResponse() calls mintSessionDataCookie() → session_data cookie minted
-  //
-  // This ensures the session_data cache cookie is created on successful OAuth login,
-  // avoiding the fragile 3-second upstream timeout on subsequent session checks.
+  //   4. Sets session token + session_data cookies via NextResponse
   const builtinResponse = await builtin.GET!(request, {
-    params: Promise.resolve({ path: ['get-session'] }),
+    params: Promise.resolve({ path: ['oauth', 'callback'] }),
   });
 
   if (!builtinResponse.ok || builtinResponse.status >= 400) {
@@ -227,12 +223,19 @@ async function handleOAuthExchange(request: NextRequest) {
   }
 
   const responseHeaders = new Headers(builtinResponse.headers);
-  responseHeaders.set('Location', '/dashboard');
 
   console.log('[oauth] session cookies from builtin handler', {
     count: builtinResponse.headers.getSetCookie().length,
     names: builtinResponse.headers.getSetCookie().map((c) => c.split('=')[0]),
   });
+
+  // Set cookies on the response
+  const setCookies = builtinResponse.headers.getSetCookie();
+  for (const cookie of setCookies) {
+    responseHeaders.append('Set-Cookie', cookie);
+  }
+
+  responseHeaders.set('Location', '/home');
 
   return new Response(null, { status: 302, headers: responseHeaders });
 }

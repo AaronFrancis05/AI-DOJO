@@ -9,8 +9,8 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { domains } from '@/lib/mock-data/domains';
-import { getSituationsByDomain } from '@/lib/mock-data/situations';
+import { domains } from '@/lib/data/domains';
+import { situations as allSituations } from '@/lib/data/situations';
 import { skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
 import { ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
 import {
@@ -40,7 +40,7 @@ export default function DomainDetailPage() {
   const domainSlug = params.domainSlug as string;
 
   const domain = domains.find((d) => d.slug === domainSlug);
-  const situations = getSituationsByDomain(domainSlug);
+  const situations = allSituations.filter((s) => s.domainSlug === domainSlug);
 
   if (!domain) {
     return (

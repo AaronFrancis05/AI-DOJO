@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { SliderRow } from '@/components/ui/SliderRow';
 import { Toggle } from '@/components/ui/Toggle';
 import { Badge } from '@/components/ui/Badge';
-import { characters } from '@/lib/mock-data/characters';
+import { characters } from '@/lib/data/characters';
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Smile, UserCheck, Headphones, Star } from 'lucide-react';

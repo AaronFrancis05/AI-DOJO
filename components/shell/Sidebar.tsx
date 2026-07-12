@@ -6,7 +6,8 @@
 
 import { cn } from '@/lib/design-tokens';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { authClient } from '@/lib/auth/client';
 import {
   LayoutDashboard,
   Compass,
@@ -15,6 +16,8 @@ import {
   MessageSquare,
   Calendar,
   Settings,
+  LogOut,
+  History,
 } from 'lucide-react';
 
 interface NavItem {
@@ -24,22 +27,30 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Home',      href: '/home',            icon: LayoutDashboard },
-  { label: 'Hub',       href: '/hub',             icon: Compass },
-  { label: 'Progress',  href: '/progress',        icon: BarChart3 },
-  { label: 'Leaderboard', href: '/leaderboard',   icon: Trophy },
-  { label: 'Messages',  href: '/messages',        icon: MessageSquare },
-  { label: 'Calendar',  href: '/calendar',        icon: Calendar },
-  { label: 'Settings',  href: '/settings',        icon: Settings },
+  { label: 'Home',      href: '/home',        icon: LayoutDashboard },
+  { label: 'Hub',       href: '/hub',         icon: Compass },
+  { label: 'Sessions',  href: '/sessions',    icon: History },
+  { label: 'Progress',  href: '/progress',    icon: BarChart3 },
+  { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },
+  { label: 'Messages',  href: '/messages',    icon: MessageSquare },
+  { label: 'Calendar',  href: '/calendar',    icon: Calendar },
+  { label: 'Settings',  href: '/settings',    icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
     return pathname.startsWith(href);
   };
+
+  async function handleSignOut() {
+    await authClient.signOut();
+    router.push('/auth');
+    router.refresh();
+  }
 
   return (
     <aside className="flex h-full w-60 flex-col bg-dojo-sidebar border-r border-dojo-border shrink-0">
@@ -76,7 +87,19 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* Sign Out */}
+      <div className="px-3 pb-2 border-t border-dojo-border pt-3">
+        <button
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-dojo-text-muted hover:bg-dojo-surface hover:text-dojo-danger transition-colors"
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          Sign Out
+        </button>
+      </div>
+
       {/* User card is rendered separately via UserCard */}
     </aside>
   );
 }
+
