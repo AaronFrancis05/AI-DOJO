@@ -1,5 +1,5 @@
 import { db } from '../../../../src/db';
-import { sessions, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabularyEncounters, vocabulary } from '../../../../src/schema';
+import { sessions, scenarios, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabularyEncounters, vocabulary } from '../../../../src/schema';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc } from 'drizzle-orm';
 
@@ -18,7 +18,7 @@ export async function GET(
     return Response.json({ error: 'Invalid session ID' }, { status: 400 });
   }
 
-  const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+    const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
   if (!session) {
     return Response.json({ error: 'Session not found' }, { status: 404 });
   }
@@ -26,6 +26,8 @@ export async function GET(
   if (session.userId !== user.id) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
+
+  const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId));
 
   const conversationList = await db
     .select()
@@ -63,9 +65,10 @@ export async function GET(
     .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
     .where(eq(goalCompletions.sessionId, sessionId));
 
-  return Response.json({
+    return Response.json({
     success: true,
     session,
+    scenario: scenario ?? null,
     conversations: conversationWithCorrections,
     evaluation: evaluation ?? null,
     goalCompletions: goalCompletionList,
@@ -100,3 +103,4 @@ export async function DELETE(
 
   return Response.json({ success: true, message: 'Session deleted' });
 }
+

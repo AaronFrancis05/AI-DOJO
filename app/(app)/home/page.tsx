@@ -1,10 +1,14 @@
 /* ───────────────────────────────────────────────
-   Home Dashboard (Panel 01)
-   Authenticated landing page — full page with all cards
+   Home Dashboard (Panel 01 + Sessions merged)
+   Authenticated landing page — profile, stats, session history with share/delete/report
+   Queries real data from the DB API.
    ─────────────────────────────────────────────── */
 
 'use client';
 
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
@@ -13,12 +17,7 @@ import { LiveBadge } from '@/components/ui/LiveBadge';
 import { HexBadge } from '@/components/ui/HexBadge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import {
-  userStats,
-  weeklyActivity,
-  recentAchievements,
-  sessionHistory,
-} from '@/lib/mock-data/sessions';
+import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import {
   ArrowRight,
   Flame,
@@ -31,6 +30,9 @@ import {
   Globe,
   Sparkles,
   Zap,
+  ExternalLink,
+  Share2,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -43,6 +45,40 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+// ── Types ──────────────────────────────────────────────
+
+interface SessionRecord {
+  id: number;
+  scenarioId: number;
+  sessionNumber: number;
+  status: string;
+  totalTurns: number;
+  vocabularyScore: number | null;
+  grammarScore: number | null;
+  fluencyScore: number | null;
+  culturalScore: number | null;
+  taskScore: number | null;
+  feedback: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  scenarioTitle?: string;
+}
+
+// ── Helpers ────────────────────────────────────────────
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function computeTotalPct(s: SessionRecord): number | null {
+  if (s.status !== 'completed' || s.vocabularyScore === null) return null;
+  const sum = (s.vocabularyScore ?? 0) + (s.grammarScore ?? 0) + (s.fluencyScore ?? 0) + (s.culturalScore ?? 0) + (s.taskScore ?? 0);
+  return Math.round((sum / 100) * 100);
+}
+
+// ── Icon map ──────────────────────────────────────────
+
 const iconMap: Record<string, LucideIcon> = {
   Footprints,
   MessageSquare,
@@ -52,67 +88,189 @@ const iconMap: Record<string, LucideIcon> = {
   Globe,
 };
 
+// ── Mock user data (will come from DB) ────────────────
+
+const mockUser = {
+  name: 'Alex',
+  email: 'alex@example.com',
+  level: 'intermediate',
+  totalSessions: 24,
+  completedSessions: 18,
+  totalSpeakingTime: 320,
+  averageAccuracy: 78,
+  newWordsLearned: 142,
+  currentStreak: 5,
+  longestStreak: 12,
+};
+
+const weeklyActivity = [
+  { day: 'Mon', minutes: 15 },
+  { day: 'Tue', minutes: 22 },
+  { day: 'Wed', minutes: 28 },
+  { day: 'Thu', minutes: 10 },
+  { day: 'Fri', minutes: 35 },
+  { day: 'Sat', minutes: 42 },
+  { day: 'Sun', minutes: 8 },
+];
+
+const recentAchievements = [
+  { id: '1', icon: 'Footprints', label: 'First Steps', unlocked: true },
+  { id: '2', icon: 'MessageSquare', label: '10 Conversations', unlocked: true },
+  { id: '3', icon: 'BookOpen', label: '50 Words', unlocked: true },
+  { id: '4', icon: 'Flame', label: '7-Day Streak', unlocked: false },
+  { id: '5', icon: 'PenTool', label: 'Perfect Grammar', unlocked: false },
+  { id: '6', icon: 'Globe', label: 'All Domains', unlocked: false },
+];
+
+// ── Home Page ─────────────────────────────────────────
+
 export default function HomePage() {
-  const activeSession = sessionHistory.find((s) => s.status === 'active');
+  const router = useRouter();
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sharing, setSharing] = useState<Record<number, string>>({});
+  const [deleting, setDeleting] = useState<number | null>(null);
+
+  // Load sessions from DB via API
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/sessions');
+        const data = await res.json();
+        if (data.success && data.sessions.length > 0) {
+          setSessions(data.sessions);
+        } else {
+          // Fallback: use mock data if DB not seeded
+          setSessions(mockSessions.map(s => ({
+            ...s,
+            scenarioTitle: s.scenarioTitle,
+          })) as any);
+        }
+      } catch (e) {
+        console.error('Failed to load sessions:', e);
+        setSessions(mockSessions.map(s => ({
+          ...s,
+          scenarioTitle: s.scenarioTitle,
+        })) as any);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  // Share a session
+  async function handleShare(sessionId: number) {
+    if (sharing[sessionId]) {
+      navigator.clipboard.writeText(sharing[sessionId]).catch(() => {});
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/share`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const link = `${window.location.origin}/share/${data.token}`;
+        setSharing(prev => ({ ...prev, [sessionId]: link }));
+        navigator.clipboard.writeText(link).catch(() => {});
+      }
+    } catch (e) {
+      console.error('Share failed:', e);
+    }
+  }
+
+  // Delete a session
+  async function handleDelete(sessionId: number) {
+    if (!confirm('Delete this session? This cannot be undone.')) return;
+    setDeleting(sessionId);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
+      }
+    } catch (e) {
+      console.error('Delete failed:', e);
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  const activeSession = sessions.find((s) => s.status === 'active');
+  const completedSessions = sessions.filter((s) => s.status === 'completed');
+  const totalScore = completedSessions.reduce((sum, s) => {
+    const pct = computeTotalPct(s);
+    return sum + (pct ?? 0);
+  }, 0);
+  const avgScore = completedSessions.length > 0 ? Math.round(totalScore / completedSessions.length) : null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
-      {/* Header */}
+      {/* Header with Profile */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dojo-text-primary">Welcome back, Alex</h1>
-          <p className="text-sm text-dojo-text-muted">Continue your Japanese journey</p>
+        <div className="flex items-center gap-4">
+          <Avatar name={mockUser.name} size="lg" />
+          <div>
+            <h1 className="text-2xl font-bold text-dojo-text-primary">Welcome back, {mockUser.name}</h1>
+            <div className="flex items-center gap-3 mt-0.5">
+              <Badge variant={mockUser.level as any}>{mockUser.level}</Badge>
+              <span className="text-xs text-dojo-text-muted">{mockUser.email}</span>
+            </div>
+          </div>
         </div>
-        <Button variant="primary" size="md">
-          <Sparkles className="h-4 w-4" />
-          Quick Practice
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" size="sm" onClick={() => router.push('/hub')}>
+            <Sparkles className="h-4 w-4" />
+            New Practice
+          </Button>
+        </div>
       </div>
 
       {/* Live session banner */}
       {activeSession && (
-        <Card className="border-dojo-danger/30 !p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <LiveBadge />
-              <div>
-                <p className="text-sm font-semibold text-dojo-text-primary">
-                  Roleplay in Progress · {activeSession.scenarioTitle}
-                </p>
-                <p className="text-xs text-dojo-text-muted">
-                  Turn {activeSession.totalTurns} · Started {new Date(activeSession.startedAt).toLocaleTimeString()}
-                </p>
+        <Link href={`/session/new?situation=${activeSession.scenarioId}`} suppressHydrationWarning>
+          <Card className="border-dojo-danger/30 !p-4 cursor-pointer hover:bg-dojo-surface transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <LiveBadge />
+                <div>
+                  <p className="text-sm font-semibold text-dojo-text-primary">
+                    Roleplay in Progress · {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
+                  </p>
+                  <p className="text-xs text-dojo-text-muted">
+                    Turn {activeSession.totalTurns}
+                  </p>
+                </div>
               </div>
+              <Button variant="primary" size="sm">
+                Resume
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
-            <Button variant="primary" size="sm">
-              Resume
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </Card>
+          </Card>
+        </Link>
       )}
 
-      {/* Row 1: Statistics + Weekly Activity + Upcoming + Streak */}
+      {/* Row 1: Statistics + Weekly Activity + Streak */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        {/* Statistics Card */}
+        {/* Statistics Card — Profile data */}
         <Card className="lg:col-span-1">
           <h3 className="mb-3 text-sm font-semibold text-dojo-text-muted uppercase tracking-wider">Statistics</h3>
           <div className="space-y-4">
             <div>
               <p className="text-xs text-dojo-text-muted">Total Sessions</p>
-              <TrendValue value={userStats.totalSessions} trend="up" trendLabel={`+${userStats.completedSessions}`} />
+              <TrendValue value={sessions.length} trend="up" trendLabel={`+${completedSessions.length}`} />
             </div>
             <div>
               <p className="text-xs text-dojo-text-muted">Speaking Time</p>
-              <TrendValue value={`${userStats.totalSpeakingTime}m`} trend="up" trendLabel="+12m" />
+              <TrendValue value={`${mockUser.totalSpeakingTime}m`} trend="up" trendLabel="+12m" />
             </div>
             <div>
-              <p className="text-xs text-dojo-text-muted">Avg. Accuracy</p>
-              <TrendValue value={`${userStats.averageAccuracy}%`} trend="up" trendLabel="+5%" />
+              <p className="text-xs text-dojo-text-muted">Avg. Score</p>
+              <TrendValue value={avgScore ? `${avgScore}%` : '-'} trend={avgScore && avgScore > 0 ? 'up' : 'neutral'} />
             </div>
             <div>
               <p className="text-xs text-dojo-text-muted">New Words</p>
-              <TrendValue value={userStats.newWordsLearned} trend="up" trendLabel="+12" />
+              <TrendValue value={mockUser.newWordsLearned} trend="up" trendLabel="+12" />
             </div>
           </div>
         </Card>
@@ -128,7 +286,7 @@ export default function HomePage() {
                 <YAxis hide />
                 <Tooltip
                   contentStyle={{ background: '#111D33', border: '1px solid #1C2A42', borderRadius: 8, color: '#F4F4F8' }}
-                  formatter={(value) => [`${value} min`, 'Practice Time']}
+                  formatter={(value: any) => [`${value} min`, 'Practice Time']}
                 />
                 <Bar dataKey="minutes" fill="#2D3BC5" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -136,52 +294,50 @@ export default function HomePage() {
           </div>
         </Card>
 
-        {/* Right column: Upcoming + Streak */}
+        {/* Right column: Streak + Quick Links */}
         <div className="space-y-4">
-          {/* Upcoming Session */}
-          <Card>
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
-                <Clock className="h-4 w-4 text-dojo-accent" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-dojo-text-muted">Next Session</p>
-                <p className="text-sm font-semibold text-dojo-text-primary">Order at the Counter</p>
-                <p className="text-xs text-dojo-text-muted">Today · 2:00 PM</p>
-              </div>
-              <Badge variant="beginner">Beginner</Badge>
-            </div>
-          </Card>
-
           {/* Streak Card */}
           <Card>
             <div className="flex items-center gap-3">
               <Flame className="h-8 w-8 text-dojo-streak" />
               <div>
-                <p className="text-lg font-bold text-dojo-text-primary">{userStats.currentStreak} Day Streak</p>
-                <p className="text-xs text-dojo-text-muted">Best: {userStats.longestStreak} days</p>
+                <p className="text-lg font-bold text-dojo-text-primary">{mockUser.currentStreak} Day Streak</p>
+                <p className="text-xs text-dojo-text-muted">Best: {mockUser.longestStreak} days</p>
               </div>
             </div>
-            {/* Day dots */}
             <div className="mt-3 flex gap-1.5">
               {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
                 <div
                   key={i}
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-medium
-                    ${i < userStats.currentStreak ? 'bg-dojo-streak text-black' : 'bg-dojo-border text-dojo-text-muted'}`}
+                    ${i < mockUser.currentStreak ? 'bg-dojo-streak text-black' : 'bg-dojo-border text-dojo-text-muted'}`}
                 >
                   {d}
                 </div>
               ))}
             </div>
           </Card>
+
+          {/* Quick links card */}
+          <Card hoverable onClick={() => router.push('/hub')} className="cursor-pointer">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
+                <Target className="h-4 w-4 text-dojo-accent" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-dojo-text-primary">Choose a Scenario</p>
+                <p className="text-xs text-dojo-text-muted">Explore all domains and situations</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-dojo-text-muted" />
+            </div>
+          </Card>
         </div>
       </div>
 
-      {/* Row 2: Continue Journey + Achievements + Learning Tip */}
+      {/* Row 2: Achievements + Learning Tip + Continue Journey */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Continue Journey Card */}
-        <Card hoverable className="lg:col-span-1">
+        <Card hoverable className="lg:col-span-1 cursor-pointer" onClick={() => router.push('/hub')}>
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-dojo-accent">
               <Target className="h-5 w-5 text-white" />
@@ -189,10 +345,9 @@ export default function HomePage() {
             <div className="flex-1">
               <p className="text-sm font-semibold text-dojo-text-primary">Continue Your Journey</p>
               <p className="mt-1 text-xs text-dojo-text-muted leading-relaxed">
-                Pick up where you left off in the Restaurant domain.
-                You&apos;re 60% through the &quot;Order at the Counter&quot; series.
+                Pick up where you left off. Browse domains and situations to continue practicing.
               </p>
-              <ProgressBar value={60} color="accent" size="sm" className="mt-3" showLabel />
+              <ProgressBar value={completedSessions.length > 0 ? Math.min(100, Math.round((completedSessions.length / 12) * 100)) : 0} color="accent" size="sm" className="mt-3" showLabel />
             </div>
           </div>
         </Card>
@@ -238,44 +393,101 @@ export default function HomePage() {
         </Card>
       </div>
 
-      {/* Row 3: Recent Sessions */}
+      {/* Row 3: Recent Sessions (from DB) */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-dojo-text-primary">Recent Sessions</h2>
-          <Button variant="ghost" size="sm">
-            View All <ArrowRight className="h-4 w-4" />
-          </Button>
+          <h2 className="text-lg font-semibold text-dojo-text-primary">
+            Recent Sessions
+            {loading && <span className="ml-2 text-xs text-dojo-text-muted animate-pulse">Loading...</span>}
+          </h2>
+          {!loading && sessions.length > 3 && (
+            <Link href="/sessions">
+              <Button variant="ghost" size="sm">
+                View All ({sessions.length})
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          )}
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sessionHistory.slice(0, 6).map((session) => (
-            <Card key={session.id} hoverable>
-              <div className="flex items-center justify-between mb-2">
-                <Badge variant={session.status === 'active' ? 'accent' : 'default'}>
-                  {session.status === 'active' ? 'In Progress' : 'Completed'}
-                </Badge>
-                {session.status === 'active' && <LiveBadge />}
-              </div>
-              <p className="text-sm font-semibold text-dojo-text-primary">{session.scenarioTitle}</p>
-              <p className="text-xs text-dojo-text-muted mt-1">
-                {new Date(session.startedAt).toLocaleDateString()} · {session.totalTurns} turns
-              </p>
-              {session.status === 'completed' && session.vocabularyScore !== null && (
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="text-xs text-dojo-text-muted">Score:</span>
-                  <span className="text-xs font-semibold text-dojo-success">
-                    {Math.round(
-                      ((session.vocabularyScore + (session.grammarScore ?? 0) +
-                        (session.fluencyScore ?? 0) + (session.culturalScore ?? 0) +
-                        (session.taskScore ?? 0)) /
-                        ((session.vocabularyScore ?? 0) !== 0 ? 5 : 1)) *
-                        10
-                    )}%
-                  </span>
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
+
+        {!loading && sessions.length === 0 ? (
+          <Card className="text-center py-8">
+            <p className="text-dojo-text-muted mb-2">No sessions yet</p>
+            <p className="text-xs text-dojo-text-muted">Start your first role-play from the Hub</p>
+            <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
+              <Sparkles className="h-4 w-4" /> Start Practicing
+            </Button>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {(loading ? mockSessions.slice(0, 3) : sessions.slice(0, 3)).map((session) => {
+              const pct = computeTotalPct(session as SessionRecord);
+
+              return (
+                <Card key={session.id} hoverable className={`!p-4 ${deleting === session.id ? 'opacity-50' : ''}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant={session.status === 'active' ? 'accent' : 'default'}>
+                          {session.status === 'active' ? 'In Progress' : 'Completed'}
+                        </Badge>
+                        {session.status === 'active' && <LiveBadge />}
+                        <span className="text-xs text-dojo-text-muted">
+                          Attempt #{session.sessionNumber}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-dojo-text-primary truncate">
+                        {(session as any).scenarioTitle ?? `Session #${session.id}`}
+                      </p>
+                      <p className="text-xs text-dojo-text-muted mt-0.5">
+                        {formatDate(session.startedAt)} · {session.totalTurns} turns
+                        {session.completedAt && ` · Completed ${formatDate(session.completedAt)}`}
+                      </p>
+                      {pct !== null && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className="text-xs text-dojo-text-muted">Score:</span>
+                          <span className="text-xs font-semibold text-dojo-success">{pct}%</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      {/* View Report */}
+                      <Link href={`/sessions/${session.id}/report`}>
+                        <Button variant="ghost" size="sm">
+                          <ExternalLink className="h-4 w-4" />
+                          Report
+                        </Button>
+                      </Link>
+
+                      {/* Share */}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); handleShare(session.id); }}
+                      >
+                        <Share2 className="h-4 w-4" />
+                        {sharing[session.id] ? 'Copied' : 'Share'}
+                      </Button>
+
+                      {/* Delete */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-dojo-danger hover:text-dojo-danger"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
+                        disabled={deleting === session.id}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -12,9 +12,10 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
-import { characters } from '@/lib/mock-data/characters';
-import { getSituationById } from '@/lib/mock-data/situations';
-import { domains } from '@/lib/mock-data/domains';
+
+import { characters } from '@/lib/data/characters';
+import { situations } from '@/lib/data/situations';
+import { domains } from '@/lib/data/domains';
 import type { SkillLevel } from '@/lib/design-tokens';
 import { ArrowLeft, Check, ChevronRight, Smile, UserCheck, Headphones, Star } from 'lucide-react';
 
@@ -31,7 +32,7 @@ export default function CharacterSelectionPage() {
   const domainSlug = params.domainSlug as string;
   const situationId = Number(params.situationId);
 
-  const situation = getSituationById(situationId);
+  const situation = situations.find(s => s.id === situationId);
   const domain = domains.find((d) => d.slug === domainSlug);
   const behaviorMode = searchParams.get('mode') ?? situation?.behaviorMode ?? 'standard';
 

@@ -15,6 +15,27 @@
       "when": 1782809525185,
       "tag": "0001_sour_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783848376137,
+      "tag": "0002_bumpy_martin_li",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783848400000,
+      "tag": "0003_domains_situations_characters",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783848500000,
+      "tag": "0004_new_tables",
+      "breakpoints": true
     }
   ]
 }

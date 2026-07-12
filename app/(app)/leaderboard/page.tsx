@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
-import { leaderboardGlobal, leaderboardFriends } from '@/lib/mock-data/sessions';
+import { leaderboardGlobal, leaderboardFriends } from '@/lib/data/sessions';
 import { Trophy, Medal, Flame } from 'lucide-react';
 
 const tabs: Tab[] = [
