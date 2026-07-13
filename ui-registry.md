@@ -46,6 +46,14 @@
 | `Sidebar` | Nav list: Home, Hub, Progress, Leaderboard, Messages, Calendar, Settings |
 | `UserCard` | Avatar + name + tier badge + level/XP bar — rendered at sidebar bottom |
 
+## Roleplay Components (`/components/roleplay/`)
+| Component | Notes |
+|-----------|-------|
+| `RoleplaySidePanel` | Goals checklist + vocabulary + Pause/Resume/End Session controls. Extracted as shared component rendered both inline (desktop sidebar, `hidden lg:flex`) and inside a mobile right-drawer (`lg:hidden`). |
+| `RoleplayInputBar` | Text/voice toggle input + send button. Input has `min-w-0 flex-1` for proper shrink on narrow viewports. |
+| `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
+| `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
+
 ## Route Map (Phase F1-F4)
 | Route | Panel | Status |
 |-------|-------|--------|

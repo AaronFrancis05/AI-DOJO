@@ -1,6 +1,8 @@
 /* ───────────────────────────────────────────────
    Roleplay Room (Panel 06) — Real room, loaded from DB
    Voice + Text input, Gemini-powered, session-backed
+   Responsive: side panel hides < lg, mobile drawer
+   replaces it, compact avatar on small screens.
    ─────────────────────────────────────────────── */
 
 'use client';
@@ -14,8 +16,9 @@ import { LiveBadge } from '@/components/ui/LiveBadge';
 import { AvatarStage } from '@/components/roleplay/AvatarStage';
 import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { RoleplayInputBar } from '@/components/roleplay/RoleplayInputBar';
+import { RoleplaySidePanel } from '@/components/roleplay/RoleplaySidePanel';
 import type { SkillLevel } from '@/lib/design-tokens';
-import { ArrowLeft, Target, Lightbulb } from 'lucide-react';
+import { ArrowLeft, Target, X, LogOut } from 'lucide-react';
 
 interface TurnData {
   id: number;
@@ -49,6 +52,7 @@ export default function RoleplaySessionPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [showMobilePanel, setShowMobilePanel] = useState(false);
 
   const [session, setSession] = useState<any>(null);
   const [scenario, setScenario] = useState<any>(null);
@@ -207,40 +211,90 @@ export default function RoleplaySessionPage() {
 
   const latestAiMessage = [...conversations].reverse().find(c => c.speaker === 'ai');
 
+  const sidePanelProps = {
+    goals,
+    completedGoals,
+    vocabulary,
+    situation,
+    scenario,
+    session,
+    isActive,
+    isCompleted,
+    onPause: handlePause,
+    onEnd: handleEnd,
+    onViewReport: () => router.push(`/sessions/${sessionId}/report`),
+  };
+
   return (
     <div className="flex h-full flex-col">
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Avatar + Conversation area */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Top bar */}
-          <div className="flex items-center justify-between border-b border-dojo-border px-6 py-2.5 shrink-0">
-            <div className="flex items-center gap-3">
+          {/* ── Top bar ─────────────────────────── */}
+          <div className="flex items-center justify-between border-b border-dojo-border px-3 sm:px-6 py-2.5 shrink-0">
+            {/* Left side */}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <Button variant="ghost" size="sm" onClick={() => router.push('/home')}>
                 <ArrowLeft className="h-4 w-4" />
-                Exit
+                <span className="hidden sm:inline">Exit</span>
               </Button>
-              <div className="h-4 w-px bg-dojo-border" />
+              <div className="h-4 w-px bg-dojo-border shrink-0" />
               <div
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                 style={{ backgroundColor: charColor }}
               >
                 {charName[0]}
               </div>
-              <div>
-                <p className="text-sm font-semibold text-dojo-text-primary">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-dojo-text-primary truncate">
                   {situation?.title ?? scenario?.title ?? 'Roleplay'}
                 </p>
-                <p className="text-xs text-dojo-text-muted">
-                  with {charName} · {session?.behaviorMode ?? 'standard'} mode
+                {/* Subtitle — hidden below sm (mobile avatar card covers it) */}
+                <p className="hidden sm:block text-xs text-dojo-text-muted truncate">
+                  with {charName}
+                  {session?.behaviorMode ? ` · ${session.behaviorMode} mode` : ''}
                   {session?.sessionNumber ? ` · Attempt #${session.sessionNumber}` : ''}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            {/* Right side — badges + mobile controls */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Skill level badge — hidden below sm to save space */}
               {situation?.skillLevel && (
-                <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
+                <div className="hidden sm:block">
+                  <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
+                </div>
               )}
+
+              {/* Side panel toggle — mobile only (< lg) */}
+              {isActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="lg:hidden"
+                  onClick={() => setShowMobilePanel(true)}
+                  title="Goals & Controls"
+                >
+                  <Target className="h-4 w-4" />
+                </Button>
+              )}
+
+              {/* Compact End Session — mobile only (< lg) */}
+              {isActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="lg:hidden text-dojo-danger"
+                  onClick={handleEnd}
+                  title="End Session"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              )}
+
+              {/* Live / Completed badge — always visible */}
               {isActive && <LiveBadge />}
               {isCompleted && <Badge variant="default">Completed</Badge>}
             </div>
@@ -248,7 +302,7 @@ export default function RoleplaySessionPage() {
 
           {/* Body: avatar panel + chat */}
           <div className="flex flex-1 overflow-hidden">
-            {/* Avatar panel — persistent 3D display */}
+            {/* Avatar panel — persistent 3D display, hidden below lg */}
             <div className="hidden lg:flex w-72 shrink-0 flex-col border-r border-dojo-border bg-dojo-sidebar/30">
               <div className="flex-1 min-h-0 p-4">
                 <AvatarStage
@@ -275,9 +329,25 @@ export default function RoleplaySessionPage() {
 
             {/* Conversation + Input */}
             <div className="flex flex-1 flex-col min-w-0">
-              {/* Conversation area — centered, max-width like old chat */}
+              {/* ── Compact mobile avatar card ────── */}
+              <div className="lg:hidden border-b border-dojo-border px-4 py-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm"
+                    style={{ backgroundColor: charColor }}
+                  >
+                    {charName[0]}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-dojo-text-primary">{charName}</p>
+                    <p className="text-xs text-dojo-text-muted truncate">{charRole}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conversation area — centered, max-width */}
               <div ref={chatContainerRef} className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-2xl px-6 py-6 space-y-4">
+                <div className="mx-auto max-w-2xl px-4 sm:px-6 py-6 space-y-4">
                   {conversations.length === 0 && !sending && (
                     <div className="flex items-center justify-center h-32">
                       <p className="text-dojo-text-muted text-sm">
@@ -322,8 +392,8 @@ export default function RoleplaySessionPage() {
                 </div>
               </div>
 
-              {/* Input area — centered */}
-              <div className="border-t border-dojo-border px-6 py-4 shrink-0">
+              {/* Input area — centered, safe-area padding */}
+              <div className="border-t border-dojo-border px-3 sm:px-6 py-3 sm:py-4 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <div className="mx-auto max-w-2xl">
                   <RoleplayInputBar
                     onSend={handleSend}
@@ -339,91 +409,36 @@ export default function RoleplaySessionPage() {
           </div>
         </div>
 
-        {/* Sidebar — Goals + Vocabulary + Controls */}
-        <div className="w-72 border-l border-dojo-border p-4 space-y-4 overflow-y-auto">
-          <Card>
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="h-4 w-4 text-dojo-accent" />
-              <h3 className="text-xs font-semibold text-dojo-text-muted uppercase tracking-wider">Goals</h3>
-            </div>
-            {goals.length === 0 ? (
-              <p className="text-xs text-dojo-text-muted">
-                {situation?.learningGoals ?? scenario?.learningGoals ?? 'Practice the conversation naturally.'}
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {goals.map((goal) => {
-                  const done = completedGoals.includes(goal.sequenceOrder);
-                  return (
-                    <li key={goal.id} className="flex items-start gap-2">
-                      <span
-                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
-                          done ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'
-                        }`}
-                      >
-                        {done ? '✓' : goal.sequenceOrder}
-                      </span>
-                      <span className={`text-xs ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
-                        {goal.goalText}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
-
-          {vocabulary.length > 0 && (
-            <Card>
-              <div className="flex items-center gap-2 mb-2">
-                <Lightbulb className="h-4 w-4 text-dojo-warning" />
-                <h3 className="text-xs font-semibold text-dojo-text-muted uppercase tracking-wider">Key Vocabulary</h3>
-              </div>
-              <div className="space-y-2">
-                {vocabulary.map((v) => (
-                  <div key={v.id} className="flex justify-between text-xs">
-                    <span className="text-dojo-text-primary font-medium">{v.japanese}</span>
-                    <span className="text-dojo-text-muted">{v.english}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          <div className="space-y-2">
-            {isActive && (
-              <Button variant="secondary" size="sm" className="w-full" onClick={handlePause}>
-                Pause Session
-              </Button>
-            )}
-            {session?.status === 'paused' && (
-              <Button variant="primary" size="sm" className="w-full" onClick={() => handlePause()}>
-                Resume Session
-              </Button>
-            )}
-            {isActive && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-dojo-danger"
-                onClick={handleEnd}
-              >
-                End Session
-              </Button>
-            )}
-            {isCompleted && (
-              <Button
-                variant="primary"
-                size="sm"
-                className="w-full"
-                onClick={() => router.push(`/sessions/${sessionId}/report`)}
-              >
-                View Report
-              </Button>
-            )}
-          </div>
+        {/* ── Desktop side panel (Goals + Vocabulary + Controls) ── */}
+        <div className="hidden lg:flex w-72 shrink-0 flex-col border-l border-dojo-border p-4 space-y-4 overflow-y-auto">
+          <RoleplaySidePanel {...sidePanelProps} />
         </div>
       </div>
+
+      {/* ── Mobile drawer (Goals + Vocabulary + Controls) ── */}
+      {showMobilePanel && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowMobilePanel(false)}
+          />
+          {/* Drawer panel */}
+          <div className="absolute right-0 top-0 bottom-0 w-80 max-w-[85vw] bg-dojo-canvas border-l border-dojo-border shadow-xl flex flex-col">
+            {/* Drawer header */}
+            <div className="flex items-center justify-between border-b border-dojo-border px-4 py-3 shrink-0">
+              <h2 className="text-sm font-semibold text-dojo-text-primary">Session Details</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowMobilePanel(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {/* Drawer body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <RoleplaySidePanel {...sidePanelProps} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
