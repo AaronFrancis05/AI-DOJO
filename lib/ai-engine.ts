@@ -69,7 +69,10 @@ export async function analyzeAndGenerateTurn(
     targetPhraseJp: string | null;
   }>,
   completedGoalSequenceOrders: number[],
-  conversationHistory: GeminiMessage[] = []
+  conversationHistory: GeminiMessage[] = [],
+  behaviorMode?: string,
+  situationContext?: string,
+  situationLearningGoals?: string,
 ): Promise<AIResponseAnalysis> {
 
   const goalsBlock = goals.map(g => {
@@ -79,13 +82,35 @@ export async function analyzeAndGenerateTurn(
     return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${g.goalText}${phrase}`;
   }).join('\n');
 
+  const effectiveContext = situationContext ?? scenario.context;
+  const effectiveGoals = situationLearningGoals ?? scenario.learningGoals;
+
+  const modeInstruction = behaviorMode === 'trouble'
+    ? `===== BEHAVIOR MODE: TROUBLE =====
+The AI character should be MORE DIFFICULT to deal with. They should:
+- Be less cooperative and create obstacles for the user
+- Use more complex vocabulary and keigo
+- Occasionally misunderstand the user or ask for clarification
+- Challenge the user's requests more than in standard mode
+- Maintain a polite but firm demeanor throughout
+This mode is designed to push the user's Japanese skills further by simulating real-world difficult interactions.`
+    : `===== BEHAVIOR MODE: STANDARD =====
+The AI character should be cooperative, friendly, and helpful. They should:
+- Respond clearly and at the appropriate difficulty level
+- Guide the conversation naturally toward completing all goals
+- Be patient with beginner-level Japanese
+- Provide a supportive learning environment`;
+
   const systemInstruction = `
 You are an advanced backend AI processor engine handling a multi-turn Japanese language simulation game called "AI DOJO".
 
 ===== NARRATIVE CONTEXT =====
-- Scenario context: ${scenario.context}
+- Scenario context: ${effectiveContext}
+- Learning goals: ${effectiveGoals}
 - AI character you play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
 - The scenario has a placeholder user character named "${scenario.userCharacterName}" with role "${scenario.userCharacterRole}".
+
+${modeInstruction}
 
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
