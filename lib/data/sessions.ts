@@ -115,8 +115,14 @@ export async function getLeaderboardFriends() {
   return fixtureFriends;
 }
 
-/* ── 2c — Genuinely unbuilt features — clear "Coming soon" state ── */
+/* ── 2c — Calendar now fetches /api/sessions directly in the page ── */
 
+/**
+ * getCalendarEvents is no longer used by app/(app)/calendar/page.tsx,
+ * which fetches /api/sessions directly and maps sessions into events.
+ * This helper remains for any other caller until the fixture path is removed.
+ * TODO: Remove this once all callers are confirmed migrated.
+ */
 export async function getCalendarEvents() {
   return fixtureCalendar;
 }

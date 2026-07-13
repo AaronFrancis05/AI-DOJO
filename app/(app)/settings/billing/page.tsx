@@ -1,6 +1,8 @@
 /* ───────────────────────────────────────────────
-   Subscription / Upgrade (Panel 15)
-   Pricing cards + current plan info
+   Subscription / Upgrade (Panel 15) — UI only
+   Pricing cards display. No payment provider is
+   wired — no Stripe/Paddle dependency in deps.
+   Real checkout requires a provider integration.
    ─────────────────────────────────────────────── */
 
 'use client';
