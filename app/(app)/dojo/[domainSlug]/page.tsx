@@ -24,7 +24,7 @@ import {
   Sun,
 } from 'lucide-react';
 
-const iconMap: Record<string, React.ElementType> = {
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   UtensilsCrossed,
   Building2,
   Plane,
