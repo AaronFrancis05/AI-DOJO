@@ -34,10 +34,10 @@ async function seed() {
     const defaultPwHash = await hashPassword('changeme123');
 
     const insertedUsers = await db.insert(users).values([
-      { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', passwordHash: defaultPwHash, level: 'beginner', consentToDataSharing: true },
-      { name: 'Aaron', email: 'aarontaremwa8@gmail.com', passwordHash: defaultPwHash, level: 'beginner', consentToDataSharing: true },
-      { name: 'Desire', email: 'desirehope82@gmail.com', passwordHash: defaultPwHash, level: 'intermediate', consentToDataSharing: true },
-      { name: 'Derrick', email: 'alaxdero1@gmail.com', passwordHash: defaultPwHash, level: 'beginner', consentToDataSharing: true },
+      { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 2400, xpToNext: 3000, tier: 'premium', streak: 12, consentToDataSharing: true },
+      { name: 'Aaron', email: 'aarontaremwa8@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 1800, xpToNext: 2000, tier: 'premium', streak: 7, consentToDataSharing: true },
+      { name: 'Desire', email: 'desirehope82@gmail.com', passwordHash: defaultPwHash, level: 'intermediate', xp: 5600, xpToNext: 8000, tier: 'premium', streak: 3, consentToDataSharing: true },
+      { name: 'Derrick', email: 'alaxdero1@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 900, xpToNext: 1000, tier: 'free', streak: 0, consentToDataSharing: true },
     ]).returning();
 
     const userMap = Object.fromEntries(insertedUsers.map(u => [u.name, u.id]));

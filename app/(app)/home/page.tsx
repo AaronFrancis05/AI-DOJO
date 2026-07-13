@@ -89,9 +89,8 @@ const iconMap: Record<string, LucideIcon> = {
   Globe,
 };
 
-// ── Known gap: user stats (xp, streak, words learned) ──
-// The `users` table has name/email/level but not xp/streak/words.
-// These will come from a `user_stats` table or computed aggregations.
+// xp, tier, streak are now stored in the `users` table.
+// Words learned / speaking time are still placeholders.
 
 const weeklyActivity = [
   { day: 'Mon', minutes: 15 },

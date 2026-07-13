@@ -15,8 +15,6 @@ export interface UserContextValue {
   name: string;
   email: string;
   level: string;        // 'beginner' | 'intermediate' | 'advanced'
-  /** Known gap: tier, xp, streak are not yet in the `users` table.
-   *  These are placeholders until schema migration adds them. */
   tier: 'free' | 'premium';
   xp: number;
   xpToNext: number;
