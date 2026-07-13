@@ -16,6 +16,7 @@ function adaptDbSituation(d: any, domainSlug?: string): SituationFixture {
       ? d.focusPills.includes('|||') ? d.focusPills.split('|||') : d.focusPills.split(',')
       : d.focusPills) ?? [],
     displayOrder: d.displayOrder ?? 0,
+    counterpartRole: d.counterpartRole ?? '',
   };
 }
 

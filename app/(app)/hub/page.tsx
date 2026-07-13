@@ -1,12 +1,13 @@
 /* ───────────────────────────────────────────────
    Hub (Panel 02) — Domain Grid
-   Shows all 8 domains as clickable cards
+   Shows all domains as clickable cards
    ─────────────────────────────────────────────── */
 
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
-import { domains } from '@/lib/data/domains';
+import { getDomains } from '@/lib/data/domains';
 import Link from 'next/link';
 import {
   UtensilsCrossed,
@@ -19,6 +20,7 @@ import {
   Sun,
   ArrowRight,
 } from 'lucide-react';
+import type { DomainFixture } from '@/lib/data/domains';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   UtensilsCrossed,
@@ -32,6 +34,16 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 export default function HubPage() {
+  const [domains, setDomains] = useState<DomainFixture[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDomains().then((data) => {
+      setDomains(data);
+      setLoading(false);
+    });
+  }, []);
+
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="mb-8">
@@ -41,39 +53,52 @@ export default function HubPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {domains.map((domain) => {
-          const Icon = iconMap[domain.icon] ?? Compass;
-          return (
-            <Link key={domain.id} href={`/dojo/${domain.slug}`} className="block">
-              <Card hoverable className="group h-full !p-0">
-                {/* Gradient hero area */}
-                <div
-                  className="flex h-28 items-center justify-center rounded-t-[--radius-md]"
-                  style={{
-                    background: `linear-gradient(135deg, ${domain.heroGradientFrom}, ${domain.heroGradientTo})`,
-                  }}
-                >
-                  <Icon className="h-12 w-12 text-white/80" />
-                </div>
-                {/* Content */}
-                <div className="p-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-dojo-text-primary">{domain.name}</h3>
-                    <ArrowRight className="h-4 w-4 text-dojo-text-muted transition-transform group-hover:translate-x-0.5" />
+      {loading ? (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i} className="!p-0 animate-pulse">
+              <div className="h-28 rounded-t-[--radius-md] bg-dojo-border" />
+              <div className="p-4 space-y-2">
+                <div className="h-5 w-28 rounded bg-dojo-border" />
+                <div className="h-3 w-full rounded bg-dojo-border" />
+                <div className="h-3 w-20 rounded bg-dojo-border" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {domains.map((domain) => {
+            const Icon = iconMap[domain.icon] ?? Compass;
+            return (
+              <Link key={domain.id} href={`/dojo/${domain.slug}`} className="block">
+                <Card hoverable className="group h-full !p-0">
+                  <div
+                    className="flex h-28 items-center justify-center rounded-t-[--radius-md]"
+                    style={{
+                      background: `linear-gradient(135deg, ${domain.heroGradientFrom}, ${domain.heroGradientTo})`,
+                    }}
+                  >
+                    <Icon className="h-12 w-12 text-white/80" />
                   </div>
-                  <p className="mt-1 text-xs text-dojo-text-muted leading-relaxed">
-                    {domain.description}
-                  </p>
-                  <p className="mt-3 text-xs text-dojo-text-muted">
-                    {domain.situationCount} situations
-                  </p>
-                </div>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-semibold text-dojo-text-primary">{domain.name}</h3>
+                      <ArrowRight className="h-4 w-4 text-dojo-text-muted transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                    <p className="mt-1 text-xs text-dojo-text-muted leading-relaxed">
+                      {domain.description}
+                    </p>
+                    <p className="mt-3 text-xs text-dojo-text-muted">
+                      {domain.situationCount} situations
+                    </p>
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
