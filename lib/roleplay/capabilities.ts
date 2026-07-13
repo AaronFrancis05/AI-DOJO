@@ -1,5 +1,5 @@
 export type SttProvider = 'web-speech-api' | 'disabled';
-export type TtsProvider = 'disabled' | '<provider-name>';
+export type TtsProvider = 'disabled' | 'web-speech-api';
 export type AvatarRenderer = 'placeholder-fbx' | 'fbx' | '<future renderer>';
 
 export interface RoleplayCapabilities {
@@ -10,6 +10,6 @@ export interface RoleplayCapabilities {
 
 export const roleplayCapabilities: RoleplayCapabilities = {
   stt: 'web-speech-api',
-  tts: 'disabled',
+  tts: 'web-speech-api',
   avatarRenderer: 'fbx',
 };

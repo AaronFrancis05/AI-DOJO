@@ -17,6 +17,7 @@ import { AvatarStage } from '@/components/roleplay/AvatarStage';
 import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { RoleplayInputBar } from '@/components/roleplay/RoleplayInputBar';
 import { RoleplaySidePanel } from '@/components/roleplay/RoleplaySidePanel';
+import { speak as ttsSpeak, isSpeaking as ttsIsSpeaking } from '@/lib/roleplay/tts';
 import type { SkillLevel } from '@/lib/design-tokens';
 import { ArrowLeft, Target, X, LogOut } from 'lucide-react';
 
@@ -53,6 +54,7 @@ export default function RoleplaySessionPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [showMobilePanel, setShowMobilePanel] = useState(false);
+  const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
 
   const [session, setSession] = useState<any>(null);
   const [scenario, setScenario] = useState<any>(null);
@@ -103,6 +105,7 @@ export default function RoleplaySessionPage() {
   const handleSend = useCallback(async (text: string) => {
     if (sending) return;
     setSending(true);
+    setAvatarMode('listening');
     setError('');
 
     try {
@@ -141,6 +144,15 @@ export default function RoleplaySessionPage() {
 
       setConversations(prev => [...prev, userTurn, aiTurn]);
 
+      // Speak the AI reply via TTS
+      const aiText = aiTurn.messageJp || aiTurn.messageEn;
+      if (aiText) {
+        setAvatarMode('talking');
+        ttsSpeak(aiText, 'ja-JP').then(() => {
+          setAvatarMode('idle');
+        });
+      }
+
       if (data.analysis.goalsAddressedThisTurn?.length > 0) {
         setCompletedGoals(prev => [...new Set([...prev, ...data.analysis.goalsAddressedThisTurn])]);
       }
@@ -152,6 +164,9 @@ export default function RoleplaySessionPage() {
       setError(e.message);
     } finally {
       setSending(false);
+      if (!ttsIsSpeaking()) {
+        setAvatarMode('idle');
+      }
     }
   }, [sessionId, sending, conversations.length]);
 
@@ -310,6 +325,7 @@ export default function RoleplaySessionPage() {
                   role={charRole}
                   accentColor={charColor}
                   domainSlug={domainSlug}
+                  mode={avatarMode}
                   state={
                     latestAiMessage
                       ? {
