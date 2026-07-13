@@ -50,9 +50,19 @@ export default function CharacterSelectionPage() {
       ]);
       setSituation(sit);
       setDomain(dom);
-      setCharacters(chars);
+
+      // Only show characters whose defaultForDomain matches the current domain.
+      // Fall back to all characters if none match (graceful for domains without
+      // a dedicated character).
+      const filtered = dom
+        ? chars.filter((c) => c.defaultForDomain === dom.slug)
+        : chars;
+      setCharacters(filtered.length > 0 ? filtered : chars);
+
       setSelectedCharId(
-        chars.find((c) => c.defaultForDomain === domainSlug)?.id ?? chars[0]?.id ?? null,
+        (filtered.length > 0 ? filtered : chars).find(
+          (c) => c.defaultForDomain === domainSlug,
+        )?.id ?? (filtered.length > 0 ? filtered : chars)[0]?.id ?? null,
       );
       setLoading(false);
     }

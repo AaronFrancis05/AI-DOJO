@@ -14,10 +14,14 @@ const domainFixtures = [
 ];
 
 const characterFixtures = [
-  { name: 'Emma', role: 'Friendly Waitress / Shop Assistant', personality: 'Patiente et encourageante — Patient and encouraging', avatarColor: '#2D3BC5', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', displayOrder: 1 },
-  { name: 'Lucas', role: 'Hotel Concierge / Front Desk', personality: 'Professionnel mais chaleureux — Professional yet warm', avatarColor: '#D14343', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', displayOrder: 2 },
-  { name: 'Sophia', role: 'Airport Staff / Travel Agent', personality: 'Efficace et sympathique — Efficient and friendly', avatarColor: '#2FAE66', avatarIcon: 'Headphones', voiceType: 'Clear, Female — Mid-High Pitch', displayOrder: 3 },
-  { name: 'David', role: 'Doctor / Business Colleague', personality: 'Sérieux mais accessible — Serious but approachable', avatarColor: '#E3A939', avatarIcon: 'Star', voiceType: 'Authoritative, Male — Mid Pitch', displayOrder: 4 },
+  { name: 'Yuki Tanaka', role: 'Friendly Shopkeeper / Waitress', personality: 'Patient and encouraging', avatarColor: '#2D3BC5', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', displayOrder: 1 },
+  { name: 'Kenji Sato', role: 'Business Executive / Hotel Manager', personality: 'Professional yet warm', avatarColor: '#D14343', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', displayOrder: 2 },
+  { name: 'Miyuki Nakamura', role: 'Customer Service / Nurse', personality: 'Efficient and friendly', avatarColor: '#2FAE66', avatarIcon: 'Smile', voiceType: 'Clear, Female — Mid-High Pitch', displayOrder: 3 },
+  { name: 'Takeshi Yamamoto', role: 'Train Conductor / Police Officer', personality: 'Serious but approachable', avatarColor: '#E3A939', avatarIcon: 'UserCheck', voiceType: 'Authoritative, Male — Mid Pitch', displayOrder: 4 },
+  { name: 'Hana Kimura', role: 'Fashion Assistant / Tour Guide', personality: 'Friendly and cheerful', avatarColor: '#9333EA', avatarIcon: 'Star', voiceType: 'Warm, Female — Mid Pitch', displayOrder: 5 },
+  { name: 'Ryo Aoki', role: 'Airline Staff / Hotel Concierge', personality: 'Efficient and professional', avatarColor: '#06B6D4', avatarIcon: 'Headphones', voiceType: 'Clear, Male — Mid Pitch', displayOrder: 6 },
+  { name: 'Takashi Mori', role: 'Business Executive / Corporate Professional', personality: 'Punctual and professional', avatarColor: '#2563EB', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', displayOrder: 7 },
+  { name: 'Sakura Yamada', role: 'Friendly Neighbour / Local Guide', personality: 'Warm and approachable', avatarColor: '#F59E0B', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', displayOrder: 8 },
 ];
 
 const situationFixtures = [
@@ -67,12 +71,13 @@ async function seedDomainData() {
     characterFixtures.map(c => ({
       ...c,
       defaultForDomainId: domainMap.get(
-        c.name === 'Emma' ? 'restaurant' :
-        c.name === 'Lucas' ? 'hotel' :
-        c.name === 'Sophia' ? 'airport' :
-        c.name === 'David' ? 'hospital' :
-        c.name === 'Yuki' ? 'travel' :
-        c.name === 'Kenji' ? 'business' : null
+        c.name === 'Yuki Tanaka' ? 'restaurant' :
+        c.name === 'Kenji Sato' ? 'hotel' :
+        c.name === 'Miyuki Nakamura' ? 'hospital' :
+        c.name === 'Takeshi Yamamoto' ? 'travel' :
+        c.name === 'Hana Kimura' ? 'shopping' :
+        c.name === 'Ryo Aoki' ? 'airport' :
+        c.name === 'Takashi Mori' ? 'business' : 'daily_life'
       ) ?? null,
     }))
   ).returning();

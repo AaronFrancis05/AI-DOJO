@@ -3,6 +3,17 @@ import { characters as fixtureCharacters, type CharacterFixture } from '@/lib/mo
 export { fixtureCharacters as characters };
 export type { CharacterFixture };
 
+const domainIdToSlug: Record<number, string> = {
+  1: 'restaurant',
+  2: 'hotel',
+  3: 'airport',
+  4: 'hospital',
+  5: 'shopping',
+  6: 'business',
+  7: 'travel',
+  8: 'daily_life',
+};
+
 function adaptDbCharacter(d: any): CharacterFixture {
   return {
     id: d.id,
@@ -12,7 +23,7 @@ function adaptDbCharacter(d: any): CharacterFixture {
     avatarColor: d.avatarColor,
     avatarIcon: d.avatarIcon,
     voiceType: d.voiceType,
-    defaultForDomain: d.defaultForDomain ?? undefined,
+    defaultForDomain: d.defaultForDomainId != null ? domainIdToSlug[d.defaultForDomainId] : undefined,
     displayOrder: d.displayOrder ?? 0,
   };
 }

@@ -81,6 +81,18 @@ export async function POST(req: Request) {
           .from(characters)
           .where(eq(characters.id, resolvedCharacterId));
         if (char) {
+          // Guard: reject if the character's default domain doesn't match
+          // the situation's domain. This catches the ID-collision bug where
+          // fixture character IDs point to wrong real characters.
+          if (char.defaultForDomainId != null && char.defaultForDomainId !== situation.domainId) {
+            console.warn(
+              `[session-create] character ${char.id} (${char.name}) default domain ${char.defaultForDomainId} `
+              + `does not match situation ${numericSituationId} domain ${situation.domainId}. Rejecting.`,
+            );
+            return Response.json({
+              error: `Character "${char.name}" is not available for this situation. Please select a different character.`,
+            }, { status: 400 });
+          }
           charName = char.name;
           charRole = char.role;
         }
