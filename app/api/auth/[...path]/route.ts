@@ -204,13 +204,17 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth?error=no_verifier', request.url));
   }
 
-  // Route through the SDK's built-in handler which:
-  //   1. Detects OAuth callback via needsSessionVerification()
+  // Route through the SDK's built-in handler that processes get-session.
+  // This goes through handleAuthProxyRequest which:
+  //   1. Tries trySessionCache() (misses — no session_data yet on OAuth callback)
   //   2. Calls handleAuthRequest() → upstream GET /get-session with verifier
   //   3. Calls handleAuthResponse() → prepareResponseHeaders() + mintSessionDataFromResponse()
-  //   4. Sets session token + session_data cookies via NextResponse
+  //   4. mintSessionDataFromResponse() calls mintSessionDataCookie() → session_data cookie minted
+  //
+  // This ensures the session_data cache cookie is created on successful OAuth login,
+  // avoiding the fragile 3-second upstream timeout on subsequent session checks.
   const builtinResponse = await builtin.GET!(request, {
-    params: Promise.resolve({ path: ['oauth', 'callback'] }),
+    params: Promise.resolve({ path: ['get-session'] }),
   });
 
   if (!builtinResponse.ok || builtinResponse.status >= 400) {

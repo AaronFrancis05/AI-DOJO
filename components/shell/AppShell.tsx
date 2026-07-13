@@ -1,12 +1,11 @@
 /* ───────────────────────────────────────────────
    AppShell — sidebar + content slot, wraps every (app) route
-   UserCard lives here, so it's persistent across pages.
+   UserCard lives inside Sidebar, persistent across pages.
    ─────────────────────────────────────────────── */
 
 'use client';
 
 import { Sidebar } from './Sidebar';
-import { UserCard } from './UserCard';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -36,19 +35,16 @@ export function AppShell({ children, user }: AppShellProps) {
   const u = user ?? defaultUser;
 
   return (
-    <div className="flex h-screen w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">
-      <div className="flex h-full flex-col">
-        <Sidebar />
-        <UserCard
-          name={u.name}
-          tier={u.tier}
-          level={u.level}
-          xp={u.xp}
-          xpToNext={u.xpToNext}
-          avatarSrc={u.avatarSrc}
-          avatarColor={u.avatarColor}
-        />
-      </div>
+    <div className="flex h-dvh w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">
+      <Sidebar
+        userName={u.name}
+        userTier={u.tier}
+        userLevel={u.level}
+        userXp={u.xp}
+        userXpToNext={u.xpToNext}
+        userAvatarSrc={u.avatarSrc}
+        userAvatarColor={u.avatarColor}
+      />
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>

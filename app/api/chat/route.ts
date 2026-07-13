@@ -1,10 +1,10 @@
 import { db } from '../../../src/db';
-import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios } from '../../../src/schema';
+import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import { eq, and, asc } from 'drizzle-orm';
 import { getAuthUser } from '../../../lib/auth/server';
 
-const SAFETY_CAP_TURN = 10;
+const SAFETY_CAP_TURN = 15;
 
 export async function POST(req: Request) {
   try {
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
     }
 
     const { scenarioId } = session;
+    const behaviorMode = session.behaviorMode ?? 'standard';
 
     const [currentScenario] = await db
       .select()
@@ -47,6 +48,20 @@ export async function POST(req: Request) {
 
     if (!currentScenario) {
       return Response.json({ error: 'Scenario not found' }, { status: 404 });
+    }
+
+    let situationContext = currentScenario.context;
+    let situationLearningGoals = currentScenario.learningGoals;
+
+    if (session.situationId) {
+      const [situation] = await db
+        .select()
+        .from(situations)
+        .where(eq(situations.id, session.situationId));
+      if (situation) {
+        situationContext = situation.context;
+        situationLearningGoals = situation.learningGoals;
+      }
     }
 
     const goals = await db
@@ -84,7 +99,10 @@ export async function POST(req: Request) {
       currentScenario,
       goals,
       completedSequenceOrders,
-      conversationHistory
+      conversationHistory,
+      behaviorMode,
+      situationContext,
+      situationLearningGoals,
     );
 
     const [userConversation] = await db.insert(conversations).values({

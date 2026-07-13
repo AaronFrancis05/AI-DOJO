@@ -12,7 +12,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     authClient.getSession().then(({ data }) => {
-      if (data?.user) router.push('/dashboard');
+      if (data?.user) router.push('/home');
     });
   }, [router]);
 
@@ -47,7 +47,7 @@ export default function AuthPage() {
       void consent;
 
       if (isLogin) {
-        router.push('/dashboard');
+        router.push('/home');
       } else {
         router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`);
       }
