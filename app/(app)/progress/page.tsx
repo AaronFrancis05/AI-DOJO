@@ -1,17 +1,12 @@
-/* ───────────────────────────────────────────────
-   Progress Analytics (Panel 09)
-   Skills Radar Chart + Activity summary + Tabs
-   ─────────────────────────────────────────────── */
-
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { TrendValue } from '@/components/ui/TrendValue';
 import { RadarChart, type RadarDataPoint } from '@/components/ui/RadarChart';
-import { userStats, weeklyActivity, sessionHistory } from '@/lib/data/sessions';
+import { getUserStats, getWeeklyActivity, type WeeklyActivity } from '@/lib/data/sessions';
+import { useUser } from '@/lib/auth/user-context';
 import {
   BarChart,
   Bar,
@@ -56,6 +51,29 @@ const monthlyData = [
 ];
 
 export default function ProgressPage() {
+  const user = useUser();
+  const [stats, setStats] = useState<any>(null);
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const [statsRes, weeklyRes] = await Promise.all([
+        getUserStats(),
+        getWeeklyActivity(),
+      ]);
+      setStats(statsRes.stats);
+      setWeeklyData(weeklyRes.data);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const displayXP = stats?.xp ?? user?.xp ?? 0;
+  const displaySessions = stats?.totalSessions ?? 0;
+  const displayCompleted = stats?.completedSessions ?? 0;
+  const displayStreak = stats?.streak ?? user?.streak ?? 0;
+
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="mb-8">
@@ -65,46 +83,77 @@ export default function ProgressPage() {
         </p>
       </div>
 
-      {/* Stats row */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: 'Total XP', value: userStats.totalXP, trend: '+320 this week', icon: TrendingUp },
-          { label: 'Sessions', value: userStats.completedSessions, trend: '+5 this week', icon: Target },
-          { label: 'Practice Time', value: `${userStats.totalSpeakingTime}m`, trend: '+45m this week', icon: Clock },
-          { label: 'Words Learned', value: userStats.newWordsLearned, trend: '+12 this week', icon: BookOpen },
-        ].map((stat) => (
-          <Card key={stat.label}>
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
-                <stat.icon className="h-4 w-4 text-dojo-accent" />
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-sm text-dojo-text-muted animate-pulse">
+          Loading stats...
+        </div>
+      ) : (
+        <>
+          <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
+                  <TrendingUp className="h-4 w-4 text-dojo-accent" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-dojo-text-muted">Total XP</p>
+                  <p className="text-lg font-bold text-dojo-text-primary">{displayXP}</p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="text-xs text-dojo-text-muted">{stat.label}</p>
-                <p className="text-lg font-bold text-dojo-text-primary">{stat.value}</p>
-                <TrendValue value="" trend="up" trendLabel={stat.trend} className="text-[10px]" />
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
+                  <Target className="h-4 w-4 text-dojo-accent" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-dojo-text-muted">Sessions</p>
+                  <p className="text-lg font-bold text-dojo-text-primary">{displayCompleted}</p>
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
+                  <Clock className="h-4 w-4 text-dojo-accent" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-dojo-text-muted">Total Sessions</p>
+                  <p className="text-lg font-bold text-dojo-text-primary">{displaySessions}</p>
+                </div>
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
+                  <BookOpen className="h-4 w-4 text-dojo-accent" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-dojo-text-muted">Streak</p>
+                  <p className="text-lg font-bold text-dojo-text-primary">{displayStreak} days</p>
+                </div>
+              </div>
+            </Card>
+          </div>
 
-      {/* Tabs */}
-      <Card>
-        <Tabs tabs={tabs} renderPanel={(tabId) => {
-          switch (tabId) {
-            case 'overview':
-              return <OverviewTab />;
-            case 'skills':
-              return <SkillsTab />;
-            case 'activity':
-              return <ActivityTab />;
-            case 'comparisons':
-              return <ComparisonsTab />;
-            default:
-              return null;
-          }
-        }} />
-      </Card>
+          <Card>
+            <Tabs tabs={tabs} renderPanel={(tabId) => {
+              switch (tabId) {
+                case 'overview':
+                  return <OverviewTab />;
+                case 'skills':
+                  return <SkillsTab />;
+                case 'activity':
+                  return <ActivityTab weeklyData={weeklyData} />;
+                case 'comparisons':
+                  return <ComparisonsTab />;
+                default:
+                  return null;
+              }
+            }} />
+          </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -112,13 +161,10 @@ export default function ProgressPage() {
 function OverviewTab() {
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      {/* Skills Radar */}
       <div>
         <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Skills Overview</h3>
         <RadarChart data={radarData} size={280} />
       </div>
-
-      {/* Monthly progress line chart */}
       <div>
         <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Monthly Progress</h3>
         <div className="h-56">
@@ -127,9 +173,7 @@ function OverviewTab() {
               <CartesianGrid strokeDasharray="3 3" stroke="#1C2A42" vertical={false} />
               <XAxis dataKey="month" tick={{ fill: '#8A93A8', fontSize: 12 }} axisLine={false} tickLine={false} />
               <YAxis domain={[0, 100]} tick={{ fill: '#8A93A8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: '#111D33', border: '1px solid #1C2A42', borderRadius: 8, color: '#F4F4F8' }}
-              />
+              <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1C2A42', borderRadius: 8, color: '#F4F4F8' }} />
               <Line type="monotone" dataKey="score" stroke="#2D3BC5" strokeWidth={2} dot={{ fill: '#2D3BC5', r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -174,21 +218,18 @@ function SkillsTab() {
   );
 }
 
-function ActivityTab() {
+function ActivityTab({ weeklyData }: { weeklyData: WeeklyActivity[] }) {
   return (
     <div>
       <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Weekly Activity</h3>
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={weeklyActivity} barCategoryGap="25%">
+          <BarChart data={weeklyData} barCategoryGap="25%">
             <CartesianGrid strokeDasharray="3 3" stroke="#1C2A42" vertical={false} />
             <XAxis dataKey="day" tick={{ fill: '#8A93A8', fontSize: 12 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: '#8A93A8', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip
-              contentStyle={{ background: '#111D33', border: '1px solid #1C2A42', borderRadius: 8, color: '#F4F4F8' }}
-            />
-            <Bar dataKey="sessions" fill="#2D3BC5" radius={[4, 4, 0, 0]} name="Sessions" />
-            <Bar dataKey="minutes" fill="#2FAE66" radius={[4, 4, 0, 0]} name="Minutes" />
+            <Tooltip contentStyle={{ background: '#111D33', border: '1px solid #1C2A42', borderRadius: 8, color: '#F4F4F8' }} />
+            <Bar dataKey="minutes" fill="#2D3BC5" radius={[4, 4, 0, 0]} name="Minutes" />
           </BarChart>
         </ResponsiveContainer>
       </div>

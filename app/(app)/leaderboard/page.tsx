@@ -1,19 +1,25 @@
-/* ───────────────────────────────────────────────
-   Leaderboard (Panel 10)
-   Tabs: Global / Friends / School + Your rank card
-   isCurrentUser computed from the real authenticated user's id.
-   ─────────────────────────────────────────────── */
-
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
-import { leaderboardGlobal, leaderboardFriends } from '@/lib/data/sessions';
+import { getLeaderboardGlobal } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
 import { Trophy, Medal, Flame } from 'lucide-react';
-import type { LeaderboardEntry } from '@/lib/mock-data/sessions';
+
+interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  name: string;
+  level: number;
+  xp: number;
+  sessionsCompleted: number;
+  averageScore: number;
+  streak: number;
+  isCurrentUser: boolean;
+}
 
 const tabs: Tab[] = [
   { id: 'global', label: 'Global' },
@@ -21,14 +27,23 @@ const tabs: Tab[] = [
   { id: 'school', label: 'School' },
 ];
 
-function markCurrentUser(data: LeaderboardEntry[], currentUserId?: string): LeaderboardEntry[] {
-  return data.map((e) => ({ ...e, isCurrentUser: !!currentUserId && e.userId === currentUserId }));
-}
-
 export default function LeaderboardPage() {
   const user = useUser();
-  const globalData = markCurrentUser(leaderboardGlobal, user?.id);
-  const friendsData = markCurrentUser(leaderboardFriends, user?.id);
+  const [globalData, setGlobalData] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [source, setSource] = useState<'live' | 'fixture'>('live');
+
+  useEffect(() => {
+    getLeaderboardGlobal().then(({ entries, source: s }) => {
+      setGlobalData(entries.map((e: any) => ({
+        ...e,
+        isCurrentUser: !!user?.id && e.userId === user.id,
+      })));
+      setSource(s);
+      setLoading(false);
+    });
+  }, [user?.id]);
+
   const currentUser = globalData.find((e) => e.isCurrentUser);
 
   return (
@@ -40,97 +55,110 @@ export default function LeaderboardPage() {
         </p>
       </div>
 
-      {/* Your Rank Card */}
-      {currentUser && (
-        <Card raised className="mb-6 !p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent text-lg font-bold text-white">
-                #{currentUser.rank}
-              </div>
-              <Avatar name={currentUser.name} size="lg" />
-              <div>
-                <p className="text-base font-semibold text-dojo-text-primary">{currentUser.name}</p>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <Badge variant="accent">Level {currentUser.level}</Badge>
-                  <span className="text-xs text-dojo-text-muted">{currentUser.xp} XP</span>
-                </div>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold text-dojo-text-primary">
-                {currentUser.averageScore}%
-              </p>
-              <p className="text-xs text-dojo-text-muted">Avg. Score</p>
-              <div className="flex items-center gap-1 mt-1 justify-end">
-                <Flame className="h-3 w-3 text-dojo-streak" />
-                <span className="text-xs text-dojo-text-muted">{currentUser.streak} day streak</span>
-              </div>
-            </div>
-          </div>
-        </Card>
+      {source === 'fixture' && (
+        <div className="mb-4 rounded-md border border-dojo-warning/30 bg-dojo-warning/5 px-4 py-2 text-xs text-dojo-warning">
+          Showing offline data — some options may be out of date
+        </div>
       )}
 
-      {/* Leaderboard Tabs */}
-      <Card>
-        <Tabs
-          tabs={tabs}
-          renderPanel={(tabId) => {
-            const data = tabId === 'friends' ? friendsData : globalData;
-            return <LeaderboardTable data={data} />;
-          }}
-        />
-      </Card>
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-sm text-dojo-text-muted animate-pulse">
+          Loading leaderboard...
+        </div>
+      ) : (
+        <>
+          {currentUser && (
+            <Card raised className="mb-6 !p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent text-lg font-bold text-white">
+                    #{currentUser.rank}
+                  </div>
+                  <Avatar name={currentUser.name} size="lg" />
+                  <div>
+                    <p className="text-base font-semibold text-dojo-text-primary">{currentUser.name}</p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <Badge variant="accent">Level {currentUser.level}</Badge>
+                      <span className="text-xs text-dojo-text-muted">{currentUser.xp} XP</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-dojo-text-primary">
+                    {currentUser.averageScore}%
+                  </p>
+                  <p className="text-xs text-dojo-text-muted">Avg. Score</p>
+                  <div className="flex items-center gap-1 mt-1 justify-end">
+                    <Flame className="h-3 w-3 text-dojo-streak" />
+                    <span className="text-xs text-dojo-text-muted">{currentUser.streak} day streak</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          <Card>
+            <Tabs
+              tabs={tabs}
+              renderPanel={(tabId) => {
+                if (tabId === 'friends') {
+                  return (
+                    <div className="p-6 text-center">
+                      <p className="text-sm text-dojo-text-muted">
+                        Friends leaderboard coming soon — no social graph exists yet.
+                      </p>
+                    </div>
+                  );
+                }
+                if (tabId === 'school') {
+                  return (
+                    <div className="p-6 text-center">
+                      <p className="text-sm text-dojo-text-muted">
+                        School leaderboard coming soon.
+                      </p>
+                    </div>
+                  );
+                }
+                return <LeaderboardTable data={globalData} />;
+              }}
+            />
+          </Card>
+        </>
+      )}
     </div>
   );
 }
 
 function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
-  const getRankIcon = (rank: number) => {
-    if (rank === 1) return <Trophy className="h-5 w-5 text-dojo-warning" />;
-    if (rank === 2) return <Medal className="h-5 w-5 text-dojo-text-muted" />;
-    if (rank === 3) return <Medal className="h-5 w-5 text-dojo-streak" />;
-    return null;
-  };
-
   return (
     <div className="divide-y divide-dojo-border">
       {data.map((entry) => (
         <div
           key={entry.userId}
-          className={`flex items-center gap-4 px-4 py-3.5 transition-colors ${
-            entry.isCurrentUser ? 'bg-dojo-accent/5' : 'hover:bg-dojo-surface'
-          }`}
+          className={`flex items-center gap-4 px-6 py-4 ${entry.isCurrentUser ? 'bg-dojo-accent/5' : ''}`}
         >
-          {/* Rank */}
           <div className="flex w-8 items-center justify-center">
-            {getRankIcon(entry.rank) ?? (
-              <span className="text-sm font-medium text-dojo-text-muted">#{entry.rank}</span>
+            {entry.rank === 1 ? (
+              <Trophy className="h-5 w-5 text-yellow-400" />
+            ) : entry.rank === 2 ? (
+              <Medal className="h-5 w-5 text-gray-400" />
+            ) : entry.rank === 3 ? (
+              <Medal className="h-5 w-5 text-amber-600" />
+            ) : (
+              <span className="text-sm font-medium text-dojo-text-muted">{entry.rank}</span>
             )}
           </div>
-
-          {/* Avatar + Name */}
           <Avatar name={entry.name} size="md" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-dojo-text-primary truncate">
-              {entry.name}
-              {entry.isCurrentUser && (
-                <span className="ml-2 text-[10px] text-dojo-accent">(You)</span>
-              )}
-            </p>
-            <p className="text-xs text-dojo-text-muted">Level {entry.level} · {entry.xp} XP</p>
+            <p className="text-sm font-medium text-dojo-text-primary truncate">{entry.name}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <Badge variant="accent">Level {entry.level}</Badge>
+              <span className="text-xs text-dojo-text-muted">{entry.sessionsCompleted} sessions</span>
+            </div>
           </div>
-
-          {/* Stats */}
-          <div className="text-right">
-            <p className="text-sm font-semibold text-dojo-text-primary">{entry.averageScore}%</p>
-            <p className="text-xs text-dojo-text-muted">{entry.sessionsCompleted} sessions</p>
-          </div>
-
-          {/* Streak */}
-          <div className="flex items-center gap-1 text-xs text-dojo-text-muted min-w-[60px]">
-            <Flame className="h-3 w-3 text-dojo-streak" />
-            {entry.streak}
+          <div className="text-right shrink-0">
+            <p className="text-sm font-semibold text-dojo-text-primary">{entry.xp.toLocaleString()}</p>
+            <p className="text-xs text-dojo-text-muted">XP</p>
           </div>
         </div>
       ))}
