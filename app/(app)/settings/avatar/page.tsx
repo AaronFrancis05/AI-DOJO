@@ -22,7 +22,7 @@ const tabs: Tab[] = [
   { id: 'voice', label: 'AI Voice Preferences' },
 ];
 
-const avatarIconMap: Record<string, React.ElementType> = {
+const avatarIconMap: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   Smile,
   UserCheck,
   Headphones,

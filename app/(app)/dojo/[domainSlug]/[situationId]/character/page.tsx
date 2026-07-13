@@ -19,7 +19,7 @@ import { domains } from '@/lib/data/domains';
 import type { SkillLevel } from '@/lib/design-tokens';
 import { ArrowLeft, Check, ChevronRight, Smile, UserCheck, Headphones, Star } from 'lucide-react';
 
-const avatarIconMap: Record<string, React.ElementType> = {
+const avatarIconMap: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   Smile,
   UserCheck,
   Headphones,
