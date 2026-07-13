@@ -1,6 +1,7 @@
 /* ───────────────────────────────────────────────
    Leaderboard (Panel 10)
    Tabs: Global / Friends / School + Your rank card
+   isCurrentUser computed from the real authenticated user's id.
    ─────────────────────────────────────────────── */
 
 'use client';
@@ -10,7 +11,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { leaderboardGlobal, leaderboardFriends } from '@/lib/data/sessions';
+import { useUser } from '@/lib/auth/user-context';
 import { Trophy, Medal, Flame } from 'lucide-react';
+import type { LeaderboardEntry } from '@/lib/mock-data/sessions';
 
 const tabs: Tab[] = [
   { id: 'global', label: 'Global' },
@@ -18,8 +21,15 @@ const tabs: Tab[] = [
   { id: 'school', label: 'School' },
 ];
 
+function markCurrentUser(data: LeaderboardEntry[], currentUserId?: string): LeaderboardEntry[] {
+  return data.map((e) => ({ ...e, isCurrentUser: !!currentUserId && e.userId === currentUserId }));
+}
+
 export default function LeaderboardPage() {
-  const currentUser = leaderboardGlobal.find((e) => e.isCurrentUser);
+  const user = useUser();
+  const globalData = markCurrentUser(leaderboardGlobal, user?.id);
+  const friendsData = markCurrentUser(leaderboardFriends, user?.id);
+  const currentUser = globalData.find((e) => e.isCurrentUser);
 
   return (
     <div className="mx-auto max-w-4xl p-6">
@@ -66,7 +76,7 @@ export default function LeaderboardPage() {
         <Tabs
           tabs={tabs}
           renderPanel={(tabId) => {
-            const data = tabId === 'friends' ? leaderboardFriends : leaderboardGlobal;
+            const data = tabId === 'friends' ? friendsData : globalData;
             return <LeaderboardTable data={data} />;
           }}
         />
@@ -75,7 +85,7 @@ export default function LeaderboardPage() {
   );
 }
 
-function LeaderboardTable({ data }: { data: typeof leaderboardGlobal }) {
+function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Trophy className="h-5 w-5 text-dojo-warning" />;
     if (rank === 2) return <Medal className="h-5 w-5 text-dojo-text-muted" />;

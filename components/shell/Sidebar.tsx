@@ -1,5 +1,7 @@
 /* ───────────────────────────────────────────────
    Sidebar — nav list, active pill, user card at bottom
+   Reads the real authenticated user from UserContext.
+   On mobile (<md) rendered inside an off-canvas drawer.
    ─────────────────────────────────────────────── */
 
 'use client';
@@ -11,6 +13,7 @@ import { authClient } from '@/lib/auth/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Badge } from '@/components/ui/Badge';
+import { useUser } from '@/lib/auth/user-context';
 import {
   LayoutDashboard,
   Compass,
@@ -42,26 +45,13 @@ const navItems: NavItem[] = [
 ];
 
 interface SidebarProps {
-  userName?: string;
-  userTier?: 'free' | 'premium';
-  userLevel?: number;
-  userXp?: number;
-  userXpToNext?: number;
-  userAvatarSrc?: string | null;
-  userAvatarColor?: string;
+  onNavigate?: () => void;
 }
 
-export function Sidebar({
-  userName = 'Alex Kim',
-  userTier = 'premium',
-  userLevel = 7,
-  userXp = 4850,
-  userXpToNext = 6000,
-  userAvatarSrc = null,
-  userAvatarColor = '#2D3BC5',
-}: SidebarProps) {
+export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const user = useUser();
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
@@ -73,6 +63,10 @@ export function Sidebar({
     router.push('/auth');
     router.refresh();
   }
+
+  const handleClick = (href: string) => {
+    if (onNavigate) onNavigate();
+  };
 
   return (
     <aside className="flex h-full w-60 flex-col bg-dojo-sidebar border-r border-dojo-border shrink-0">
@@ -95,6 +89,7 @@ export function Sidebar({
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => handleClick(item.href)}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                 active
@@ -112,25 +107,41 @@ export function Sidebar({
       {/* User Card — bottom of sidebar */}
       <div className="border-t border-dojo-border p-4">
         <div className="flex items-center gap-3">
-          <Avatar name={userName} src={userAvatarSrc} color={userAvatarColor} size="md" />
+          <Avatar
+            name={user?.name ?? 'Learner'}
+            src={user?.avatarSrc}
+            color={user?.avatarColor ?? '#2D3BC5'}
+            size="md"
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-dojo-text-primary truncate">{userName}</p>
-              {userTier === 'premium' && (
+              <p className="text-sm font-semibold text-dojo-text-primary truncate">
+                {user?.name ?? 'Learner'}
+              </p>
+              {user?.tier === 'premium' && (
                 <Crown className="h-3.5 w-3.5 text-dojo-warning shrink-0" />
               )}
             </div>
-            <Badge variant={userTier === 'premium' ? 'accent' : 'default'} className="mt-0.5">
-              {userTier === 'premium' ? 'Premium' : 'Free'}
+            <Badge variant={user?.tier === 'premium' ? 'accent' : 'default'} className="mt-0.5">
+              {user?.tier === 'premium' ? 'Premium' : 'Free'}
             </Badge>
           </div>
         </div>
         <div className="mt-3 space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-dojo-text-muted">Level {userLevel}</span>
-            <span className="text-xs text-dojo-text-muted">{userXp} / {userXpToNext} XP</span>
+            <span className="text-xs font-medium text-dojo-text-muted">
+              Level {user?.level ?? '-'}
+            </span>
+            <span className="text-xs text-dojo-text-muted">
+              {user?.xp ?? 0} / {user?.xpToNext ?? 1000} XP
+            </span>
           </div>
-          <ProgressBar value={userXp} max={userXpToNext} color="accent" size="sm" />
+          <ProgressBar
+            value={user?.xp ?? 0}
+            max={user?.xpToNext ?? 1000}
+            color="accent"
+            size="sm"
+          />
         </div>
       </div>
 
@@ -147,4 +158,3 @@ export function Sidebar({
     </aside>
   );
 }
-
