@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
@@ -13,8 +13,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Pill } from '@/components/ui/Pill';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
-import { situations } from '@/lib/data/situations';
-import { domains } from '@/lib/data/domains';
+import { getSituationById, type SituationFixture } from '@/lib/data/situations';
+import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
 import type { SkillLevel, BehaviorMode } from '@/lib/design-tokens';
 import { ArrowLeft, Target, ChevronRight } from 'lucide-react';
 
@@ -23,13 +23,45 @@ export default function SituationPickerPage() {
   const domainSlug = params.domainSlug as string;
   const situationId = Number(params.situationId);
 
-  const situation = situations.find((s) => s.id === situationId);
-  const domain = domains.find((d) => d.slug === domainSlug);
+  const [situation, setSituation] = useState<SituationFixture | undefined>();
+  const [domain, setDomain] = useState<DomainFixture | undefined>();
+  const [loading, setLoading] = useState(true);
 
-  const [behaviorMode, setBehaviorMode] = useState<BehaviorMode>(
-    situation?.behaviorMode ?? 'standard',
-  );
+  useEffect(() => {
+    async function load() {
+      const [sit, dom] = await Promise.all([
+        getSituationById(situationId),
+        getDomainBySlug(domainSlug),
+      ]);
+      setSituation(sit);
+      setDomain(dom);
+      setLoading(false);
+    }
+    load();
+  }, [situationId, domainSlug]);
+
+  const [behaviorMode, setBehaviorMode] = useState<BehaviorMode>('standard');
   const [selectedPills, setSelectedPills] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (situation) {
+      setBehaviorMode(situation.behaviorMode as BehaviorMode);
+    }
+  }, [situation]);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-4 w-32 rounded bg-dojo-border" />
+          <div className="h-8 w-64 rounded bg-dojo-border" />
+          <div className="h-4 w-full rounded bg-dojo-border" />
+          <div className="h-24 rounded-[--radius-md] bg-dojo-border" />
+          <div className="h-24 rounded-[--radius-md] bg-dojo-border" />
+        </div>
+      </div>
+    );
+  }
 
   if (!situation || !domain) {
     return (
@@ -53,7 +85,6 @@ export default function SituationPickerPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      {/* Breadcrumb */}
       <div className="mb-6 flex items-center gap-2 text-sm text-dojo-text-muted">
         <Link href="/hub" className="hover:text-dojo-text-primary transition-colors">
           Hub
@@ -66,7 +97,6 @@ export default function SituationPickerPage() {
         <span className="text-dojo-text-primary">{situation.title}</span>
       </div>
 
-      {/* Title & context */}
       <div className="mb-8">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-dojo-text-primary">{situation.title}</h1>
@@ -75,7 +105,6 @@ export default function SituationPickerPage() {
         <p className="mt-2 text-sm text-dojo-text-muted leading-relaxed">{situation.context}</p>
       </div>
 
-      {/* Practice Focus Pills */}
       <Card className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Target className="h-4 w-4 text-dojo-accent" />
@@ -98,7 +127,6 @@ export default function SituationPickerPage() {
         </div>
       </Card>
 
-      {/* Difficulty */}
       <Card className="mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -131,13 +159,11 @@ export default function SituationPickerPage() {
         </div>
       </Card>
 
-      {/* Learning Goals */}
       <Card className="mb-8">
         <h3 className="text-sm font-semibold text-dojo-text-primary mb-2">Learning Goals</h3>
         <p className="text-sm text-dojo-text-muted">{situation.learningGoals}</p>
       </Card>
 
-      {/* CTA */}
       <div className="flex justify-end">
         <Link
           href={`/dojo/${domainSlug}/${situationId}/character?mode=${behaviorMode}&focus=${Array.from(selectedPills).join(',')}`}

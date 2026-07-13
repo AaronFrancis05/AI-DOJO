@@ -1,11 +1,11 @@
 /* ───────────────────────────────────────────────
    Character Selection (Panel 05)
-   New route — learner chooses which AI persona plays the counterpart role
+   Learner chooses which AI persona plays the counterpart role
    ─────────────────────────────────────────────── */
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 
-import { characters } from '@/lib/data/characters';
-import { situations } from '@/lib/data/situations';
-import { domains } from '@/lib/data/domains';
+import { getCharacters, type CharacterFixture } from '@/lib/data/characters';
+import { getSituationById, type SituationFixture } from '@/lib/data/situations';
+import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
 import type { SkillLevel } from '@/lib/design-tokens';
 import { ArrowLeft, Check, ChevronRight, Smile, UserCheck, Headphones, Star } from 'lucide-react';
 
@@ -32,13 +32,48 @@ export default function CharacterSelectionPage() {
   const domainSlug = params.domainSlug as string;
   const situationId = Number(params.situationId);
 
-  const situation = situations.find(s => s.id === situationId);
-  const domain = domains.find((d) => d.slug === domainSlug);
-  const behaviorMode = searchParams.get('mode') ?? situation?.behaviorMode ?? 'standard';
+  const [situation, setSituation] = useState<SituationFixture | undefined>();
+  const [domain, setDomain] = useState<DomainFixture | undefined>();
+  const [characters, setCharacters] = useState<CharacterFixture[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [selectedCharId, setSelectedCharId] = useState<number | null>(
-    characters.find((c) => c.defaultForDomain === domainSlug)?.id ?? characters[0]?.id ?? null,
-  );
+  const behaviorMode = searchParams.get('mode') ?? 'standard';
+
+  const [selectedCharId, setSelectedCharId] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const [sit, dom, chars] = await Promise.all([
+        getSituationById(situationId),
+        getDomainBySlug(domainSlug),
+        getCharacters(),
+      ]);
+      setSituation(sit);
+      setDomain(dom);
+      setCharacters(chars);
+      setSelectedCharId(
+        chars.find((c) => c.defaultForDomain === domainSlug)?.id ?? chars[0]?.id ?? null,
+      );
+      setLoading(false);
+    }
+    load();
+  }, [situationId, domainSlug]);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-5xl p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 w-48 rounded bg-dojo-border" />
+          <div className="h-8 w-72 rounded bg-dojo-border" />
+          <div className="grid grid-cols-2 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-32 rounded-[--radius-md] bg-dojo-border" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!situation || !domain) {
     return (
@@ -54,10 +89,10 @@ export default function CharacterSelectionPage() {
   }
 
   const selectedChar = characters.find((c) => c.id === selectedCharId);
+  const displayRole = situation.counterpartRole || selectedChar?.role || '';
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      {/* Breadcrumb */}
       <div className="mb-6 flex items-center gap-2 text-sm text-dojo-text-muted">
         <Link href="/hub" className="hover:text-dojo-text-primary transition-colors">
           Hub
@@ -77,7 +112,6 @@ export default function CharacterSelectionPage() {
         <span className="text-dojo-text-primary">Character</span>
       </div>
 
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-dojo-text-primary">Choose Your Practice Partner</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
@@ -86,7 +120,6 @@ export default function CharacterSelectionPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
-        {/* Character Grid — left side */}
         <div className="lg:col-span-3">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {characters.map((char) => {
@@ -109,12 +142,7 @@ export default function CharacterSelectionPage() {
                     </div>
                   )}
                   <div className="flex items-center gap-3">
-                    <div
-                      className="flex h-14 w-14 items-center justify-center rounded-full"
-                      style={{ backgroundColor: char.avatarColor + '33' }}
-                    >
-                      <Icon className="h-7 w-7" style={{ color: char.avatarColor }} />
-                    </div>
+                    <Avatar name={char.name} color={char.avatarColor} size="lg" />
                     <div className="flex-1 min-w-0">
                       <p className="text-base font-semibold text-dojo-text-primary">{char.name}</p>
                       <p className="text-xs text-dojo-text-muted">{char.role}</p>
@@ -129,28 +157,17 @@ export default function CharacterSelectionPage() {
           </div>
         </div>
 
-        {/* Character Preview Panel — right side */}
         <div className="lg:col-span-2">
           {selectedChar && (
             <Card raised className="sticky top-6">
-              {/* Large avatar */}
               <div className="flex flex-col items-center">
-                <div
-                  className="flex h-28 w-28 items-center justify-center rounded-full"
-                  style={{ backgroundColor: selectedChar.avatarColor + '22' }}
-                >
-                  {(() => {
-                    const Icon = avatarIconMap[selectedChar.avatarIcon] ?? Smile;
-                    return <Icon className="h-14 w-14" style={{ color: selectedChar.avatarColor }} />;
-                  })()}
-                </div>
+                <Avatar name={selectedChar.name} color={selectedChar.avatarColor} size="xl" />
                 <h2 className="mt-4 text-xl font-bold text-dojo-text-primary">
                   {selectedChar.name}
                 </h2>
-                <p className="text-sm text-dojo-text-muted">{selectedChar.role}</p>
+                <p className="text-sm text-dojo-text-muted">{displayRole}</p>
               </div>
 
-              {/* Details */}
               <div className="mt-6 space-y-4 border-t border-dojo-border pt-4">
                 <div>
                   <p className="text-xs text-dojo-text-muted uppercase tracking-wider">Personality</p>
@@ -173,7 +190,6 @@ export default function CharacterSelectionPage() {
                 </div>
               </div>
 
-              {/* Start button */}
               <Link
                 href={`/session/new?domain=${domainSlug}&situation=${situationId}&character=${selectedChar.id}&mode=${behaviorMode}`}
                 className="mt-6 block"

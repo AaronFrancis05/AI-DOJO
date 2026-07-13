@@ -4,7 +4,7 @@
 
 'use client';
 
-import { cn, colors, type SkillLevel } from '@/lib/design-tokens';
+import { cn, skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -12,20 +12,22 @@ interface BadgeProps {
   className?: string;
 }
 
-const variantStyles: Record<string, string> = {
-  beginner:     `bg-[${colors.success}] text-white`,
-  intermediate: `bg-[${colors.warning}] text-black`,
-  advanced:     `bg-[${colors.danger}] text-white`,
-  accent:       `bg-[${colors.accent}] text-white`,
-  default:      `bg-[${colors.border}] text-[${colors.textMuted}]`,
+const accentStyles: Record<string, string> = {
+  accent: 'bg-[#2D3BC5] text-white',
+  default: 'bg-[#1C2A42] text-[#8A93A8]',
 };
 
 export function Badge({ children, variant = 'default', className }: BadgeProps) {
+  const colorClass =
+    variant === 'accent' || variant === 'default'
+      ? accentStyles[variant]
+      : skillLevelBadgeClass[variant];
+
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold',
-        variantStyles[variant],
+        colorClass,
         className,
       )}
     >

@@ -201,7 +201,7 @@ export default function RoleplaySessionPage() {
   const isActive = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
   const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
-  const charRole = character?.role ?? scenario?.aiCharacterRole ?? '';
+  const charRole = situation?.counterpartRole ?? character?.role ?? scenario?.aiCharacterRole ?? '';
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const domainSlug = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
 

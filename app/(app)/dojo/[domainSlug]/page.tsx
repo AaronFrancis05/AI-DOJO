@@ -4,15 +4,16 @@
 
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { domains } from '@/lib/data/domains';
-import { situations as allSituations } from '@/lib/data/situations';
-import { skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
-import { ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
+import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
+import { getSituationsByDomain, type SituationFixture } from '@/lib/data/situations';
+import type { SkillLevel } from '@/lib/design-tokens';
+import { ArrowLeft, ChevronRight, Compass } from 'lucide-react';
 import {
   UtensilsCrossed,
   Building2,
@@ -20,7 +21,6 @@ import {
   HeartPulse,
   ShoppingBag,
   Briefcase,
-  Compass,
   Sun,
 } from 'lucide-react';
 
@@ -39,8 +39,37 @@ export default function DomainDetailPage() {
   const params = useParams();
   const domainSlug = params.domainSlug as string;
 
-  const domain = domains.find((d) => d.slug === domainSlug);
-  const situations = allSituations.filter((s) => s.domainSlug === domainSlug);
+  const [domain, setDomain] = useState<DomainFixture | undefined>();
+  const [situations, setSituations] = useState<SituationFixture[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const [d, s] = await Promise.all([
+        getDomainBySlug(domainSlug),
+        getSituationsByDomain(domainSlug),
+      ]);
+      setDomain(d);
+      setSituations(s);
+      setLoading(false);
+    }
+    load();
+  }, [domainSlug]);
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 w-24 rounded bg-dojo-border" />
+          <div className="h-32 rounded-[--radius-lg] bg-dojo-border" />
+          <div className="h-6 w-40 rounded bg-dojo-border" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-20 rounded-[--radius-md] bg-dojo-border" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!domain) {
     return (
@@ -59,7 +88,6 @@ export default function DomainDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl p-6">
-      {/* Back link */}
       <Link
         href="/hub"
         className="mb-6 inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
@@ -68,7 +96,6 @@ export default function DomainDetailPage() {
         All Domains
       </Link>
 
-      {/* Domain hero */}
       <div
         className="flex items-center gap-6 rounded-[--radius-lg] p-8"
         style={{
@@ -89,13 +116,12 @@ export default function DomainDetailPage() {
         </div>
       </div>
 
-      {/* Situation list */}
       <h2 className="mt-8 mb-4 text-lg font-semibold text-dojo-text-primary">Situations</h2>
       <div className="space-y-3">
         {situations.map((situation) => (
           <Link
             key={situation.id}
-            href={`/dojo/${domainSlug}/${situation.id}`}  // use situation id as slug
+            href={`/dojo/${domainSlug}/${situation.id}`}
             className="block"
           >
             <Card hoverable>
