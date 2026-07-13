@@ -73,8 +73,8 @@ export const domains: DomainFixture[] = [
   },
   {
     id: 6,
-    slug: 'workplace',
-    name: 'Workplace',
+    slug: 'business',
+    name: 'Business',
     description: 'Attend meetings, communicate with colleagues, send emails',
     icon: 'Briefcase',
     heroGradientFrom: '#2563EB',
@@ -85,7 +85,7 @@ export const domains: DomainFixture[] = [
   {
     id: 7,
     slug: 'travel',
-    name: 'Travel',
+    name: 'Travel & Tourism',
     description: 'Ask for directions, buy tickets, check into accommodation',
     icon: 'Compass',
     heroGradientFrom: '#06B6D4',
@@ -95,7 +95,7 @@ export const domains: DomainFixture[] = [
   },
   {
     id: 8,
-    slug: 'daily-life',
+    slug: 'daily_life',
     name: 'Daily Life',
     description: 'Meet neighbours, make small talk, manage errands',
     icon: 'Sun',

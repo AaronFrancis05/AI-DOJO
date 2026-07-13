@@ -227,7 +227,7 @@ export default function HomePage() {
 
       {/* Live session banner */}
       {activeSession && (
-        <Link href={`/session/new?situation=${activeSession.scenarioId}`} suppressHydrationWarning>
+        <Link href={`/session/${activeSession.id}`} suppressHydrationWarning>
           <Card className="border-dojo-danger/30 !p-4 cursor-pointer hover:bg-dojo-surface transition-colors">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

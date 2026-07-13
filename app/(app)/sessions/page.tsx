@@ -217,7 +217,7 @@ function SessionCard({
         <div className="flex items-center gap-2 shrink-0">
           {/* Primary action: Continue or View Report */}
           {isActive ? (
-            <Link href={`/session/new?situation=${session.scenarioId}`}>
+            <Link href={`/session/${session.id}`}>
               <Button variant="primary" size="sm">
                 <Play className="h-4 w-4" /> Continue
               </Button>

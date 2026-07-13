@@ -292,7 +292,7 @@ export default function AI_Dojo_Chatroom() {
     return (
       <ChatPageShell>
         <p style={{ color: '#c53030', background: '#fff5f5', padding: '16px', borderRadius: '8px' }}>{error}</p>
-        <button onClick={() => router.push('/dashboard')} style={{ background: '#000', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}>
+        <button onClick={() => router.push('/home')} style={{ background: '#000', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer' }}>
           Back to Scenarios
         </button>
       </ChatPageShell>
@@ -307,7 +307,7 @@ export default function AI_Dojo_Chatroom() {
     if (!sessionId || !confirm('Delete this session? This cannot be undone.')) return;
     try {
       const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-      if (res.ok) router.push('/dashboard');
+      if (res.ok) router.push('/home');
     } catch (e) {
       console.error('Delete failed:', e);
     }
@@ -316,7 +316,7 @@ export default function AI_Dojo_Chatroom() {
   return (
     <ChatPageShell>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <button onClick={() => router.push('/dashboard')} style={{ background: 'none', border: 'none', color: '#0070f3', cursor: 'pointer', fontSize: '1rem' }}>
+        <button onClick={() => router.push('/home')} style={{ background: 'none', border: 'none', color: '#0070f3', cursor: 'pointer', fontSize: '1rem' }}>
           &larr; Back to Role-plays
         </button>
         <div style={{ display: 'flex', gap: '8px' }}>
