@@ -1,4 +1,5 @@
 import { domains as fixtureDomains, type DomainFixture } from '@/lib/mock-data/domains';
+import type { DataSource } from './result';
 
 export { fixtureDomains as domains };
 export type { DomainFixture };
@@ -17,18 +18,20 @@ function adaptDbDomain(d: any): DomainFixture {
   };
 }
 
-export async function getDomains(): Promise<DomainFixture[]> {
+export async function getDomains(): Promise<{ data: DomainFixture[]; source: DataSource }> {
   try {
     const res = await fetch('/api/domains');
-    const data = await res.json();
-    if (data.success && data.domains.length > 0) {
-      return data.domains.map(adaptDbDomain);
+    const body = await res.json();
+    if (body.success && body.domains.length > 0) {
+      return { data: body.domains.map(adaptDbDomain), source: 'live' };
     }
-  } catch {}
-  return fixtureDomains;
+  } catch (err) {
+    console.error('[data/domains] fetch failed, serving fixture fallback', err);
+  }
+  return { data: fixtureDomains, source: 'fixture' };
 }
 
-export async function getDomainBySlug(slug: string): Promise<DomainFixture | undefined> {
-  const all = await getDomains();
-  return all.find(d => d.slug === slug);
+export async function getDomainBySlug(slug: string): Promise<{ domain: DomainFixture | undefined; source: DataSource }> {
+  const { data, source } = await getDomains();
+  return { domain: data.find(d => d.slug === slug), source };
 }

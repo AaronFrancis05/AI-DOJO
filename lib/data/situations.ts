@@ -1,4 +1,5 @@
 import { situations as fixtureSituations, type SituationFixture } from '@/lib/mock-data/situations';
+import type { DataSource } from './result';
 
 export { fixtureSituations as situations };
 export type { SituationFixture };
@@ -20,35 +21,41 @@ function adaptDbSituation(d: any, domainSlug?: string): SituationFixture {
   };
 }
 
-export async function getSituationsByDomain(domainSlug: string): Promise<SituationFixture[]> {
+export async function getSituationsByDomain(domainSlug: string): Promise<{ data: SituationFixture[]; source: DataSource }> {
   try {
     const res = await fetch(`/api/situations?domainSlug=${domainSlug}`);
-    const data = await res.json();
-    if (data.success && data.situations.length > 0) {
-      return data.situations.map((s: any) => adaptDbSituation(s, domainSlug));
+    const body = await res.json();
+    if (body.success && body.situations.length > 0) {
+      return { data: body.situations.map((s: any) => adaptDbSituation(s, domainSlug)), source: 'live' };
     }
-  } catch {}
-  return fixtureSituations.filter(s => s.domainSlug === domainSlug);
+  } catch (err) {
+    console.error(`[data/situations] fetch for "${domainSlug}" failed, serving fixture fallback`, err);
+  }
+  return { data: fixtureSituations.filter(s => s.domainSlug === domainSlug), source: 'fixture' };
 }
 
-export async function getSituationById(id: number): Promise<SituationFixture | undefined> {
+export async function getSituationById(id: number): Promise<{ situation: SituationFixture | undefined; source: DataSource }> {
   try {
     const res = await fetch(`/api/situations/${id}`);
-    const data = await res.json();
-    if (data.success) {
-      return adaptDbSituation(data.situation);
+    const body = await res.json();
+    if (body.success) {
+      return { situation: adaptDbSituation(body.situation), source: 'live' };
     }
-  } catch {}
-  return fixtureSituations.find(s => s.id === id);
+  } catch (err) {
+    console.error(`[data/situations] getSituationById(${id}) failed`, err);
+  }
+  return { situation: fixtureSituations.find(s => s.id === id), source: 'fixture' };
 }
 
-export async function getAllSituations(): Promise<SituationFixture[]> {
+export async function getAllSituations(): Promise<{ data: SituationFixture[]; source: DataSource }> {
   try {
     const res = await fetch('/api/situations');
-    const data = await res.json();
-    if (data.success && data.situations.length > 0) {
-      return data.situations.map(adaptDbSituation);
+    const body = await res.json();
+    if (body.success && body.situations.length > 0) {
+      return { data: body.situations.map(adaptDbSituation), source: 'live' };
     }
-  } catch {}
-  return fixtureSituations;
+  } catch (err) {
+    console.error('[data/situations] getAllSituations failed, serving fixture fallback', err);
+  }
+  return { data: fixtureSituations, source: 'fixture' };
 }

@@ -1,4 +1,5 @@
 import { characters as fixtureCharacters, type CharacterFixture } from '@/lib/mock-data/characters';
+import type { DataSource } from './result';
 
 export { fixtureCharacters as characters };
 export type { CharacterFixture };
@@ -28,18 +29,20 @@ function adaptDbCharacter(d: any): CharacterFixture {
   };
 }
 
-export async function getCharacters(): Promise<CharacterFixture[]> {
+export async function getCharacters(): Promise<{ data: CharacterFixture[]; source: DataSource }> {
   try {
     const res = await fetch('/api/characters');
-    const data = await res.json();
-    if (data.success && data.characters.length > 0) {
-      return data.characters.map(adaptDbCharacter);
+    const body = await res.json();
+    if (body.success && body.characters.length > 0) {
+      return { data: body.characters.map(adaptDbCharacter), source: 'live' };
     }
-  } catch {}
-  return fixtureCharacters;
+  } catch (err) {
+    console.error('[data/characters] fetch failed, serving fixture fallback', err);
+  }
+  return { data: fixtureCharacters, source: 'fixture' };
 }
 
 export async function getCharacterById(id: number): Promise<CharacterFixture | undefined> {
-  const all = await getCharacters();
-  return all.find(c => c.id === id);
+  const { data } = await getCharacters();
+  return data.find(c => c.id === id);
 }
