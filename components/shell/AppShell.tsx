@@ -1,50 +1,53 @@
 /* ───────────────────────────────────────────────
    AppShell — sidebar + content slot, wraps every (app) route
-   UserCard lives inside Sidebar, persistent across pages.
+   Reads the real authenticated user from UserContext.
+   On mobile (<md) the sidebar collapses behind a toggle.
    ─────────────────────────────────────────────── */
 
 'use client';
 
+import { useState } from 'react';
 import { Sidebar } from './Sidebar';
+import { useUser } from '@/lib/auth/user-context';
+import { Menu, X } from 'lucide-react';
 
 interface AppShellProps {
   children: React.ReactNode;
-  /** Override default user data — will come from auth later */
-  user?: {
-    name: string;
-    tier: 'free' | 'premium';
-    level: number;
-    xp: number;
-    xpToNext: number;
-    avatarSrc?: string | null;
-    avatarColor?: string;
-  };
 }
 
-const defaultUser = {
-  name: 'Alex Kim',
-  tier: 'premium' as const,
-  level: 7,
-  xp: 4850,
-  xpToNext: 6000,
-  avatarSrc: null,
-  avatarColor: '#2D3BC5',
-};
-
-export function AppShell({ children, user }: AppShellProps) {
-  const u = user ?? defaultUser;
+export function AppShell({ children }: AppShellProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const user = useUser();
 
   return (
     <div className="flex h-dvh w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">
-      <Sidebar
-        userName={u.name}
-        userTier={u.tier}
-        userLevel={u.level}
-        userXp={u.xp}
-        userXpToNext={u.xpToNext}
-        userAvatarSrc={u.avatarSrc}
-        userAvatarColor={u.avatarColor}
-      />
+      {/* Mobile hamburger toggle */}
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="fixed left-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-sidebar border border-dojo-border md:hidden"
+        aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+      >
+        {sidebarOpen ? <X className="h-5 w-5 text-dojo-text-primary" /> : <Menu className="h-5 w-5 text-dojo-text-primary" />}
+      </button>
+
+      {/* Overlay backdrop (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — always rendered, visibility toggled on mobile */}
+      <div
+        className={`${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
+      >
+        <Sidebar onNavigate={() => setSidebarOpen(false)} />
+      </div>
+
+      {/* Main content */}
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>

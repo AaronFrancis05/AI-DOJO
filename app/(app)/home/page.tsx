@@ -18,6 +18,7 @@ import { HexBadge } from '@/components/ui/HexBadge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
+import { useUser } from '@/lib/auth/user-context';
 import {
   ArrowRight,
   Flame,
@@ -88,20 +89,9 @@ const iconMap: Record<string, LucideIcon> = {
   Globe,
 };
 
-// ── Mock user data (will come from DB) ────────────────
-
-const mockUser = {
-  name: 'Alex',
-  email: 'alex@example.com',
-  level: 'intermediate',
-  totalSessions: 24,
-  completedSessions: 18,
-  totalSpeakingTime: 320,
-  averageAccuracy: 78,
-  newWordsLearned: 142,
-  currentStreak: 5,
-  longestStreak: 12,
-};
+// ── Known gap: user stats (xp, streak, words learned) ──
+// The `users` table has name/email/level but not xp/streak/words.
+// These will come from a `user_stats` table or computed aggregations.
 
 const weeklyActivity = [
   { day: 'Mon', minutes: 15 },
@@ -126,6 +116,7 @@ const recentAchievements = [
 
 export default function HomePage() {
   const router = useRouter();
+  const user = useUser();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -208,12 +199,12 @@ export default function HomePage() {
       {/* Header with Profile */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Avatar name={mockUser.name} size="lg" />
+          <Avatar name={user?.name ?? 'Learner'} size="lg" />
           <div>
-            <h1 className="text-2xl font-bold text-dojo-text-primary">Welcome back, {mockUser.name}</h1>
+            <h1 className="text-2xl font-bold text-dojo-text-primary">Welcome back, {user?.name ?? 'Learner'}</h1>
             <div className="flex items-center gap-3 mt-0.5">
-              <Badge variant={mockUser.level as any}>{mockUser.level}</Badge>
-              <span className="text-xs text-dojo-text-muted">{mockUser.email}</span>
+              <Badge variant={(user?.level ?? 'beginner') as any}>{user?.level ?? 'beginner'}</Badge>
+              <span className="text-xs text-dojo-text-muted">{user?.email ?? ''}</span>
             </div>
           </div>
         </div>
@@ -262,7 +253,7 @@ export default function HomePage() {
             </div>
             <div>
               <p className="text-xs text-dojo-text-muted">Speaking Time</p>
-              <TrendValue value={`${mockUser.totalSpeakingTime}m`} trend="up" trendLabel="+12m" />
+              <TrendValue value="-" trend="neutral" />
             </div>
             <div>
               <p className="text-xs text-dojo-text-muted">Avg. Score</p>
@@ -270,7 +261,7 @@ export default function HomePage() {
             </div>
             <div>
               <p className="text-xs text-dojo-text-muted">New Words</p>
-              <TrendValue value={mockUser.newWordsLearned} trend="up" trendLabel="+12" />
+              <TrendValue value="-" trend="neutral" />
             </div>
           </div>
         </Card>
@@ -301,8 +292,8 @@ export default function HomePage() {
             <div className="flex items-center gap-3">
               <Flame className="h-8 w-8 text-dojo-streak" />
               <div>
-                <p className="text-lg font-bold text-dojo-text-primary">{mockUser.currentStreak} Day Streak</p>
-                <p className="text-xs text-dojo-text-muted">Best: {mockUser.longestStreak} days</p>
+                <p className="text-lg font-bold text-dojo-text-primary">{user?.streak ?? 0} Day Streak</p>
+                <p className="text-xs text-dojo-text-muted">Best: {user?.streak ?? 0} days</p>
               </div>
             </div>
             <div className="mt-3 flex gap-1.5">
@@ -310,7 +301,7 @@ export default function HomePage() {
                 <div
                   key={i}
                   className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-medium
-                    ${i < mockUser.currentStreak ? 'bg-dojo-streak text-black' : 'bg-dojo-border text-dojo-text-muted'}`}
+                    ${i < (user?.streak ?? 0) ? 'bg-dojo-streak text-black' : 'bg-dojo-border text-dojo-text-muted'}`}
                 >
                   {d}
                 </div>
