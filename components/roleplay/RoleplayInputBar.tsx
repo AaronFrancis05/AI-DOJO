@@ -87,11 +87,11 @@ export function RoleplayInputBar({ onSend, onPause, disabled }: RoleplayInputBar
   }, [isListening, stopListening]);
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3">
       {inputMode === 'voice' ? (
         <button
           onClick={isListening ? stopListening : startListening}
-          className={`flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-colors ${
             isListening
               ? 'bg-dojo-danger text-white border-dojo-danger animate-pulse'
               : 'bg-dojo-surface-raised border-dojo-border text-dojo-text-muted hover:text-dojo-text-primary'
@@ -104,7 +104,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled }: RoleplayInputBar
       ) : (
         <button
           onClick={toggleInputMode}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-dojo-accent hover:text-dojo-text-primary transition-colors"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-dojo-accent hover:text-dojo-text-primary transition-colors"
           title="Switch to voice input"
         >
           <Keyboard className="h-5 w-5" />
@@ -123,19 +123,19 @@ export function RoleplayInputBar({ onSend, onPause, disabled }: RoleplayInputBar
             : 'Type your response in Japanese...'
         }
         disabled={disabled}
-        className="flex-1 rounded-[--radius-md] bg-dojo-surface border border-dojo-border px-4 py-2.5 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none focus:border-dojo-accent transition-colors disabled:opacity-50"
+        className="min-w-0 flex-1 rounded-[--radius-md] bg-dojo-surface border border-dojo-border px-3 sm:px-4 py-2.5 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none focus:border-dojo-accent transition-colors disabled:opacity-50"
       />
 
       <button
         onClick={handleSend}
         disabled={!text.trim() || disabled}
-        className="flex h-10 w-10 items-center justify-center rounded-[--radius-md] bg-dojo-accent text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[--radius-md] bg-dojo-accent text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <Send className="h-4 w-4" />
       </button>
 
       {roleplayCapabilities.tts === 'disabled' && inputMode === 'voice' && (
-        <span className="text-[10px] text-dojo-text-muted whitespace-nowrap">
+        <span className="hidden sm:block text-[10px] text-dojo-text-muted whitespace-nowrap">
           Text mode only
         </span>
       )}
