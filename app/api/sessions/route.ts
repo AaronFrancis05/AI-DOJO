@@ -17,11 +17,20 @@ export async function GET(req: Request) {
   if (scenarioIdFilter) conditions.push(eq(sessions.scenarioId, Number(scenarioIdFilter)));
   if (statusFilter) conditions.push(eq(sessions.status, statusFilter));
 
-  const list = await db
-    .select()
+  const rows = await db
+    .select({
+      session: sessions,
+      scenarioTitle: scenarios.title,
+    })
     .from(sessions)
+    .leftJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
     .where(and(...conditions))
     .orderBy(desc(sessions.startedAt));
+
+  const list = rows.map(r => ({
+    ...r.session,
+    scenarioTitle: r.scenarioTitle ?? 'Practice Session',
+  }));
 
   return Response.json({ success: true, sessions: list });
 }
