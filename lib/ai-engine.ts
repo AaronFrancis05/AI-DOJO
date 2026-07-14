@@ -29,6 +29,7 @@ export interface AIResponseAnalysis {
   isEnglishWhenExpected: boolean;
   emotionTone?: string;
   gestureHint?: string;
+  suggestedReplies?: string[];
   scores: {
     vocabulary: number;
     grammar: number;
@@ -162,6 +163,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",
   "gestureHint": null,
+  "suggestedReplies": ["String the user might want to say next (2-3 short options in Japanese, natural and contextual)"],
   "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [

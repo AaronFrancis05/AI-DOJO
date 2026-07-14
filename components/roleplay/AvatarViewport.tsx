@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo, Suspense } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { getCurrentViseme } from '@/lib/roleplay/tts';
@@ -394,10 +394,72 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   return null;
 }
 
+/* ── AutoCamera — frames camera on model bounding box ── */
+function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'front' | 'over-shoulder' }) {
+  const { camera } = useThree();
+  const framed = useRef(false);
+
+  useEffect(() => {
+    if (!scene || framed.current) return;
+
+    const raf = requestAnimationFrame(() => {
+      const box = new THREE.Box3().setFromObject(scene);
+      const size = box.getSize(new THREE.Vector3());
+
+      console.log('[AutoCamera]', {
+        min: box.min.toArray(),
+        max: box.max.toArray(),
+        size: size.toArray(),
+        mode: cameraMode,
+      });
+
+      // Sanity check — skip if model size is wildly off-scale
+      if (size.y < 0.1 || size.y > 100) {
+        console.warn('[AutoCamera] Unexpected model size — skipping auto-framing', size.y);
+        return;
+      }
+
+      // Ground the model: shift so lowest point is at y=0
+      scene.position.y -= box.min.y;
+
+      // Recompute bounding box after grounding to get correct up-axis range
+      const groundedBox = new THREE.Box3().setFromObject(scene);
+      const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
+      const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
+
+      if (cameraMode === 'over-shoulder') {
+        // Behind and above, looking forward (inverse of front framing)
+        const targetHeight = groundedHeight * 0.35;
+        const focusY = groundedHeight * 0.65;
+        const distance = targetHeight / (2 * Math.tan(fovRad)) * 1.1;
+
+        camera.position.set(0, focusY * 1.2, distance * 0.9);
+        camera.lookAt(0, focusY, 0);
+      } else {
+        // Waist-up portrait framing: upper ~60% of model height
+        const targetHeight = groundedHeight * 0.6;
+        const focusY = groundedHeight - targetHeight / 2;
+        const distance = targetHeight / (2 * Math.tan(fovRad)) * 1.4;
+
+        camera.position.set(0, focusY, distance);
+        camera.lookAt(0, focusY, 0);
+      }
+
+      framed.current = true;
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [scene, camera, cameraMode]);
+
+  return null;
+}
+
 /* ── AnimatedModel — loads and animates the model ── */
-function AnimatedModel({ url, mode, emotion, gesture }: { url: string } & AvatarAnimationProps) {
-  const { scene } = useGLTF(url);
+function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: { url: string; cameraMode?: 'front' | 'over-shoulder' } & AvatarAnimationProps) {
+  const { scene: originalScene } = useGLTF(url);
+  const scene = useMemo(() => originalScene.clone(), [originalScene]);
   const [hasMorphs, setHasMorphs] = useState(false);
+  const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     if (scene) {
@@ -406,8 +468,9 @@ function AnimatedModel({ url, mode, emotion, gesture }: { url: string } & Avatar
   }, [scene]);
 
   return (
-    <group>
+    <group ref={groupRef}>
       <primitive object={scene} rotation={[0, -0.3, 0]} />
+      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} />
       {hasMorphs ? (
         <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
       ) : (
@@ -423,27 +486,31 @@ function ThreeScene({
   mode,
   emotion,
   gesture,
+  cameraMode,
 }: {
   modelUrl: string;
+  cameraMode?: 'front' | 'over-shoulder';
 } & AvatarAnimationProps) {
   return (
     <div className="h-full w-full">
-      <Canvas camera={{ position: [0, 1.2, 3.5], fov: 35 }}>
+      <Canvas camera={{ position: [0, 0, 3], fov: 35 }}>
         <ambientLight intensity={0.4} />
         <directionalLight position={[4, 4, 4]} intensity={0.8} />
         <directionalLight position={[-3, 2, 3]} intensity={0.3} color="#b0d0ff" />
         <directionalLight position={[0, -2, 2]} intensity={0.2} />
         <EmotionLight emotion={emotion} />
         <Suspense fallback={null}>
-          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} />
+          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} />
           <Environment preset="studio" />
-          <ContactShadows
-            position={[0, -1.5, 0]}
-            opacity={0.4}
-            scale={3}
-            blur={2}
-            far={4}
-          />
+          {cameraMode !== 'over-shoulder' && (
+            <ContactShadows
+              position={[0, -1.5, 0]}
+              opacity={0.4}
+              scale={3}
+              blur={2}
+              far={4}
+            />
+          )}
         </Suspense>
       </Canvas>
     </div>
@@ -467,6 +534,7 @@ export function AvatarViewport({
   mode = 'idle',
   emotion,
   gesture,
+  cameraMode,
 }: {
   name: string;
   accentColor: string;
@@ -474,6 +542,7 @@ export function AvatarViewport({
   mode?: AvatarMode;
   emotion?: string;
   gesture?: string;
+  cameraMode?: 'front' | 'over-shoulder';
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -509,6 +578,7 @@ export function AvatarViewport({
       mode={mode}
       emotion={emotion}
       gesture={gesture}
+      cameraMode={cameraMode}
     />
   );
 }
