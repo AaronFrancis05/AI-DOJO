@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -64,6 +64,7 @@ export default function RoleplaySessionPage() {
   const [showTextInput, setShowTextInput] = useState(false);
   const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [speaking, setSpeaking] = useState(false);
 
   const [session, setSession] = useState<any>(null);
   const [scenario, setScenario] = useState<any>(null);
@@ -103,6 +104,14 @@ export default function RoleplaySessionPage() {
     }
     load();
   }, [sessionId]);
+
+  // Poll speaking state for UI feedback
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSpeaking(ttsIsSpeaking());
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSend = useCallback(async (text: string) => {
     if (sending) return;
@@ -404,6 +413,18 @@ export default function RoleplaySessionPage() {
           {error && (
             <div className="absolute bottom-20 left-4 z-20">
               <p className="text-xs text-dojo-danger">{error}</p>
+            </div>
+          )}
+
+          {/* Speaking indicator */}
+          {speaking && (
+            <div className="absolute bottom-[72px] left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
+              <div className="flex items-center gap-0.5">
+                <span className="h-3 w-0.5 rounded-full bg-dojo-accent animate-pulse" style={{ animationDelay: '0ms' }} />
+                <span className="h-4 w-0.5 rounded-full bg-dojo-accent animate-pulse" style={{ animationDelay: '150ms' }} />
+                <span className="h-3 w-0.5 rounded-full bg-dojo-accent animate-pulse" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-[10px] text-dojo-text-muted">Speaking...</span>
             </div>
           )}
 
