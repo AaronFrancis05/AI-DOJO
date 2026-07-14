@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Mic, Keyboard, Send, VolumeX, Settings2, MoreHorizontal } from 'lucide-react';
+import { Mic, Keyboard, Send, VolumeX, Settings2 } from 'lucide-react';
 import { roleplayCapabilities } from '@/lib/roleplay/capabilities';
 import { stop as stopTts } from '@/lib/roleplay/tts';
 import { cn } from '@/lib/design-tokens';
@@ -91,7 +91,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
 
   return (
     <div className="flex flex-col items-center gap-4 w-full">
-      {/* -- Toolbar Area -- */}
+      {/* ── Toolbar Area ── */}
       <div className="flex items-center justify-between w-full px-2">
          <div className="flex items-center gap-1.5">
            <button
@@ -129,7 +129,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
          </button>
       </div>
 
-      {/* -- Main Input Area -- */}
+      {/* ── Main Input Area ── */}
       <div className="relative w-full group">
         {showTextInput ? (
           <div className="flex items-center gap-2 p-1.5 bg-dojo-surface-raised/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl transition-all duration-300 focus-within:border-dojo-accent/50 focus-within:ring-4 focus-within:ring-dojo-accent/10">
@@ -139,7 +139,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Responder en japon�s..."
+              placeholder="Type your response in Japanese..."
               disabled={disabled}
               className="flex-1 bg-transparent border-none px-4 py-3 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
             />
