@@ -428,7 +428,7 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
       if (cameraMode === 'over-shoulder') {
-        // Behind and above, looking forward (inverse of front framing)
+        // Behind and above, looking forward
         const targetHeight = groundedHeight * 0.35;
         const focusY = groundedHeight * 0.65;
         const distance = targetHeight / (2 * Math.tan(fovRad)) * 1.1;
@@ -436,10 +436,11 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
         camera.position.set(0, focusY * 1.2, distance * 0.9);
         camera.lookAt(0, focusY, 0);
       } else {
-        // Waist-up portrait framing: upper ~60% of model height
-        const targetHeight = groundedHeight * 0.6;
-        const focusY = groundedHeight - targetHeight / 2;
-        const distance = targetHeight / (2 * Math.tan(fovRad)) * 1.4;
+        // Tight portrait: frame upper ~30% of model (head + shoulders)
+        // This makes the face large and readable for lip-sync visibility
+        const targetHeight = groundedHeight * 0.3;
+        const focusY = groundedHeight * 0.85;
+        const distance = targetHeight / (2 * Math.tan(fovRad));
 
         camera.position.set(0, focusY, distance);
         camera.lookAt(0, focusY, 0);
@@ -450,6 +451,40 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
 
     return () => cancelAnimationFrame(raf);
   }, [scene, camera, cameraMode]);
+
+  return null;
+}
+
+/* ── PoseRestFix — rotates arm bones to relaxed A-pose on load ── */
+const T_POSE_BONES = ['LeftArm', 'RightArm'];
+
+function PoseRestFix({ scene }: { scene: THREE.Group }) {
+  const applied = useRef(false);
+
+  useEffect(() => {
+    if (applied.current) return;
+
+    scene.traverse((child) => {
+      if (!(child instanceof THREE.Bone)) return;
+
+      // Log bone names at runtime for development verification
+      if (child.name.includes('Arm') || child.name.includes('ForeArm') || child.name.includes('Shoulder')) {
+        console.log('[PoseRestFix] Bone:', child.name, 'localPos:', child.position.toArray().map(v => v.toFixed(3)).join(', '));
+      }
+
+      if (child.name === 'LeftArm') {
+        // Rotate left upper arm inward/down to natural relaxed pose
+        child.rotation.z = -0.5;
+        child.rotation.x = 0.2;
+        applied.current = true;
+      } else if (child.name === 'RightArm') {
+        // Rotate right upper arm inward/down to natural relaxed pose
+        child.rotation.z = 0.5;
+        child.rotation.x = -0.2;
+        applied.current = true;
+      }
+    });
+  }, [scene]);
 
   return null;
 }
@@ -470,6 +505,7 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: { url: strin
   return (
     <group ref={groupRef}>
       <primitive object={scene} rotation={[0, -0.3, 0]} />
+      <PoseRestFix scene={scene} />
       <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} />
       {hasMorphs ? (
         <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
