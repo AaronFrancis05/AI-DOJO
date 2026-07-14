@@ -4,13 +4,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Avatar } from '@/components/ui/Avatar';
+import { AvatarStage } from '@/components/roleplay/AvatarStage';
 import { getSituationById, type SituationFixture } from '@/lib/data/situations';
 import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
 import { getCharacters, type CharacterFixture } from '@/lib/data/characters';
-import { ArrowLeft, Sparkles, ChevronRight, Bot } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function CharacterSelectionPage() {
@@ -114,7 +113,15 @@ export default function CharacterSelectionPage() {
         {characters.map((char) => (
           <Card key={char.id} hoverable className="group p-5">
             <div className="flex flex-col items-center text-center">
-              <Avatar name={char.name} color={char.avatarColor} size="xl" />
+              <div className="h-40 w-full">
+                <AvatarStage
+                  name={char.name}
+                  role={char.role}
+                  accentColor={char.avatarColor}
+                  compact
+                  mode="idle"
+                />
+              </div>
               <h3 className="mt-3 text-sm font-semibold text-dojo-text-primary">{char.name}</h3>
               <p className="text-xs text-dojo-text-muted">{char.role}</p>
               <p className="mt-2 text-[11px] text-dojo-text-muted leading-relaxed line-clamp-2">{char.personality}</p>
