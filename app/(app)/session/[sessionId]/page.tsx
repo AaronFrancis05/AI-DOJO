@@ -17,7 +17,7 @@ import { AvatarStage } from '@/components/roleplay/AvatarStage';
 import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { RoleplayInputBar } from '@/components/roleplay/RoleplayInputBar';
 import { RoleplaySidePanel } from '@/components/roleplay/RoleplaySidePanel';
-import { speak as ttsSpeak, isSpeaking as ttsIsSpeaking } from '@/lib/roleplay/tts';
+import { speakWithVisemes, speak as ttsSpeak, isSpeaking as ttsIsSpeaking } from '@/lib/roleplay/tts';
 import type { SkillLevel } from '@/lib/design-tokens';
 import { ArrowLeft, Target, X, LogOut } from 'lucide-react';
 
@@ -144,11 +144,11 @@ export default function RoleplaySessionPage() {
 
       setConversations(prev => [...prev, userTurn, aiTurn]);
 
-      // Speak the AI reply via TTS
+      // Speak the AI reply via TTS (Azure with visemes, fallback to Web Speech)
       const aiText = aiTurn.messageJp || aiTurn.messageEn;
       if (aiText) {
         setAvatarMode('talking');
-        ttsSpeak(aiText, 'ja-JP').then(() => {
+        speakWithVisemes(aiText, 'ja-JP').catch(() => ttsSpeak(aiText, 'ja-JP')).finally(() => {
           setAvatarMode('idle');
         });
       }
