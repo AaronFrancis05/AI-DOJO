@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -8,9 +8,11 @@ import { LiveBadge } from '@/components/ui/LiveBadge';
 import { AvatarViewport } from '@/components/roleplay/AvatarViewport';
 import { RoleplayInputBar } from '@/components/roleplay/RoleplayInputBar';
 import { RoleplaySidePanel } from '@/components/roleplay/RoleplaySidePanel';
+import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { speakWithVisemes, speak as ttsSpeak, isSpeaking as ttsIsSpeaking } from '@/lib/roleplay/tts';
 import type { SkillLevel } from '@/lib/design-tokens';
-import { ArrowLeft, Target, X, LogOut, Volume2 } from 'lucide-react';
+import { ArrowLeft, Target, X, LogOut, Volume2, Info, ChevronRight, LayoutPanelTop } from 'lucide-react';
+import { cn } from '@/lib/design-tokens';
 
 interface TurnData {
   id: number;
@@ -49,7 +51,7 @@ const DOMAIN_BACKGROUNDS: Record<string, string> = {
 
 function getDomainBackground(slug?: string): string {
   if (slug && DOMAIN_BACKGROUNDS[slug]) return DOMAIN_BACKGROUNDS[slug];
-  return 'linear-gradient(160deg, #111D33 0%, #1C2A42 50%, #0F1628 100%)';
+  return 'linear-gradient(160deg, #050B14 0%, #0B1526 100%)';
 }
 
 export default function RoleplaySessionPage() {
@@ -60,7 +62,7 @@ export default function RoleplaySessionPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [showMobilePanel, setShowMobilePanel] = useState(false);
+  const [showSidePanel, setShowSidePanel] = useState(true);
   const [showTextInput, setShowTextInput] = useState(false);
   const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
@@ -75,6 +77,8 @@ export default function RoleplaySessionPage() {
   const [vocabulary, setVocabulary] = useState<VocabData[]>([]);
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals, setCompletedGoals] = useState<number[]>([]);
+  
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -105,7 +109,12 @@ export default function RoleplaySessionPage() {
     load();
   }, [sessionId]);
 
-  // Poll speaking state for UI feedback
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [conversations]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setSpeaking(ttsIsSpeaking());
@@ -118,7 +127,6 @@ export default function RoleplaySessionPage() {
     setSending(true);
     setAvatarMode('listening');
     setError('');
-    setSuggestedReplies([]);
 
     try {
       const res = await fetch('/api/chat', {
@@ -128,9 +136,7 @@ export default function RoleplaySessionPage() {
       });
 
       const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Chat request failed');
-      }
+      if (!data.success) throw new Error(data.error || 'Chat request failed');
 
       const userTurn: TurnData = {
         id: Date.now(),
@@ -156,10 +162,6 @@ export default function RoleplaySessionPage() {
 
       setConversations(prev => [...prev, userTurn, aiTurn]);
 
-      if (data.analysis.suggestedReplies?.length > 0) {
-        setSuggestedReplies(data.analysis.suggestedReplies);
-      }
-
       const aiText = aiTurn.messageJp || aiTurn.messageEn;
       if (aiText) {
         setAvatarMode('talking');
@@ -179,34 +181,24 @@ export default function RoleplaySessionPage() {
       setError(e.message);
     } finally {
       setSending(false);
-      if (!ttsIsSpeaking()) {
-        setAvatarMode('idle');
-      }
+      if (!ttsIsSpeaking()) setAvatarMode('idle');
     }
   }, [sessionId, sending, conversations.length]);
 
-  const handleReplay = useCallback((text: string) => {
-    if (!text) return;
-    setAvatarMode('talking');
-    speakWithVisemes(text, 'ja-JP').catch(() => ttsSpeak(text, 'ja-JP')).finally(() => {
-      setAvatarMode('idle');
-    });
-  }, []);
-
   const handlePause = useCallback(async () => {
+    const nextStatus = session?.status === 'paused' ? 'active' : 'paused';
     try {
       await fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status: 'paused' }),
+        body: JSON.stringify({ status: nextStatus }),
       });
-      setSession((prev: any) => ({ ...prev, status: 'paused' }));
-    } catch (e) {
-      console.error('Pause failed:', e);
-    }
-  }, [sessionId]);
+      setSession((prev: any) => ({ ...prev, status: nextStatus }));
+    } catch (e) { console.error('Status update failed:', e); }
+  }, [sessionId, session?.status]);
 
   const handleEnd = useCallback(async () => {
+    if (!confirm('End this session and view your evaluation?')) return;
     try {
       await fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
@@ -214,107 +206,68 @@ export default function RoleplaySessionPage() {
         body: JSON.stringify({ status: 'completed' }),
       });
       router.push(`/sessions/${sessionId}/report`);
-    } catch (e) {
-      console.error('End session failed:', e);
-    }
+    } catch (e) { console.error('End session failed:', e); }
   }, [sessionId, router]);
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="animate-pulse text-dojo-text-muted">Loading session...</div>
+  if (loading) return (
+    <div className="flex h-screen w-screen items-center justify-center bg-dojo-canvas">
+      <div className="flex flex-col items-center gap-4">
+         <div className="h-12 w-12 rounded-full border-4 border-dojo-accent border-t-transparent animate-spin" />
+         <p className="text-dojo-text-muted text-sm font-medium animate-pulse">Entering Dojo...</p>
       </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <p className="text-dojo-text-muted mb-4">{error}</p>
-          <Button variant="secondary" onClick={() => router.push('/home')}>
-            <ArrowLeft className="h-4 w-4" /> Back to Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 
   const isActive = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
-  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
-  const charRole = situation?.counterpartRole ?? character?.role ?? scenario?.aiCharacterRole ?? '';
-  const charColor = character?.avatarColor ?? '#2D3BC5';
+  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Sensei';
+  const charColor = character?.avatarColor ?? '#D14343';
   const domainSlug = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
-
   const latestAiMessage = [...conversations].reverse().find(c => c.speaker === 'ai');
 
-  const sidePanelProps = {
-    goals,
-    completedGoals,
-    vocabulary,
-    situation,
-    scenario,
-    session,
-    isActive,
-    isCompleted,
-    onPause: handlePause,
-    onEnd: handleEnd,
-    onViewReport: () => router.push(`/sessions/${sessionId}/report`),
-    domain,
-    character,
-    charName,
-    charRole,
-    charColor,
-  };
-
   return (
-    <div className="flex h-full flex-col bg-dojo-canvas">
-      {/* ── Top bar ── */}
-      <div className="flex items-center justify-between border-b border-dojo-border px-3 sm:px-6 py-2.5 shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/home')}>
+    <div className="flex h-screen w-screen flex-col bg-dojo-canvas text-dojo-text-primary overflow-hidden">
+      {/* -- Background Layer -- */}
+      <div 
+        className="absolute inset-0 z-0 opacity-40 transition-all duration-1000"
+        style={{ background: getDomainBackground(domainSlug) }} 
+      />
+
+      {/* -- UI Layer: Top Bar -- */}
+      <div className="relative z-30 flex items-center justify-between px-4 h-16 border-b border-white/5 bg-dojo-canvas/40 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => router.push('/home')} className="hover:bg-white/5">
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Exit</span>
           </Button>
-          <div className="h-4 w-px bg-dojo-border shrink-0" />
+          <div className="h-4 w-px bg-white/10" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-dojo-text-primary truncate">
-              {situation?.title ?? scenario?.title ?? 'Roleplay'}
-            </p>
-            <p className="hidden sm:block text-xs text-dojo-text-muted truncate">
-              with {charName}{session?.behaviorMode ? ` · ${session.behaviorMode} mode` : ''}
-            </p>
+            <h2 className="text-sm font-bold truncate">{situation?.title ?? scenario?.title}</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-dojo-text-muted font-bold tracking-widest uppercase">{charName}</span>
+              <div className="h-1 w-1 rounded-full bg-dojo-text-muted/30" />
+              <Badge variant={situation?.skillLevel as SkillLevel} className="text-[9px] h-4 px-1">{situation?.skillLevel}</Badge>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <div className="hidden sm:block">
-            {situation?.skillLevel && (
-              <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
-            )}
-          </div>
-          <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setShowMobilePanel(true)} title="Session Info">
-            <Target className="h-4 w-4" />
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className={cn("text-dojo-text-muted", showSidePanel && "bg-white/10 text-dojo-text-primary")}
+            onClick={() => setShowSidePanel(!showSidePanel)}
+          >
+            <LayoutPanelTop className="h-4 w-4" />
           </Button>
-          {isCompleted && <Badge variant="default">Completed</Badge>}
-          {isActive && (
-            <Button variant="ghost" size="sm" className="text-dojo-danger" onClick={handleEnd} title="End Session">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          )}
+          <LiveBadge />
         </div>
       </div>
 
-      {/* ── Main content ── */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* ── Left: Avatar canvas + chat overlay ── */}
-        <div
-          className="relative flex-1 flex flex-col overflow-hidden"
-          style={{ background: getDomainBackground(domainSlug) }}
-        >
-          {/* AI avatar — full area */}
-          <div className="absolute inset-0">
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* -- Main Canvas Area (Left/Center) -- */}
+        <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* 3D Scene */}
+          <div className="absolute inset-0 z-10 pointer-events-none">
             <AvatarViewport
               name={charName}
               accentColor={charColor}
@@ -324,147 +277,72 @@ export default function RoleplaySessionPage() {
             />
           </div>
 
-          {/* User avatar — foreground corner, behind/above, dimmed */}
-          <div className="absolute bottom-28 right-4 w-20 h-28 opacity-50 blur-[1px] pointer-events-none z-10">
-            <AvatarViewport
-              name="You"
-              accentColor="#2D3BC5"
-              mode="idle"
-              cameraMode="over-shoulder"
+          {/* Chat Overlay */}
+          <div 
+            ref={scrollRef}
+            className="relative z-20 flex-1 overflow-y-auto p-4 sm:p-8 space-y-2 flex flex-col custom-scrollbar pb-32"
+          >
+            <div className="mt-auto" /> {/* Push content to bottom */}
+            {conversations.map((turn, i) => (
+              <ConversationBubble
+                key={i}
+                speaker={turn.speaker}
+                name={turn.speaker === 'ai' ? charName : 'You'}
+                accentColor={turn.speaker === 'ai' ? charColor : '#2D3BC5'}
+                messageJp={turn.messageJp}
+                messageRomaji={turn.messageRomaji}
+                messageEn={turn.messageEn}
+                emotionTone={turn.emotionTone}
+                gestureHint={turn.gestureHint}
+              />
+            ))}
+            {sending && (
+              <div className="flex gap-2 p-3 bg-white/5 border border-white/5 rounded-2xl w-fit animate-pulse">
+                <div className="h-1.5 w-1.5 rounded-full bg-dojo-text-muted animate-bounce [animation-delay:-0.3s]" />
+                <div className="h-1.5 w-1.5 rounded-full bg-dojo-text-muted animate-bounce [animation-delay:-0.15s]" />
+                <div className="h-1.5 w-1.5 rounded-full bg-dojo-text-muted animate-bounce" />
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Input bar */}
+          <div className="absolute bottom-0 left-0 right-0 z-40 p-4 sm:p-8 bg-gradient-to-t from-dojo-canvas via-dojo-canvas/80 to-transparent">
+             <div className="mx-auto max-w-2xl w-full">
+               <RoleplayInputBar
+                 onSend={handleSend}
+                 onPause={handlePause}
+                 disabled={!isActive || sending}
+                 showTextInput={showTextInput}
+                 onToggleTextInput={() => setShowTextInput(!showTextInput)}
+               />
+             </div>
+          </div>
+        </div>
+
+        {/* -- Right: Sidebar -- */}
+        <div className={cn(
+          "absolute inset-y-0 right-0 z-50 w-80 bg-dojo-sidebar/95 backdrop-blur-xl border-l border-white/5 transition-transform duration-300 transform lg:relative lg:translate-x-0 lg:z-30 lg:bg-dojo-sidebar/40",
+          showSidePanel ? "translate-x-0" : "translate-x-full lg:hidden"
+        )}>
+          <div className="h-full flex flex-col p-6">
+            <RoleplaySidePanel
+              goals={goals}
+              completedGoals={completedGoals}
+              vocabulary={vocabulary}
+              situation={situation}
+              scenario={scenario}
+              session={session}
+              isActive={isActive}
+              isCompleted={isCompleted}
+              onPause={handlePause}
+              onEnd={handleEnd}
+              onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+              charName={charName}
+              charColor={charColor}
             />
           </div>
-
-          {/* Floating chat bubble — latest AI turn */}
-          {latestAiMessage && (
-            <div className="absolute top-4 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-md z-20">
-              <div className="bg-dojo-surface-raised border border-dojo-border rounded-[--radius-lg] px-4 py-3 shadow-lg">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-semibold text-dojo-text-primary">{charName}</span>
-                  <button
-                    onClick={() => handleReplay(latestAiMessage.messageJp || latestAiMessage.messageEn)}
-                    className="text-dojo-text-muted hover:text-dojo-accent transition-colors"
-                    title="Replay"
-                  >
-                    <Volume2 className="h-3.5 w-3.5" />
-                  </button>
-                  {latestAiMessage.emotionTone && (
-                    <span className="text-[10px] text-dojo-text-muted capitalize ml-auto">
-                      {latestAiMessage.emotionTone}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-dojo-text-primary leading-relaxed">
-                  {latestAiMessage.messageJp}
-                </p>
-                {latestAiMessage.messageRomaji && (
-                  <p className="mt-1 text-xs text-dojo-text-muted italic">{latestAiMessage.messageRomaji}</p>
-                )}
-                {latestAiMessage.messageEn && (
-                  <p className="text-xs text-dojo-text-muted italic">{latestAiMessage.messageEn}</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {conversations.length === 0 && !sending && (
-            <div className="absolute top-4 left-4 right-4 sm:left-6 sm:max-w-md z-20">
-              <div className="bg-dojo-surface-raised border border-dojo-border rounded-[--radius-lg] px-4 py-3 shadow-lg">
-                <p className="text-sm text-dojo-text-muted">
-                  Start the conversation! Say something to {charName}.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Sending indicator */}
-          {sending && (
-            <div className="absolute top-4 left-4 z-20">
-              <div className="bg-dojo-surface-raised border border-dojo-border rounded-[--radius-lg] px-4 py-3 shadow-lg">
-                <div className="flex gap-1">
-                  <span className="h-2 w-2 rounded-full bg-dojo-text-muted animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="h-2 w-2 rounded-full bg-dojo-text-muted animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="h-2 w-2 rounded-full bg-dojo-text-muted animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Suggested reply chips */}
-          {suggestedReplies.length > 0 && (
-            <div className="absolute bottom-20 left-4 right-4 sm:left-6 sm:right-auto z-20">
-              <p className="text-xs text-dojo-text-muted mb-2">You can say:</p>
-              <div className="flex flex-wrap gap-2">
-                {suggestedReplies.map((reply, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(reply)}
-                    disabled={sending}
-                    className="rounded-[--radius-pill] border border-dojo-border bg-dojo-surface px-3 py-1.5 text-xs text-dojo-text-primary hover:border-dojo-accent transition-colors disabled:opacity-50"
-                  >
-                    {reply}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="absolute bottom-20 left-4 z-20">
-              <p className="text-xs text-dojo-danger">{error}</p>
-            </div>
-          )}
-
-          {/* Speaking indicator */}
-          {speaking && (
-            <div className="absolute bottom-[72px] left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
-              <div className="flex items-center gap-0.5">
-                <span className="h-3 w-0.5 rounded-full bg-dojo-accent animate-pulse" style={{ animationDelay: '0ms' }} />
-                <span className="h-4 w-0.5 rounded-full bg-dojo-accent animate-pulse" style={{ animationDelay: '150ms' }} />
-                <span className="h-3 w-0.5 rounded-full bg-dojo-accent animate-pulse" style={{ animationDelay: '300ms' }} />
-              </div>
-              <span className="text-[10px] text-dojo-text-muted">Speaking...</span>
-            </div>
-          )}
-
-          {/* Control bar */}
-          <div className="absolute bottom-0 left-0 right-0 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] z-20 bg-gradient-to-t from-dojo-canvas/80 to-transparent">
-            <div className="mx-auto max-w-md">
-              <RoleplayInputBar
-                onSend={handleSend}
-                onPause={handlePause}
-                disabled={!isActive || sending}
-                showTextInput={showTextInput}
-                onToggleTextInput={() => setShowTextInput(v => !v)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Right: Session Information panel ── */}
-        <div className="hidden lg:flex w-72 shrink-0 flex-col border-l border-dojo-border p-4 space-y-4 overflow-y-auto bg-dojo-sidebar">
-          <RoleplaySidePanel {...sidePanelProps} />
         </div>
       </div>
-
-      {/* ── Mobile drawer ── */}
-      {showMobilePanel && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowMobilePanel(false)} />
-          <div className="absolute right-0 top-0 bottom-0 w-80 max-w-[85vw] bg-dojo-canvas border-l border-dojo-border shadow-xl flex flex-col">
-            <div className="flex items-center justify-between border-b border-dojo-border px-4 py-3 shrink-0">
-              <h2 className="text-sm font-semibold text-dojo-text-primary">Session Details</h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowMobilePanel(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <RoleplaySidePanel {...sidePanelProps} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
