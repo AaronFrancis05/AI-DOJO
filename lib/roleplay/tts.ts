@@ -1,86 +1,118 @@
-/**
- * TTS service using the Web Speech API (window.speechSynthesis).
- * Drives a callback with per-frame RMS amplitude for lip-sync approximation.
- *
- * Why Web Speech API instead of a cloud TTS provider:
- *  - No API key, no network latency, works offline.
- *  - Built into all modern browsers (Chrome, Edge, Safari).
- *  - Supports ja-JP voices on all major platforms.
- *  - Consistent with the existing `stt: 'web-speech-api'` capability.
- *
- * The amplitude data from AnalyserNode is a cheap but effective
- * approximation for driving a jaw/mouth blend shape. A phoneme-accurate
- * approach would require a cloud TTS that returns viseme timing (e.g.
- * Google Cloud TTS, Azure Speech), which we can switch to later by
- * changing the provider in capabilities.ts.
- */
+let currentVisemeId = -1;
+let isAzureSpeaking = false;
+let azureStopCallback: (() => void) | null = null;
 
-let audioContext: AudioContext | null = null;
-let analyser: AnalyserNode | null = null;
-let sourceNode: MediaElementAudioSourceNode | null = null;
-
-function getAudioContext(): AudioContext {
-  if (!audioContext) {
-    audioContext = new AudioContext();
-  }
-  return audioContext;
-}
-
-export function getCurrentAmplitude(): number {
-  if (!analyser) return 0;
-  const data = new Uint8Array(analyser.frequencyBinCount);
-  analyser.getByteTimeDomainData(data);
-  let sum = 0;
-  for (let i = 0; i < data.length; i++) {
-    const value = (data[i] - 128) / 128;
-    sum += value * value;
-  }
-  const rms = Math.sqrt(sum / data.length);
-  // Clamp to 0–1 and apply a sensitivity floor
-  return Math.min(1, Math.max(0, rms * 3));
+export function getCurrentViseme(): number {
+  return currentVisemeId;
 }
 
 export function isSpeaking(): boolean {
-  return window.speechSynthesis.speaking;
+  return isAzureSpeaking || window.speechSynthesis.speaking;
 }
 
-export function speak(
-  text: string,
-  lang: string = 'ja-JP',
-): Promise<void> {
+export function speak(text: string, lang: string = 'ja-JP'): Promise<void> {
   return new Promise((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
-
-    // Wire up audio analysis for lip-sync
-    utterance.onstart = () => {
-      const ctx = getAudioContext();
-      const dest = ctx.createMediaStreamDestination();
-      // We can't directly pipe SpeechSynthesis into Web Audio API,
-      // so we create an oscillator-based amplitude proxy instead.
-      // This gives us a rough "is sound playing" signal rather than
-      // true voice amplitude.
-      analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-    };
-
-    utterance.onend = () => {
-      analyser = null;
-      resolve();
-    };
-
-    utterance.onerror = () => {
-      analyser = null;
-      resolve();
-    };
-
+    utterance.onend = () => resolve();
+    utterance.onerror = () => resolve();
     window.speechSynthesis.speak(utterance);
   });
 }
 
+export async function speakWithVisemes(
+  text: string,
+  lang: string = 'ja-JP',
+): Promise<void> {
+  try {
+    const response = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang }),
+    });
+
+    if (!response.ok) throw new Error(`Azure TTS returned ${response.status}`);
+
+    const data = await response.json();
+    const { audio: audioBase64, visemes } = data;
+
+    const binaryStr = atob(audioBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    const audioCtx = new AudioContext();
+    const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+
+    isAzureSpeaking = true;
+    currentVisemeId = -1;
+
+    const startTime = audioCtx.currentTime;
+    let visemeIndex = 0;
+
+    const cancelled = { value: false };
+    azureStopCallback = () => {
+      cancelled.value = true;
+      try { source.stop(); } catch {}
+      audioCtx.close();
+    };
+
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (cancelled.value) {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          resolve();
+          return;
+        }
+
+        const elapsed = (audioCtx.currentTime - startTime) * 1000;
+
+        while (visemeIndex < visemes.length && visemes[visemeIndex].offsetMs <= elapsed) {
+          currentVisemeId = visemes[visemeIndex].id;
+          visemeIndex++;
+        }
+
+        if (visemeIndex >= visemes.length) {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          resolve();
+          return;
+        }
+
+        requestAnimationFrame(tick);
+      };
+
+      tick();
+
+      source.onended = () => {
+        if (!cancelled.value) {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          resolve();
+        }
+      };
+    });
+  } catch {
+    currentVisemeId = -1;
+    isAzureSpeaking = false;
+    return speak(text, lang);
+  }
+}
+
 export function stop(): void {
+  if (azureStopCallback) {
+    azureStopCallback();
+    azureStopCallback = null;
+  }
   window.speechSynthesis.cancel();
-  analyser = null;
+  currentVisemeId = -1;
+  isAzureSpeaking = false;
 }

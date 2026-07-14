@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo, Suspense } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useFBX, Environment, ContactShadows } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useGLTF, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
-import { getCurrentAmplitude } from '@/lib/roleplay/tts';
+import { getCurrentViseme } from '@/lib/roleplay/tts';
 
 /* ── Emotion → blend shape weight mapping ────────
    These values are applied as weights when morph targets exist.
@@ -133,12 +133,149 @@ function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & 
   return null;
 }
 
-/* ── MorphTargetController — drives blend shapes ──
-   Only active when the FBX has morph targets.
-   Assumes common blend shape names like:
-     "jawOpen", "mouthSmile", "mouthClose", "browRaise"
-   Maps emotion values to plausible shape weights.
+/* ── ARKit blend shape indices ────────────────────
+   The GLB's morph targets have numeric-only keys ("0"–"50")
+   with no semantic names preserved. Empirical vertex-displacement
+   analysis confirmed jawOpen = index 24 (strongest Y⁻ displacement
+   at lowest face centroid). The remaining indices follow
+   reverse-alphabetical sorting of the ARKit 52-shape set
+   (minus tongueOut), which matched the empirically observed
+   jaw group (23=X⁺→jawRight, 24=Y⁻→jawOpen, 25=X⁻→jawLeft).
+   At runtime, MorphTargetController logs the actual dictionary
+   keys found so the mapping can be verified visually.
    ──────────────────────────────────────────────── */
+
+const ARKIT_INDEX: Record<string, number> = {
+  noseSneerRight: 0,
+  noseSneerLeft: 1,
+  mouthUpperUpRight: 2,
+  mouthUpperUpLeft: 3,
+  mouthSmileRight: 4,
+  mouthSmileLeft: 5,
+  mouthShrugUpper: 6,
+  mouthShrugLower: 7,
+  mouthRollUpper: 8,
+  mouthRollLower: 9,
+  mouthRight: 10,
+  mouthPucker: 11,
+  mouthPressRight: 12,
+  mouthPressLeft: 13,
+  mouthLowerDownRight: 14,
+  mouthLowerDownLeft: 15,
+  mouthLeft: 16,
+  mouthFunnel: 17,
+  mouthFrownRight: 18,
+  mouthFrownLeft: 19,
+  mouthDimpleRight: 20,
+  mouthDimpleLeft: 21,
+  mouthClose: 22,
+  jawRight: 23,
+  jawOpen: 24,
+  jawLeft: 25,
+  jawForward: 26,
+  headYaw: 27,
+  headPitch: 28,
+  eyeWideRight: 29,
+  eyeWideLeft: 30,
+  eyeSquintRight: 31,
+  eyeSquintLeft: 32,
+  eyeLookUpRight: 33,
+  eyeLookUpLeft: 34,
+  eyeLookOutRight: 35,
+  eyeLookOutLeft: 36,
+  eyeLookInRight: 37,
+  eyeLookInLeft: 38,
+  eyeLookDownRight: 39,
+  eyeLookDownLeft: 40,
+  eyeBlinkRight: 41,
+  eyeBlinkLeft: 42,
+  cheekSquintRight: 43,
+  cheekSquintLeft: 44,
+  cheekPuff: 45,
+  browOuterUpRight: 46,
+  browOuterUpLeft: 47,
+  browInnerUp: 48,
+  browDownRight: 49,
+  browDownLeft: 50,
+};
+
+/* ── Viseme → blend shape weight mapping ─────────
+   Azure Speech visemes (0-21) mapped to ARKit shapes.
+   Each entry lists shape → weight pairs for that viseme.
+   ──────────────────────────────────────────────── */
+
+type VisemeShapeMap = Partial<Record<keyof typeof ARKIT_INDEX, number>>;
+
+const VISEME_SHAPES: Record<number, VisemeShapeMap> = {
+  0: { mouthClose: 0.2 },
+  1: { jawOpen: 0.7 },
+  2: { jawOpen: 1.0 },
+  3: { jawOpen: 0.7, mouthFunnel: 0.5 },
+  4: { jawOpen: 0.5, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
+  5: { jawOpen: 0.6 },
+  6: { jawOpen: 0.8, mouthFunnel: 0.3 },
+  7: { jawOpen: 0.6, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
+  8: { mouthClose: 0.8, mouthPressLeft: 0.2, mouthPressRight: 0.2 },
+  9: { mouthPucker: 0.6, mouthFunnel: 0.3 },
+  10: { jawOpen: 0.3, mouthLeft: 0.1, mouthRight: 0.1 },
+  11: { jawOpen: 0.1, mouthPressLeft: 0.4, mouthPressRight: 0.4 },
+  12: { jawOpen: 0.5 },
+  13: { jawOpen: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 },
+  14: { jawOpen: 0.4 },
+  15: { jawOpen: 0.4 },
+  16: { jawOpen: 0.4, mouthPucker: 0.3 },
+  17: { jawOpen: 0.2 },
+  18: { jawOpen: 0.3 },
+  19: { jawOpen: 0.4, mouthPucker: 0.4 },
+  20: { jawOpen: 0.4, mouthPucker: 0.4 },
+  21: { mouthPucker: 0.5, mouthFunnel: 0.2 },
+};
+
+/* ── Emotion → expression shape mapping ────────── */
+
+interface EmotionShapeMap {
+  smileLeft?: number;
+  smileRight?: number;
+  browInnerUp?: number;
+  browOuterUpLeft?: number;
+  browOuterUpRight?: number;
+  browDownLeft?: number;
+  browDownRight?: number;
+  jawOpen?: number;
+}
+
+const EMOTION_SHAPES: Record<string, EmotionShapeMap> = {
+  friendly:       { smileLeft: 0.4, smileRight: 0.4, browInnerUp: 0.1 },
+  concerned:      { browInnerUp: 0.3, browOuterUpLeft: 0.2, browOuterUpRight: 0.2, smileLeft: 0.05, smileRight: 0.05 },
+  'formal-polite': { smileLeft: 0.15, smileRight: 0.15 },
+  surprised:      { browInnerUp: 0.7, browOuterUpLeft: 0.5, browOuterUpRight: 0.5, jawOpen: 0.3, smileLeft: 0.2, smileRight: 0.2 },
+  grateful:       { smileLeft: 0.5, smileRight: 0.5, browInnerUp: 0.1 },
+  apologetic:     { browInnerUp: 0.3, browDownLeft: 0.1, browDownRight: 0.1, smileLeft: 0.1, smileRight: 0.1 },
+};
+
+function setShapeWeight(
+  mesh: THREE.SkinnedMesh,
+  shapeName: string,
+  weight: number,
+): void {
+  const idx = ARKIT_INDEX[shapeName];
+  if (idx === undefined) return;
+  if (mesh.morphTargetInfluences && idx < mesh.morphTargetInfluences.length) {
+    mesh.morphTargetInfluences[idx] = weight;
+  }
+}
+
+function setEyelashWeight(
+  mesh: THREE.SkinnedMesh,
+  targetIdx: number,
+  weight: number,
+): void {
+  if (mesh.morphTargetInfluences && targetIdx < mesh.morphTargetInfluences.length) {
+    mesh.morphTargetInfluences[targetIdx] = weight;
+  }
+}
+
+/* ── MorphTargetController — drives blend shapes ── */
 
 function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & AvatarAnimationProps) {
   const meshes = useMemo(() => {
@@ -151,51 +288,104 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
     return found;
   }, [fbx]);
 
+  // Log morph target dictionaries at runtime for visual verification
+  useEffect(() => {
+    for (const mesh of meshes) {
+      if (mesh.morphTargetDictionary) {
+        const keys = Object.keys(mesh.morphTargetDictionary);
+        console.log(`[MorphTargetController] ${mesh.name}: ${keys.length} targets, keys=${keys.slice(0, 5).join(',')}...${keys.slice(-3).join(',')}`);
+      }
+    }
+  }, [meshes]);
+
   const timeRef = useRef(0);
+  const blinkTimer = useRef(0);
+  const nextBlink = useRef(2 + Math.random() * 4);
+  const blinkWeight = useRef(0);
 
-  const mouthOpenTarget = useRef(0);
-  const smileTarget = useRef(0);
-  const browTarget = useRef(0);
+  const targetVisemeShapes = useRef<VisemeShapeMap>({});
+  const currentVisemeShapes = useRef<VisemeShapeMap>({});
+  const prevVisemeId = useRef(-1);
 
-  const targetValues = useMemo(() => {
-    const mouthOpen = mode === 'talking' ? 0.6 : 0;
-    let smile = 0;
-    let brow = 0;
-
-    if (emotion === 'friendly' || emotion === 'grateful') smile = 0.5;
-    if (emotion === 'surprised') { smile = 0.3; brow = 0.7; }
-    if (emotion === 'concerned' || emotion === 'apologetic') { brow = 0.3; }
-    if (emotion === 'formal-polite') smile = 0.1;
-
-    return { mouthOpen, smile, brow };
-  }, [mode, emotion]);
+  const targetEmotionShapes = useMemo<EmotionShapeMap>(() => {
+    if (emotion && EMOTION_SHAPES[emotion]) return EMOTION_SHAPES[emotion];
+    return {};
+  }, [emotion]);
 
   useFrame((_, delta) => {
     timeRef.current += delta;
 
-    mouthOpenTarget.current = lerp(mouthOpenTarget.current, targetValues.mouthOpen, delta * 6);
-    smileTarget.current = lerp(smileTarget.current, targetValues.smile, delta * 4);
-    browTarget.current = lerp(browTarget.current, targetValues.brow, delta * 4);
+    // ── 1. Viseme-driven lip sync ──
+    const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
 
+    if (visemeId !== prevVisemeId.current && visemeId >= 0) {
+      targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
+      prevVisemeId.current = visemeId;
+    } else if (visemeId < 0) {
+      targetVisemeShapes.current = {};
+      prevVisemeId.current = -1;
+    }
+
+    const allShapeKeys = new Set([
+      ...Object.keys(targetVisemeShapes.current),
+      ...Object.keys(targetEmotionShapes),
+    ]);
+
+    // ── 2. Idle blink cycle ──
+    let currentBlink = blinkWeight.current;
+    if (mode === 'idle' || mode === 'listening') {
+      blinkTimer.current += delta;
+      if (blinkTimer.current >= nextBlink.current) {
+        blinkWeight.current = 1;
+        blinkTimer.current = 0;
+        nextBlink.current = 2 + Math.random() * 5;
+      }
+    } else {
+      blinkWeight.current = 0;
+    }
+
+    if (currentBlink > 0) {
+      blinkWeight.current = Math.max(0, currentBlink - delta * 6);
+    }
+    const blink = Math.sin(Math.max(0, Math.min(1, blinkWeight.current)) * Math.PI);
+
+    // ── 3. Apply blend shapes ──
     for (const mesh of meshes) {
-      if (!mesh.morphTargetDictionary) continue;
-      const dict = mesh.morphTargetDictionary;
+      if (!mesh.morphTargetInfluences) continue;
+      const isEyelash = mesh.name === 'AvatarEyelashes';
+      const isHead = mesh.name === 'AvatarHead';
 
-      // Try common jaw/mouth shape keys
-      for (const key of ['jawOpen', 'jaw_down', 'MouthOpen', 'jaw_drop']) {
-        if (key in dict) {
-          // Use amplitude from TTS for talking, fallback to time-based oscillation
-          const amp = mode === 'talking' ? Math.max(getCurrentAmplitude(), Math.sin(timeRef.current * 20) * 0.3 + 0.3) : 0;
-          mesh.morphTargetInfluences![dict[key]] = amp * mouthOpenTarget.current;
+      if (isHead) {
+        for (const key of allShapeKeys) {
+          const visemeTarget = targetVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
+          const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
+          const combined = Math.max(visemeTarget, emotionTarget);
+
+          const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
+          const smoothed = lerp(current, combined, delta * 10);
+          (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
+
+          setShapeWeight(mesh, key, smoothed);
         }
       }
-      if ('mouthSmile' in dict || 'MouthSmile' in dict) {
-        const key = 'mouthSmile' in dict ? 'mouthSmile' : 'MouthSmile';
-        mesh.morphTargetInfluences![dict[key]] = smileTarget.current;
-      }
-      for (const key of ['browRaise', 'brow_raise', 'BrowRaise']) {
-        if (key in dict) {
-          mesh.morphTargetInfluences![dict[key]] = browTarget.current;
+
+      if (isEyelash) {
+        // Eye blink: eyelash targets 7-10 have the largest displacement
+        // (empirically verified ~24 total displacement). Apply blink to both.
+        setEyelashWeight(mesh, 7, blink);
+        setEyelashWeight(mesh, 8, blink);
+
+        // Brow expressions from emotion
+        if (targetEmotionShapes.browInnerUp) {
+          setEyelashWeight(mesh, 2, targetEmotionShapes.browInnerUp);
+        }
+        if (targetEmotionShapes.browDownLeft || targetEmotionShapes.browDownRight) {
+          const browDown = Math.max(
+            targetEmotionShapes.browDownLeft ?? 0,
+            targetEmotionShapes.browDownRight ?? 0,
+          );
+          setEyelashWeight(mesh, 0, browDown);
+          setEyelashWeight(mesh, 1, browDown);
         }
       }
     }
@@ -204,24 +394,24 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   return null;
 }
 
-/* ── AnimatedFBX — loads and animates the model ── */
-function AnimatedFBX({ url, mode, emotion, gesture }: { url: string } & AvatarAnimationProps) {
-  const fbx = useFBX(url);
+/* ── AnimatedModel — loads and animates the model ── */
+function AnimatedModel({ url, mode, emotion, gesture }: { url: string } & AvatarAnimationProps) {
+  const { scene } = useGLTF(url);
   const [hasMorphs, setHasMorphs] = useState(false);
 
   useEffect(() => {
-    if (fbx) {
-      setHasMorphs(checkMorphTargets(fbx));
+    if (scene) {
+      setHasMorphs(checkMorphTargets(scene));
     }
-  }, [fbx]);
+  }, [scene]);
 
   return (
     <group>
-      <primitive object={fbx} scale={0.015} rotation={[0, -0.3, 0]} />
+      <primitive object={scene} rotation={[0, -0.3, 0]} />
       {hasMorphs ? (
-        <MorphTargetController fbx={fbx} mode={mode} emotion={emotion} gesture={gesture} />
+        <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
       ) : (
-        <PoseController fbx={fbx} mode={mode} emotion={emotion} gesture={gesture} />
+        <PoseController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
       )}
     </group>
   );
@@ -233,10 +423,8 @@ function ThreeScene({
   mode,
   emotion,
   gesture,
-  accentColor,
 }: {
   modelUrl: string;
-  accentColor: string;
 } & AvatarAnimationProps) {
   return (
     <div className="h-full w-full">
@@ -247,7 +435,7 @@ function ThreeScene({
         <directionalLight position={[0, -2, 2]} intensity={0.2} />
         <EmotionLight emotion={emotion} />
         <Suspense fallback={null}>
-          <AnimatedFBX url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} />
+          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} />
           <Environment preset="studio" />
           <ContactShadows
             position={[0, -1.5, 0]}
@@ -317,11 +505,10 @@ export function AvatarViewport({
 
   return (
     <ThreeScene
-      modelUrl="/avatar.fbx"
+      modelUrl="/avatar.glb"
       mode={mode}
       emotion={emotion}
       gesture={gesture}
-      accentColor={accentColor}
     />
   );
 }
