@@ -63,7 +63,7 @@ export default function DomainDetailPage() {
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        All Domains
+        All Situations
       </Link>
 
       {source === 'fixture' && (

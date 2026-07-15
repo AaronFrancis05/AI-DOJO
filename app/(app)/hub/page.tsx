@@ -47,7 +47,7 @@ export default function HubPage() {
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Choose a Domain</h1>
+        <h1 className="text-2xl font-bold text-dojo-text-primary">Choose a Scenario</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           Select a real-world setting for your roleplay practice
         </p>

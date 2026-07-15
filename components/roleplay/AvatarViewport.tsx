@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo, Suspense } from 'react';
+import { useEffect, useState, useRef, useMemo, Suspense, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -14,7 +14,15 @@ interface AvatarAnimationProps {
   gesture?: string;
 }
 
-/* ── Emotion pose definitions ───────────────────── */
+/* ── Animation clip names ───────────────────────── */
+type GestureClip = 'bow' | 'shake_hands' | 'nod' | 'none';
+type LoopClip = 'idle' | 'talking';
+type AnimClip = LoopClip | GestureClip;
+
+/* ── Allowed gesture values (mirrors ai-engine.ts) ─ */
+const ALLOWED_GESTURES = new Set(['bow', 'wave', 'shake_hands', 'nod', 'none']);
+
+/* ── Emotion pose definitions (used only by fallback PoseController) ── */
 const EMOTION_POSES: Record<string, [number, number, number, number]> = {
   friendly:       [0.02, 0.05, 0, 0],
   concerned:      [0.04, -0.02, 0.02, 0],
@@ -22,13 +30,6 @@ const EMOTION_POSES: Record<string, [number, number, number, number]> = {
   surprised:      [0.08, 0, -0.03, 0],
   grateful:       [0.03, 0.06, -0.02, 0],
   apologetic:     [0.06, 0, 0.04, 0],
-};
-
-const GESTURE_POSES: Record<string, [number, number, number, number]> = {
-  'slight bow':          [0.12, 0, 0.06, 0],
-  'bows':                [0.2, 0, 0.1, 0],
-  nods:                  [0.1, 0, 0, 0],
-  'nods while speaking': [0.08, 0.02, 0, 0],
 };
 
 function lerp(current: number, target: number, speed: number): number {
@@ -67,7 +68,177 @@ function EmotionLight({ emotion }: { emotion?: string }) {
   return <directionalLight ref={lightRef} position={[-2, 3, 3]} intensity={0.4} />;
 }
 
-/* ── PoseController — used when model has NO morph targets ── */
+/* ── Dev warning overlay ──────────────────────────── */
+let devWarnings: string[] = [];
+function logDevWarning(msg: string) {
+  if (!devWarnings.includes(msg)) {
+    devWarnings.push(msg);
+    console.warn('[AvatarViewport]', msg);
+  }
+}
+
+function DevOverlay() {
+  const [warnings, setWarnings] = useState<string[]>([]);
+  useEffect(() => {
+    setWarnings([...devWarnings]);
+    return () => { devWarnings = []; };
+  }, []);
+  if (warnings.length === 0) return null;
+  return (
+    <div className="absolute top-0 left-0 z-50 bg-red-900/80 text-white text-[10px] p-2 max-w-[300px] rounded-br pointer-events-none">
+      {warnings.map((w, i) => <div key={i}>{w}</div>)}
+    </div>
+  );
+}
+
+/* ── AnimationController ────────────────────────────
+   Loads animation clips from separate GLB files,
+   manages crossfade state machine driven by mode + gesture.
+   ────────────────────────────────────────────────── */
+function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.Group } & AvatarAnimationProps) {
+  const { animations: idleAnims } = useGLTF('/anim_standing Idle.glb');
+  const { animations: talkingAnims } = useGLTF('/anim_Talking.glb');
+  const { animations: bowAnims } = useGLTF('/anim_bow.glb');
+  const { animations: shakeAnims } = useGLTF('/anim_shaking hands.glb');
+
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const currentState = useRef<AnimClip>('idle');
+  const prevModeRef = useRef<AvatarMode>('idle');
+  const gestureRef = useRef<string>('none');
+  const returnScheduled = useRef(false);
+  const hasGesturesRef = useRef(false);
+  const clipActions = useRef<Map<AnimClip, { clip: THREE.AnimationClip; action: THREE.AnimationAction | null }>>(new Map());
+
+  // Strip morph weight tracks from clips so MorphTargetController handles face
+  const stripMorphTracks = (clip: THREE.AnimationClip): THREE.AnimationClip => {
+    const bodyTracks = clip.tracks.filter(t => !t.name.endsWith('.weights'));
+    if (bodyTracks.length === clip.tracks.length) return clip;
+    return new THREE.AnimationClip(clip.name, clip.duration, bodyTracks);
+  };
+
+  // Build mixer and clip actions once scene is available
+  useEffect(() => {
+    const mixer = new THREE.AnimationMixer(scene);
+    mixerRef.current = mixer;
+
+    const rawClips: [AnimClip, THREE.AnimationClip | undefined][] = [
+      ['idle', idleAnims[0]],
+      ['talking', talkingAnims[0]],
+      ['bow', bowAnims[0]],
+      ['shake_hands', shakeAnims[0]],
+    ];
+
+    for (const [name, clip] of rawClips) {
+      if (!clip) {
+        console.warn(`[AnimationController] No clip for "${name}"`);
+        continue;
+      }
+      const cleanClip = stripMorphTracks(clip);
+      const action = mixer.clipAction(cleanClip);
+      clipActions.current.set(name, { clip: cleanClip, action });
+    }
+
+    const hasAny = clipActions.current.size > 0;
+    hasGesturesRef.current = hasAny;
+    if (!hasAny) logDevWarning('No animation clips loaded — body animation disabled');
+
+    return () => {
+      mixer.stopAllAction();
+    };
+  }, [scene, idleAnims, talkingAnims, bowAnims, shakeAnims]);
+
+  const getAction = useCallback((name: AnimClip): THREE.AnimationAction | null => {
+    return clipActions.current.get(name)?.action ?? null;
+  }, []);
+
+  // Play a clip with optional crossfade from current
+  const playClip = useCallback((name: AnimClip, fadeDuration = 0.3) => {
+    const mixer = mixerRef.current;
+    if (!mixer) return;
+
+    const prevEntry = clipActions.current.get(currentState.current);
+    const nextEntry = clipActions.current.get(name);
+    if (!nextEntry) return;
+
+    // If already playing this clip, just ensure it's active
+    if (currentState.current === name && nextEntry.action?.isRunning()) return;
+
+    // Configure next action
+    const isLoop = name === 'idle' || name === 'talking';
+    const nextAction = nextEntry.action!;
+    nextAction.reset();
+    nextAction.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
+    nextAction.clampWhenFinished = !isLoop;
+
+    const prevAction = prevEntry?.action;
+    if (prevAction && prevAction !== nextAction && prevAction.isRunning()) {
+      nextAction.crossFadeFrom(prevAction, fadeDuration, true);
+    }
+
+    nextAction.play();
+    currentState.current = name;
+
+    // Schedule return for one-shot gestures
+    if (!isLoop) {
+      const clip = nextEntry.clip;
+      const returnAt = Math.max(0, (clip.duration * 1000) - fadeDuration * 1000 - 50);
+      returnScheduled.current = false;
+      setTimeout(() => {
+        if (returnScheduled.current) return;
+        returnScheduled.current = true;
+        const backTo: AnimClip = prevModeRef.current === 'talking' ? 'talking' : 'idle';
+        const backAction = getAction(backTo);
+        if (backAction) {
+          backAction.reset();
+          backAction.setLoop(THREE.LoopRepeat, Infinity);
+          const currentAct = clipActions.current.get(currentState.current)?.action;
+          if (currentAct && currentAct.isRunning()) {
+            backAction.crossFadeFrom(currentAct, fadeDuration, true);
+          }
+          backAction.play();
+          currentState.current = backTo;
+        }
+      }, returnAt);
+    }
+  }, [getAction]);
+
+  // React to mode changes
+  useEffect(() => {
+    if (mode === 'talking' && currentState.current === 'idle') {
+      playClip('talking', 0.35);
+    } else if (mode !== 'talking' && currentState.current === 'talking') {
+      playClip('idle', 0.35);
+    }
+    prevModeRef.current = mode;
+  }, [mode, playClip]);
+
+  // React to gesture changes
+  const normalizedGesture = gesture && ALLOWED_GESTURES.has(gesture) ? gesture : 'none';
+  useEffect(() => {
+    if (normalizedGesture !== 'none' && normalizedGesture !== gestureRef.current) {
+      gestureRef.current = normalizedGesture;
+      const gestureClip = normalizedGesture as GestureClip;
+      if (gestureClip !== 'nod' && clipActions.current.has(gestureClip as AnimClip)) {
+        playClip(gestureClip as AnimClip, 0.3);
+      } else if (gestureClip === 'nod') {
+        // Nod uses bow clip for a small head dip
+        const bowAct = clipActions.current.get('bow')?.action;
+        if (bowAct) {
+          playClip('bow', 0.25);
+        }
+      }
+    }
+  }, [normalizedGesture, playClip]);
+
+  // Drive mixer every frame
+  useFrame((_, delta) => {
+    mixerRef.current?.update(delta);
+  });
+
+  return null;
+}
+
+/* ── PoseController — fallback for models with NO usable clips ── */
 function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & AvatarAnimationProps) {
   const timeRef = useRef(0);
   const currentPose = useRef<[number, number, number, number]>([0, 0, 0, 0]);
@@ -78,10 +249,6 @@ function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & 
     const basePose: [number, number, number, number] = [0, 0, 0, 0];
     if (emotion && EMOTION_POSES[emotion]) {
       const p = EMOTION_POSES[emotion];
-      basePose[0] += p[0]; basePose[1] += p[1]; basePose[2] += p[2];
-    }
-    if (gesture && GESTURE_POSES[gesture]) {
-      const p = GESTURE_POSES[gesture];
       basePose[0] += p[0]; basePose[1] += p[1]; basePose[2] += p[2];
     }
 
@@ -99,15 +266,13 @@ function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & 
 
     fbx.rotation.x = currentPose.current[0];
     fbx.rotation.z = currentPose.current[1];
-    // NOTE: position.y is set here only for no-morph models. AutoCamera already
-    // grounds the model via scene.position.y, so we only add the breath offset.
     fbx.position.y = currentPose.current[2];
   });
 
   return null;
 }
 
-/* ── ARKit blend shape indices ───────────────────── */
+/* ── ARKit blend shape indices (fallback when morphTargetDictionary has no names) ── */
 const ARKIT_INDEX: Record<string, number> = {
   noseSneerRight: 0, noseSneerLeft: 1,
   mouthUpperUpRight: 2, mouthUpperUpLeft: 3,
@@ -155,12 +320,14 @@ const VISEME_SHAPES: Record<number, VisemeShapeMap> = {
   14: { jawOpen: 0.4 },
   15: { jawOpen: 0.4 },
   16: { jawOpen: 0.4, mouthPucker: 0.3 },
-  17: { jawOpen: 0.2 },
+  17: { jawOpen: 0.3 },
   18: { jawOpen: 0.3 },
   19: { jawOpen: 0.4, mouthPucker: 0.4 },
   20: { jawOpen: 0.4, mouthPucker: 0.4 },
   21: { mouthPucker: 0.5, mouthFunnel: 0.2 },
 };
+
+const MISSING_SHAPE_WARNED = new Set<string>();
 
 interface EmotionShapeMap {
   smileLeft?: number; smileRight?: number;
@@ -179,8 +346,25 @@ const EMOTION_SHAPES: Record<string, EmotionShapeMap> = {
   apologetic:     { browInnerUp: 0.3, browDownLeft: 0.1, browDownRight: 0.1, smileLeft: 0.1, smileRight: 0.1 },
 };
 
-function setShapeWeight(mesh: THREE.SkinnedMesh, shapeName: string, weight: number): void {
+function resolveMorphIndex(mesh: THREE.SkinnedMesh, shapeName: string): number | undefined {
+  // Prefer runtime dictionary (ARKIT-named models)
+  if (mesh.morphTargetDictionary && mesh.morphTargetDictionary[shapeName] !== undefined) {
+    return mesh.morphTargetDictionary[shapeName];
+  }
+  // Fallback to ARKIT positional index table
   const idx = ARKIT_INDEX[shapeName];
+  if (idx === undefined) {
+    if (!MISSING_SHAPE_WARNED.has(shapeName)) {
+      MISSING_SHAPE_WARNED.add(shapeName);
+      logDevWarning(`Morph shape "${shapeName}" not found in model's dictionary or ARKIT table`);
+    }
+    return undefined;
+  }
+  return idx;
+}
+
+function setShapeWeight(mesh: THREE.SkinnedMesh, shapeName: string, weight: number): void {
+  const idx = resolveMorphIndex(mesh, shapeName);
   if (idx === undefined) return;
   if (mesh.morphTargetInfluences && idx < mesh.morphTargetInfluences.length) {
     mesh.morphTargetInfluences[idx] = weight;
@@ -194,100 +378,102 @@ function setEyelashWeight(mesh: THREE.SkinnedMesh, targetIdx: number, weight: nu
 }
 
 /* ── RestPoseApplicator ─────────────────────────────────────────────────────
-   Runs once after the model loads. Rotates the upper-arm bones downward so
-   the avatar stands in a natural relaxed stance instead of the T-pose bind
-   position. The GLB bakes its skeleton in T-pose (arms at 90° from body);
-   this corrects that to ~30° drop without touching any animation clips.
-
-   Bone name patterns checked (in order of preference):
-     1. Exact Mixamo names:  "mixamorig:LeftArm" / "mixamorig:RightArm"
-     2. ReadyPlayerMe names: "LeftArm" / "RightArm"
-     3. Partial match:        any bone whose name includes "LeftArm" or "RightArm"
+   Rotates arm bones to a natural relaxed rest position (fixes T-pose).
    ────────────────────────────────────────────────────────────────────────── */
+const EXACT_ARM_BONES = ['LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm'];
+const EXACT_SHOULDER_BONES = ['LeftShoulder', 'RightShoulder'];
+
 function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
   useEffect(() => {
-    // Traverse all bones and log their names as requested to identify the correct ones
     const boneNames: string[] = [];
+    const allBones: THREE.Bone[] = [];
+
     scene.traverse((node) => {
       if (node instanceof THREE.Bone) {
         boneNames.push(node.name);
+        allBones.push(node);
       }
     });
+
     console.log('[RestPoseApplicator] Discovering bones:', boneNames);
 
-    const bones: Record<string, THREE.Bone | null> = {
-      leftArm: null,
-      rightArm: null,
-      leftForeArm: null,
-      rightForeArm: null,
-    };
+    // Priority 1: exact name match
+    const leftArm = allBones.find(b => b.name === 'LeftArm');
+    const rightArm = allBones.find(b => b.name === 'RightArm');
+    const leftForeArm = allBones.find(b => b.name === 'LeftForeArm');
+    const rightForeArm = allBones.find(b => b.name === 'RightForeArm');
 
-    scene.traverse((node) => {
-      if (!(node instanceof THREE.Bone)) return;
-      const n = node.name.toLowerCase();
+    // Priority 2: substring heuristics (for non-standard rigs)
+    let fallbackLeftArm: THREE.Bone | undefined;
+    let fallbackRightArm: THREE.Bone | undefined;
+    let fallbackLeftForeArm: THREE.Bone | undefined;
+    let fallbackRightForeArm: THREE.Bone | undefined;
 
-      // Upper Arm bone matching
-      const isLeft = n.includes('left') || n.includes('l_') || n.startsWith('l_') || n.endsWith('_l');
-      const isRight = n.includes('right') || n.includes('r_') || n.startsWith('r_') || n.endsWith('_r');
+    if (!leftArm || !rightArm) {
+      for (const b of allBones) {
+        const n = b.name.toLowerCase();
+        const isLeft = n.includes('left') || n.includes('l_');
+        const isRight = n.includes('right') || n.includes('r_');
 
-      if (!bones.leftArm && (
-        n.includes('mixamorig:leftarm') || 
-        n === 'leftarm' || 
-        n === 'j_bip_l_upperarm' || 
-        (n.includes('upperarm')) ||
-        (n.includes('arm') && isLeft && !n.includes('fore'))
-      )) {
-        bones.leftArm = node as THREE.Bone;
+        if (!fallbackLeftArm && !leftArm && (
+          n.includes('mixamorig:leftarm') ||
+          n === 'leftarm' ||
+          n === 'j_bip_l_upperarm' ||
+          (n.includes('arm') && isLeft && !n.includes('fore'))
+        )) {
+          fallbackLeftArm = b;
+        }
+        if (!fallbackRightArm && !rightArm && (
+          n.includes('mixamorig:rightarm') ||
+          n === 'rightarm' ||
+          n === 'j_bip_r_upperarm' ||
+          (n.includes('arm') && isRight && !n.includes('fore'))
+        )) {
+          fallbackRightArm = b;
+        }
+        if (!fallbackLeftForeArm && !leftForeArm && (
+          n.includes('mixamorig:leftforearm') ||
+          n === 'leftforearm' ||
+          n === 'j_bip_l_lowerarm' ||
+          (n.includes('forearm') && isLeft) ||
+          (n.includes('lowerarm') && isLeft)
+        )) {
+          fallbackLeftForeArm = b;
+        }
+        if (!fallbackRightForeArm && !rightForeArm && (
+          n.includes('mixamorig:rightforearm') ||
+          n === 'rightforearm' ||
+          n === 'j_bip_r_lowerarm' ||
+          (n.includes('forearm') && isRight) ||
+          (n.includes('lowerarm') && isRight)
+        )) {
+          fallbackRightForeArm = b;
+        }
       }
-      if (!bones.rightArm && (
-        n.includes('mixamorig:rightarm') || 
-        n === 'rightarm' || 
-        n === 'j_bip_r_upperarm' || 
-        (n.includes('upperarm')) ||
-        (n.includes('arm') && isRight && !n.includes('fore'))
-      )) {
-        bones.rightArm = node as THREE.Bone;
-      }
+    }
 
-      // Forearm bone matching
-      if (!bones.leftForeArm && (
-        n.includes('mixamorig:leftforearm') ||
-        n === 'leftforearm' ||
-        n === 'j_bip_l_lowerarm' ||
-        n.includes('forearm') ||
-        n.includes('lowerarm')
-      ) && isLeft) {
-        bones.leftForeArm = node as THREE.Bone;
-      }
-      if (!bones.rightForeArm && (
-        n.includes('mixamorig:rightforearm') ||
-        n === 'rightforearm' ||
-        n === 'j_bip_r_lowerarm' ||
-        n.includes('forearm') ||
-        n.includes('lowerarm')
-      ) && isRight) {
-        bones.rightForeArm = node as THREE.Bone;
-      }
-    });
+    const finalLeftArm = leftArm ?? fallbackLeftArm;
+    const finalRightArm = rightArm ?? fallbackRightArm;
+    const finalLeftForeArm = leftForeArm ?? fallbackLeftForeArm;
+    const finalRightForeArm = rightForeArm ?? fallbackRightForeArm;
 
-    const { leftArm, rightArm, leftForeArm, rightForeArm } = bones;
-
-    if (leftArm) leftArm.rotation.z = Math.PI / 5.5;
-    if (rightArm) rightArm.rotation.z = -Math.PI / 5.5;
-    
-    if (leftForeArm) leftForeArm.rotation.z = 0.15;
-    if (rightForeArm) rightForeArm.rotation.z = -0.15;
+    if (finalLeftArm) finalLeftArm.rotation.z = Math.PI / 5.5;
+    if (finalRightArm) finalRightArm.rotation.z = -Math.PI / 5.5;
+    if (finalLeftForeArm) finalLeftForeArm.rotation.z = 0.15;
+    if (finalRightForeArm) finalRightForeArm.rotation.z = -0.15;
 
     scene.updateMatrixWorld(true);
 
-    if (!leftArm && !rightArm) {
-      console.warn('[RestPoseApplicator] No shoulder bones found — T-pose will persist. Bone names:', boneNames);
+    if (!finalLeftArm && !finalRightArm) {
+      const msg = 'No shoulder bones found — T-pose will persist. Bone names: ' + JSON.stringify(boneNames);
+      console.warn('[RestPoseApplicator] ' + msg);
+      logDevWarning(msg);
     } else {
       console.log('[RestPoseApplicator] Applied rest pose to:', {
-        leftArm: leftArm?.name,
-        rightArm: rightArm?.name,
-        leftForeArm: leftForeArm?.name,
-        rightForeArm: rightForeArm?.name
+        leftArm: finalLeftArm?.name,
+        rightArm: finalRightArm?.name,
+        leftForeArm: finalLeftForeArm?.name,
+        rightForeArm: finalRightForeArm?.name,
       });
     }
   }, [scene]);
@@ -309,7 +495,19 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
     for (const mesh of meshes) {
       if (mesh.morphTargetDictionary) {
         const keys = Object.keys(mesh.morphTargetDictionary);
-        console.log(`[MorphTargetController] ${mesh.name}: ${keys.length} targets`);
+        console.log(`[MorphTargetController] ${mesh.name}: ${keys.length} targets, sample:`, keys.slice(0, 5));
+
+        // Check that expected ARKit shapes exist (for warning purposes)
+        const missingArkit = ['jawOpen', 'mouthClose', 'mouthSmileLeft', 'mouthFunnel', 'browInnerUp']
+          .filter(s => !mesh.morphTargetDictionary![s] && ARKIT_INDEX[s] !== undefined);
+        if (missingArkit.length > 0 && !MISSING_SHAPE_WARNED.has(`mesh:${mesh.name}`)) {
+          MISSING_SHAPE_WARNED.add(`mesh:${mesh.name}`);
+          if (keys.every(k => /^\d+$/.test(k))) {
+            console.log(`[MorphTargetController] "${mesh.name}" uses numeric targets — using positional ARKIT order`);
+          } else {
+            logDevWarning(`"${mesh.name}" missing shapes: ${missingArkit.join(', ')}`);
+          }
+        }
       }
     }
   }, [meshes]);
@@ -344,6 +542,7 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
       ...Object.keys(targetEmotionShapes),
     ]);
 
+    // Blink logic
     let currentBlink = blinkWeight.current;
     if (mode === 'idle' || mode === 'listening') {
       blinkTimer.current += delta;
@@ -376,13 +575,21 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
       }
 
       if (isEyelash) {
-        setEyelashWeight(mesh, 7, blink);
-        setEyelashWeight(mesh, 8, blink);
-        if (targetEmotionShapes.browInnerUp) setEyelashWeight(mesh, 2, targetEmotionShapes.browInnerUp);
+        // Use dictionary lookup for blink indices
+        const blinkIdx = mesh.morphTargetDictionary?.['eyeBlinkLeft'] ?? 7;
+        const blinkIdx2 = mesh.morphTargetDictionary?.['eyeBlinkRight'] ?? 8;
+        setEyelashWeight(mesh, blinkIdx, blink);
+        setEyelashWeight(mesh, blinkIdx2, blink);
+        if (targetEmotionShapes.browInnerUp) {
+          const browUpIdx = mesh.morphTargetDictionary?.['browInnerUp'] ?? 2;
+          setEyelashWeight(mesh, browUpIdx, targetEmotionShapes.browInnerUp);
+        }
         if (targetEmotionShapes.browDownLeft || targetEmotionShapes.browDownRight) {
           const browDown = Math.max(targetEmotionShapes.browDownLeft ?? 0, targetEmotionShapes.browDownRight ?? 0);
-          setEyelashWeight(mesh, 0, browDown);
-          setEyelashWeight(mesh, 1, browDown);
+          const bdLeftIdx = mesh.morphTargetDictionary?.['browDownLeft'] ?? 0;
+          const bdRightIdx = mesh.morphTargetDictionary?.['browDownRight'] ?? 1;
+          setEyelashWeight(mesh, bdLeftIdx, browDown);
+          setEyelashWeight(mesh, bdRightIdx, browDown);
         }
       }
     }
@@ -393,17 +600,6 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 
 /* ── AutoCamera ─────────────────────────────────────────────────────────────
    Frames the camera after the model is grounded.
-
-   FIXED framing logic:
-   - Grounds the model so its feet sit at y=0
-   - For 'front':          frames the upper 55% of the model (waist-up portrait)
-   - For 'over-shoulder':  positions camera behind-right, looking forward and down
-
-   Previous bug: the camera was computing `focusY` as the vertical midpoint of the
-   upper 60% of height, but then positioning the camera at exactly `focusY` — which
-   put the camera at chest height aiming at its own position (lookAt ≈ camera.y),
-   resulting in near-zero vertical angle and showing head at the very top of frame.
-   Fix: position camera above the focus point so it aims down at the character's face.
    ────────────────────────────────────────────────────────────────────────── */
 function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'front' | 'over-shoulder' }) {
   const { camera } = useThree();
@@ -412,7 +608,6 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
   useEffect(() => {
     if (!scene || framed.current) return;
 
-    // Run after RestPoseApplicator (200ms timeout as requested)
     const timer = setTimeout(() => {
       const box = new THREE.Box3().setFromObject(scene);
       const size = box.getSize(new THREE.Vector3());
@@ -422,7 +617,6 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
         return;
       }
 
-      // Ground the model: shift lowest point to y=0
       scene.position.y -= box.min.y;
 
       const groundedBox = new THREE.Box3().setFromObject(scene);
@@ -433,11 +627,10 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
         camera.position.set(0.5, groundedHeight * 0.55, groundedHeight * 0.35);
         camera.lookAt(-0.2, groundedHeight * 0.6, -1.5);
       } else {
-        // waist-up framing
         const visibleFraction = 0.52;
         const focusY = groundedHeight * 0.82;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        
+
         camera.position.set(0.05, focusY + distance * 0.04, distance * 0.95);
         camera.lookAt(0.05, focusY, 0);
 
@@ -459,8 +652,8 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
 }
 
 /* ── AnimatedModel ─────────────────────────────────────────────────────────
-   Loads the GLB, applies rest-pose bone correction on load (fixes T-pose),
-   then hands off to morph-target OR pose controller.
+   Loads the GLB, applies rest-pose bone correction, animation controller,
+   and morph-target OR fallback pose controller.
    ────────────────────────────────────────────────────────────────────────── */
 function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
   url: string;
@@ -469,18 +662,29 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => originalScene.clone(), [originalScene]);
   const [hasMorphs, setHasMorphs] = useState(false);
+  const [clipsLoaded, setClipsLoaded] = useState(false);
 
   useEffect(() => {
     if (scene) setHasMorphs(checkMorphTargets(scene));
   }, [scene]);
 
+  useEffect(() => {
+    // Warm up animation GLB cache
+    useGLTF.preload('/anim_standing Idle.glb');
+    useGLTF.preload('/anim_Talking.glb');
+    useGLTF.preload('/anim_bow.glb');
+    useGLTF.preload('/anim_shaking hands.glb');
+    setClipsLoaded(true);
+  }, []);
+
   return (
     <group>
       <primitive object={scene} rotation={[0, -0.3, 0]} />
-      {/* Ground model and frame camera first */}
       <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} />
-      {/* Fix T-pose by rotating shoulder bones to natural rest position */}
       <RestPoseApplicator scene={scene} />
+      {clipsLoaded && (
+        <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
+      )}
       {hasMorphs ? (
         <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
       ) : (
@@ -564,12 +768,15 @@ export function AvatarViewport({
   }
 
   return (
-    <ThreeScene
-      modelUrl="/avatar.glb"
-      mode={mode}
-      emotion={emotion}
-      gesture={gesture}
-      cameraMode={cameraMode}
-    />
+    <div className="relative h-full w-full">
+      <DevOverlay />
+      <ThreeScene
+        modelUrl="/avatar.glb"
+        mode={mode}
+        emotion={emotion}
+        gesture={gesture}
+        cameraMode={cameraMode}
+      />
+    </div>
   );
 }

@@ -23,6 +23,17 @@ export interface GeminiMessage {
   parts: { text: string }[];
 }
 
+/** Allowed gesture values that map to animation clips */
+export const ALLOWED_GESTURES = ['bow', 'wave', 'shake_hands', 'nod', 'none'] as const;
+export type GestureHint = typeof ALLOWED_GESTURES[number];
+
+export function normalizeGesture(val: unknown): GestureHint {
+  if (typeof val === 'string' && (ALLOWED_GESTURES as readonly string[]).includes(val)) {
+    return val as GestureHint;
+  }
+  return 'none';
+}
+
 export interface AIResponseAnalysis {
   messageTarget: string;
   messageNative: string;
@@ -30,7 +41,7 @@ export interface AIResponseAnalysis {
   isValidInContext: boolean;
   isEnglishWhenExpected: boolean;
   emotionTone?: string;
-  gestureHint?: string;
+  gestureHint?: GestureHint;
   suggestedReplies?: string[];
   scores: {
     vocabulary: number;
@@ -46,7 +57,7 @@ export interface AIResponseAnalysis {
     native: string;
     romaji: string | null;
     emotionTone?: string;
-    gestureHint?: string;
+    gestureHint?: GestureHint;
   };
   goalsAddressedThisTurn: number[];
   scenarioComplete: boolean;
@@ -168,11 +179,11 @@ Set isEnglishWhenExpected to true if the user typed in ${nativeLangName} when th
 ===== EMOTION TONE & GESTURE HINT =====
 For each AI reply, optionally provide:
 - emotionTone: the emotional tone of the AI's reply (e.g. "friendly", "concerned", "formal-polite", "surprised", "grateful", "apologetic")
-- gestureHint: a brief physical gesture description (e.g. "slight bow", "checks watch", "smiles warmly", "nods while speaking") — null if none implied
+- gestureHint: one of these exact values describing a physical gesture — "bow" | "wave" | "shake_hands" | "nod" | "none" (must match exactly, no free text). Choose "none" unless a clear gesture is implied by the dialogue context.
 
 For the user's turn, optionally detect:
 - emotionTone: the apparent tone of the user's input
-- gestureHint: any gesture implied by the content
+- gestureHint: one of the same exact values ("bow" | "wave" | "shake_hands" | "nod" | "none")
 
 ===== AI CHARACTER BEHAVIOR =====
 - Play ${scenario.aiCharacterName} (${scenario.aiCharacterRole}) consistently.
@@ -196,7 +207,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "isValidInContext": true,
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",
-  "gestureHint": null,
+  "gestureHint": "none",
   "suggestedReplies": ["2-3 short options in ${targetLangName} the user might say next, natural and contextual"],
   "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
@@ -214,7 +225,7 @@ Provide your response strictly as a single JSON object matching this schema blue
     "native": "${nativeLangName} translation of that AI response sentence",
     "romaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
     "emotionTone": "formal-polite",
-    "gestureHint": "slight bow"
+    "gestureHint": "bow"
   },
   "goalsAddressedThisTurn": [],
   "scenarioComplete": false
@@ -245,5 +256,10 @@ Provide your response strictly as a single JSON object matching this schema blue
     throw new Error('Received an empty response back from the Gemini API system.');
   }
 
-  return JSON.parse(response.text) as AIResponseAnalysis;
+  const parsed = JSON.parse(response.text) as AIResponseAnalysis;
+
+  if (parsed.gestureHint) parsed.gestureHint = normalizeGesture(parsed.gestureHint);
+  if (parsed.nextAiReply?.gestureHint) parsed.nextAiReply.gestureHint = normalizeGesture(parsed.nextAiReply.gestureHint);
+
+  return parsed;
 }
