@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo, Suspense, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useMemo, Suspense, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -63,10 +63,41 @@ function EmotionLight({ emotion }: { emotion?: string }) {
   }, [emotion]);
 
   useFrame((_, delta) => {
-    if (lightRef.current) lightRef.current.color.lerp(targetColor, delta * 2);
+    try {
+      if (lightRef.current) lightRef.current.color.lerp(targetColor, delta * 2);
+    } catch (err) {
+      console.error('[EmotionLight] frame error:', err);
+    }
   });
 
   return <directionalLight ref={lightRef} position={[-2, 3, 3]} intensity={0.4} />;
+}
+
+/* ── Error boundary around the Canvas ──────────────── */
+class AvatarErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[AvatarErrorBoundary]', error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="absolute top-0 left-0 z-50 bg-red-900/90 text-white text-[11px] p-2 max-w-[320px] rounded-br">
+          Avatar crashed: {this.state.error.message}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 /* ── Dev warning overlay ──────────────────────────── */
@@ -253,7 +284,11 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
 
   // Drive mixer every frame
   useFrame((_, delta) => {
-    mixerRef.current?.update(delta);
+    try {
+      mixerRef.current?.update(delta);
+    } catch (err) {
+      console.error('[AnimationController] frame error:', err);
+    }
   });
 
   return null;
@@ -265,29 +300,33 @@ function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & 
   const currentPose = useRef<[number, number, number, number]>([0, 0, 0, 0]);
 
   useFrame((_, delta) => {
-    timeRef.current += delta;
+    try {
+      timeRef.current += delta;
 
-    const basePose: [number, number, number, number] = [0, 0, 0, 0];
-    if (emotion && EMOTION_POSES[emotion]) {
-      const p = EMOTION_POSES[emotion];
-      basePose[0] += p[0]; basePose[1] += p[1]; basePose[2] += p[2];
+      const basePose: [number, number, number, number] = [0, 0, 0, 0];
+      if (emotion && EMOTION_POSES[emotion]) {
+        const p = EMOTION_POSES[emotion];
+        basePose[0] += p[0]; basePose[1] += p[1]; basePose[2] += p[2];
+      }
+
+      if (mode === 'talking') {
+        basePose[0] += Math.sin(timeRef.current * 12) * 0.015;
+      } else if (mode === 'listening') {
+        basePose[1] += Math.sin(timeRef.current * 0.5) * 0.02;
+      } else {
+        basePose[2] += Math.sin(timeRef.current * 2) * 0.008;
+      }
+
+      for (let i = 0; i < 4; i++) {
+        currentPose.current[i] = lerp(currentPose.current[i], basePose[i], delta * 4);
+      }
+
+      fbx.rotation.x = currentPose.current[0];
+      fbx.rotation.z = currentPose.current[1];
+      fbx.position.y = currentPose.current[2];
+    } catch (err) {
+      console.error('[PoseController] frame error:', err);
     }
-
-    if (mode === 'talking') {
-      basePose[0] += Math.sin(timeRef.current * 12) * 0.015;
-    } else if (mode === 'listening') {
-      basePose[1] += Math.sin(timeRef.current * 0.5) * 0.02;
-    } else {
-      basePose[2] += Math.sin(timeRef.current * 2) * 0.008;
-    }
-
-    for (let i = 0; i < 4; i++) {
-      currentPose.current[i] = lerp(currentPose.current[i], basePose[i], delta * 4);
-    }
-
-    fbx.rotation.x = currentPose.current[0];
-    fbx.rotation.z = currentPose.current[1];
-    fbx.position.y = currentPose.current[2];
   });
 
   return null;
@@ -564,72 +603,76 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   }, [emotion]);
 
   useFrame((_, delta) => {
-    timeRef.current += delta;
+    try {
+      timeRef.current += delta;
 
-    const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
-    if (visemeId !== prevVisemeId.current && visemeId >= 0) {
-      targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
-      prevVisemeId.current = visemeId;
-    } else if (visemeId < 0) {
-      targetVisemeShapes.current = {};
-      prevVisemeId.current = -1;
-    }
-
-    const allShapeKeys = new Set([
-      ...Object.keys(targetVisemeShapes.current),
-      ...Object.keys(targetEmotionShapes),
-    ]);
-
-    // Blink logic
-    let currentBlink = blinkWeight.current;
-    if (mode === 'idle' || mode === 'listening') {
-      blinkTimer.current += delta;
-      if (blinkTimer.current >= nextBlink.current) {
-        blinkWeight.current = 1;
-        blinkTimer.current = 0;
-        nextBlink.current = 2 + Math.random() * 5;
-      }
-    } else {
-      blinkWeight.current = 0;
-    }
-    if (currentBlink > 0) blinkWeight.current = Math.max(0, currentBlink - delta * 6);
-    const blink = Math.sin(Math.max(0, Math.min(1, blinkWeight.current)) * Math.PI);
-
-    for (const mesh of meshes) {
-      if (!mesh.morphTargetInfluences) continue;
-      const isEyelash = mesh.name === 'AvatarEyelashes';
-      const isHead = mesh.name === 'AvatarHead';
-
-      if (isHead) {
-        for (const key of allShapeKeys) {
-          const visemeTarget = targetVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-          const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
-          const combined = Math.max(visemeTarget, emotionTarget);
-          const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-          const smoothed = lerp(current, combined, delta * 10);
-          (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
-          setShapeWeight(mesh, key, smoothed);
-        }
+      const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
+      if (visemeId !== prevVisemeId.current && visemeId >= 0) {
+        targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
+        prevVisemeId.current = visemeId;
+      } else if (visemeId < 0) {
+        targetVisemeShapes.current = {};
+        prevVisemeId.current = -1;
       }
 
-      if (isEyelash) {
-        // Use dictionary lookup for blink indices
-        const blinkIdx = mesh.morphTargetDictionary?.['eyeBlinkLeft'] ?? 7;
-        const blinkIdx2 = mesh.morphTargetDictionary?.['eyeBlinkRight'] ?? 8;
-        setEyelashWeight(mesh, blinkIdx, blink);
-        setEyelashWeight(mesh, blinkIdx2, blink);
-        if (targetEmotionShapes.browInnerUp) {
-          const browUpIdx = mesh.morphTargetDictionary?.['browInnerUp'] ?? 2;
-          setEyelashWeight(mesh, browUpIdx, targetEmotionShapes.browInnerUp);
+      const allShapeKeys = new Set([
+        ...Object.keys(targetVisemeShapes.current),
+        ...Object.keys(targetEmotionShapes),
+      ]);
+
+      // Blink logic
+      let currentBlink = blinkWeight.current;
+      if (mode === 'idle' || mode === 'listening') {
+        blinkTimer.current += delta;
+        if (blinkTimer.current >= nextBlink.current) {
+          blinkWeight.current = 1;
+          blinkTimer.current = 0;
+          nextBlink.current = 2 + Math.random() * 5;
         }
-        if (targetEmotionShapes.browDownLeft || targetEmotionShapes.browDownRight) {
-          const browDown = Math.max(targetEmotionShapes.browDownLeft ?? 0, targetEmotionShapes.browDownRight ?? 0);
-          const bdLeftIdx = mesh.morphTargetDictionary?.['browDownLeft'] ?? 0;
-          const bdRightIdx = mesh.morphTargetDictionary?.['browDownRight'] ?? 1;
-          setEyelashWeight(mesh, bdLeftIdx, browDown);
-          setEyelashWeight(mesh, bdRightIdx, browDown);
+      } else {
+        blinkWeight.current = 0;
+      }
+      if (currentBlink > 0) blinkWeight.current = Math.max(0, currentBlink - delta * 6);
+      const blink = Math.sin(Math.max(0, Math.min(1, blinkWeight.current)) * Math.PI);
+
+      for (const mesh of meshes) {
+        if (!mesh.morphTargetInfluences) continue;
+        const isEyelash = mesh.name === 'AvatarEyelashes';
+        const isHead = mesh.name === 'AvatarHead';
+
+        if (isHead) {
+          for (const key of allShapeKeys) {
+            const visemeTarget = targetVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
+            const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
+            const combined = Math.max(visemeTarget, emotionTarget);
+            const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
+            const smoothed = lerp(current, combined, delta * 10);
+            (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
+            setShapeWeight(mesh, key, smoothed);
+          }
+        }
+
+        if (isEyelash) {
+          // Use dictionary lookup for blink indices
+          const blinkIdx = mesh.morphTargetDictionary?.['eyeBlinkLeft'] ?? 7;
+          const blinkIdx2 = mesh.morphTargetDictionary?.['eyeBlinkRight'] ?? 8;
+          setEyelashWeight(mesh, blinkIdx, blink);
+          setEyelashWeight(mesh, blinkIdx2, blink);
+          if (targetEmotionShapes.browInnerUp) {
+            const browUpIdx = mesh.morphTargetDictionary?.['browInnerUp'] ?? 2;
+            setEyelashWeight(mesh, browUpIdx, targetEmotionShapes.browInnerUp);
+          }
+          if (targetEmotionShapes.browDownLeft || targetEmotionShapes.browDownRight) {
+            const browDown = Math.max(targetEmotionShapes.browDownLeft ?? 0, targetEmotionShapes.browDownRight ?? 0);
+            const bdLeftIdx = mesh.morphTargetDictionary?.['browDownLeft'] ?? 0;
+            const bdRightIdx = mesh.morphTargetDictionary?.['browDownRight'] ?? 1;
+            setEyelashWeight(mesh, bdLeftIdx, browDown);
+            setEyelashWeight(mesh, bdRightIdx, browDown);
+          }
         }
       }
+    } catch (err) {
+      console.error('[MorphTargetController] frame error:', err);
     }
   });
 
@@ -808,13 +851,15 @@ export function AvatarViewport({
   return (
     <div className="relative h-full w-full">
       <DevOverlay />
-      <ThreeScene
-        modelUrl="/avatar.glb"
-        mode={mode}
-        emotion={emotion}
-        gesture={gesture}
-        cameraMode={cameraMode}
-      />
+      <AvatarErrorBoundary>
+        <ThreeScene
+          modelUrl="/avatar.glb"
+          mode={mode}
+          emotion={emotion}
+          gesture={gesture}
+          cameraMode={cameraMode}
+        />
+      </AvatarErrorBoundary>
     </div>
   );
 }
