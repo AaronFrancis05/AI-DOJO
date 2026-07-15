@@ -1,5 +1,3 @@
-import type { SkillLevel } from '@/lib/design-tokens';
-
 // Shared types used across the app
 export interface SessionRecord {
   id: number;
@@ -35,6 +33,8 @@ export interface Domain {
   displayOrder: number;
   createdAt: string;
 }
+
+export type SkillLevel = 'beginner' | 'intermediate' | 'advanced';
 
 export interface Situation {
   id: number;
