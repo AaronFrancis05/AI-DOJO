@@ -9,7 +9,7 @@ import { cn } from '@/lib/design-tokens';
 interface ProgressBarProps {
   value: number;        // 0–100
   max?: number;         // default 100
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   color?: 'accent' | 'success' | 'warning' | 'danger';
   showLabel?: boolean;
   className?: string;
@@ -37,7 +37,7 @@ export function ProgressBar({
       <div
         className={cn(
           'flex-1 overflow-hidden rounded-full bg-dojo-border',
-          size === 'sm' ? 'h-1.5' : 'h-2.5',
+          size === 'sm' ? 'h-1.5' : size === 'md' ? 'h-2.5' : 'h-3.5',
         )}
       >
         <div
