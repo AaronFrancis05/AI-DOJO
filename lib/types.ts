@@ -1,5 +1,6 @@
 import type { SkillLevel } from '@/lib/design-tokens';
 
+// Shared types used across the app
 export interface SessionRecord {
   id: number;
   userId: string;
