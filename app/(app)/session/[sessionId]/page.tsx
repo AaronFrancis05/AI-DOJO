@@ -561,29 +561,29 @@ export default function RoleplaySessionPage() {
         {/* ── Control bar: absolute bottom-0 left-0 right-0, z-30 ── */}
         <div className="absolute bottom-0 left-0 right-0 z-30">
           <div
-            className="pb-5 pt-8 flex items-end justify-center gap-8"
+            className="pb-6 pt-10 flex items-center justify-center gap-10"
             style={{
-              background: 'linear-gradient(to top, rgba(8,12,24,0.92) 55%, transparent)',
+              background: 'linear-gradient(to top, rgba(8,12,24,0.95) 40%, rgba(8,12,24,0.7) 70%, transparent)',
             }}
           >
             {/* Mute */}
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-2">
               <button
                 onClick={() => setMuted(v => !v)}
-                className={`flex h-11 w-11 items-center justify-center rounded-full border-2 transition-colors ${
+                className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-200 ${
                   muted
-                    ? 'border-dojo-danger bg-dojo-danger text-white'
-                    : 'border-dojo-border bg-dojo-surface-raised/70 backdrop-blur-sm text-dojo-text-muted hover:text-dojo-text-primary'
+                    ? 'border-dojo-danger bg-dojo-danger/20 text-dojo-danger shadow-[0_0_15px_rgba(209,67,67,0.3)]'
+                    : 'border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10'
                 }`}
               >
-                <VolumeX className="h-5 w-5" />
+                {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
               </button>
-              <span className="text-[10px] text-dojo-text-muted">Mute</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40 group-hover:text-white/60 transition-colors">Mute</span>
             </div>
 
             {/* Hold to Talk */}
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="relative">
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative group">
                 <MicPulse active={isListening} />
                 <button
                   onMouseDown={startListening}
@@ -592,42 +592,44 @@ export default function RoleplaySessionPage() {
                   onTouchStart={(e) => { e.preventDefault(); startListening(); }}
                   onTouchEnd={stopListening}
                   disabled={!isActive || sending}
-                  className={`relative flex h-[68px] w-[68px] items-center justify-center rounded-full transition-all duration-150 ${
+                  className={`relative flex h-[76px] w-[76px] items-center justify-center rounded-full transition-all duration-300 ${
                     isListening
-                      ? 'bg-dojo-danger scale-110 shadow-[0_0_24px_rgba(209,67,67,0.5)]'
-                      : 'bg-dojo-accent hover:scale-105 shadow-[0_0_20px_rgba(45,59,197,0.4)]'
+                      ? 'bg-dojo-danger scale-110 shadow-[0_0_30px_rgba(209,67,67,0.6)] ring-4 ring-dojo-danger/20'
+                      : 'bg-dojo-accent hover:scale-105 shadow-[0_10px_25px_rgba(45,59,197,0.5)] border-4 border-white/10'
                   } disabled:opacity-40 disabled:cursor-not-allowed`}
                 >
-                  <Mic className="h-8 w-8 text-white" />
+                  <Mic className="h-9 w-9 text-white" />
                 </button>
               </div>
-              <span className="text-[10px] text-dojo-text-muted">Hold to Talk</span>
+              <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isListening ? 'text-dojo-danger' : 'text-dojo-accent'}`}>
+                {isListening ? 'Listening...' : 'Hold to Talk'}
+              </span>
             </div>
 
             {/* Keyboard */}
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-2">
               <button
                 onClick={() => setShowTextInput(v => !v)}
-                className={`flex h-11 w-11 items-center justify-center rounded-full border-2 transition-colors ${
+                className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-200 ${
                   showTextInput
-                    ? 'border-dojo-accent bg-dojo-accent/20 text-dojo-accent'
-                    : 'border-dojo-border bg-dojo-surface-raised/70 backdrop-blur-sm text-dojo-text-muted hover:text-dojo-text-primary'
+                    ? 'border-dojo-accent bg-dojo-accent/20 text-dojo-accent shadow-[0_0_15px_rgba(45,59,197,0.3)]'
+                    : 'border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10'
                 }`}
               >
                 <Keyboard className="h-5 w-5" />
               </button>
-              <span className="text-[10px] text-dojo-text-muted">Keyboard</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Type</span>
             </div>
 
             {/* Settings */}
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="flex flex-col items-center gap-2">
               <button
                 onClick={handlePause}
-                className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-dojo-border bg-dojo-surface-raised/70 backdrop-blur-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
+                className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10 transition-all duration-200"
               >
                 <Settings2 className="h-5 w-5" />
               </button>
-              <span className="text-[10px] text-dojo-text-muted">Settings</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Settings</span>
             </div>
           </div>
         </div>

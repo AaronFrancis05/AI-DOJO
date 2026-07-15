@@ -13,6 +13,7 @@ export interface DomainFixture {
   heroGradientTo: string;
   situationCount: number;
   displayOrder: number;
+  imageUrl?: string;
 }
 
 export const domains: DomainFixture[] = [
@@ -26,6 +27,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#7A1F1F',
     situationCount: 8,
     displayOrder: 1,
+    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80',
   },
   {
     id: 2,
@@ -37,6 +39,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#141F6B',
     situationCount: 6,
     displayOrder: 2,
+    imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
   },
   {
     id: 3,
@@ -48,6 +51,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#145A33',
     situationCount: 7,
     displayOrder: 3,
+    imageUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80',
   },
   {
     id: 4,
@@ -59,6 +63,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#7A5715',
     situationCount: 5,
     displayOrder: 4,
+    imageUrl: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&q=80',
   },
   {
     id: 5,
@@ -70,6 +75,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#4A117A',
     situationCount: 6,
     displayOrder: 5,
+    imageUrl: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&q=80',
   },
   {
     id: 6,
@@ -81,6 +87,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#0F337A',
     situationCount: 8,
     displayOrder: 6,
+    imageUrl: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&q=80',
   },
   {
     id: 7,
@@ -92,6 +99,7 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#035B6B',
     situationCount: 7,
     displayOrder: 7,
+    imageUrl: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&q=80',
   },
   {
     id: 8,
@@ -103,5 +111,6 @@ export const domains: DomainFixture[] = [
     heroGradientTo: '#7A4F06',
     situationCount: 9,
     displayOrder: 8,
+    imageUrl: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80',
   },
 ];
