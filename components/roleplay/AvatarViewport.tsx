@@ -390,7 +390,7 @@ const VISEME_SHAPES: Record<number, VisemeShapeMap> = {
 const MISSING_SHAPE_WARNED = new Set<string>();
 
 interface EmotionShapeMap {
-  smileLeft?: number; smileRight?: number;
+  mouthSmileLeft?: number; mouthSmileRight?: number;
   browInnerUp?: number;
   browOuterUpLeft?: number; browOuterUpRight?: number;
   browDownLeft?: number;  browDownRight?: number;
@@ -398,12 +398,12 @@ interface EmotionShapeMap {
 }
 
 const EMOTION_SHAPES: Record<string, EmotionShapeMap> = {
-  friendly:       { smileLeft: 0.4, smileRight: 0.4, browInnerUp: 0.1 },
-  concerned:      { browInnerUp: 0.3, browOuterUpLeft: 0.2, browOuterUpRight: 0.2, smileLeft: 0.05, smileRight: 0.05 },
-  'formal-polite': { smileLeft: 0.15, smileRight: 0.15 },
-  surprised:      { browInnerUp: 0.7, browOuterUpLeft: 0.5, browOuterUpRight: 0.5, jawOpen: 0.3, smileLeft: 0.2, smileRight: 0.2 },
-  grateful:       { smileLeft: 0.5, smileRight: 0.5, browInnerUp: 0.1 },
-  apologetic:     { browInnerUp: 0.3, browDownLeft: 0.1, browDownRight: 0.1, smileLeft: 0.1, smileRight: 0.1 },
+  friendly:       { mouthSmileLeft: 0.4, mouthSmileRight: 0.4, browInnerUp: 0.1 },
+  concerned:      { browInnerUp: 0.3, browOuterUpLeft: 0.2, browOuterUpRight: 0.2, mouthSmileLeft: 0.05, mouthSmileRight: 0.05 },
+  'formal-polite': { mouthSmileLeft: 0.15, mouthSmileRight: 0.15 },
+  surprised:      { browInnerUp: 0.7, browOuterUpLeft: 0.5, browOuterUpRight: 0.5, jawOpen: 0.3, mouthSmileLeft: 0.2, mouthSmileRight: 0.2 },
+  grateful:       { mouthSmileLeft: 0.5, mouthSmileRight: 0.5, browInnerUp: 0.1 },
+  apologetic:     { browInnerUp: 0.3, browDownLeft: 0.1, browDownRight: 0.1, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
 };
 
 function resolveMorphIndex(mesh: THREE.SkinnedMesh, shapeName: string): number | undefined {
@@ -786,6 +786,15 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
         camera={{ position: [0, 0, 3], fov: 35 }}
         gl={{ alpha: true, antialias: true }}
         style={{ background: 'transparent' }}
+        onCreated={({ gl }) => {
+          gl.domElement.addEventListener('webglcontextlost', (e) => {
+            e.preventDefault();
+            console.error('[ThreeScene] WebGL context lost!', e);
+          });
+          gl.domElement.addEventListener('webglcontextrestored', () => {
+            console.warn('[ThreeScene] WebGL context restored');
+          });
+        }}
       >
         <ambientLight intensity={0.4} />
         <directionalLight position={[4, 4, 4]} intensity={0.8} />
