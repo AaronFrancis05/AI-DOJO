@@ -18,6 +18,8 @@ export async function GET() {
       xpToNext: users.xpToNext,
       tier: users.tier,
       streak: users.streak,
+      nativeLanguage: users.nativeLanguage,
+      preferredTargetLanguage: users.preferredTargetLanguage,
     })
     .from(users)
     .where(eq(users.id, user.id))

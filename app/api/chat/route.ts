@@ -1,6 +1,7 @@
 import { db } from '../../../src/db';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
+import { getTargetLangConfig } from '../../../lib/language';
 import { eq, and, asc } from 'drizzle-orm';
 import { getAuthUser } from '../../../lib/auth/server';
 
@@ -14,10 +15,10 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { sessionId, userRawInputJp } = body;
+    const { sessionId, userRawInput } = body;
 
-    if (!sessionId || !userRawInputJp) {
-      return Response.json({ error: 'sessionId and userRawInputJp are required' }, { status: 400 });
+    if (!sessionId || !userRawInput) {
+      return Response.json({ error: 'sessionId and userRawInput are required' }, { status: 400 });
     }
 
     const numericSessionId = Number(sessionId);
@@ -40,6 +41,8 @@ export async function POST(req: Request) {
 
     const { scenarioId } = session;
     const behaviorMode = session.behaviorMode ?? 'standard';
+    const targetLanguage = session.targetLanguage ?? 'ja';
+    const nativeLanguage = session.nativeLanguage ?? 'en';
 
     const [currentScenario] = await db
       .select()
@@ -90,11 +93,11 @@ export async function POST(req: Request) {
 
     const conversationHistory = conversationRows.map(row => ({
       role: row.speaker === 'ai' ? 'model' as const : 'user' as const,
-      parts: [{ text: row.messageJp }]
+      parts: [{ text: row.messageTarget ?? row.messageJp }]
     }));
 
     const mlPipelineOutput = await analyzeAndGenerateTurn(
-      userRawInputJp,
+      userRawInput,
       currentTurnNo,
       currentScenario,
       goals,
@@ -103,15 +106,22 @@ export async function POST(req: Request) {
       behaviorMode,
       situationContext,
       situationLearningGoals,
+      targetLanguage,
+      nativeLanguage,
     );
+
+    const targetCfg = getTargetLangConfig(targetLanguage);
+    const isJapanese = targetLanguage === 'ja';
 
     const [userConversation] = await db.insert(conversations).values({
       sessionId: numericSessionId,
       turnNo: currentTurnNo,
       speaker: 'user',
-      messageJp: userRawInputJp,
+      messageTarget: mlPipelineOutput.messageTarget,
+      messageNative: mlPipelineOutput.messageNative,
+      messageJp: isJapanese ? mlPipelineOutput.messageTarget : (mlPipelineOutput.messageTarget ?? userRawInput),
       messageRomaji: mlPipelineOutput.messageRomaji,
-      messageEn: mlPipelineOutput.messageEn,
+      messageEn: mlPipelineOutput.messageNative,
       emotionTone: mlPipelineOutput.emotionTone ?? null,
       gestureHint: mlPipelineOutput.gestureHint ?? null,
       isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
@@ -135,9 +145,11 @@ export async function POST(req: Request) {
       sessionId: numericSessionId,
       turnNo: currentTurnNo,
       speaker: 'ai',
-      messageJp: mlPipelineOutput.nextAiReply.japanese || '分かりました。',
-      messageRomaji: mlPipelineOutput.nextAiReply.romaji || 'Wakarimashita.',
-      messageEn: mlPipelineOutput.nextAiReply.english || 'I understand.',
+      messageTarget: mlPipelineOutput.nextAiReply.target,
+      messageNative: mlPipelineOutput.nextAiReply.native,
+      messageJp: isJapanese ? mlPipelineOutput.nextAiReply.target : (mlPipelineOutput.nextAiReply.target ?? ''),
+      messageRomaji: mlPipelineOutput.nextAiReply.romaji,
+      messageEn: mlPipelineOutput.nextAiReply.native,
       emotionTone: mlPipelineOutput.nextAiReply.emotionTone ?? null,
       gestureHint: mlPipelineOutput.nextAiReply.gestureHint ?? null,
       isValidInContext: true,
@@ -159,7 +171,7 @@ export async function POST(req: Request) {
           conversationId: userConversation.id,
           scenarioGoalId: goalsMap.get(seqOrder)!,
           achieved: true,
-          evidenceNote: `Addressed in turn ${currentTurnNo}: "${userRawInputJp.substring(0, 80)}"`
+          evidenceNote: `Addressed in turn ${currentTurnNo}: "${userRawInput.substring(0, 80)}"`
         }));
       if (completionRows.length > 0) {
         await db.insert(goalCompletions).values(completionRows);

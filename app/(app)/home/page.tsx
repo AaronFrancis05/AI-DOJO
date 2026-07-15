@@ -226,18 +226,18 @@ export default function HomePage() {
             </div>
           </div>
           
-          <div className="flex flex-wrap justify-center gap-4">
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+          <div className="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:justify-center">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
               <Flame className="mx-auto h-5 w-5 text-dojo-streak mb-1" />
               <p className="text-xl font-black text-dojo-text-primary">{user?.streak ?? 12}</p>
               <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Day Streak</p>
             </Card>
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
               <Target className="mx-auto h-5 w-5 text-dojo-accent mb-1" />
               <p className="text-xl font-black text-dojo-text-primary">85%</p>
               <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Accuracy</p>
             </Card>
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
               <Zap className="mx-auto h-5 w-5 text-dojo-warning mb-1" />
               <p className="text-xl font-black text-dojo-text-primary">2.4k</p>
               <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Total XP</p>
@@ -471,15 +471,15 @@ export default function HomePage() {
                   <div className="absolute top-0 right-0 p-4 flex gap-1">
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleShare(session.id); }}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                      className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
                     >
-                      <Share2 className="h-4 w-4" />
+                      <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
+                      className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </button>
                   </div>
 

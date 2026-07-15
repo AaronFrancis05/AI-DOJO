@@ -81,12 +81,12 @@ export default function BillingPage() {
 
       {/* Current plan banner */}
       <Card raised className="mb-8 !p-5 border-dojo-accent/30">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-dojo-accent">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-dojo-accent">
             <Crown className="h-6 w-6 text-white" />
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="text-base font-semibold text-dojo-text-primary">Premium Plan</p>
               <Badge variant="accent">Active</Badge>
             </div>
@@ -94,7 +94,7 @@ export default function BillingPage() {
               Renews on March 15, 2025 · $9.99/month
             </p>
           </div>
-          <Button variant="secondary" size="sm">Manage</Button>
+          <Button variant="secondary" size="sm" className="shrink-0">Manage</Button>
         </div>
       </Card>
 

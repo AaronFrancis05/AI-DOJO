@@ -85,7 +85,7 @@ export default async function LandingPage() {
               <span className="text-xs text-dojo-text-muted">AI-Powered Language Learning</span>
             </div>
 
-            <h1 className="text-5xl font-bold leading-tight tracking-tight lg:text-6xl">
+            <h1 className="text-3xl sm:text-5xl font-bold leading-tight tracking-tight lg:text-6xl">
               <span className="block text-dojo-text-primary">Speak Any Language</span>
               <span className="block text-dojo-text-primary">As If You Were</span>
               <span className="bg-gradient-to-r from-dojo-accent to-purple-400 bg-clip-text text-transparent">
@@ -265,7 +265,7 @@ export default async function LandingPage() {
       </section>
 
       {/* BOTTOM CTA BANNER */}
-      <section className="mx-6 mb-16 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-10 py-14 lg:mx-auto">
+      <section className="mx-4 sm:mx-6 mb-16 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-6 sm:px-10 py-14 lg:mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-8">
           <div>
             <h2 className="text-2xl font-bold text-dojo-text-primary">Ready to Start Your Journey?</h2>
@@ -282,7 +282,7 @@ export default async function LandingPage() {
 
       {/* FOOTER */}
       <footer className="border-t border-dojo-border py-8 text-center text-sm text-dojo-text-muted">
-        © 2024 AI DOJO — Japanese Role-Play Training
+        © 2024 AI DOJO — Immersive Language Role-Play Training
       </footer>
     </div>
   );

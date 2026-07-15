@@ -1,0 +1,10 @@
+import 'dotenv/config';
+import { drizzle } from 'drizzle-orm/neon-http';
+import { neon } from '@neondatabase/serverless';
+import * as schema from '../src/schema.js';
+const sql = neon(process.env.DATABASE_URL);
+const db = drizzle(sql, { schema });
+const result = await db.select({ columnName: sql('column_name') }).from(sql('information_schema.columns')).where(sql("table_name = 'sessions'")).orderBy(sql('column_name'));
+console.log('Result:', JSON.stringify(result).substring(0, 1000));
+const hasTarget = result.some((r) => r.columnName === 'target_language');
+console.log('target_language exists:', hasTarget);

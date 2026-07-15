@@ -71,8 +71,8 @@ export default function SituationPickerPage() {
       )}
 
       <div className="mb-8">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-dojo-text-primary">{situation.title}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-dojo-text-primary">{situation.title}</h1>
           <Badge variant={situation.skillLevel}>{situation.skillLevel}</Badge>
         </div>
         <p className="mt-2 text-sm text-dojo-text-muted leading-relaxed">{situation.context}</p>

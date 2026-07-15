@@ -73,12 +73,12 @@ export default function DomainDetailPage() {
       )}
 
       <div
-        className="flex items-center gap-6 rounded-[--radius-lg] p-8"
+        className="flex flex-col sm:flex-row items-center gap-6 rounded-[--radius-lg] p-8 text-center sm:text-left"
         style={{
           background: `linear-gradient(135deg, ${domain.heroGradientFrom}, ${domain.heroGradientTo})`,
         }}
       >
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
           <Sprout className="h-8 w-8 text-white" />
         </div>
         <div>

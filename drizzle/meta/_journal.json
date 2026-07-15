@@ -50,6 +50,13 @@
       "when": 1784092256082,
       "tag": "0006_certain_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784127610033,
+      "tag": "0007_marvelous_wind_dancer",
+      "breakpoints": true
     }
   ]
 }
