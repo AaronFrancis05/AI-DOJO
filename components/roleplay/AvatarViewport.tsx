@@ -140,7 +140,17 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
 
     const hasAny = clipActions.current.size > 0;
     hasGesturesRef.current = hasAny;
-    if (!hasAny) logDevWarning('No animation clips loaded — body animation disabled');
+    if (!hasAny) {
+      logDevWarning('No animation clips loaded — body animation disabled');
+    } else {
+      // Start the idle loop immediately on mount
+      const idleEntry = clipActions.current.get('idle');
+      if (idleEntry?.action) {
+        idleEntry.action.reset();
+        idleEntry.action.setLoop(THREE.LoopRepeat, Infinity);
+        idleEntry.action.play();
+      }
+    }
 
     return () => {
       mixer.stopAllAction();
@@ -217,15 +227,25 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
   useEffect(() => {
     if (normalizedGesture !== 'none' && normalizedGesture !== gestureRef.current) {
       gestureRef.current = normalizedGesture;
-      const gestureClip = normalizedGesture as GestureClip;
-      if (gestureClip !== 'nod' && clipActions.current.has(gestureClip as AnimClip)) {
-        playClip(gestureClip as AnimClip, 0.3);
-      } else if (gestureClip === 'nod') {
-        // Nod uses bow clip for a small head dip
-        const bowAct = clipActions.current.get('bow')?.action;
-        if (bowAct) {
-          playClip('bow', 0.25);
-        }
+      let targetClip: AnimClip = 'bow'; // default to bow if no mapping found
+      switch (normalizedGesture) {
+        case 'bow':
+          targetClip = 'bow';
+          break;
+        case 'shake_hands':
+          targetClip = 'shake_hands';
+          break;
+        case 'wave':
+          // TEMP: no anim_wave.glb exists yet — use shake_hands as a visible placeholder
+          targetClip = 'shake_hands';
+          break;
+        case 'nod':
+          // Nod uses bow clip for a small head dip
+          targetClip = 'bow';
+          break;
+      }
+      if (clipActions.current.has(targetClip)) {
+        playClip(targetClip, 0.3);
       }
     }
   }, [normalizedGesture, playClip]);
@@ -457,12 +477,29 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
     const finalLeftForeArm = leftForeArm ?? fallbackLeftForeArm;
     const finalRightForeArm = rightForeArm ?? fallbackRightForeArm;
 
-    if (finalLeftArm) finalLeftArm.rotation.z = Math.PI / 5.5;
-    if (finalRightArm) finalRightArm.rotation.z = -Math.PI / 5.5;
-    if (finalLeftForeArm) finalLeftForeArm.rotation.z = 0.15;
-    if (finalRightForeArm) finalRightForeArm.rotation.z = -0.15;
+    // ~78° rotation to bring arm from T-pose horizontal down to natural rest
+    const armDrop = Math.PI / 2.3;
+    if (finalLeftArm) finalLeftArm.rotation.z = armDrop;
+    if (finalRightArm) finalRightArm.rotation.z = -armDrop;
+    // Slight elbow bend (~20°) so arm isn't ramrod-straight
+    if (finalLeftForeArm) finalLeftForeArm.rotation.z = 0.35;
+    if (finalRightForeArm) finalRightForeArm.rotation.z = -0.35;
 
     scene.updateMatrixWorld(true);
+
+    // Debug: log world-space forward/down vectors for arm-angle tuning
+    if (finalLeftArm) {
+      const worldQuat = new THREE.Quaternion();
+      finalLeftArm.getWorldQuaternion(worldQuat);
+      const down = new THREE.Vector3(0, -1, 0).applyQuaternion(worldQuat);
+      console.log('[RestPoseApplicator] leftArm world down-vector:', down.toArray().map(v => v.toFixed(3)));
+    }
+    if (finalRightArm) {
+      const worldQuat = new THREE.Quaternion();
+      finalRightArm.getWorldQuaternion(worldQuat);
+      const down = new THREE.Vector3(0, -1, 0).applyQuaternion(worldQuat);
+      console.log('[RestPoseApplicator] rightArm world down-vector:', down.toArray().map(v => v.toFixed(3)));
+    }
 
     if (!finalLeftArm && !finalRightArm) {
       const msg = 'No shoulder bones found — T-pose will persist. Bone names: ' + JSON.stringify(boneNames);
