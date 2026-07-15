@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useMemo, Suspense, useCallback } from 'rea
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, Environment, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { getCurrentViseme } from '@/lib/roleplay/tts';
 
 type AvatarMode = 'idle' | 'listening' | 'talking';
@@ -697,7 +698,7 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
   cameraMode?: 'front' | 'over-shoulder';
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
-  const scene = useMemo(() => originalScene.clone(), [originalScene]);
+  const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
   const [hasMorphs, setHasMorphs] = useState(false);
   const [clipsLoaded, setClipsLoaded] = useState(false);
 
