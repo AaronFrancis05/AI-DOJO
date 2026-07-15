@@ -5,5 +5,5 @@ export default auth.middleware({
 });
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|auth|api|share|$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|auth|api|share|$).*)'],
 };
