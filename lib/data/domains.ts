@@ -1,10 +1,11 @@
 import { domains as fixtureDomains, type DomainFixture } from '@/lib/mock-data/domains';
 import type { DataSource } from './result';
+import { type Domain } from '../types';
 
 export { fixtureDomains as domains };
 export type { DomainFixture };
 
-function adaptDbDomain(d: any): DomainFixture {
+function adaptDbDomain(d: Domain): DomainFixture {
   return {
     id: d.id,
     slug: d.slug,
@@ -15,7 +16,7 @@ function adaptDbDomain(d: any): DomainFixture {
     heroGradientTo: d.heroGradientTo ?? '#141F6B',
     situationCount: d.situationCount ?? 0,
     displayOrder: d.displayOrder ?? 0,
-    imageUrl: d.imageUrl,
+    imageUrl: d.imageUrl ?? undefined,
   };
 }
 

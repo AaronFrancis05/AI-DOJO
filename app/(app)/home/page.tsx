@@ -19,6 +19,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
+import { type SessionRecord } from '@/lib/types';
 import {
   ArrowRight,
   Flame,
@@ -52,25 +53,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-
-// ── Types ──────────────────────────────────────────────
-
-interface SessionRecord {
-  id: number;
-  scenarioId: number;
-  sessionNumber: number;
-  status: string;
-  totalTurns: number;
-  vocabularyScore: number | null;
-  grammarScore: number | null;
-  fluencyScore: number | null;
-  culturalScore: number | null;
-  taskScore: number | null;
-  feedback: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  scenarioTitle?: string;
-}
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -141,14 +123,14 @@ export default function HomePage() {
           setSessions(mockSessions.map(s => ({
             ...s,
             scenarioTitle: s.scenarioTitle,
-          })) as any);
+          })) as unknown as SessionRecord[]);
         }
       } catch (e) {
         console.error('Failed to load sessions:', e);
         setSessions(mockSessions.map(s => ({
           ...s,
           scenarioTitle: s.scenarioTitle,
-        })) as any);
+        })) as unknown as SessionRecord[]);
       } finally {
         setLoading(false);
       }

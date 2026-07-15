@@ -1,17 +1,18 @@
 import { situations as fixtureSituations, type SituationFixture } from '@/lib/mock-data/situations';
 import type { DataSource } from './result';
+import { type Situation } from '../types';
 
 export { fixtureSituations as situations };
 export type { SituationFixture };
 
-function adaptDbSituation(d: any, domainSlug?: string): SituationFixture {
+function adaptDbSituation(d: Situation, domainSlug?: string): SituationFixture {
   return {
     id: d.id,
     domainSlug: domainSlug ?? d.domainSlug ?? '',
     title: d.title,
     context: d.context,
-    skillLevel: d.skillLevel as any ?? 'beginner',
-    behaviorMode: d.behaviorMode as any ?? 'standard',
+    skillLevel: d.skillLevel,
+    behaviorMode: (d.behaviorMode as any) ?? 'standard',
     learningGoals: d.learningGoals,
     focusPills: (typeof d.focusPills === 'string'
       ? d.focusPills.includes('|||') ? d.focusPills.split('|||') : d.focusPills.split(',')

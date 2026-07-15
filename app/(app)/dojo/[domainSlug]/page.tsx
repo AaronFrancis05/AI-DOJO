@@ -104,7 +104,7 @@ export default function DomainDetailPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-dojo-text-primary">{s.title}</h3>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <Badge variant={s.skillLevel as any}>{s.skillLevel}</Badge>
+                      <Badge variant={s.skillLevel}>{s.skillLevel}</Badge>
                       {s.behaviorMode !== 'standard' && (
                         <Badge variant="accent">{s.behaviorMode}</Badge>
                       )}
