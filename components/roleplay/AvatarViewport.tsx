@@ -215,10 +215,12 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
     });
     console.log('[RestPoseApplicator] Discovering bones:', boneNames);
 
-    let leftArm: THREE.Bone | null = null;
-    let rightArm: THREE.Bone | null = null;
-    let leftForeArm: THREE.Bone | null = null;
-    let rightForeArm: THREE.Bone | null = null;
+    const bones: Record<string, THREE.Bone | null> = {
+      leftArm: null,
+      rightArm: null,
+      leftForeArm: null,
+      rightForeArm: null,
+    };
 
     scene.traverse((node) => {
       if (!(node instanceof THREE.Bone)) return;
@@ -228,45 +230,47 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
       const isLeft = n.includes('left') || n.includes('l_') || n.startsWith('l_') || n.endsWith('_l');
       const isRight = n.includes('right') || n.includes('r_') || n.startsWith('r_') || n.endsWith('_r');
 
-      if (!leftArm && (
+      if (!bones.leftArm && (
         n.includes('mixamorig:leftarm') || 
         n === 'leftarm' || 
         n === 'j_bip_l_upperarm' || 
         (n.includes('upperarm')) ||
         (n.includes('arm') && isLeft && !n.includes('fore'))
       )) {
-        leftArm = node as THREE.Bone;
+        bones.leftArm = node as THREE.Bone;
       }
-      if (!rightArm && (
+      if (!bones.rightArm && (
         n.includes('mixamorig:rightarm') || 
         n === 'rightarm' || 
         n === 'j_bip_r_upperarm' || 
         (n.includes('upperarm')) ||
         (n.includes('arm') && isRight && !n.includes('fore'))
       )) {
-        rightArm = node as THREE.Bone;
+        bones.rightArm = node as THREE.Bone;
       }
 
       // Forearm bone matching
-      if (!leftForeArm && (
+      if (!bones.leftForeArm && (
         n.includes('mixamorig:leftforearm') ||
         n === 'leftforearm' ||
         n === 'j_bip_l_lowerarm' ||
         n.includes('forearm') ||
         n.includes('lowerarm')
       ) && isLeft) {
-        leftForeArm = node as THREE.Bone;
+        bones.leftForeArm = node as THREE.Bone;
       }
-      if (!rightForeArm && (
+      if (!bones.rightForeArm && (
         n.includes('mixamorig:rightforearm') ||
         n === 'rightforearm' ||
         n === 'j_bip_r_lowerarm' ||
         n.includes('forearm') ||
         n.includes('lowerarm')
       ) && isRight) {
-        rightForeArm = node as THREE.Bone;
+        bones.rightForeArm = node as THREE.Bone;
       }
     });
+
+    const { leftArm, rightArm, leftForeArm, rightForeArm } = bones;
 
     if (leftArm) leftArm.rotation.z = Math.PI / 5.5;
     if (rightArm) rightArm.rotation.z = -Math.PI / 5.5;
