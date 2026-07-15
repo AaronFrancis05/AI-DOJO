@@ -34,6 +34,13 @@ import {
   ExternalLink,
   Share2,
   Trash2,
+  Trophy,
+  History,
+  Layout,
+  Play,
+  TrendingUp,
+  Award,
+  Calendar,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -194,283 +201,333 @@ export default function HomePage() {
   const avgScore = completedSessions.length > 0 ? Math.round(totalScore / completedSessions.length) : null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      {/* Header with Profile */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Avatar name={user?.name ?? 'Learner'} size="lg" />
-          <div>
-            <h1 className="text-2xl font-bold text-dojo-text-primary">Welcome back, {user?.name ?? 'Learner'}</h1>
-            <div className="flex items-center gap-3 mt-0.5">
-              <Badge variant={(user?.level ?? 'beginner') as any}>{user?.level ?? 'beginner'}</Badge>
-              <span className="text-xs text-dojo-text-muted">{user?.email ?? ''}</span>
+    <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-10">
+      {/* ── Top Section: Profile Hero ── */}
+      <div className="relative overflow-hidden rounded-3xl bg-dojo-surface-raised border border-dojo-border p-8 shadow-2xl">
+        {/* Background glow effects */}
+        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-dojo-accent/10 blur-[80px]" />
+        <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
+              <Avatar name={user?.name ?? 'Learner'} size="xl" className="relative border-4 border-dojo-surface shadow-2xl" />
+              <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
+                <Trophy className="h-4 w-4" />
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="primary" size="sm" onClick={() => router.push('/hub')}>
-            <Sparkles className="h-4 w-4" />
-            New Practice
-          </Button>
-        </div>
-      </div>
-
-      {/* Live session banner */}
-      {activeSession && (
-        <Link href={`/session/${activeSession.id}`} suppressHydrationWarning>
-          <Card className="border-dojo-danger/30 !p-4 cursor-pointer hover:bg-dojo-surface transition-colors">
-            <div className="flex items-center justify-between">
+            <div>
               <div className="flex items-center gap-3">
-                <LiveBadge />
-                <div>
-                  <p className="text-sm font-semibold text-dojo-text-primary">
-                    Roleplay in Progress · {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
-                  </p>
-                  <p className="text-xs text-dojo-text-muted">
-                    Turn {activeSession.totalTurns}
-                  </p>
+                <h1 className="text-3xl font-bold text-dojo-text-primary tracking-tight">Okaeri, {user?.name ?? 'Learner'}!</h1>
+                <Badge variant="premium" className="px-3 py-1 text-[10px] tracking-widest uppercase">Premium</Badge>
+              </div>
+              <p className="mt-1 text-dojo-text-muted">Master of 12 real-world situations. 85% fluency goal reached.</p>
+              
+              <div className="flex items-center gap-4 mt-4">
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase tracking-wider text-dojo-text-muted font-bold">Level</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-dojo-accent">Level 4</span>
+                    <Badge variant="intermediate">Intermediate</Badge>
+                  </div>
+                </div>
+                <div className="h-10 w-px bg-dojo-border mx-2" />
+                <div className="flex flex-col flex-1 min-w-[120px]">
+                  <div className="flex justify-between text-[10px] uppercase tracking-wider text-dojo-text-muted font-bold mb-1">
+                    <span>Progress to Level 5</span>
+                    <span>{user?.xp ?? 2400}/{user?.xpToNext ?? 3000} XP</span>
+                  </div>
+                  <ProgressBar value={Math.round(((user?.xp ?? 2400) / (user?.xpToNext ?? 3000)) * 100)} color="accent" size="md" />
                 </div>
               </div>
-              <Button variant="primary" size="sm">
-                Resume
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </Card>
-        </Link>
-      )}
-
-      {/* Row 1: Statistics + Weekly Activity + Streak */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        {/* Statistics Card — Profile data */}
-        <Card className="lg:col-span-1">
-          <h3 className="mb-3 text-sm font-semibold text-dojo-text-muted uppercase tracking-wider">Statistics</h3>
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs text-dojo-text-muted">Total Sessions</p>
-              <TrendValue value={sessions.length} trend="up" trendLabel={`+${completedSessions.length}`} />
-            </div>
-            <div>
-              <p className="text-xs text-dojo-text-muted">Speaking Time</p>
-              <TrendValue value="-" trend="neutral" />
-            </div>
-            <div>
-              <p className="text-xs text-dojo-text-muted">Avg. Score</p>
-              <TrendValue value={avgScore ? `${avgScore}%` : '-'} trend={avgScore && avgScore > 0 ? 'up' : 'neutral'} />
-            </div>
-            <div>
-              <p className="text-xs text-dojo-text-muted">New Words</p>
-              <TrendValue value="-" trend="neutral" />
             </div>
           </div>
-        </Card>
-
-        {/* Weekly Activity Chart */}
-        <Card className="lg:col-span-2">
-          <h3 className="mb-3 text-sm font-semibold text-dojo-text-muted uppercase tracking-wider">Weekly Activity</h3>
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyActivity} barCategoryGap="25%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#1C2A42" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: '#8A93A8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{ background: '#111D33', border: '1px solid #1C2A42', borderRadius: 8, color: '#F4F4F8' }}
-                  formatter={(value: any) => [`${value} min`, 'Practice Time']}
-                />
-                <Bar dataKey="minutes" fill="#2D3BC5" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          
+          <div className="flex flex-wrap justify-center gap-4">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+              <Flame className="mx-auto h-5 w-5 text-dojo-streak mb-1" />
+              <p className="text-xl font-black text-dojo-text-primary">{user?.streak ?? 12}</p>
+              <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Day Streak</p>
+            </Card>
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+              <Target className="mx-auto h-5 w-5 text-dojo-accent mb-1" />
+              <p className="text-xl font-black text-dojo-text-primary">85%</p>
+              <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Accuracy</p>
+            </Card>
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+              <Zap className="mx-auto h-5 w-5 text-dojo-warning mb-1" />
+              <p className="text-xl font-black text-dojo-text-primary">2.4k</p>
+              <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Total XP</p>
+            </Card>
           </div>
-        </Card>
-
-        {/* Right column: Streak + Quick Links */}
-        <div className="space-y-4">
-          {/* Streak Card */}
-          <Card>
-            <div className="flex items-center gap-3">
-              <Flame className="h-8 w-8 text-dojo-streak" />
-              <div>
-                <p className="text-lg font-bold text-dojo-text-primary">{user?.streak ?? 0} Day Streak</p>
-                <p className="text-xs text-dojo-text-muted">Best: {user?.streak ?? 0} days</p>
-              </div>
-            </div>
-            <div className="mt-3 flex gap-1.5">
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-                <div
-                  key={i}
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-medium
-                    ${i < (user?.streak ?? 0) ? 'bg-dojo-streak text-black' : 'bg-dojo-border text-dojo-text-muted'}`}
-                >
-                  {d}
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Quick links card */}
-          <Card hoverable onClick={() => router.push('/hub')} className="cursor-pointer">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent/10">
-                <Target className="h-4 w-4 text-dojo-accent" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-dojo-text-primary">Choose a Scenario</p>
-                <p className="text-xs text-dojo-text-muted">Explore all domains and situations</p>
-              </div>
-              <ArrowRight className="h-4 w-4 text-dojo-text-muted" />
-            </div>
-          </Card>
         </div>
       </div>
 
-      {/* Row 2: Achievements + Learning Tip + Continue Journey */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Continue Journey Card */}
-        <Card hoverable className="lg:col-span-1 cursor-pointer" onClick={() => router.push('/hub')}>
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-dojo-accent">
-              <Target className="h-5 w-5 text-white" />
+      {/* ── Row 1: Daily Goal + Live Session + Weekly Activity ── */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        {/* Left column: Goals & Quick Actions (4 cols) */}
+        <div className="lg:col-span-4 space-y-8">
+          {/* Daily Goal Card */}
+          <Card className="relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Award className="h-16 w-16" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-dojo-text-primary">Continue Your Journey</p>
-              <p className="mt-1 text-xs text-dojo-text-muted leading-relaxed">
-                Pick up where you left off. Browse domains and situations to continue practicing.
-              </p>
-              <ProgressBar value={completedSessions.length > 0 ? Math.min(100, Math.round((completedSessions.length / 12) * 100)) : 0} color="accent" size="sm" className="mt-3" showLabel />
+            <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest mb-4">Daily Goal</h3>
+            <div className="flex items-end justify-between mb-2">
+              <p className="text-2xl font-black text-dojo-text-primary">24 / 30 <span className="text-sm font-medium text-dojo-text-muted">mins</span></p>
+              <span className="text-xs font-bold text-dojo-success">80%</span>
+            </div>
+            <ProgressBar value={80} color="success" size="lg" className="mb-4" />
+            <p className="text-xs text-dojo-text-muted leading-relaxed">You&apos;re almost there! Complete one more roleplay session to hit your daily target.</p>
+            <Button variant="primary" className="w-full mt-6 shadow-lg shadow-dojo-accent/20" onClick={() => router.push('/hub')}>
+              <Play className="h-4 w-4 fill-current" /> Continue Practice
+            </Button>
+          </Card>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer" onClick={() => router.push('/leaderboard')}>
+              <TrendingUp className="mx-auto h-5 w-5 text-dojo-success mb-2" />
+              <p className="text-lg font-bold text-dojo-text-primary">#14</p>
+              <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Global Rank</p>
+            </Card>
+            <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer">
+              <Calendar className="mx-auto h-5 w-5 text-dojo-accent mb-2" />
+              <p className="text-lg font-bold text-dojo-text-primary">Jul 15</p>
+              <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Next Milestone</p>
+            </Card>
+          </div>
+        </div>
+
+        {/* Center/Right column: Activity & Sessions (8 cols) */}
+        <div className="lg:col-span-8 space-y-8">
+          {/* Weekly Activity & Live Session */}
+          <div className="space-y-6">
+            {/* Live session banner merged here */}
+            {activeSession && (
+              <Link href={`/session/${activeSession.id}`} suppressHydrationWarning>
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-dojo-danger/20 to-dojo-accent/10 border border-dojo-danger/30 p-5 group cursor-pointer hover:shadow-xl transition-all">
+                  <div className="absolute top-0 right-0 p-2">
+                    <div className="h-2 w-2 rounded-full bg-dojo-danger animate-ping" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-dojo-danger/20 text-dojo-danger">
+                        <Play className="h-6 w-6 fill-current" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-dojo-danger">Live Session</span>
+                          <LiveBadge />
+                        </div>
+                        <p className="text-lg font-bold text-dojo-text-primary">
+                          {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
+                        </p>
+                        <p className="text-xs text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation with Hana</p>
+                      </div>
+                    </div>
+                    <Button variant="primary" size="sm" className="bg-dojo-danger hover:bg-dojo-danger/90">
+                      Resume Now
+                    </Button>
+                  </div>
+                </div>
+              </Link>
+            )}
+
+            <Card className="!p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Weekly Activity</h3>
+                  <p className="text-lg font-bold text-dojo-text-primary mt-1">158 Total Minutes <span className="text-xs font-normal text-dojo-success ml-2">+12% vs last week</span></p>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="text-[10px]">Last 7 Days</Badge>
+                </div>
+              </div>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyActivity} barCategoryGap="30%">
+                    <defs>
+                      <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2D3BC5" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#2D3BC5" stopOpacity={0.6} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1C2A42" vertical={false} opacity={0.5} />
+                    <XAxis dataKey="day" tick={{ fill: '#8A93A8', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                    <YAxis hide />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(45, 59, 197, 0.05)' }}
+                      contentStyle={{ background: '#080C18', border: '1px solid #1C2A42', borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
+                      itemStyle={{ color: '#F4F4F8', fontSize: 12, fontWeight: 700 }}
+                    />
+                    <Bar dataKey="minutes" fill="url(#barGradient)" radius={[6, 6, 2, 2]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Row 2: Learning Journey & Achievements ── */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* Learning Journey */}
+        <Card className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Learning Journey</h3>
+            <Button variant="ghost" size="sm" className="text-xs font-bold" onClick={() => router.push('/progress')}>
+              View Roadmap <ArrowRight className="ml-1 h-3 w-3" />
+            </Button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface/40 p-4 group hover:border-dojo-accent transition-all cursor-pointer">
+              <div className="absolute top-0 left-0 h-1 w-full bg-dojo-accent" />
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-dojo-accent/20 text-dojo-accent">
+                  <Layout className="h-4 w-4" />
+                </div>
+                <p className="text-sm font-bold text-dojo-text-primary">Social Situations</p>
+                <Badge variant="accent" className="ml-auto text-[9px]">In Progress</Badge>
+              </div>
+              <p className="text-[11px] text-dojo-text-muted mb-3 leading-relaxed">Mastering introductions and small talk in various social settings.</p>
+              <div className="flex items-center justify-between text-[10px] font-bold text-dojo-text-muted mb-1">
+                <span>8 / 12 Situations</span>
+                <span>66%</span>
+              </div>
+              <ProgressBar value={66} color="accent" size="sm" />
+            </div>
+
+            <div className="relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface/40 p-4 group hover:border-dojo-success transition-all cursor-pointer">
+              <div className="absolute top-0 left-0 h-1 w-full bg-dojo-success" />
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-dojo-success/20 text-dojo-success">
+                  <Globe className="h-4 w-4" />
+                </div>
+                <p className="text-sm font-bold text-dojo-text-primary">Travel Essentials</p>
+                <Badge variant="success" className="ml-auto text-[9px]">Completed</Badge>
+              </div>
+              <p className="text-[11px] text-dojo-text-muted mb-3 leading-relaxed">Booking hotels, asking directions, and navigating airports with ease.</p>
+              <div className="flex items-center justify-between text-[10px] font-bold text-dojo-text-muted mb-1">
+                <span>10 / 10 Situations</span>
+                <span>100%</span>
+              </div>
+              <ProgressBar value={100} color="success" size="sm" />
             </div>
           </div>
         </Card>
 
         {/* Recent Achievements */}
-        <Card className="lg:col-span-1">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider">Achievements</h3>
-            <span className="text-xs text-dojo-text-muted">
-              {recentAchievements.filter((a) => a.unlocked).length}/{recentAchievements.length}
-            </span>
+        <Card>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Achievements</h3>
+            <span className="text-xs font-bold text-dojo-text-muted">{recentAchievements.filter(a => a.unlocked).length}/{recentAchievements.length}</span>
           </div>
-          <div className="flex justify-around">
-            {recentAchievements.slice(0, 6).map((a) => {
+          <div className="grid grid-cols-3 gap-y-6">
+            {recentAchievements.map((a) => {
               const Icon = iconMap[a.icon] ?? Sparkles;
               return (
-                <HexBadge
-                  key={a.id}
-                  icon={Icon}
-                  label={a.label}
-                  unlocked={a.unlocked}
-                  size={40}
-                />
+                <div key={a.id} className="flex flex-col items-center group cursor-pointer">
+                  <HexBadge
+                    icon={Icon}
+                    label={a.label}
+                    unlocked={a.unlocked}
+                    size={48}
+                  />
+                  <span className={`mt-2 text-[9px] font-bold uppercase tracking-tight text-center px-1 transition-colors ${a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted group-hover:text-dojo-text-primary'}`}>
+                    {a.label}
+                  </span>
+                </div>
               );
             })}
           </div>
-        </Card>
-
-        {/* Learning Tip Card */}
-        <Card className="lg:col-span-1">
-          <div className="flex items-start gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-success/10">
-              <Zap className="h-4 w-4 text-dojo-success" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-dojo-text-primary">Learning Tip</p>
-              <p className="mt-1 text-xs text-dojo-text-muted leading-relaxed">
-                Try the &quot;Handle a Complaint&quot; scenario in Trouble Mode
-                for a real challenge — it pushes your keigo and problem-solving skills.
-              </p>
-            </div>
-          </div>
+          <Button variant="ghost" size="sm" className="w-full mt-6 text-[10px] font-bold border border-dojo-border/50">
+            View All Badges
+          </Button>
         </Card>
       </div>
 
-      {/* Row 3: Recent Sessions (from DB) */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-dojo-text-primary">
-            Recent Sessions
-            {loading && <span className="ml-2 text-xs text-dojo-text-muted animate-pulse">Loading...</span>}
-          </h2>
-          {!loading && sessions.length > 3 && (
-            <Link href="/sessions">
-              <Button variant="ghost" size="sm">
-                View All ({sessions.length})
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          )}
+      {/* ── Row 3: History & Recent Sessions ── */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <History className="h-5 w-5 text-dojo-accent" />
+            <h2 className="text-xl font-bold text-dojo-text-primary">Recent Sessions</h2>
+          </div>
+          <div className="flex gap-2">
+            {!loading && sessions.length > 3 && (
+              <Link href="/sessions">
+                <Button variant="ghost" size="sm" className="text-xs font-bold h-8">
+                  View Full History
+                  <ArrowRight className="ml-1 h-3 w-3" />
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
 
         {!loading && sessions.length === 0 ? (
-          <Card className="text-center py-8">
-            <p className="text-dojo-text-muted mb-2">No sessions yet</p>
-            <p className="text-xs text-dojo-text-muted">Start your first role-play from the Hub</p>
-            <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
-              <Sparkles className="h-4 w-4" /> Start Practicing
+          <Card className="text-center py-12 border-dashed border-dojo-border/60">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-dojo-surface-raised mx-auto mb-4">
+              <Play className="h-8 w-8 text-dojo-border fill-current" />
+            </div>
+            <p className="text-dojo-text-primary font-bold mb-1">No practice sessions found</p>
+            <p className="text-xs text-dojo-text-muted max-w-xs mx-auto mb-6">Start your first role-play in the Dojo to build your history and track your progress.</p>
+            <Button variant="primary" size="lg" onClick={() => router.push('/hub')}>
+              <Sparkles className="h-4 w-4" /> Start Your First Session
             </Button>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {(loading ? mockSessions.slice(0, 3) : sessions.slice(0, 3)).map((session) => {
               const pct = computeTotalPct(session as SessionRecord);
 
               return (
-                <Card key={session.id} hoverable className={`!p-4 ${deleting === session.id ? 'opacity-50' : ''}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant={session.status === 'active' ? 'accent' : 'default'}>
-                          {session.status === 'active' ? 'In Progress' : 'Completed'}
-                        </Badge>
-                        {session.status === 'active' && <LiveBadge />}
-                        <span className="text-xs text-dojo-text-muted">
-                          Attempt #{session.sessionNumber}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-dojo-text-primary truncate">
-                        {(session as any).scenarioTitle ?? `Session #${session.id}`}
-                      </p>
-                      <p className="text-xs text-dojo-text-muted mt-0.5">
-                        {formatDate(session.startedAt)} · {session.totalTurns} turns
-                        {session.completedAt && ` · Completed ${formatDate(session.completedAt)}`}
-                      </p>
-                      {pct !== null && (
-                        <div className="mt-1 flex items-center gap-2">
-                          <span className="text-xs text-dojo-text-muted">Score:</span>
-                          <span className="text-xs font-semibold text-dojo-success">{pct}%</span>
-                        </div>
+                <Card key={session.id} hoverable className={`group !p-5 relative transition-all hover:translate-y-[-2px] ${deleting === session.id ? 'opacity-50' : ''}`}>
+                  <div className="absolute top-0 right-0 p-4 flex gap-1">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleShare(session.id); }}
+                      className="h-8 w-8 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
+                      className="h-8 w-8 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center gap-2 mb-4">
+                      {session.status === 'active' ? (
+                        <Badge variant="accent" className="text-[9px] uppercase tracking-tighter">Active</Badge>
+                      ) : (
+                        <Badge variant="success" className="text-[9px] uppercase tracking-tighter">Done</Badge>
                       )}
+                      <span className="text-[10px] font-bold text-dojo-text-muted uppercase tracking-widest">#{session.sessionNumber}</span>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 shrink-0 ml-4">
-                      {/* View Report */}
+                    <h4 className="text-sm font-bold text-dojo-text-primary group-hover:text-dojo-accent transition-colors line-clamp-1">
+                      {(session as any).scenarioTitle ?? `Session #${session.id}`}
+                    </h4>
+                    <p className="text-[11px] text-dojo-text-muted mt-1 font-medium">
+                      {formatDate(session.startedAt)} • {session.totalTurns} Turns
+                    </p>
+
+                    <div className="mt-auto pt-6 flex items-center justify-between border-t border-dojo-border/50 mt-6">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold uppercase text-dojo-text-muted">Fluency:</span>
+                        <span className={`text-xs font-black ${pct && pct > 80 ? 'text-dojo-success' : 'text-dojo-warning'}`}>{pct ? `${pct}%` : '-'}</span>
+                      </div>
                       <Link href={`/sessions/${session.id}/report`}>
-                        <Button variant="ghost" size="sm">
-                          <ExternalLink className="h-4 w-4" />
-                          Report
+                        <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2 font-bold hover:bg-dojo-accent/10">
+                          Review Report <ExternalLink className="ml-1.5 h-3 w-3" />
                         </Button>
                       </Link>
-
-                      {/* Share */}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleShare(session.id); }}
-                      >
-                        <Share2 className="h-4 w-4" />
-                        {sharing[session.id] ? 'Copied' : 'Share'}
-                      </Button>
-
-                      {/* Delete */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-dojo-danger hover:text-dojo-danger"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
-                        disabled={deleting === session.id}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   </div>
                 </Card>

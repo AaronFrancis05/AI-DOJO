@@ -26,6 +26,7 @@ export const domains = pgTable('domains', {
   icon:             varchar('icon', { length: 40 }).notNull(),
   heroGradientFrom: varchar('hero_gradient_from', { length: 20 }).notNull(),
   heroGradientTo:   varchar('hero_gradient_to', { length: 20 }).notNull(),
+  imageUrl:         text('image_url'),
   situationCount:   integer('situation_count').default(0).notNull(),
   displayOrder:     integer('display_order').default(0).notNull(),
   createdAt:        timestamp('created_at').defaultNow().notNull(),

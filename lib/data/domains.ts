@@ -15,6 +15,7 @@ function adaptDbDomain(d: any): DomainFixture {
     heroGradientTo: d.heroGradientTo ?? '#141F6B',
     situationCount: d.situationCount ?? 0,
     displayOrder: d.displayOrder ?? 0,
+    imageUrl: d.imageUrl,
   };
 }
 

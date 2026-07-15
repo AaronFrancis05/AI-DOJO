@@ -43,6 +43,13 @@
       "when": 1783916913998,
       "tag": "0005_gorgeous_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784092256082,
+      "tag": "0006_certain_dagger",
+      "breakpoints": true
     }
   ]
 }

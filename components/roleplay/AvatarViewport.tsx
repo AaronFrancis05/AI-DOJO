@@ -235,7 +235,7 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
         (n.includes('upperarm')) ||
         (n.includes('arm') && isLeft && !n.includes('fore'))
       )) {
-        leftArm = node;
+        leftArm = node as THREE.Bone;
       }
       if (!rightArm && (
         n.includes('mixamorig:rightarm') || 
@@ -244,7 +244,7 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
         (n.includes('upperarm')) ||
         (n.includes('arm') && isRight && !n.includes('fore'))
       )) {
-        rightArm = node;
+        rightArm = node as THREE.Bone;
       }
 
       // Forearm bone matching
@@ -255,7 +255,7 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
         n.includes('forearm') ||
         n.includes('lowerarm')
       ) && isLeft) {
-        leftForeArm = node;
+        leftForeArm = node as THREE.Bone;
       }
       if (!rightForeArm && (
         n.includes('mixamorig:rightforearm') ||
@@ -264,7 +264,7 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
         n.includes('forearm') ||
         n.includes('lowerarm')
       ) && isRight) {
-        rightForeArm = node;
+        rightForeArm = node as THREE.Bone;
       }
     });
 
