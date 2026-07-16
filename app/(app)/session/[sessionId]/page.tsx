@@ -465,12 +465,12 @@ export default function RoleplaySessionPage() {
           />
         </div>
 
-        {/* ── User over-shoulder: inset-y-0 right-0 w-[34%], z-10, opacity-80, no blur ──
+        {/* ── User over-shoulder: inset-y-0 right-0 w-[34%], z-10, opacity-90, blur-[3px] ──
              Full-height panel mirrored from the AI avatar's left-side layout, at 34% width
              so the user appears as a tall blurred over-the-shoulder figure in the foreground
              right panel, matching the session_design mockup. */}
         <div
-          className="absolute inset-y-0 right-0 w-[34%] z-10 pointer-events-none opacity-80"
+          className="absolute inset-y-0 right-0 w-[34%] z-10 pointer-events-none opacity-90 blur-[3px]"
         >
           <AvatarViewport
             name="You"
