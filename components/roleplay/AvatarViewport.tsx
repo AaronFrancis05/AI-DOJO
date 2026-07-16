@@ -722,8 +722,19 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
       if (cameraMode === 'over-shoulder') {
-        camera.position.set(0.5, groundedHeight * 0.55, groundedHeight * 0.35);
-        camera.lookAt(-0.2, groundedHeight * 0.6, -1.5);
+        // Model's front faces +z (confirmed by the 'front' branch below, which
+        // sits at positive z and looks back toward the origin). An over-the-
+        // shoulder shot needs the camera BEHIND the head (negative z) looking
+        // forward past it (positive z) — the previous values had both signs
+        // flipped, which put the camera in front of the face looking backward
+        // through the model, so nothing recognizable ever reached the frame.
+        camera.position.set(0.5, groundedHeight * 0.88, -groundedHeight * 0.25);
+        camera.lookAt(-0.1, groundedHeight * 0.82, 5);
+
+        console.log('[AutoCamera] over-shoulder framing', {
+          groundedHeight,
+          cameraPos: camera.position,
+        });
       } else {
         const visibleFraction = 0.52;
         const focusY = groundedHeight * 0.82;
