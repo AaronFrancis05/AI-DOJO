@@ -2,6 +2,8 @@ let currentVisemeId = -1;
 let isAzureSpeaking = false;
 let azureStopCallback: (() => void) | null = null;
 
+let currentGeneration = 0;
+
 export function getCurrentViseme(): number {
   return currentVisemeId;
 }
@@ -26,6 +28,9 @@ export async function speakWithVisemes(
   text: string,
   lang: string = 'ja-JP',
 ): Promise<void> {
+  stop();
+  const myGeneration = ++currentGeneration;
+
   try {
     const response = await fetch('/api/tts', {
       method: 'POST',
@@ -38,6 +43,8 @@ export async function speakWithVisemes(
     const data = await response.json();
     const { audio: audioBase64, visemes } = data;
 
+    if (myGeneration !== currentGeneration) return;
+
     const binaryStr = atob(audioBase64);
     const bytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) {
@@ -46,6 +53,12 @@ export async function speakWithVisemes(
 
     const audioCtx = new AudioContext();
     const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
+
+    if (myGeneration !== currentGeneration) {
+      audioCtx.close();
+      return;
+    }
+
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(audioCtx.destination);
@@ -66,9 +79,11 @@ export async function speakWithVisemes(
 
     return new Promise((resolve) => {
       const tick = () => {
-        if (cancelled.value) {
-          currentVisemeId = -1;
-          isAzureSpeaking = false;
+        if (cancelled.value || myGeneration !== currentGeneration) {
+          if (myGeneration === currentGeneration) {
+            currentVisemeId = -1;
+            isAzureSpeaking = false;
+          }
           resolve();
           return;
         }
@@ -93,7 +108,7 @@ export async function speakWithVisemes(
       tick();
 
       source.onended = () => {
-        if (!cancelled.value) {
+        if (!cancelled.value && myGeneration === currentGeneration) {
           currentVisemeId = -1;
           isAzureSpeaking = false;
           resolve();
@@ -101,13 +116,16 @@ export async function speakWithVisemes(
       };
     });
   } catch {
-    currentVisemeId = -1;
-    isAzureSpeaking = false;
+    if (myGeneration === currentGeneration) {
+      currentVisemeId = -1;
+      isAzureSpeaking = false;
+    }
     return speak(text, lang);
   }
 }
 
 export function stop(): void {
+  currentGeneration++;
   if (azureStopCallback) {
     azureStopCallback();
     azureStopCallback = null;
