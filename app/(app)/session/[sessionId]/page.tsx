@@ -465,13 +465,12 @@ export default function RoleplaySessionPage() {
           />
         </div>
 
-        {/* ── User over-shoulder: absolute bottom-40 right-3, w-32 h-48, z-10, opacity-80, no blur ──
-             Raised clear of the control bar (which is ~164px / bottom-40 tall at z-30 and was
-             covering the lower half of this box) and made much more visible — opacity-40 +
-             blur-[1px] against this dark backdrop was rendering correctly but was
-             indistinguishable from the black background. */}
+        {/* ── User over-shoulder: inset-y-0 right-0 w-[34%], z-10, opacity-80, no blur ──
+             Full-height panel mirrored from the AI avatar's left-side layout, at 34% width
+             so the user appears as a tall blurred over-the-shoulder figure in the foreground
+             right panel, matching the session_design mockup. */}
         <div
-          className="absolute bottom-40 right-3 w-32 h-48 z-10 pointer-events-none opacity-80"
+          className="absolute inset-y-0 right-0 w-[34%] z-10 pointer-events-none opacity-80"
         >
           <AvatarViewport
             name="You"

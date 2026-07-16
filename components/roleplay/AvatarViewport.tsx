@@ -692,7 +692,7 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
    Frames the camera after the model is grounded.
    ────────────────────────────────────────────────────────────────────────── */
 function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'front' | 'over-shoulder' }) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const framed = useRef(false);
 
   useEffect(() => {
@@ -700,18 +700,18 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
 
     const timer = setTimeout(() => {
       const box = new THREE.Box3().setFromObject(scene);
-      const size = box.getSize(new THREE.Vector3());
+      const boxSize = box.getSize(new THREE.Vector3());
 
       const isFinite3 = (v: THREE.Vector3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-      if (!isFinite3(box.min) || !isFinite3(box.max) || !isFinite3(size)) {
+      if (!isFinite3(box.min) || !isFinite3(box.max) || !isFinite3(boxSize)) {
         console.error('[AutoCamera] Non-finite bounding box — skipping framing to avoid losing the model', {
           min: box.min.toArray(), max: box.max.toArray(),
         });
         return;
       }
 
-      if (size.y < 0.1 || size.y > 100) {
-        console.warn('[AutoCamera] Unexpected model size — skipping', size.y);
+      if (boxSize.y < 0.1 || boxSize.y > 100) {
+        console.warn('[AutoCamera] Unexpected model size — skipping', boxSize.y);
         return;
       }
 
@@ -722,18 +722,22 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
       if (cameraMode === 'over-shoulder') {
-        // Model's front faces +z (confirmed by the 'front' branch below, which
-        // sits at positive z and looks back toward the origin). An over-the-
-        // shoulder shot needs the camera BEHIND the head (negative z) looking
-        // forward past it (positive z) — the previous values had both signs
-        // flipped, which put the camera in front of the face looking backward
-        // through the model, so nothing recognizable ever reached the frame.
-        camera.position.set(0.5, groundedHeight * 0.88, -groundedHeight * 0.25);
-        camera.lookAt(-0.1, groundedHeight * 0.82, 5);
+        // Full-height tall-narrow container (~34vw × 100vh): frame head +
+        // shoulders by calculating distance from FOV, like the front mode.
+        // Camera behind the head at eye level, looking slightly downward
+        // past the shoulder.
+        const visibleFraction = 0.28;
+        const focusY = groundedHeight * 0.90;
+        const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
+        camera.position.set(0.35, focusY + distance * 0.04, -distance);
+        camera.lookAt(-0.05, focusY - distance * 0.02, distance * 2);
 
         console.log('[AutoCamera] over-shoulder framing', {
           groundedHeight,
+          focusY,
+          distance,
           cameraPos: camera.position,
+          containerSize: size,
         });
       } else {
         const visibleFraction = 0.52;
