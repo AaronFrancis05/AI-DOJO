@@ -731,8 +731,8 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
         const visibleFraction = 0.28;
         const focusY = groundedHeight * 0.90;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(0.35, focusY + distance * 0.04, -distance);
-        camera.lookAt(-0.05, focusY - distance * 0.02, distance * 2);
+        camera.position.set(-0.35, focusY + distance * 0.04, -distance);
+        camera.lookAt(0.05, focusY - distance * 0.02, distance * 2);
 
         console.log('[AutoCamera] over-shoulder framing', {
           groundedHeight,
