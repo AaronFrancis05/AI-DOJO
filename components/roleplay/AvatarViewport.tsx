@@ -803,10 +803,12 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
         <EmotionLight emotion={emotion} />
         <Suspense fallback={null}>
           <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} />
-          <Environment preset="studio" />
           {cameraMode !== 'over-shoulder' && (
             <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={3} blur={2} far={4} />
           )}
+        </Suspense>
+        <Suspense fallback={null}>
+          <Environment files="/studio_small_03_1k.hdr" />
         </Suspense>
       </Canvas>
     </div>
