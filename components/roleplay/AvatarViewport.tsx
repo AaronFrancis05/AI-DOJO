@@ -725,15 +725,14 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
         // Full-height tall-narrow container (~34vw × 100vh): frame head +
         // shoulders by calculating distance from FOV, like the front mode.
         // Camera behind the head at eye level, looking slightly downward
-        // past the shoulder.
+        // past the shoulder. The model's yaw (+0.3 for over-shoulder) is
+        // mirrored from the front-mode yaw (-0.3) so the two avatars angle
+        // inward toward each other.
         const visibleFraction = 0.28;
         const focusY = groundedHeight * 0.90;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        // Model is now yawed ~90° CCW (Math.PI/2 - 0.3) to face screen-left
-        // toward the AI panel. The "behind the head" axis shifted from -z to
-        // +x, and the "past the shoulder" axis from +z to -x.
-        camera.position.set(distance, focusY + distance * 0.04, 0.15);
-        camera.lookAt(-distance * 2, focusY - distance * 0.02, 0);
+        camera.position.set(0.35, focusY + distance * 0.04, -distance);
+        camera.lookAt(-0.05, focusY - distance * 0.02, distance * 2);
 
         console.log('[AutoCamera] over-shoulder framing', {
           groundedHeight,
@@ -793,13 +792,11 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
     setClipsLoaded(true);
   }, []);
 
-  const yaw = cameraMode === 'front'
-    ? -Math.PI / 2 - 0.3
-    :  Math.PI / 2 - 0.3;
+  const facingYaw = cameraMode === 'over-shoulder' ? 0.3 : -0.3;
 
   return (
     <group>
-      <primitive object={scene} rotation={[0, yaw, 0]} />
+      <primitive object={scene} rotation={[0, facingYaw, 0]} />
       <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} />
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
