@@ -83,7 +83,7 @@ function SessionInfoPanel({
         <div className="space-y-3 text-sm">
           {domain?.name && (
             <div className="flex items-start justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Domain</span>
+              <span className="text-dojo-text-muted shrink-0">Scenario</span>
               <span className="text-dojo-text-primary font-medium text-right capitalize">
                 {domain.name.replace('_', ' ')}
               </span>
@@ -465,9 +465,13 @@ export default function RoleplaySessionPage() {
           />
         </div>
 
-        {/* ── User over-shoulder: absolute bottom-20 right-3, w-32 h-48, z-10, opacity-50, blur-[1px] ── */}
+        {/* ── User over-shoulder: absolute bottom-40 right-3, w-32 h-48, z-10, opacity-80, no blur ──
+             Raised clear of the control bar (which is ~164px / bottom-40 tall at z-30 and was
+             covering the lower half of this box) and made much more visible — opacity-40 +
+             blur-[1px] against this dark backdrop was rendering correctly but was
+             indistinguishable from the black background. */}
         <div
-          className="absolute bottom-16 right-2 w-28 h-44 z-10 pointer-events-none opacity-40 blur-[1px]"
+          className="absolute bottom-40 right-3 w-32 h-48 z-10 pointer-events-none opacity-80"
         >
           <AvatarViewport
             name="You"
