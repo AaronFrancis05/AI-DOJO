@@ -823,15 +823,11 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
     <div className="h-full w-full">
       <Canvas
         camera={{ position: [0, 0, 3], fov: 35 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
         onCreated={({ gl }) => {
-          gl.domElement.addEventListener('webglcontextlost', (e) => {
-            e.preventDefault();
-            console.error('[ThreeScene] WebGL context lost!', e);
-          });
           gl.domElement.addEventListener('webglcontextrestored', () => {
-            console.warn('[ThreeScene] WebGL context restored');
+            console.warn('[ThreeScene] WebGL context restored by R3F');
           });
         }}
       >
