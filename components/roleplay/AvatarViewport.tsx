@@ -141,9 +141,18 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
   const hasGesturesRef = useRef(false);
   const clipActions = useRef<Map<AnimClip, { clip: THREE.AnimationClip; action: THREE.AnimationAction | null }>>(new Map());
 
-  // Strip morph weight tracks from clips so MorphTargetController handles face
+  // Strip morph weight tracks (MorphTargetController handles the face) AND
+  // strip root-bone position tracks (prevents retargeted mocap root motion
+  // from translating the whole character away from world origin over time —
+  // AutoCamera frames once at mount and never re-frames, so any hip/root
+  // translation drift carries the avatar out of view within a few seconds).
   const stripMorphTracks = (clip: THREE.AnimationClip): THREE.AnimationClip => {
-    const bodyTracks = clip.tracks.filter(t => !t.name.endsWith('.weights'));
+    const bodyTracks = clip.tracks.filter(t => {
+      if (t.name.endsWith('.weights')) return false;
+      const [boneName, prop] = t.name.split('.');
+      if (prop === 'position' && /hips|root/i.test(boneName ?? '')) return false;
+      return true;
+    });
     if (bodyTracks.length === clip.tracks.length) return clip;
     return new THREE.AnimationClip(clip.name, clip.duration, bodyTracks);
   };
@@ -692,6 +701,14 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
     const timer = setTimeout(() => {
       const box = new THREE.Box3().setFromObject(scene);
       const size = box.getSize(new THREE.Vector3());
+
+      const isFinite3 = (v: THREE.Vector3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+      if (!isFinite3(box.min) || !isFinite3(box.max) || !isFinite3(size)) {
+        console.error('[AutoCamera] Non-finite bounding box — skipping framing to avoid losing the model', {
+          min: box.min.toArray(), max: box.max.toArray(),
+        });
+        return;
+      }
 
       if (size.y < 0.1 || size.y > 100) {
         console.warn('[AutoCamera] Unexpected model size — skipping', size.y);
