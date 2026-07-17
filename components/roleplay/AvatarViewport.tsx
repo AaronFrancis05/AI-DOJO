@@ -376,28 +376,28 @@ const ARKIT_INDEX: Record<string, number> = {
 type VisemeShapeMap = Partial<Record<keyof typeof ARKIT_INDEX, number>>;
 
 const VISEME_SHAPES: Record<number, VisemeShapeMap> = {
-  0:  { mouthClose: 0.2 },
-  1:  { jawOpen: 0.7 },
-  2:  { jawOpen: 1.0 },
-  3:  { jawOpen: 0.7, mouthFunnel: 0.5 },
-  4:  { jawOpen: 0.5, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
-  5:  { jawOpen: 0.6 },
-  6:  { jawOpen: 0.8, mouthFunnel: 0.3 },
-  7:  { jawOpen: 0.6, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
-  8:  { mouthClose: 0.8, mouthPressLeft: 0.2, mouthPressRight: 0.2 },
-  9:  { mouthPucker: 0.6, mouthFunnel: 0.3 },
-  10: { jawOpen: 0.3, mouthLeft: 0.1, mouthRight: 0.1 },
-  11: { jawOpen: 0.1, mouthPressLeft: 0.4, mouthPressRight: 0.4 },
-  12: { jawOpen: 0.5 },
-  13: { jawOpen: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 },
-  14: { jawOpen: 0.4 },
-  15: { jawOpen: 0.4 },
-  16: { jawOpen: 0.4, mouthPucker: 0.3 },
-  17: { jawOpen: 0.3 },
-  18: { jawOpen: 0.3 },
-  19: { jawOpen: 0.4, mouthPucker: 0.4 },
-  20: { jawOpen: 0.4, mouthPucker: 0.4 },
-  21: { mouthPucker: 0.5, mouthFunnel: 0.2 },
+  0:  { mouthClose: 1.0 },                                    // silence — lips sealed
+  1:  { jawOpen: 0.6, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 }, // A ("father")
+  2:  { jawOpen: 0.7, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 }, // AA ("hot")
+  3:  { mouthClose: 0.8, mouthPressLeft: 0.3, mouthPressRight: 0.3 }, // B, M, P (bilabial)
+  4:  { jawOpen: 0.3, mouthPucker: 0.4, mouthFunnel: 0.3 },  // CH, SH, ZH
+  5:  { jawOpen: 0.3, mouthPressLeft: 0.4, mouthPressRight: 0.4 }, // D, T, N (alveolar)
+  6:  { jawOpen: 0.4, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 }, // EH, EY ("red")
+  7:  { jawOpen: 0.3, mouthPucker: 0.2 },                      // ER ("her")
+  8:  { mouthClose: 0.5, mouthPressLeft: 0.3, mouthPressRight: 0.3 }, // F, V (labiodental)
+  9:  { jawOpen: 0.5 },                                        // K, G, NG (velar)
+  10: { jawOpen: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 }, // IY, IH ("see")
+  11: { jawOpen: 0.3, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 }, // J, Y
+  12: { jawOpen: 0.2, mouthLeft: 0.2, mouthRight: 0.2 },      // L
+  13: { jawOpen: 0.5, mouthFunnel: 0.7 },                      // OW, OY ("go")
+  14: { mouthPucker: 0.5 },                                    // R
+  15: { mouthClose: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 }, // S, Z (sibilant)
+  16: { jawOpen: 0.3, mouthPucker: 0.6, mouthFunnel: 0.5 },   // UH, UW ("too")
+  17: { mouthPucker: 0.6, mouthFunnel: 0.5 },                  // W
+  18: { mouthClose: 0.8 },                                     // breath/silence
+  19: {},                                                      // neutral
+  20: { jawOpen: 0.5, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 }, // AH ("but")
+  21: { mouthPucker: 0.5, mouthFunnel: 0.3 },                  // UH ("book")
 };
 
 const MISSING_SHAPE_WARNED = new Set<string>();
@@ -609,6 +609,7 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   const targetVisemeShapes = useRef<VisemeShapeMap>({});
   const currentVisemeShapes = useRef<VisemeShapeMap>({});
   const prevVisemeId = useRef(-1);
+  const fadingVisemeKeys = useRef<Set<string>>(new Set());
 
   const targetEmotionShapes = useMemo<EmotionShapeMap>(() => {
     if (emotion && EMOTION_SHAPES[emotion]) return EMOTION_SHAPES[emotion];
@@ -621,16 +622,31 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 
       const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
       if (visemeId !== prevVisemeId.current && visemeId >= 0) {
+        // Track keys from previous viseme so they fade out
+        for (const k of Object.keys(targetVisemeShapes.current)) {
+          fadingVisemeKeys.current.add(k);
+        }
         targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
         prevVisemeId.current = visemeId;
-      } else if (visemeId < 0) {
+      } else if (visemeId < 0 && prevVisemeId.current >= 0) {
+        // Speech just ended — transfer active keys to fading set
+        for (const k of Object.keys(targetVisemeShapes.current)) {
+          fadingVisemeKeys.current.add(k);
+        }
         targetVisemeShapes.current = {};
         prevVisemeId.current = -1;
+      }
+
+      // Remove fully-faded keys
+      for (const k of fadingVisemeKeys.current) {
+        const cur = currentVisemeShapes.current[k as keyof VisemeShapeMap] ?? 0;
+        if (cur < 0.01) fadingVisemeKeys.current.delete(k);
       }
 
       const allShapeKeys = new Set([
         ...Object.keys(targetVisemeShapes.current),
         ...Object.keys(targetEmotionShapes),
+        ...fadingVisemeKeys.current,
       ]);
 
       // Blink logic
@@ -659,7 +675,7 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
             const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
             const combined = Math.max(visemeTarget, emotionTarget);
             const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-            const smoothed = lerp(current, combined, delta * 10);
+            const smoothed = lerp(current, combined, Math.min(1, delta * 16));
             (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
             setShapeWeight(mesh, key, smoothed);
           }
