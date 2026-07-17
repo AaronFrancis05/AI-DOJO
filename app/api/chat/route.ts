@@ -134,7 +134,9 @@ export async function POST(req: Request) {
           conversationId: userConversation.id,
           correctionType: c.correctionType,
           originalText: c.originalText,
+          originalRomaji: c.originalRomaji ?? null,
           correctedText: c.correctedText,
+          correctedRomaji: c.correctedRomaji ?? null,
           explanation: c.explanation,
           severity: c.severity,
         }))

@@ -13,7 +13,9 @@ const ai = new GoogleGenAI({ apiKey: apiKey });
 export interface CorrectionItem {
   correctionType: string;
   originalText: string;
+  originalRomaji?: string | null;
   correctedText: string;
+  correctedRomaji?: string | null;
   explanation: string;
   severity: string;
 }
@@ -132,6 +134,9 @@ The AI character should be cooperative, friendly, and helpful. They should:
 - Be patient with the learner's language level
 - Provide a supportive learning environment`;
 
+  const correctionRomajiInstruction = hasRomaji
+    ? `      "originalRomaji": "Romaji of originalText (Japanese only, else null)",\n      "correctedRomaji": "Romaji of correctedText (Japanese only, else null)",`
+    : '';
   const romajiInstruction = hasRomaji
     ? `  - "romaji": "Romaji transcription of what the user said (only if target language is Japanese, otherwise null)"`
     : '';
@@ -153,11 +158,11 @@ ${modeInstruction}
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
 ===== LANGUAGE RULES =====
-- The conversation MUST be conducted in ${targetLangName}.
-- The AI character must speak in ${targetLangName}.
-- The user's input should ideally be in ${targetLangName}. If they use ${nativeLangName}, flag it.
-- Provide a ${nativeLangName} translation of each turn.
-${hasRomaji ? '- Provide romaji transcription for Japanese text.\n- Romaji is only relevant when target language is Japanese.' : '- Romaji is NOT relevant for this language — always set messageRomaji to null.'}
+- ROLEPLAY DIALOGUE (character speech) MUST be entirely in ${targetLangName}. Never let the AI character explain grammar, vocabulary, or cultural notes in the middle of their in-character line.
+- ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is. This is scaffolding, not dialogue, and must never switch to ${targetLangName} even partially.
+- The user's input should ideally be in ${targetLangName}. If they use ${nativeLangName} instead, flag it via isEnglishWhenExpected AND add a "wrong_language" correction — but still respond in-character in ${targetLangName}; do not let the AI character switch languages just because the user did.
+- Always provide a ${nativeLangName} translation of both the user's turn (messageNative) and the AI's turn (nextAiReply.native) so the learner can follow along without needing outside help.
+${hasRomaji ? '- Provide romaji transcription for Japanese target-language text (messageRomaji, nextAiReply.romaji, and correction romaji fields below).' : '- Romaji is NOT relevant for this language — always set romaji fields to null.'}
 
 ===== SCENARIO GOALS =====
 ${goalsBlock}
@@ -215,7 +220,7 @@ Provide your response strictly as a single JSON object matching this schema blue
     {
       "correctionType": "grammar",
       "originalText": "example with error",
-      "correctedText": "corrected version",
+${correctionRomajiInstruction}      "correctedText": "corrected version",
       "explanation": "Explanation of the correction in ${nativeLangName}",
       "severity": "minor"
     }
