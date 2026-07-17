@@ -453,8 +453,8 @@ export default function RoleplaySessionPage() {
         {/* Environment photo backdrop fills column (absolute z-0) */}
         <EnvironmentBackdrop domainSlug={domainSlug} />
 
-        {/* ── AI avatar canvas — centered, 60% width ── */}
-        <div className="absolute inset-y-0 left-[20%] w-[60%] z-10 pointer-events-none">
+        {/* ── AI avatar canvas — left half ── */}
+        <div className="absolute inset-y-0 left-0 w-1/2 z-10 pointer-events-none">
           <AvatarViewport
             name={charName}
             accentColor={charColor}
@@ -489,8 +489,8 @@ export default function RoleplaySessionPage() {
           </div>
         </div>
 
-        {/* ── Speech bubble: absolute top-14 left-4 right-3, z-20 ── */}
-        <div className="absolute top-14 left-[44%] right-3 z-20 space-y-3">
+        {/* ── Speech bubble: absolute top-14 right-3, starting just past avatar ── */}
+        <div className="absolute top-14 left-[52%] right-3 z-20 space-y-3">
           {sending ? (
             <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
               <div className="flex items-center gap-2">
