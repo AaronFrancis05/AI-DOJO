@@ -700,7 +700,7 @@ function AutoCamera({ scene, cameraMode, onFramed }: {
   cameraMode: 'front' | 'over-shoulder';
   onFramed?: () => void;
 }) {
-  const { camera, size } = useThree();
+  const { camera } = useThree();
   const framed = useRef(false);
 
   useEffect(() => {
@@ -734,20 +734,43 @@ function AutoCamera({ scene, cameraMode, onFramed }: {
       scene.position.y -= box.min.y;
       const groundedBox = new THREE.Box3().setFromObject(scene);
       const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
+      const center = groundedBox.getCenter(new THREE.Vector3());
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
+      // Camera OFFSET (distance, side-bias) stays fixed and does NOT derive
+      // from yaw — that's what avoids the coaxial cancellation bug (a camera
+      // whose offset chases yaw always ends up staring at exactly what the
+      // head faces, making rotation invisible). But position/lookAt are now
+      // built around the model's actual post-rotation bounding-box center
+      // instead of hardcoded world coordinates — so as the model turns
+      // further (e.g. the 0.5 rad partner-turn), its box recenters sideways
+      // and the camera follows that, keeping the subject in frame instead
+      // of swinging out of a fixed narrow crop tuned for the old, smaller
+      // rotation.
       if (cameraMode === 'over-shoulder') {
         const visibleFraction = 0.28;
-        const focusY = groundedHeight * 0.90;
+        const focusY = center.y + groundedHeight * 0.40;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(0.35, focusY + distance * 0.04, -distance);
-        camera.lookAt(-0.05, focusY - distance * 0.02, distance * 2);
+        camera.position.set(center.x + 0.35, focusY + distance * 0.04, center.z - distance);
+        camera.lookAt(center.x - 0.05, focusY - distance * 0.02, center.z + distance * 2);
+        console.log('[AutoCamera] over-shoulder framing', {
+          groundedHeight, center: center.toArray(), focusY, distance,
+          cameraPos: camera.position.toArray(),
+          cameraAspect: (camera as THREE.PerspectiveCamera).aspect,
+          cameraFov: (camera as THREE.PerspectiveCamera).fov,
+        });
       } else {
         const visibleFraction = 0.52;
-        const focusY = groundedHeight * 0.82;
+        const focusY = center.y + groundedHeight * 0.32;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(0.05, focusY + distance * 0.04, distance * 0.95);
-        camera.lookAt(0.05, focusY, 0);
+        camera.position.set(center.x + 0.05, focusY + distance * 0.04, center.z + distance * 0.95);
+        camera.lookAt(center.x, focusY, center.z);
+        console.log('[AutoCamera] front-mode waist-up', {
+          groundedHeight, center: center.toArray(), focusY, distance,
+          cameraPos: camera.position.toArray(),
+          cameraAspect: (camera as THREE.PerspectiveCamera).aspect,
+          cameraFov: (camera as THREE.PerspectiveCamera).fov,
+        });
       }
 
       framed.current = true;
@@ -796,7 +819,7 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
     ? window.__partnerTurn
     : 0.5;
   const yaw = cameraMode === 'front'
-    ? -0.3 + PARTNER_TURN_RAD
+    ? -0.3
     : -0.3 - PARTNER_TURN_RAD;
 
   return (

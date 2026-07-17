@@ -435,12 +435,12 @@ export default function RoleplaySessionPage() {
      Layout:
        ┌─────────────────────────────────┬────────────────┐
        │  SCENE AREA (flex-1)            │  INFO PANEL    │
-       │  ┌──────────┐  ┌────────────┐  │  (w-72 fixed)  │
-       │  │ AI avatar│  │speech+chips│  │                │
-       │  │ (waist-up│  │            │  │                │
-       │  │ left-40%)│  │            │  │                │
-       │  └──────────┘  └────────────┘  │                │
-       │     [user over-shoulder, right] │                │
+       │  ┌─────────────────────────┐    │  (w-72 fixed)  │
+       │  │     AI avatar           │    │                │
+       │  │     (centered 60%)      │    │                │
+       │  │                         │    │                │
+       │  └─────────────────────────┘    │                │
+       │  ─── speech bubble ───          │                │
        │  ─── control bar ───           │                │
        └─────────────────────────────────┴────────────────┘
      ═════════════════════════════════════════════════════════════════════ */
@@ -453,8 +453,8 @@ export default function RoleplaySessionPage() {
         {/* Environment photo backdrop fills column (absolute z-0) */}
         <EnvironmentBackdrop domainSlug={domainSlug} />
 
-        {/* ── AI avatar canvas — absolute inset-y-0 left-0, width 46%, z-10 ── */}
-        <div className="absolute inset-y-0 left-0 w-[46%] z-10 pointer-events-none">
+        {/* ── AI avatar canvas — centered, 60% width ── */}
+        <div className="absolute inset-y-0 left-[20%] w-[60%] z-10 pointer-events-none">
           <AvatarViewport
             name={charName}
             accentColor={charColor}
@@ -462,21 +462,6 @@ export default function RoleplaySessionPage() {
             emotion={latestAi?.emotionTone}
             gesture={latestAi?.gestureHint}
             cameraMode="front"
-          />
-        </div>
-
-        {/* ── User over-shoulder: inset-y-0 right-0 w-[34%], z-10, opacity-90, blur-[3px] ──
-             Full-height panel mirrored from the AI avatar's left-side layout, at 34% width
-             so the user appears as a tall blurred over-the-shoulder figure in the foreground
-             right panel, matching the session_design mockup. */}
-        <div
-          className="absolute inset-y-0 right-0 w-[34%] z-10 pointer-events-none opacity-90 blur-[3px]"
-        >
-          <AvatarViewport
-            name="You"
-            accentColor="#2D3BC5"
-            mode="idle"
-            cameraMode="over-shoulder"
           />
         </div>
 
@@ -504,7 +489,7 @@ export default function RoleplaySessionPage() {
           </div>
         </div>
 
-        {/* ── Speech bubble: absolute top-14 left-[44%] right-3, z-20 ── */}
+        {/* ── Speech bubble: absolute top-14 left-4 right-3, z-20 ── */}
         <div className="absolute top-14 left-[44%] right-3 z-20 space-y-3">
           {sending ? (
             <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
