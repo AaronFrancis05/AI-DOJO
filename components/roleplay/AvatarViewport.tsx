@@ -691,10 +691,11 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 /* ── AutoCamera ─────────────────────────────────────────────────────────────
    Frames the camera after the model is grounded.
    ────────────────────────────────────────────────────────────────────────── */
-function AutoCamera({ scene, cameraMode, yaw }: {
+function AutoCamera({ scene, cameraMode, yaw, onFramed }: {
   scene: THREE.Group;
   cameraMode: 'front' | 'over-shoulder';
   yaw: number;
+  onFramed?: () => void;
 }) {
   const { camera, size } = useThree();
   const framed = useRef(false);
@@ -702,83 +703,62 @@ function AutoCamera({ scene, cameraMode, yaw }: {
   useEffect(() => {
     if (!scene || framed.current) return;
 
-    const timer = setTimeout(() => {
+    let rafId: number;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60;
+
+    const tryFrame = () => {
+      attempts += 1;
       const box = new THREE.Box3().setFromObject(scene);
       const boxSize = box.getSize(new THREE.Vector3());
+      const isFinite3 = (v: THREE.Vector3) =>
+        Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 
-      const isFinite3 = (v: THREE.Vector3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-      if (!isFinite3(box.min) || !isFinite3(box.max) || !isFinite3(boxSize)) {
-        console.error('[AutoCamera] Non-finite bounding box — skipping framing', {
-          min: box.min.toArray(), max: box.max.toArray(),
-        });
-        return;
-      }
+      const boxValid = isFinite3(box.min) && isFinite3(box.max) && isFinite3(boxSize)
+        && boxSize.y >= 0.1 && boxSize.y <= 100;
 
-      if (boxSize.y < 0.1 || boxSize.y > 100) {
-        console.warn('[AutoCamera] Unexpected model size — skipping', boxSize.y);
+      if (!boxValid) {
+        if (attempts >= MAX_ATTEMPTS) {
+          console.error('[AutoCamera] Gave up framing after', attempts, 'attempts — bounding box never became valid', {
+            min: box.min.toArray(), max: box.max.toArray(), boxSize: boxSize.toArray(),
+          });
+          return;
+        }
+        rafId = requestAnimationFrame(tryFrame);
         return;
       }
 
       scene.position.y -= box.min.y;
-
       const groundedBox = new THREE.Box3().setFromObject(scene);
       const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
-
       const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
 
       if (cameraMode === 'over-shoulder') {
         const visibleFraction = 0.28;
         const focusY = groundedHeight * 0.90;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-
-        camera.position.set(
-          -forward.x * distance + 0.05,
-          focusY + distance * 0.04,
-          -forward.z * distance,
-        );
-        camera.lookAt(
-          forward.x * distance * 2,
-          focusY - distance * 0.02,
-          forward.z * distance * 2,
-        );
-
-        console.log('[AutoCamera] over-shoulder framing', {
-          groundedHeight,
-          focusY,
-          distance,
-          yaw,
-          forward: forward.toArray(),
-          cameraPos: camera.position,
-          containerSize: size,
-        });
+        camera.position.set(-forward.x * distance + 0.05, focusY + distance * 0.04, -forward.z * distance);
+        camera.lookAt(forward.x * distance * 2, focusY - distance * 0.02, forward.z * distance * 2);
       } else {
         const visibleFraction = 0.52;
         const focusY = groundedHeight * 0.82;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-
-        camera.position.set(
-          forward.x * distance * 0.95,
-          focusY + distance * 0.04,
-          forward.z * distance * 0.95,
-        );
+        camera.position.set(forward.x * distance * 0.95, focusY + distance * 0.04, forward.z * distance * 0.95);
         camera.lookAt(0, focusY, 0);
-
-        console.log('[AutoCamera] front-mode waist-up', {
-          groundedHeight,
-          focusY,
-          distance,
-          yaw,
-          forward: forward.toArray(),
-          cameraPos: camera.position,
-        });
       }
 
       framed.current = true;
-    }, 200);
+      onFramed?.();
+    };
 
-    return () => clearTimeout(timer);
-  }, [scene, camera, cameraMode, yaw]);
+    const initialDelay = setTimeout(() => { rafId = requestAnimationFrame(tryFrame); }, 200);
+
+    return () => {
+      clearTimeout(initialDelay);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [scene, camera, cameraMode, yaw, onFramed]);
 
   return null;
 }
@@ -787,9 +767,10 @@ function AutoCamera({ scene, cameraMode, yaw }: {
    Loads the GLB, applies rest-pose bone correction, animation controller,
    and morph-target OR fallback pose controller.
    ────────────────────────────────────────────────────────────────────────── */
-function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
+function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
   url: string;
   cameraMode?: 'front' | 'over-shoulder';
+  onFramed?: () => void;
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
@@ -817,7 +798,7 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
   return (
     <group>
       <primitive object={scene} rotation={[0, yaw, 0]} />
-      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} yaw={yaw} />
+      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} yaw={yaw} onFramed={onFramed} />
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
         <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
@@ -832,9 +813,10 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
 }
 
 /* ── ThreeScene ─────────────────────────────────── */
-function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
+function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, onFramed }: {
   modelUrl: string;
   cameraMode?: 'front' | 'over-shoulder';
+  onFramed?: () => void;
 } & AvatarAnimationProps) {
   return (
     <div className="h-full w-full">
@@ -854,7 +836,7 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
         <directionalLight position={[0, -2, 2]} intensity={0.2} />
         <EmotionLight emotion={emotion} />
         <Suspense fallback={null}>
-          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} />
+          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} onFramed={onFramed} />
           {cameraMode !== 'over-shoulder' && (
             <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={3} blur={2} far={4} />
           )}
@@ -887,6 +869,7 @@ export function AvatarViewport({
   cameraMode?: 'front' | 'over-shoulder';
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
+  const [framed, setFramed] = useState(false);
 
   useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
 
@@ -915,13 +898,16 @@ export function AvatarViewport({
     <div className="relative h-full w-full">
       <DevOverlay />
       <AvatarErrorBoundary>
-        <ThreeScene
-          modelUrl="/avatar.glb"
-          mode={mode}
-          emotion={emotion}
-          gesture={gesture}
-          cameraMode={cameraMode}
-        />
+        <div className={`h-full w-full transition-opacity duration-200 ${framed ? 'opacity-100' : 'opacity-0'}`}>
+          <ThreeScene
+            modelUrl="/avatar.glb"
+            mode={mode}
+            emotion={emotion}
+            gesture={gesture}
+            cameraMode={cameraMode}
+            onFramed={() => setFramed(true)}
+          />
+        </div>
       </AvatarErrorBoundary>
     </div>
   );
