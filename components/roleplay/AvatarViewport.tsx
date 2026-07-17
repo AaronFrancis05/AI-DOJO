@@ -691,7 +691,11 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 /* ── AutoCamera ─────────────────────────────────────────────────────────────
    Frames the camera after the model is grounded.
    ────────────────────────────────────────────────────────────────────────── */
-function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'front' | 'over-shoulder' }) {
+function AutoCamera({ scene, cameraMode, yaw }: {
+  scene: THREE.Group;
+  cameraMode: 'front' | 'over-shoulder';
+  yaw: number;
+}) {
   const { camera, size } = useThree();
   const framed = useRef(false);
 
@@ -704,7 +708,7 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
 
       const isFinite3 = (v: THREE.Vector3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
       if (!isFinite3(box.min) || !isFinite3(box.max) || !isFinite3(boxSize)) {
-        console.error('[AutoCamera] Non-finite bounding box — skipping framing to avoid losing the model', {
+        console.error('[AutoCamera] Non-finite bounding box — skipping framing', {
           min: box.min.toArray(), max: box.max.toArray(),
         });
         return;
@@ -721,23 +725,30 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
       const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
+      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+
       if (cameraMode === 'over-shoulder') {
-        // Full-height tall-narrow container (~34vw × 100vh): frame head +
-        // shoulders by calculating distance from FOV, like the front mode.
-        // Camera behind the head at eye level, looking slightly downward
-        // past the shoulder. The model's yaw (+0.3 for over-shoulder) is
-        // mirrored from the front-mode yaw (-0.3) so the two avatars angle
-        // inward toward each other.
         const visibleFraction = 0.28;
         const focusY = groundedHeight * 0.90;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(-0.35, focusY + distance * 0.04, -distance);
-        camera.lookAt(0.05, focusY - distance * 0.02, distance * 2);
+
+        camera.position.set(
+          -forward.x * distance + 0.05,
+          focusY + distance * 0.04,
+          -forward.z * distance,
+        );
+        camera.lookAt(
+          forward.x * distance * 2,
+          focusY - distance * 0.02,
+          forward.z * distance * 2,
+        );
 
         console.log('[AutoCamera] over-shoulder framing', {
           groundedHeight,
           focusY,
           distance,
+          yaw,
+          forward: forward.toArray(),
           cameraPos: camera.position,
           containerSize: size,
         });
@@ -746,13 +757,19 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
         const focusY = groundedHeight * 0.82;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
 
-        camera.position.set(0.05, focusY + distance * 0.04, distance * 0.95);
-        camera.lookAt(0.05, focusY, 0);
+        camera.position.set(
+          forward.x * distance * 0.95,
+          focusY + distance * 0.04,
+          forward.z * distance * 0.95,
+        );
+        camera.lookAt(0, focusY, 0);
 
         console.log('[AutoCamera] front-mode waist-up', {
           groundedHeight,
           focusY,
           distance,
+          yaw,
+          forward: forward.toArray(),
           cameraPos: camera.position,
         });
       }
@@ -761,7 +778,7 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [scene, camera, cameraMode]);
+  }, [scene, camera, cameraMode, yaw]);
 
   return null;
 }
@@ -792,12 +809,15 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
     setClipsLoaded(true);
   }, []);
 
-  const facingYaw = cameraMode === 'over-shoulder' ? 0.3 : -0.3;
+  const PARTNER_TURN_RAD = 0.35;
+  const yaw = cameraMode === 'front'
+    ? -0.3 + PARTNER_TURN_RAD
+    : -0.3 - PARTNER_TURN_RAD;
 
   return (
     <group>
-      <primitive object={scene} rotation={[0, facingYaw, 0]} />
-      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} />
+      <primitive object={scene} rotation={[0, yaw, 0]} />
+      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} yaw={yaw} />
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
         <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
