@@ -7,6 +7,10 @@ import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { getCurrentViseme } from '@/lib/roleplay/tts';
 
+declare global {
+  interface Window { __partnerTurn?: number; }
+}
+
 type AvatarMode = 'idle' | 'listening' | 'talking';
 
 interface AvatarAnimationProps {
@@ -691,10 +695,9 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 /* ── AutoCamera ─────────────────────────────────────────────────────────────
    Frames the camera after the model is grounded.
    ────────────────────────────────────────────────────────────────────────── */
-function AutoCamera({ scene, cameraMode, yaw, onFramed }: {
+function AutoCamera({ scene, cameraMode, onFramed }: {
   scene: THREE.Group;
   cameraMode: 'front' | 'over-shoulder';
-  yaw: number;
   onFramed?: () => void;
 }) {
   const { camera, size } = useThree();
@@ -732,20 +735,19 @@ function AutoCamera({ scene, cameraMode, yaw, onFramed }: {
       const groundedBox = new THREE.Box3().setFromObject(scene);
       const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
 
       if (cameraMode === 'over-shoulder') {
         const visibleFraction = 0.28;
         const focusY = groundedHeight * 0.90;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(-forward.x * distance + 0.05, focusY + distance * 0.04, -forward.z * distance);
-        camera.lookAt(forward.x * distance * 2, focusY - distance * 0.02, forward.z * distance * 2);
+        camera.position.set(0.35, focusY + distance * 0.04, -distance);
+        camera.lookAt(-0.05, focusY - distance * 0.02, distance * 2);
       } else {
         const visibleFraction = 0.52;
         const focusY = groundedHeight * 0.82;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(forward.x * distance * 0.95, focusY + distance * 0.04, forward.z * distance * 0.95);
-        camera.lookAt(0, focusY, 0);
+        camera.position.set(0.05, focusY + distance * 0.04, distance * 0.95);
+        camera.lookAt(0.05, focusY, 0);
       }
 
       framed.current = true;
@@ -758,7 +760,7 @@ function AutoCamera({ scene, cameraMode, yaw, onFramed }: {
       clearTimeout(initialDelay);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [scene, camera, cameraMode, yaw, onFramed]);
+  }, [scene, camera, cameraMode, onFramed]);
 
   return null;
 }
@@ -790,7 +792,9 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
     setClipsLoaded(true);
   }, []);
 
-  const PARTNER_TURN_RAD = 0.35;
+  const PARTNER_TURN_RAD = typeof window !== 'undefined' && window.__partnerTurn !== undefined
+    ? window.__partnerTurn
+    : 0.5;
   const yaw = cameraMode === 'front'
     ? -0.3 + PARTNER_TURN_RAD
     : -0.3 - PARTNER_TURN_RAD;
@@ -798,7 +802,7 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
   return (
     <group>
       <primitive object={scene} rotation={[0, yaw, 0]} />
-      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} yaw={yaw} onFramed={onFramed} />
+      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} />
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
         <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
