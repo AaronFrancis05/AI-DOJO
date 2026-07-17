@@ -1,5 +1,5 @@
 import { db } from '../../../src/db';
-import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations } from '../../../src/schema';
+import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import { getTargetLangConfig } from '../../../lib/language';
 import { eq, and, asc } from 'drizzle-orm';
@@ -204,6 +204,56 @@ export async function POST(req: Request) {
         taskScore: mlPipelineOutput.scores.task,
         feedback: mlPipelineOutput.feedback,
       });
+
+      // XP & streak update
+      const totalScore =
+        mlPipelineOutput.scores.vocabulary +
+        mlPipelineOutput.scores.grammar +
+        mlPipelineOutput.scores.fluency +
+        mlPipelineOutput.scores.cultural +
+        mlPipelineOutput.scores.task;
+      const xpGained = Math.round(totalScore * 2.5 + 25);
+
+      const [userRow] = await db.select({
+        xp: users.xp,
+        streak: users.streak,
+        lastActiveDate: users.lastActiveDate,
+      }).from(users).where(eq(users.id, user.id));
+
+      if (userRow) {
+        const today = new Date().toISOString().slice(0, 10);
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        let newStreak = userRow.streak;
+        if (userRow.lastActiveDate === today) {
+          // same day, keep streak
+        } else if (userRow.lastActiveDate === yesterday) {
+          newStreak += 1;
+        } else {
+          newStreak = 1;
+        }
+
+        const newXp = userRow.xp + xpGained;
+        let newLevel: string;
+        let newXpToNext: number;
+        if (newXp >= 6000) {
+          newLevel = 'advanced';
+          newXpToNext = 10000;
+        } else if (newXp >= 2000) {
+          newLevel = 'intermediate';
+          newXpToNext = 6000;
+        } else {
+          newLevel = 'beginner';
+          newXpToNext = 2000;
+        }
+
+        await db.update(users).set({
+          xp: newXp,
+          level: newLevel,
+          xpToNext: newXpToNext,
+          streak: newStreak,
+          lastActiveDate: today,
+        }).where(eq(users.id, user.id));
+      }
     } else {
       await db.update(sessions).set({
         totalTurns: currentTurnNo,

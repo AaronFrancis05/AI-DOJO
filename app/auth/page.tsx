@@ -8,6 +8,7 @@ import PasswordInput from '@/components/PasswordInput';
 import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { MailIcon, UserIcon, LoaderIcon, AlertCircleIcon, GoogleLogo, Trophy } from '@/components/Icons';
 import { Mic2, Star, BarChart3, Zap } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -71,7 +72,7 @@ export default function AuthPage() {
       <div className="flex w-full flex-col overflow-y-auto bg-dojo-sidebar lg:w-[480px] shrink-0">
         <div className="flex items-center justify-between border-b border-dojo-border px-8 py-5">
           <div className="text-lg font-bold text-dojo-text-primary">
-            🥋 AI DOJO
+            <Link href="/">🥋 AI DOJO</Link>
           </div>
           {isLogin ? (
             <div className="text-sm text-dojo-text-muted">
@@ -248,9 +249,9 @@ export default function AuthPage() {
               {/* TOP — Japanese greeting */}
               <div className="ml-auto max-w-xs rounded-2xl rounded-tr-none border border-dojo-border bg-dojo-surface-raised/90 p-4 shadow-xl backdrop-blur-md">
                 <div className="text-sm font-medium leading-relaxed text-dojo-text-primary">
-                  おかえりなさい、Alexさん！
+                  おかえり！
                 </div>
-                <div className="mt-1 text-xs text-dojo-text-muted">Welcome back, Alex!</div>
+                <div className="mt-1 text-xs text-dojo-text-muted">Welcome back!</div>
                 <div className="my-2 h-px bg-dojo-border" />
                 <div className="text-sm font-medium text-dojo-text-primary">
                   今日も一緒に頑張りましょう！
@@ -258,39 +259,7 @@ export default function AuthPage() {
                 <div className="mt-1 text-xs text-dojo-text-muted">Let&apos;s do our best today!</div>
               </div>
 
-              {/* BOTTOM — Stats card */}
-              <div className="rounded-2xl border border-dojo-border bg-dojo-surface-raised/90 p-5 shadow-xl backdrop-blur-md">
-                <div className="flex flex-col">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-dojo-text-muted">Today&apos;s Plan</div>
-                  <div className="mt-1 text-sm font-bold text-dojo-text-primary">Restaurant Challenge</div>
-                  <div className="mt-1 inline-block rounded bg-dojo-warning/20 px-2 py-0.5 text-[10px] text-dojo-warning w-fit">
-                    Intermediate
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-4 border-t border-dojo-border pt-4 text-center">
-                  <div>
-                    <div className="text-lg font-bold text-dojo-text-primary">1,250</div>
-                    <div className="mt-0.5 text-[10px] text-dojo-text-muted">XP Earned</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-dojo-text-primary">12 days</div>
-                    <div className="mt-0.5 text-[10px] text-dojo-text-muted">Streak</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-bold text-dojo-text-primary">8</div>
-                    <div className="mt-0.5 text-[10px] text-dojo-text-muted">Sessions</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 border-t border-dojo-border pt-4">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-dojo-text-muted">Recent Achievement</div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <Trophy className="text-dojo-warning h-4 w-4" />
-                    <span className="text-sm text-dojo-text-primary">Completed 3 roleplay sessions</span>
-                  </div>
-                </div>
-              </div>
+              
             </div>
           </>
         ) : (

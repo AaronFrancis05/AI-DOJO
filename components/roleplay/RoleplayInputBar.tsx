@@ -18,10 +18,35 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [micReady, setMicReady] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef('');
 
-  const startListening = useCallback(() => {
+  useEffect(() => {
+    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
+        setMicReady(true);
+      }).catch(() => {});
+    }
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      setIsListening(false);
+      const finalText = finalTranscriptRef.current.trim();
+      if (finalText) {
+        onSend(finalText);
+        setText('');
+        finalTranscriptRef.current = '';
+      }
+      return;
+    }
+
     if (roleplayCapabilities.stt === 'disabled') return;
 
     const SpeechRecognition =
@@ -31,31 +56,39 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'ja-JP';
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setText(transcript);
-      setIsListening(false);
-      onSend(transcript);
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          final += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      if (final) {
+        finalTranscriptRef.current += final;
+        setText(finalTranscriptRef.current);
+      } else {
+        setText(finalTranscriptRef.current + interim);
+      }
     };
 
     recognition.onerror = () => { setIsListening(false); };
-    recognition.onend = () => { setIsListening(false); };
+    recognition.onend = () => {
+      if (recognitionRef.current === recognition) {
+        setIsListening(false);
+      }
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
-  }, [onSend]);
-
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    setIsListening(false);
-  }, []);
+  }, [isListening, onSend]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -164,12 +197,8 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
                 <div className="absolute inset-0 rounded-full bg-dojo-danger animate-ping opacity-20" />
               )}
               
-              <button
-                onMouseDown={startListening}
-                onMouseUp={stopListening}
-                onMouseLeave={stopListening}
-                onTouchStart={startListening}
-                onTouchEnd={stopListening}
+               <button
+                onClick={toggleListening}
                 className={cn(
                   "relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-4 transition-all duration-300 shadow-2xl",
                   isListening
@@ -185,7 +214,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
               "mt-3 text-[11px] font-bold tracking-widest uppercase transition-all duration-300",
               isListening ? "text-dojo-danger animate-pulse" : "text-dojo-text-muted"
             )}>
-              {isListening ? "Listening..." : "Hold to Talk"}
+              {isListening ? "Listening..." : micReady ? "Tap to Speak" : "Allow Mic"}
             </p>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { db } from '../src/db';
 import { domains, situations, characters } from '../src/schema';
-import { eq } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 const domainFixtures = [
   { slug: 'restaurant', name: 'Restaurant', description: 'Order food, make reservations, handle special requests', icon: 'UtensilsCrossed', heroGradientFrom: '#D14343', heroGradientTo: '#7A1F1F', situationCount: 8, displayOrder: 1 },
@@ -65,61 +65,81 @@ const situationFixtures = [
 async function seedDomainData() {
   console.log('=== Domain Data Seeder ===\n');
 
+  let domainMap: Map<string, number>;
+
   const existingDomains = await db.select().from(domains);
   if (existingDomains.length > 0) {
-    console.log(`Domains table already has ${existingDomains.length} rows. Skipping seed.`);
-    console.log('Run "TRUNCATE domains CASCADE" first if you want to re-seed.\n');
-    return;
+    console.log(`Domains table already has ${existingDomains.length} rows. Checking for missing situations...\n`);
+    domainMap = new Map(existingDomains.map(d => [d.slug, d.id]));
+  } else {
+    console.log('Seeding domains...');
+    const insertedDomains = await db.insert(domains).values(domainFixtures).returning();
+    domainMap = new Map(insertedDomains.map(d => [d.slug, d.id]));
+    console.log(`  Inserted ${insertedDomains.length} domains.\n`);
+
+    console.log('Seeding characters...');
+    const insertedCharacters = await db.insert(characters).values(
+      characterFixtures.map(c => ({
+        ...c,
+        defaultForDomainId: domainMap.get(
+          c.name === 'Yuki Tanaka' ? 'restaurant' :
+          c.name === 'Kenji Sato' ? 'hotel' :
+          c.name === 'Miyuki Nakamura' ? 'hospital' :
+          c.name === 'Takeshi Yamamoto' ? 'travel' :
+          c.name === 'Hana Kimura' ? 'shopping' :
+          c.name === 'Ryo Aoki' ? 'airport' :
+          c.name === 'Takashi Mori' ? 'business' : 'daily_life'
+        ) ?? null,
+      }))
+    ).returning();
+    console.log(`  Inserted ${insertedCharacters.length} characters.\n`);
   }
 
-  console.log('Seeding domains...');
-  const insertedDomains = await db.insert(domains).values(domainFixtures).returning();
-  const domainMap = new Map(insertedDomains.map(d => [d.slug, d.id]));
-  console.log(`  Inserted ${insertedDomains.length} domains.\n`);
+  // Upsert situations — insert only those not already present by title
+  console.log('Upserting situations...');
+  const allFixtureTitles = situationFixtures.map(sf => sf.title);
+  const existingRows = await db.select({ title: situations.title })
+    .from(situations)
+    .where(inArray(situations.title, allFixtureTitles));
+  const existingTitles = new Set(existingRows.map(r => r.title));
 
-  console.log('Seeding characters...');
-  const insertedCharacters = await db.insert(characters).values(
-    characterFixtures.map(c => ({
-      ...c,
-      defaultForDomainId: domainMap.get(
-        c.name === 'Yuki Tanaka' ? 'restaurant' :
-        c.name === 'Kenji Sato' ? 'hotel' :
-        c.name === 'Miyuki Nakamura' ? 'hospital' :
-        c.name === 'Takeshi Yamamoto' ? 'travel' :
-        c.name === 'Hana Kimura' ? 'shopping' :
-        c.name === 'Ryo Aoki' ? 'airport' :
-        c.name === 'Takashi Mori' ? 'business' : 'daily_life'
-      ) ?? null,
-    }))
-  ).returning();
-  console.log(`  Inserted ${insertedCharacters.length} characters.\n`);
+  const toInsert = situationFixtures
+    .map(sf => {
+      const domainId = domainMap.get(sf.domainSlug);
+      if (!domainId) {
+        console.warn(`  [WARN] No domain id for slug "${sf.domainSlug}", skipping "${sf.title}"`);
+        return null;
+      }
+      if (existingTitles.has(sf.title)) return null;
+      return {
+        domainId,
+        title: sf.title,
+        context: sf.context,
+        skillLevel: sf.skillLevel,
+        behaviorMode: sf.behaviorMode as 'standard' | 'trouble',
+        learningGoals: sf.learningGoals,
+        focusPills: sf.focusPills,
+        displayOrder: sf.displayOrder,
+      };
+    })
+    .filter(Boolean) as any[];
 
-  console.log('Seeding situations...');
-  const situationValues = situationFixtures.map(sf => {
-    const domainId = domainMap.get(sf.domainSlug);
-    if (!domainId) {
-      console.warn(`  [WARN] No domain id for slug "${sf.domainSlug}", skipping situation "${sf.title}"`);
-      return null;
-    }
-    return {
-      domainId,
-      title: sf.title,
-      context: sf.context,
-      skillLevel: sf.skillLevel,
-      behaviorMode: sf.behaviorMode as 'standard' | 'trouble',
-      learningGoals: sf.learningGoals,
-      focusPills: sf.focusPills,
-      displayOrder: sf.displayOrder,
-    };
-  }).filter(Boolean) as any[];
+  if (toInsert.length > 0) {
+    await db.insert(situations).values(toInsert);
+  }
+  console.log(`  Inserted ${toInsert.length} new situations, ${allFixtureTitles.length - toInsert.length} already exist.\n`);
 
-  await db.insert(situations).values(situationValues);
-  console.log(`  Inserted ${situationValues.length} situations.\n`);
+  // Update situationCount on each domain to match actual count
+  for (const [slug, id] of domainMap) {
+    const rows = await db.select({ count: sql<number>`count(*)` })
+      .from(situations)
+      .where(eq(situations.domainId, id));
+    const n = Number(rows[0]?.count ?? 0);
+    await db.update(domains).set({ situationCount: n }).where(eq(domains.id, id));
+  }
+  console.log('  Updated domain situationCounts.\n');
 
   console.log('=== Seed Complete ===');
-  console.log(`  Domains:    ${insertedDomains.length}`);
-  console.log(`  Characters: ${insertedCharacters.length}`);
-  console.log(`  Situations: ${situationValues.length}`);
 }
 
 seedDomainData().catch((err) => {

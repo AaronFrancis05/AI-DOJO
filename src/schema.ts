@@ -13,6 +13,7 @@ export const users = pgTable('users', {
   nativeLanguage:        varchar('native_language', { length: 10 }).default('en').notNull(),
   preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('ja').notNull(),
   streak:                integer('streak').default(0).notNull(),
+  lastActiveDate:        varchar('last_active_date', { length: 10 }),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
   googleId:              varchar('google_id', { length: 255 }),
