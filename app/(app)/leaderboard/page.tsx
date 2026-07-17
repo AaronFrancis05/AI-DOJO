@@ -7,13 +7,14 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { getLeaderboardGlobal } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
+import { skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
 import { Trophy, Medal, Flame } from 'lucide-react';
 
 interface LeaderboardEntry {
   rank: number;
   userId: string;
   name: string;
-  level: number;
+  level: string;
   xp: number;
   sessionsCompleted: number;
   averageScore: number;
@@ -78,7 +79,7 @@ export default function LeaderboardPage() {
                   <div>
                     <p className="text-base font-semibold text-dojo-text-primary">{currentUser.name}</p>
                     <div className="flex items-center gap-3 mt-0.5">
-                      <Badge variant="accent">Level {currentUser.level}</Badge>
+                      <Badge variant={currentUser.level as SkillLevel}>{currentUser.level}</Badge>
                       <span className="text-xs text-dojo-text-muted">{currentUser.xp} XP</span>
                     </div>
                   </div>
@@ -152,13 +153,21 @@ function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-dojo-text-primary truncate">{entry.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <Badge variant="accent">Level {entry.level}</Badge>
+              <Badge variant={entry.level as SkillLevel}>{entry.level}</Badge>
               <span className="text-xs text-dojo-text-muted">{entry.sessionsCompleted} sessions</span>
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-sm font-semibold text-dojo-text-primary">{entry.xp.toLocaleString()}</p>
-            <p className="text-xs text-dojo-text-muted">XP</p>
+          <div className="text-right shrink-0 flex items-center gap-3">
+            {entry.streak > 0 && (
+              <div className="flex items-center gap-1">
+                <Flame className="h-4 w-4 text-dojo-streak" />
+                <span className="text-xs font-medium text-dojo-streak">{entry.streak}</span>
+              </div>
+            )}
+            <div>
+              <p className="text-sm font-semibold text-dojo-text-primary">{entry.xp.toLocaleString()}</p>
+              <p className="text-xs text-dojo-text-muted">XP</p>
+            </div>
           </div>
         </div>
       ))}

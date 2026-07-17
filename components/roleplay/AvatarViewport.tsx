@@ -7,6 +7,10 @@ import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { getCurrentViseme } from '@/lib/roleplay/tts';
 
+declare global {
+  interface Window { __partnerTurn?: number; }
+}
+
 type AvatarMode = 'idle' | 'listening' | 'talking';
 
 interface AvatarAnimationProps {
@@ -372,28 +376,28 @@ const ARKIT_INDEX: Record<string, number> = {
 type VisemeShapeMap = Partial<Record<keyof typeof ARKIT_INDEX, number>>;
 
 const VISEME_SHAPES: Record<number, VisemeShapeMap> = {
-  0:  { mouthClose: 0.2 },
-  1:  { jawOpen: 0.7 },
-  2:  { jawOpen: 1.0 },
-  3:  { jawOpen: 0.7, mouthFunnel: 0.5 },
-  4:  { jawOpen: 0.5, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
-  5:  { jawOpen: 0.6 },
-  6:  { jawOpen: 0.8, mouthFunnel: 0.3 },
-  7:  { jawOpen: 0.6, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
-  8:  { mouthClose: 0.8, mouthPressLeft: 0.2, mouthPressRight: 0.2 },
-  9:  { mouthPucker: 0.6, mouthFunnel: 0.3 },
-  10: { jawOpen: 0.3, mouthLeft: 0.1, mouthRight: 0.1 },
-  11: { jawOpen: 0.1, mouthPressLeft: 0.4, mouthPressRight: 0.4 },
-  12: { jawOpen: 0.5 },
-  13: { jawOpen: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 },
-  14: { jawOpen: 0.4 },
-  15: { jawOpen: 0.4 },
-  16: { jawOpen: 0.4, mouthPucker: 0.3 },
-  17: { jawOpen: 0.3 },
-  18: { jawOpen: 0.3 },
-  19: { jawOpen: 0.4, mouthPucker: 0.4 },
-  20: { jawOpen: 0.4, mouthPucker: 0.4 },
-  21: { mouthPucker: 0.5, mouthFunnel: 0.2 },
+  0:  { mouthClose: 1.0 },                                    // silence — lips sealed
+  1:  { jawOpen: 0.6, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 }, // A ("father")
+  2:  { jawOpen: 0.7, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 }, // AA ("hot")
+  3:  { mouthClose: 0.8, mouthPressLeft: 0.3, mouthPressRight: 0.3 }, // B, M, P (bilabial)
+  4:  { jawOpen: 0.3, mouthPucker: 0.4, mouthFunnel: 0.3 },  // CH, SH, ZH
+  5:  { jawOpen: 0.3, mouthPressLeft: 0.4, mouthPressRight: 0.4 }, // D, T, N (alveolar)
+  6:  { jawOpen: 0.4, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 }, // EH, EY ("red")
+  7:  { jawOpen: 0.3, mouthPucker: 0.2 },                      // ER ("her")
+  8:  { mouthClose: 0.5, mouthPressLeft: 0.3, mouthPressRight: 0.3 }, // F, V (labiodental)
+  9:  { jawOpen: 0.5 },                                        // K, G, NG (velar)
+  10: { jawOpen: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 }, // IY, IH ("see")
+  11: { jawOpen: 0.3, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 }, // J, Y
+  12: { jawOpen: 0.2, mouthLeft: 0.2, mouthRight: 0.2 },      // L
+  13: { jawOpen: 0.5, mouthFunnel: 0.7 },                      // OW, OY ("go")
+  14: { mouthPucker: 0.5 },                                    // R
+  15: { mouthClose: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 }, // S, Z (sibilant)
+  16: { jawOpen: 0.3, mouthPucker: 0.6, mouthFunnel: 0.5 },   // UH, UW ("too")
+  17: { mouthPucker: 0.6, mouthFunnel: 0.5 },                  // W
+  18: { mouthClose: 0.8 },                                     // breath/silence
+  19: {},                                                      // neutral
+  20: { jawOpen: 0.5, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 }, // AH ("but")
+  21: { mouthPucker: 0.5, mouthFunnel: 0.3 },                  // UH ("book")
 };
 
 const MISSING_SHAPE_WARNED = new Set<string>();
@@ -605,6 +609,7 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   const targetVisemeShapes = useRef<VisemeShapeMap>({});
   const currentVisemeShapes = useRef<VisemeShapeMap>({});
   const prevVisemeId = useRef(-1);
+  const fadingVisemeKeys = useRef<Set<string>>(new Set());
 
   const targetEmotionShapes = useMemo<EmotionShapeMap>(() => {
     if (emotion && EMOTION_SHAPES[emotion]) return EMOTION_SHAPES[emotion];
@@ -617,16 +622,31 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 
       const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
       if (visemeId !== prevVisemeId.current && visemeId >= 0) {
+        // Track keys from previous viseme so they fade out
+        for (const k of Object.keys(targetVisemeShapes.current)) {
+          fadingVisemeKeys.current.add(k);
+        }
         targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
         prevVisemeId.current = visemeId;
-      } else if (visemeId < 0) {
+      } else if (visemeId < 0 && prevVisemeId.current >= 0) {
+        // Speech just ended — transfer active keys to fading set
+        for (const k of Object.keys(targetVisemeShapes.current)) {
+          fadingVisemeKeys.current.add(k);
+        }
         targetVisemeShapes.current = {};
         prevVisemeId.current = -1;
+      }
+
+      // Remove fully-faded keys
+      for (const k of fadingVisemeKeys.current) {
+        const cur = currentVisemeShapes.current[k as keyof VisemeShapeMap] ?? 0;
+        if (cur < 0.01) fadingVisemeKeys.current.delete(k);
       }
 
       const allShapeKeys = new Set([
         ...Object.keys(targetVisemeShapes.current),
         ...Object.keys(targetEmotionShapes),
+        ...fadingVisemeKeys.current,
       ]);
 
       // Blink logic
@@ -655,7 +675,7 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
             const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
             const combined = Math.max(visemeTarget, emotionTarget);
             const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-            const smoothed = lerp(current, combined, delta * 10);
+            const smoothed = lerp(current, combined, Math.min(1, delta * 16));
             (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
             setShapeWeight(mesh, key, smoothed);
           }
@@ -691,75 +711,95 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
 /* ── AutoCamera ─────────────────────────────────────────────────────────────
    Frames the camera after the model is grounded.
    ────────────────────────────────────────────────────────────────────────── */
-function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'front' | 'over-shoulder' }) {
-  const { camera, size } = useThree();
+function AutoCamera({ scene, cameraMode, onFramed }: {
+  scene: THREE.Group;
+  cameraMode: 'front' | 'over-shoulder';
+  onFramed?: () => void;
+}) {
+  const { camera } = useThree();
   const framed = useRef(false);
 
   useEffect(() => {
     if (!scene || framed.current) return;
 
-    const timer = setTimeout(() => {
+    let rafId: number;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 60;
+
+    const tryFrame = () => {
+      attempts += 1;
       const box = new THREE.Box3().setFromObject(scene);
       const boxSize = box.getSize(new THREE.Vector3());
+      const isFinite3 = (v: THREE.Vector3) =>
+        Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 
-      const isFinite3 = (v: THREE.Vector3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-      if (!isFinite3(box.min) || !isFinite3(box.max) || !isFinite3(boxSize)) {
-        console.error('[AutoCamera] Non-finite bounding box — skipping framing to avoid losing the model', {
-          min: box.min.toArray(), max: box.max.toArray(),
-        });
-        return;
-      }
+      const boxValid = isFinite3(box.min) && isFinite3(box.max) && isFinite3(boxSize)
+        && boxSize.y >= 0.1 && boxSize.y <= 100;
 
-      if (boxSize.y < 0.1 || boxSize.y > 100) {
-        console.warn('[AutoCamera] Unexpected model size — skipping', boxSize.y);
+      if (!boxValid) {
+        if (attempts >= MAX_ATTEMPTS) {
+          console.error('[AutoCamera] Gave up framing after', attempts, 'attempts — bounding box never became valid', {
+            min: box.min.toArray(), max: box.max.toArray(), boxSize: boxSize.toArray(),
+          });
+          return;
+        }
+        rafId = requestAnimationFrame(tryFrame);
         return;
       }
 
       scene.position.y -= box.min.y;
-
       const groundedBox = new THREE.Box3().setFromObject(scene);
       const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
+      const center = groundedBox.getCenter(new THREE.Vector3());
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
+      // Camera OFFSET (distance, side-bias) stays fixed and does NOT derive
+      // from yaw — that's what avoids the coaxial cancellation bug (a camera
+      // whose offset chases yaw always ends up staring at exactly what the
+      // head faces, making rotation invisible). But position/lookAt are now
+      // built around the model's actual post-rotation bounding-box center
+      // instead of hardcoded world coordinates — so as the model turns
+      // further (e.g. the 0.5 rad partner-turn), its box recenters sideways
+      // and the camera follows that, keeping the subject in frame instead
+      // of swinging out of a fixed narrow crop tuned for the old, smaller
+      // rotation.
       if (cameraMode === 'over-shoulder') {
-        // Full-height tall-narrow container (~34vw × 100vh): frame head +
-        // shoulders by calculating distance from FOV, like the front mode.
-        // Camera behind the head at eye level, looking slightly downward
-        // past the shoulder.
         const visibleFraction = 0.28;
-        const focusY = groundedHeight * 0.90;
+        const focusY = center.y + groundedHeight * 0.40;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-        camera.position.set(0.35, focusY + distance * 0.04, -distance);
-        camera.lookAt(-0.05, focusY - distance * 0.02, distance * 2);
-
+        camera.position.set(center.x + 0.35, focusY + distance * 0.04, center.z - distance);
+        camera.lookAt(center.x - 0.05, focusY - distance * 0.02, center.z + distance * 2);
         console.log('[AutoCamera] over-shoulder framing', {
-          groundedHeight,
-          focusY,
-          distance,
-          cameraPos: camera.position,
-          containerSize: size,
+          groundedHeight, center: center.toArray(), focusY, distance,
+          cameraPos: camera.position.toArray(),
+          cameraAspect: (camera as THREE.PerspectiveCamera).aspect,
+          cameraFov: (camera as THREE.PerspectiveCamera).fov,
         });
       } else {
         const visibleFraction = 0.52;
-        const focusY = groundedHeight * 0.82;
+        const focusY = center.y + groundedHeight * 0.32;
         const distance = (groundedHeight * visibleFraction) / (2 * Math.tan(fovRad));
-
-        camera.position.set(0.05, focusY + distance * 0.04, distance * 0.95);
-        camera.lookAt(0.05, focusY, 0);
-
+        camera.position.set(center.x + 0.05, focusY + distance * 0.04, center.z + distance * 0.95);
+        camera.lookAt(center.x, focusY, center.z);
         console.log('[AutoCamera] front-mode waist-up', {
-          groundedHeight,
-          focusY,
-          distance,
-          cameraPos: camera.position,
+          groundedHeight, center: center.toArray(), focusY, distance,
+          cameraPos: camera.position.toArray(),
+          cameraAspect: (camera as THREE.PerspectiveCamera).aspect,
+          cameraFov: (camera as THREE.PerspectiveCamera).fov,
         });
       }
 
       framed.current = true;
-    }, 200);
+      onFramed?.();
+    };
 
-    return () => clearTimeout(timer);
-  }, [scene, camera, cameraMode]);
+    const initialDelay = setTimeout(() => { rafId = requestAnimationFrame(tryFrame); }, 200);
+
+    return () => {
+      clearTimeout(initialDelay);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [scene, camera, cameraMode, onFramed]);
 
   return null;
 }
@@ -768,9 +808,10 @@ function AutoCamera({ scene, cameraMode }: { scene: THREE.Group; cameraMode: 'fr
    Loads the GLB, applies rest-pose bone correction, animation controller,
    and morph-target OR fallback pose controller.
    ────────────────────────────────────────────────────────────────────────── */
-function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
+function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
   url: string;
   cameraMode?: 'front' | 'over-shoulder';
+  onFramed?: () => void;
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
@@ -790,10 +831,17 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
     setClipsLoaded(true);
   }, []);
 
+  const PARTNER_TURN_RAD = typeof window !== 'undefined' && window.__partnerTurn !== undefined
+    ? window.__partnerTurn
+    : 0.5;
+  const yaw = cameraMode === 'front'
+    ? -0.3
+    : -0.3 - PARTNER_TURN_RAD;
+
   return (
     <group>
-      <primitive object={scene} rotation={[0, -0.3, 0]} />
-      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} />
+      <primitive object={scene} rotation={[0, yaw, 0]} />
+      <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} />
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
         <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
@@ -808,23 +856,20 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode }: {
 }
 
 /* ── ThreeScene ─────────────────────────────────── */
-function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
+function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, onFramed }: {
   modelUrl: string;
   cameraMode?: 'front' | 'over-shoulder';
+  onFramed?: () => void;
 } & AvatarAnimationProps) {
   return (
     <div className="h-full w-full">
       <Canvas
         camera={{ position: [0, 0, 3], fov: 35 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
         onCreated={({ gl }) => {
-          gl.domElement.addEventListener('webglcontextlost', (e) => {
-            e.preventDefault();
-            console.error('[ThreeScene] WebGL context lost!', e);
-          });
           gl.domElement.addEventListener('webglcontextrestored', () => {
-            console.warn('[ThreeScene] WebGL context restored');
+            console.warn('[ThreeScene] WebGL context restored by R3F');
           });
         }}
       >
@@ -834,7 +879,7 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode }: {
         <directionalLight position={[0, -2, 2]} intensity={0.2} />
         <EmotionLight emotion={emotion} />
         <Suspense fallback={null}>
-          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} />
+          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} onFramed={onFramed} />
           {cameraMode !== 'over-shoulder' && (
             <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={3} blur={2} far={4} />
           )}
@@ -867,6 +912,7 @@ export function AvatarViewport({
   cameraMode?: 'front' | 'over-shoulder';
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
+  const [framed, setFramed] = useState(false);
 
   useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
 
@@ -895,13 +941,16 @@ export function AvatarViewport({
     <div className="relative h-full w-full">
       <DevOverlay />
       <AvatarErrorBoundary>
-        <ThreeScene
-          modelUrl="/avatar.glb"
-          mode={mode}
-          emotion={emotion}
-          gesture={gesture}
-          cameraMode={cameraMode}
-        />
+        <div className={`h-full w-full transition-opacity duration-200 ${framed ? 'opacity-100' : 'opacity-0'}`}>
+          <ThreeScene
+            modelUrl="/avatar.glb"
+            mode={mode}
+            emotion={emotion}
+            gesture={gesture}
+            cameraMode={cameraMode}
+            onFramed={() => setFramed(true)}
+          />
+        </div>
       </AvatarErrorBoundary>
     </div>
   );

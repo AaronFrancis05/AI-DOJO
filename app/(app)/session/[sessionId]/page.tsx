@@ -12,6 +12,15 @@ import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language
 import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, Target, ArrowLeft, Flag } from 'lucide-react';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
+interface CorrectionTip {
+  correctionType: string;
+  originalText: string;
+  correctedText: string;
+  originalRomaji?: string | null;
+  correctedRomaji?: string | null;
+  explanation: string;
+  severity: string;
+}
 interface TurnData {
   id: number;
   turnNo: number;
@@ -21,6 +30,7 @@ interface TurnData {
   messageRomaji: string | null;
   emotionTone?: string;
   gestureHint?: string;
+  corrections?: CorrectionTip[];
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
 interface VocabData { id: number; japanese: string; english: string; }
@@ -59,7 +69,7 @@ function SpeakingWave({ active }: { active: boolean }) {
 function SessionInfoPanel({
   domain, situation, scenario, session, character,
   charName, charColor, goals, completedGoals, isActive, isCompleted,
-  onEnd, onViewReport, targetLanguage, nativeLanguage,
+  onEnd, onViewReport, targetLanguage, nativeLanguage, correctionCount,
 }: {
   domain: any; situation: any; scenario: any; session: any; character: any;
   charName: string; charColor: string;
@@ -67,6 +77,7 @@ function SessionInfoPanel({
   isActive: boolean; isCompleted: boolean;
   onEnd: () => void; onViewReport: () => void;
   targetLanguage?: string; nativeLanguage?: string;
+  correctionCount?: number;
 }) {
   const primaryGoal =
     situation?.learningGoals ?? scenario?.learningGoals ?? '';
@@ -181,6 +192,15 @@ function SessionInfoPanel({
             })}
           </div>
         )}
+
+        {correctionCount !== undefined && correctionCount > 0 && (
+          <div className="mt-4 pt-4 border-t border-dojo-border">
+            <div className="flex items-center gap-2">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-dojo-warning/20 text-[9px] font-bold text-dojo-warning">!</span>
+              <span className="text-[11px] text-dojo-text-muted">{correctionCount} tip{correctionCount !== 1 ? 's' : ''} this session</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="px-5 py-4 border-t border-dojo-border space-y-2 shrink-0">
@@ -265,6 +285,7 @@ export default function RoleplaySessionPage() {
           messageRomaji: c.messageRomaji,
           emotionTone: c.emotionTone,
           gestureHint: c.gestureHint,
+          corrections: c.corrections ?? [],
         })));
         if (data.goalCompletions) {
           setCompletedGoals(data.goalCompletions.map((gc: any) => gc.sequenceOrder));
@@ -308,6 +329,7 @@ export default function RoleplaySessionPage() {
         messageRomaji: data.analysis.messageRomaji,
         emotionTone: data.analysis.emotionTone,
         gestureHint: data.analysis.gestureHint,
+        corrections: data.analysis.corrections ?? [],
       };
       const aiTurn: TurnData = {
         id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
@@ -399,6 +421,8 @@ export default function RoleplaySessionPage() {
   const charColor   = character?.avatarColor ?? '#2D3BC5';
   const domainSlug  = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
   const latestAi    = [...conversations].reverse().find(c => c.speaker === 'ai');
+  const latestUser  = [...conversations].reverse().find(c => c.speaker === 'user');
+  const totalCorrections = conversations.reduce((sum, c) => sum + (c.corrections?.length ?? 0), 0);
   const targetName  = getTargetLangConfig(targetLanguage).name;
   const targetNativeName = getTargetLangConfig(targetLanguage).nativeName;
 
@@ -426,6 +450,7 @@ export default function RoleplaySessionPage() {
     charName, charColor, goals, completedGoals,
     isActive, isCompleted,
     targetLanguage, nativeLanguage,
+    correctionCount: totalCorrections,
     onEnd: handleEnd,
     onViewReport: () => router.push(`/sessions/${sessionId}/report`),
   };
@@ -435,12 +460,12 @@ export default function RoleplaySessionPage() {
      Layout:
        ┌─────────────────────────────────┬────────────────┐
        │  SCENE AREA (flex-1)            │  INFO PANEL    │
-       │  ┌──────────┐  ┌────────────┐  │  (w-72 fixed)  │
-       │  │ AI avatar│  │speech+chips│  │                │
-       │  │ (waist-up│  │            │  │                │
-       │  │ left-40%)│  │            │  │                │
-       │  └──────────┘  └────────────┘  │                │
-       │     [user over-shoulder, right] │                │
+       │  ┌─────────────────────────┐    │  (w-72 fixed)  │
+       │  │     AI avatar           │    │                │
+       │  │     (centered 60%)      │    │                │
+       │  │                         │    │                │
+       │  └─────────────────────────┘    │                │
+       │  ─── speech bubble ───          │                │
        │  ─── control bar ───           │                │
        └─────────────────────────────────┴────────────────┘
      ═════════════════════════════════════════════════════════════════════ */
@@ -453,8 +478,8 @@ export default function RoleplaySessionPage() {
         {/* Environment photo backdrop fills column (absolute z-0) */}
         <EnvironmentBackdrop domainSlug={domainSlug} />
 
-        {/* ── AI avatar canvas — absolute inset-y-0 left-0, width 46%, z-10 ── */}
-        <div className="absolute inset-y-0 left-0 w-[46%] z-10 pointer-events-none">
+        {/* ── AI avatar canvas — left half ── */}
+        <div className="absolute inset-y-0 left-0 w-1/2 z-10 pointer-events-none">
           <AvatarViewport
             name={charName}
             accentColor={charColor}
@@ -462,21 +487,6 @@ export default function RoleplaySessionPage() {
             emotion={latestAi?.emotionTone}
             gesture={latestAi?.gestureHint}
             cameraMode="front"
-          />
-        </div>
-
-        {/* ── User over-shoulder: inset-y-0 right-0 w-[34%], z-10, opacity-90, blur-[3px] ──
-             Full-height panel mirrored from the AI avatar's left-side layout, at 34% width
-             so the user appears as a tall blurred over-the-shoulder figure in the foreground
-             right panel, matching the session_design mockup. */}
-        <div
-          className="absolute inset-y-0 right-0 w-[34%] z-10 pointer-events-none opacity-90 blur-[3px]"
-        >
-          <AvatarViewport
-            name="You"
-            accentColor="#2D3BC5"
-            mode="idle"
-            cameraMode="over-shoulder"
           />
         </div>
 
@@ -504,8 +514,8 @@ export default function RoleplaySessionPage() {
           </div>
         </div>
 
-        {/* ── Speech bubble: absolute top-14 left-[44%] right-3, z-20 ── */}
-        <div className="absolute top-14 left-[44%] right-3 z-20 space-y-3">
+        {/* ── Speech bubble: absolute top-14 right-3, starting just past avatar ── */}
+        <div className="absolute top-14 left-[52%] right-3 z-20 space-y-3">
           {sending ? (
             <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
               <div className="flex items-center gap-2">
@@ -514,27 +524,70 @@ export default function RoleplaySessionPage() {
               </div>
             </div>
           ) : latestAi ? (
-            <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3 max-w-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold text-dojo-text-primary">{charName} (AI)</span>
-                <SpeakingWave active={avatarMode === 'talking'} />
-                <button
-                  onClick={() => handleReplay(latestAi.messageTarget, latestAi.messageNative)}
-                  className="ml-auto"
-                >
-                  <Volume2 className="h-3.5 w-3.5 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
-                </button>
+            <>
+              {latestUser && (
+                <div className="bg-dojo-surface/80 backdrop-blur-md rounded-xl border border-dojo-border/60 shadow-lg px-4 py-3 max-w-lg">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-xs font-bold text-dojo-text-muted">You</span>
+                    {latestUser.corrections && latestUser.corrections.length > 0 && (
+                      <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-dojo-warning/20 px-2 py-0.5 text-[10px] font-semibold text-dojo-warning">
+                        {latestUser.corrections.length} tip{latestUser.corrections.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-dojo-text-primary leading-relaxed">
+                    {latestUser.messageTarget}
+                  </p>
+                  {latestUser.corrections && latestUser.corrections.length > 0 && (
+                    <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
+                      {latestUser.corrections.map((tip, i) => (
+                        <div key={i} className="text-[11px] leading-relaxed">
+                          <div className="flex items-start gap-1.5">
+                            <span className={`shrink-0 mt-0.5 inline-block h-3.5 w-3.5 rounded-full text-[8px] font-bold text-center leading-[14px] ${
+                              tip.severity === 'major' ? 'bg-dojo-danger/20 text-dojo-danger' :
+                              tip.severity === 'moderate' ? 'bg-dojo-warning/20 text-dojo-warning' :
+                              'bg-dojo-accent/20 text-dojo-accent'
+                            }`}>
+                              {tip.severity === 'major' ? '!' : tip.severity === 'moderate' ? '!' : 'i'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <span className="line-through text-dojo-text-muted">{tip.originalText}</span>
+                              {' '}→{' '}
+                              <span className="font-medium text-dojo-text-primary">{tip.correctedText}</span>
+                              {tip.correctedRomaji && (
+                                <span className="ml-1 italic text-dojo-text-muted">({tip.correctedRomaji})</span>
+                              )}
+                              <p className="text-dojo-text-muted/80 mt-0.5">{tip.explanation}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3 max-w-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-bold text-dojo-text-primary">{charName} (AI)</span>
+                  <SpeakingWave active={avatarMode === 'talking'} />
+                  <button
+                    onClick={() => handleReplay(latestAi.messageTarget, latestAi.messageNative)}
+                    className="ml-auto"
+                  >
+                    <Volume2 className="h-3.5 w-3.5 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
+                  </button>
+                </div>
+                <p className="text-sm text-dojo-text-primary leading-relaxed font-medium">
+                  {latestAi.messageTarget}
+                </p>
+                {latestAi.messageRomaji && (
+                  <p className="mt-1 text-[11px] text-dojo-text-muted italic">{latestAi.messageRomaji}</p>
+                )}
+                {latestAi.messageNative && (
+                  <p className="text-[11px] text-dojo-text-muted mt-1">{latestAi.messageNative}</p>
+                )}
               </div>
-              <p className="text-sm text-dojo-text-primary leading-relaxed font-medium">
-                {latestAi.messageTarget}
-              </p>
-              {latestAi.messageRomaji && (
-                <p className="mt-1 text-[11px] text-dojo-text-muted italic">{latestAi.messageRomaji}</p>
-              )}
-              {latestAi.messageNative && (
-                <p className="text-[11px] text-dojo-text-muted mt-1">{latestAi.messageNative}</p>
-              )}
-            </div>
+            </>
           ) : (
             <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
               <p className="text-sm text-dojo-text-muted">

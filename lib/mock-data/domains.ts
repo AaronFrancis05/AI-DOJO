@@ -61,7 +61,7 @@ export const domains: DomainFixture[] = [
     icon: 'HeartPulse',
     heroGradientFrom: '#E3A939',
     heroGradientTo: '#7A5715',
-    situationCount: 5,
+    situationCount: 13,
     displayOrder: 4,
     imageUrl: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&q=80',
   },
