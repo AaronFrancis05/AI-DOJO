@@ -163,7 +163,9 @@ function OverviewTab() {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <div>
         <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Skills Overview</h3>
-        <RadarChart data={radarData} size={280} />
+        <div className="max-w-full overflow-hidden flex justify-center">
+          <RadarChart data={radarData} size={Math.min(280, typeof window !== 'undefined' ? window.innerWidth - 96 : 280)} />
+        </div>
       </div>
       <div>
         <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Monthly Progress</h3>
@@ -194,7 +196,9 @@ function SkillsTab() {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <RadarChart data={radarData} size={240} />
+      <div className="max-w-full overflow-hidden flex justify-center">
+        <RadarChart data={radarData} size={Math.min(240, typeof window !== 'undefined' ? window.innerWidth - 96 : 240)} />
+      </div>
       <div className="space-y-4">
         {skills.map((skill) => (
           <div key={skill.label} className="flex items-center justify-between">

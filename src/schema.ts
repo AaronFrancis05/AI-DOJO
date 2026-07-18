@@ -10,7 +10,11 @@ export const users = pgTable('users', {
   xp:                    integer('xp').default(0).notNull(),
   xpToNext:              integer('xp_to_next').default(1000).notNull(),
   tier:                  varchar('tier', { length: 20 }).default('premium').notNull(),
+  nativeLanguage:        varchar('native_language', { length: 10 }).default('en').notNull(),
+  preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('ja').notNull(),
   streak:                integer('streak').default(0).notNull(),
+  lastActiveDate:        varchar('last_active_date', { length: 10 }),
+  avatarSrc:             text('avatar_src'),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
   googleId:              varchar('google_id', { length: 255 }),
@@ -55,6 +59,7 @@ export const characters = pgTable('characters', {
   avatarColor:   varchar('avatar_color', { length: 20 }).notNull(),
   avatarIcon:    varchar('avatar_icon', { length: 40 }).notNull(),
   voiceType:     varchar('voice_type', { length: 80 }).notNull(),
+  avatarModelUrl:text('avatar_model_url'),
   defaultForDomainId: integer('default_for_domain_id').references(() => domains.id, { onDelete: 'set null' }),
   displayOrder:  integer('display_order').default(0).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
@@ -106,6 +111,8 @@ export const sessions = pgTable('sessions', {
   situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
+  nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
   totalTurns:      integer('total_turns').default(0).notNull(),
@@ -125,6 +132,8 @@ export const conversations = pgTable('conversations', {
   userId:                text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   turnNo:                integer('turn_no').notNull(),
   speaker:               varchar('speaker', { length: 20 }).notNull(),
+  messageTarget:         text('message_target'),
+  messageNative:         text('message_native'),
   messageJp:             text('message_jp').notNull(),
   messageRomaji:         text('message_romaji'),
   messageEn:             text('message_en').notNull(),
@@ -140,7 +149,9 @@ export const corrections = pgTable('corrections', {
   conversationId:  integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
   correctionType:  varchar('correction_type', { length: 30 }).notNull(),
   originalText:    text('original_text').notNull(),
+  originalRomaji:  text('original_romaji'),
   correctedText:   text('corrected_text').notNull(),
+  correctedRomaji: text('corrected_romaji'),
   explanation:     text('explanation').notNull(),
   severity:        varchar('severity', { length: 20 }).default('minor').notNull(),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
@@ -186,6 +197,16 @@ export const shareTokens = pgTable('share_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const userAvatars = pgTable('user_avatars', {
+  id:           serial('id').primaryKey(),
+  userId:       text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  avatarUrl:    text('avatar_url').notNull(),
+  thumbnailUrl: text('thumbnail_url'),
+  isSelected:   boolean('is_selected').default(false).notNull(),
+  source:       varchar('source', { length: 20 }).default('avaturn').notNull(),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
+});
+
 // ── Relations ────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -193,6 +214,11 @@ export const usersRelations = relations(users, ({ many }) => ({
   conversations:    many(conversations),
   evaluations:      many(evaluations),
   goalCompletions:  many(goalCompletions),
+  avatars:          many(userAvatars),
+}));
+
+export const userAvatarsRelations = relations(userAvatars, ({ one }) => ({
+  user: one(users, { fields: [userAvatars.userId], references: [users.id] }),
 }));
 
 export const domainsRelations = relations(domains, ({ many }) => ({

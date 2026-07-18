@@ -1,7 +1,7 @@
 import { db } from '../../../../src/db';
 import { sessions, scenarios, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabulary, situations, domains, characters } from '../../../../src/schema';
 import { getAuthUser } from '../../../../lib/auth/server';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, inArray } from 'drizzle-orm';
 
 export async function GET(
   req: Request,
@@ -27,85 +27,103 @@ export async function GET(
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId));
+  const [
+    scenarioResult,
+    situationResult,
+    characterResult,
+    conversationList,
+    evaluationResult,
+    goalCompletionList,
+  ] = await Promise.all([
+    session.scenarioId
+      ? db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId)).then(r => r[0] ?? null)
+      : Promise.resolve(null),
 
-  let situation = null;
-  let domain = null;
-  let character = null;
+    session.situationId
+      ? db.select().from(situations).where(eq(situations.id, session.situationId)).then(r => r[0] ?? null)
+      : Promise.resolve(null),
 
-  if (session.situationId) {
-    const [s] = await db.select().from(situations).where(eq(situations.id, session.situationId));
-    situation = s;
-    if (s) {
-      const [d] = await db.select().from(domains).where(eq(domains.id, s.domainId));
-      domain = d;
-    }
-  }
+    session.characterId
+      ? db.select().from(characters).where(eq(characters.id, session.characterId)).then(r => r[0] ?? null)
+      : Promise.resolve(null),
 
-  if (session.characterId) {
-    const [c] = await db.select().from(characters).where(eq(characters.id, session.characterId));
-    character = c;
-  }
+    db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.sessionId, sessionId))
+      .orderBy(asc(conversations.turnNo)),
 
-  const vocabItems = scenario ? await db
-    .select()
-    .from(vocabulary)
-    .where(eq(vocabulary.scenarioId, scenario.id)) : [];
+    db
+      .select()
+      .from(evaluations)
+      .where(eq(evaluations.sessionId, sessionId))
+      .then(r => r[0] ?? null),
 
-  const goals = scenario ? await db
-    .select()
-    .from(scenarioGoals)
-    .where(eq(scenarioGoals.scenarioId, scenario.id))
-    .orderBy(asc(scenarioGoals.sequenceOrder)) : [];
+    db
+      .select({
+        id: goalCompletions.id,
+        conversationId: goalCompletions.conversationId,
+        scenarioGoalId: goalCompletions.scenarioGoalId,
+        achieved: goalCompletions.achieved,
+        evidenceNote: goalCompletions.evidenceNote,
+        goalText: scenarioGoals.goalText,
+        goalType: scenarioGoals.goalType,
+        sequenceOrder: scenarioGoals.sequenceOrder,
+      })
+      .from(goalCompletions)
+      .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
+      .where(eq(goalCompletions.sessionId, sessionId)),
+  ]);
 
-  const conversationList = await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.sessionId, sessionId))
-    .orderBy(asc(conversations.turnNo));
+  const scenario = scenarioResult;
 
-  const conversationWithCorrections = await Promise.all(
-    conversationList.map(async (conv) => {
-      const corrs = await db
+  const [vocabItems, goals, domainResult] = await Promise.all([
+    scenario
+      ? db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenario.id))
+      : Promise.resolve([]),
+
+    scenario
+      ? db.select().from(scenarioGoals).where(eq(scenarioGoals.scenarioId, scenario.id)).orderBy(asc(scenarioGoals.sequenceOrder))
+      : Promise.resolve([]),
+
+    situationResult
+      ? db.select().from(domains).where(eq(domains.id, situationResult.domainId)).then(r => r[0] ?? null)
+      : Promise.resolve(null),
+  ]);
+
+  const conversationIds = conversationList.map(c => c.id);
+  const allCorrections = conversationIds.length > 0
+    ? await db
         .select()
         .from(corrections)
-        .where(eq(corrections.conversationId, conv.id));
-      return { ...conv, corrections: corrs };
-    })
-  );
+        .where(inArray(corrections.conversationId, conversationIds))
+    : [];
 
-  const [evaluation] = await db
-    .select()
-    .from(evaluations)
-    .where(eq(evaluations.sessionId, sessionId));
+  const correctionsByConvId = new Map<number, typeof allCorrections>();
+  for (const c of allCorrections) {
+    const arr = correctionsByConvId.get(c.conversationId);
+    if (arr) arr.push(c);
+    else correctionsByConvId.set(c.conversationId, [c]);
+  }
 
-  const goalCompletionList = await db
-    .select({
-      id: goalCompletions.id,
-      conversationId: goalCompletions.conversationId,
-      scenarioGoalId: goalCompletions.scenarioGoalId,
-      achieved: goalCompletions.achieved,
-      evidenceNote: goalCompletions.evidenceNote,
-      goalText: scenarioGoals.goalText,
-      goalType: scenarioGoals.goalType,
-      sequenceOrder: scenarioGoals.sequenceOrder,
-    })
-    .from(goalCompletions)
-    .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
-    .where(eq(goalCompletions.sessionId, sessionId));
+  const conversationWithCorrections = conversationList.map(conv => ({
+    ...conv,
+    corrections: correctionsByConvId.get(conv.id) ?? [],
+  }));
 
   return Response.json({
     success: true,
     session,
     scenario: scenario ?? null,
-    situation,
-    domain,
-    character,
+    situation: situationResult,
+    domain: domainResult,
+    character: characterResult,
     vocabulary: vocabItems,
     goals,
     conversations: conversationWithCorrections,
-    evaluation: evaluation ?? null,
+    evaluation: evaluationResult,
     goalCompletions: goalCompletionList,
+    avaturnSubdomain: process.env.NEXT_PUBLIC_AVATURN_SUBDOMAIN ?? null,
   });
 }
 
@@ -179,4 +197,3 @@ export async function PATCH(
 
   return Response.json({ success: true, message: `Session ${status}` });
 }
-

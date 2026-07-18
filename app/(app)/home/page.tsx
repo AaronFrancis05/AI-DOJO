@@ -19,6 +19,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
+import { useCurrentAvatar } from '@/lib/auth/avatar-context';
+import { type SessionRecord } from '@/lib/types';
 import {
   ArrowRight,
   Flame,
@@ -52,25 +54,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-
-// ── Types ──────────────────────────────────────────────
-
-interface SessionRecord {
-  id: number;
-  scenarioId: number;
-  sessionNumber: number;
-  status: string;
-  totalTurns: number;
-  vocabularyScore: number | null;
-  grammarScore: number | null;
-  fluencyScore: number | null;
-  culturalScore: number | null;
-  taskScore: number | null;
-  feedback: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  scenarioTitle?: string;
-}
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -123,6 +106,7 @@ const recentAchievements = [
 export default function HomePage() {
   const router = useRouter();
   const user = useUser();
+  const currentAvatarUrl = useCurrentAvatar();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -141,14 +125,14 @@ export default function HomePage() {
           setSessions(mockSessions.map(s => ({
             ...s,
             scenarioTitle: s.scenarioTitle,
-          })) as any);
+          })) as unknown as SessionRecord[]);
         }
       } catch (e) {
         console.error('Failed to load sessions:', e);
         setSessions(mockSessions.map(s => ({
           ...s,
           scenarioTitle: s.scenarioTitle,
-        })) as any);
+        })) as unknown as SessionRecord[]);
       } finally {
         setLoading(false);
       }
@@ -212,7 +196,7 @@ export default function HomePage() {
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
-              <Avatar name={user?.name ?? 'Learner'} size="xl" className="relative border-4 border-dojo-surface shadow-2xl" />
+              <Avatar name={user?.name ?? 'Learner'} src={currentAvatarUrl ?? user?.avatarSrc} size="xl" className="relative border-4 border-dojo-surface shadow-2xl" />
               <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
                 <Trophy className="h-4 w-4" />
               </div>
@@ -244,18 +228,18 @@ export default function HomePage() {
             </div>
           </div>
           
-          <div className="flex flex-wrap justify-center gap-4">
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+          <div className="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:justify-center">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
               <Flame className="mx-auto h-5 w-5 text-dojo-streak mb-1" />
               <p className="text-xl font-black text-dojo-text-primary">{user?.streak ?? 12}</p>
               <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Day Streak</p>
             </Card>
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
               <Target className="mx-auto h-5 w-5 text-dojo-accent mb-1" />
               <p className="text-xl font-black text-dojo-text-primary">85%</p>
               <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Accuracy</p>
             </Card>
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm min-w-[100px] text-center">
+            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
               <Zap className="mx-auto h-5 w-5 text-dojo-warning mb-1" />
               <p className="text-xl font-black text-dojo-text-primary">2.4k</p>
               <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Total XP</p>
@@ -489,15 +473,15 @@ export default function HomePage() {
                   <div className="absolute top-0 right-0 p-4 flex gap-1">
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleShare(session.id); }}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                      className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
                     >
-                      <Share2 className="h-4 w-4" />
+                      <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
-                      className="h-8 w-8 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
+                      className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </button>
                   </div>
 

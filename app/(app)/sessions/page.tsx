@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
+import { type SessionRecord } from '@/lib/types';
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,23 +25,6 @@ import {
   Play,
   RotateCcw,
 } from 'lucide-react';
-
-interface SessionRecord {
-  id: number;
-  scenarioId: number;
-  sessionNumber: number;
-  status: string;
-  totalTurns: number;
-  vocabularyScore: number | null;
-  grammarScore: number | null;
-  fluencyScore: number | null;
-  culturalScore: number | null;
-  taskScore: number | null;
-  feedback: string | null;
-  startedAt: string;
-  completedAt: string | null;
-  scenarioTitle?: string;
-}
 
 function computeTotalPct(s: SessionRecord): number | null {
   if (s.status !== 'completed' || s.vocabularyScore === null) return null;
@@ -63,11 +47,11 @@ export default function SessionsPage() {
         if (data.success && data.sessions.length > 0) {
           setSessions(data.sessions);
         } else {
-          setSessions(mockSessions.map(s => ({ ...s, scenarioTitle: s.scenarioTitle })) as any);
+          setSessions(mockSessions.map(s => ({ ...s, scenarioTitle: s.scenarioTitle })) as unknown as SessionRecord[]);
         }
       } catch (e) {
         console.error('Failed to load sessions:', e);
-        setSessions(mockSessions.map(s => ({ ...s, scenarioTitle: s.scenarioTitle })) as any);
+        setSessions(mockSessions.map(s => ({ ...s, scenarioTitle: s.scenarioTitle })) as unknown as SessionRecord[]);
       } finally {
         setLoading(false);
       }

@@ -63,7 +63,7 @@ export default function DomainDetailPage() {
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        All Domains
+        All Situations
       </Link>
 
       {source === 'fixture' && (
@@ -73,12 +73,12 @@ export default function DomainDetailPage() {
       )}
 
       <div
-        className="flex items-center gap-6 rounded-[--radius-lg] p-8"
+        className="flex flex-col sm:flex-row items-center gap-6 rounded-[--radius-lg] p-8 text-center sm:text-left"
         style={{
           background: `linear-gradient(135deg, ${domain.heroGradientFrom}, ${domain.heroGradientTo})`,
         }}
       >
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
           <Sprout className="h-8 w-8 text-white" />
         </div>
         <div>
@@ -104,7 +104,7 @@ export default function DomainDetailPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-dojo-text-primary">{s.title}</h3>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <Badge variant={s.skillLevel as any}>{s.skillLevel}</Badge>
+                      <Badge variant={s.skillLevel}>{s.skillLevel}</Badge>
                       {s.behaviorMode !== 'standard' && (
                         <Badge variant="accent">{s.behaviorMode}</Badge>
                       )}

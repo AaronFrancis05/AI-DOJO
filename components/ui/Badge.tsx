@@ -15,16 +15,16 @@ interface BadgeProps {
 const accentStyles: Record<string, string> = {
   accent: 'bg-[#2D3BC5] text-white',
   default: 'bg-[#1C2A42] text-[#8A93A8]',
-  premium: 'bg-gradient-to-r from-amber-500 to-yellow-400 text-black',
-  outline: 'border border-dojo-border text-dojo-text-muted bg-transparent',
-  success: 'bg-dojo-success text-white',
+  premium: 'bg-gradient-to-r from-[#F0A93B] to-[#E3A939] text-black shadow-lg shadow-dojo-warning/20',
+  outline: 'border border-dojo-border bg-transparent text-[#8A93A8]',
+  success: 'bg-dojo-success/10 text-dojo-success border border-dojo-success/20',
 };
 
 export function Badge({ children, variant = 'default', className }: BadgeProps) {
-  const colorClass =
-    variant === 'accent' || variant === 'default' || variant === 'premium' || variant === 'outline' || variant === 'success'
-      ? accentStyles[variant]
-      : skillLevelBadgeClass[variant];
+  const isSpecial = variant === 'accent' || variant === 'default' || variant === 'premium' || variant === 'outline' || variant === 'success';
+  const colorClass = isSpecial
+    ? accentStyles[variant as string]
+    : skillLevelBadgeClass[variant as SkillLevel];
 
   return (
     <span

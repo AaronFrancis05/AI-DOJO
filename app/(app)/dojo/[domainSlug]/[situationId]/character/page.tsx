@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { AvatarStage } from '@/components/roleplay/AvatarStage';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { getSituationById, type SituationFixture } from '@/lib/data/situations';
 import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
 import { getCharacters, type CharacterFixture } from '@/lib/data/characters';
@@ -22,20 +23,34 @@ export default function CharacterSelectionPage() {
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<'live' | 'fixture'>('live');
 
+  const [targetLanguage, setTargetLanguage] = useState('ja');
+  const [nativeLanguage, setNativeLanguage] = useState('en');
+
   const behaviorMode = searchParams.get('mode') ?? 'standard';
 
   const situationIdNum = Number(situationId);
 
   useEffect(() => {
     async function load() {
-      const [sitRes, domRes, charsRes] = await Promise.all([
+      const [sitRes, domRes, charsRes, statsRes] = await Promise.all([
         getSituationById(situationIdNum),
         getDomainBySlug(domainSlug),
         getCharacters(),
+        fetch('/api/user/stats').then(r => r.json()).catch(() => ({})),
       ]);
       setSituation(sitRes.situation);
       setDomain(domRes.domain);
       setSource(charsRes.source);
+
+      if (statsRes.success && statsRes.stats) {
+        if (statsRes.stats.preferredTargetLanguage) setTargetLanguage(statsRes.stats.preferredTargetLanguage);
+        if (statsRes.stats.nativeLanguage) setNativeLanguage(statsRes.stats.nativeLanguage);
+      }
+
+      const targetParam = searchParams.get('targetLang');
+      const nativeParam = searchParams.get('nativeLang');
+      if (targetParam) setTargetLanguage(targetParam);
+      if (nativeParam) setNativeLanguage(nativeParam);
 
       const chars = charsRes.data;
       const dom = domRes.domain;
@@ -47,9 +62,13 @@ export default function CharacterSelectionPage() {
       setLoading(false);
     }
     load();
-  }, [situationIdNum, domainSlug]);
+  }, [situationIdNum, domainSlug, searchParams]);
 
-  const startSession = async (characterId: number) => {
+  const startSession = useCallback(async (characterId: number, avatarModelUrl?: string | null) => {
+    if (avatarModelUrl) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(avatarModelUrl));
+    }
+
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,6 +77,8 @@ export default function CharacterSelectionPage() {
         situationId: situationIdNum,
         characterId,
         behaviorMode,
+        targetLanguage,
+        nativeLanguage,
       }),
     });
     if (!res.ok) {
@@ -67,7 +88,7 @@ export default function CharacterSelectionPage() {
     }
     const body = await res.json();
     router.push(`/session/${body.session.id}`);
-  };
+  }, [situationIdNum, behaviorMode, targetLanguage, nativeLanguage, router]);
 
   if (loading) {
     return (
@@ -109,6 +130,15 @@ export default function CharacterSelectionPage() {
         </p>
       </div>
 
+      <div className="mb-6 rounded-[--radius-lg] border border-dojo-border bg-dojo-surface p-4">
+        <LanguagePicker
+          targetLanguage={targetLanguage}
+          nativeLanguage={nativeLanguage}
+          onTargetChange={setTargetLanguage}
+          onNativeChange={setNativeLanguage}
+        />
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {characters.map((char) => (
           <Card key={char.id} hoverable className="group p-5">
@@ -118,6 +148,7 @@ export default function CharacterSelectionPage() {
                   name={char.name}
                   role={char.role}
                   accentColor={char.avatarColor}
+                  modelUrl={char.avatarModelUrl ?? undefined}
                   compact
                   mode="idle"
                 />
@@ -129,7 +160,7 @@ export default function CharacterSelectionPage() {
                 variant="primary"
                 size="sm"
                 className="mt-4 w-full"
-                onClick={() => startSession(char.id)}
+                onClick={() => startSession(char.id, char.avatarModelUrl)}
               >
                 Start Practice
                 <ChevronRight className="ml-1 h-3.5 w-3.5" />

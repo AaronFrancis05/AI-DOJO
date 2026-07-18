@@ -1,7 +1,7 @@
 /* ───────────────────────────────────────────────
    Session Creator — thin redirector
    Resolves domain/situation/character/mode params,
-   creates a session via POST /api/sessions,
+   prompts for language selection, creates a session,
    then redirects to /session/[sessionId]
    ─────────────────────────────────────────────── */
 
@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense } from 'react';
 import { Button } from '@/components/ui/Button';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { AlertCircleIcon, RefreshCw } from 'lucide-react';
 
 const TIMEOUT_MS = 10_000;
@@ -20,11 +21,32 @@ function SessionCreator() {
   const router = useRouter();
   const startedRef = useRef(false);
 
+  const [targetLanguage, setTargetLanguage] = useState('ja');
+  const [nativeLanguage, setNativeLanguage] = useState('en');
+  const [showPicker, setShowPicker] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
+  useEffect(() => {
+    async function loadPrefs() {
+      try {
+        const res = await fetch('/api/user/stats');
+        const data = await res.json();
+        if (data.success && data.stats) {
+          if (data.stats.preferredTargetLanguage) setTargetLanguage(data.stats.preferredTargetLanguage);
+          if (data.stats.nativeLanguage) setNativeLanguage(data.stats.nativeLanguage);
+        }
+      } catch {}
+    }
+    const targetParam = searchParams.get('targetLang');
+    const nativeParam = searchParams.get('nativeLang');
+    if (targetParam) setTargetLanguage(targetParam);
+    if (nativeParam) setNativeLanguage(nativeParam);
+    loadPrefs();
+  }, [searchParams]);
+
   const attemptCreation = useCallback(async () => {
-    startedRef.current = false; // allow retry
+    startedRef.current = false;
     setError(null);
     setTimedOut(false);
 
@@ -55,6 +77,8 @@ function SessionCreator() {
             situationId: Number(situationId),
             characterId: characterId ? Number(characterId) : undefined,
             behaviorMode: mode,
+            targetLanguage,
+            nativeLanguage,
           }),
         });
 
@@ -69,7 +93,6 @@ function SessionCreator() {
       } catch (e: any) {
         clearTimeout(timeoutId);
         if (e?.name === 'AbortError') {
-          // timeout already handled
           return;
         }
         setError('Network error. Please try again.');
@@ -77,13 +100,35 @@ function SessionCreator() {
     }
 
     await createAndRedirect();
-  }, [searchParams, router]);
+  }, [searchParams, router, targetLanguage, nativeLanguage]);
 
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    attemptCreation();
-  }, [attemptCreation]);
+  if (showPicker) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-dojo-text-primary mb-1">Prepare Your Roleplay</h1>
+            <p className="text-sm text-dojo-text-muted">Set your language preferences before starting.</p>
+          </div>
+          <div className="rounded-[--radius-lg] border border-dojo-border bg-dojo-surface p-5">
+            <LanguagePicker
+              targetLanguage={targetLanguage}
+              nativeLanguage={nativeLanguage}
+              onTargetChange={setTargetLanguage}
+              onNativeChange={setNativeLanguage}
+            />
+          </div>
+          <Button
+            variant="primary"
+            className="w-full"
+            onClick={() => { setShowPicker(false); startedRef.current = false; attemptCreation(); }}
+          >
+            Start Roleplay
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -94,7 +139,7 @@ function SessionCreator() {
             {timedOut ? 'Still preparing...' : 'Something went wrong'}
           </p>
           <p className="text-sm text-dojo-text-muted mb-4">{error}</p>
-          <Button variant="primary" onClick={attemptCreation}>
+          <Button variant="primary" onClick={() => { setShowPicker(true); }}>
             <RefreshCw className="h-4 w-4 mr-1" />
             Try Again
           </Button>

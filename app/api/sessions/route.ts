@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId } = body;
+  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage } = body;
 
   let resolvedScenarioId = scenarioId ? Number(scenarioId) : null;
 
@@ -149,6 +149,8 @@ export async function POST(req: Request) {
     situationId: situationId ? Number(situationId) : scenario.situationId,
     characterId: characterId ? Number(characterId) : null,
     behaviorMode: behaviorMode ?? 'standard',
+    targetLanguage: targetLanguage ?? 'ja',
+    nativeLanguage: nativeLanguage ?? 'en',
     sessionNumber,
     status: 'active',
   }).returning();

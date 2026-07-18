@@ -37,7 +37,7 @@ export function ProgressBar({
       <div
         className={cn(
           'flex-1 overflow-hidden rounded-full bg-dojo-border',
-          size === 'sm' ? 'h-1.5' : size === 'md' ? 'h-2.5' : 'h-3.5',
+          size === 'sm' ? 'h-1.5' : size === 'md' ? 'h-2.5' : 'h-4',
         )}
       >
         <div

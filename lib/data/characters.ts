@@ -24,6 +24,7 @@ function adaptDbCharacter(d: any): CharacterFixture {
     avatarColor: d.avatarColor,
     avatarIcon: d.avatarIcon,
     voiceType: d.voiceType,
+    avatarModelUrl: d.avatarModelUrl ?? undefined,
     defaultForDomain: d.defaultForDomainId != null ? domainIdToSlug[d.defaultForDomainId] : undefined,
     displayOrder: d.displayOrder ?? 0,
   };
