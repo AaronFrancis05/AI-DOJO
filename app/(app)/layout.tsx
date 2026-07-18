@@ -25,6 +25,7 @@ export default async function AppLayout({
         xpToNext: users.xpToNext,
         tier: users.tier,
         streak: users.streak,
+        avatarSrc: users.avatarSrc,
       })
       .from(users)
       .where(eq(users.id, u.id))
@@ -39,7 +40,7 @@ export default async function AppLayout({
       xp: dbUser?.xp ?? 0,
       xpToNext: dbUser?.xpToNext ?? 1000,
       streak: dbUser?.streak ?? 0,
-      avatarSrc: null,
+      avatarSrc: dbUser?.avatarSrc ?? null,
       avatarColor: '#2D3BC5',
     };
   }

@@ -19,6 +19,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
+import { useCurrentAvatar } from '@/lib/auth/avatar-context';
 import { type SessionRecord } from '@/lib/types';
 import {
   ArrowRight,
@@ -105,6 +106,7 @@ const recentAchievements = [
 export default function HomePage() {
   const router = useRouter();
   const user = useUser();
+  const currentAvatarUrl = useCurrentAvatar();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -194,7 +196,7 @@ export default function HomePage() {
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
-              <Avatar name={user?.name ?? 'Learner'} size="xl" className="relative border-4 border-dojo-surface shadow-2xl" />
+              <Avatar name={user?.name ?? 'Learner'} src={currentAvatarUrl ?? user?.avatarSrc} size="xl" className="relative border-4 border-dojo-surface shadow-2xl" />
               <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
                 <Trophy className="h-4 w-4" />
               </div>

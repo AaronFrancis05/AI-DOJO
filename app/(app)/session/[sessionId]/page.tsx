@@ -2,14 +2,26 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { AvatarViewport } from '@/components/roleplay/AvatarViewport';
+import dynamic from 'next/dynamic';
+import { AvatarCreator, getStoredAvatarUrl } from '@/components/roleplay/AvatarCreator';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { Badge } from '@/components/ui/Badge';
 import { speakWithVisemes, speak as ttsSpeak } from '@/lib/roleplay/tts';
 import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
 import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { useUser } from '@/lib/auth/user-context';
+import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, Target, ArrowLeft, Flag } from 'lucide-react';
+
+const AvatarViewport = dynamic(() => import('@/components/roleplay/AvatarViewport').then(m => ({ default: m.AvatarViewport })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-lg">
+      <div className="h-16 w-16 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface CorrectionTip {
@@ -257,10 +269,30 @@ export default function RoleplaySessionPage() {
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals,setCompletedGoals]= useState<number[]>([]);
 
+  const user = useUser();
+  const currentAvatarModelUrl = useCurrentAvatarModel();
   const recognitionRef = useRef<any>(null);
   const targetLangRef = useRef(targetLanguage);
+  const [avatarModelUrl, setAvatarModelUrl] = useState<string | undefined>(undefined);
+  const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
+
+  useEffect(() => {
+    const stored = getStoredAvatarUrl();
+    if (stored) setAvatarModelUrl(stored);
+  }, []);
+
+  const resolvedModelUrl = character?.avatarModelUrl ?? avatarModelUrl ?? undefined;
+
+  useEffect(() => {
+    if (resolvedModelUrl) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(resolvedModelUrl));
+    }
+    if (currentAvatarModelUrl ?? user?.avatarSrc) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(currentAvatarModelUrl ?? user?.avatarSrc!));
+    }
+  }, [resolvedModelUrl, currentAvatarModelUrl, user?.avatarSrc]);
 
   /* ── Load session ── */
   useEffect(() => {
@@ -274,6 +306,7 @@ export default function RoleplaySessionPage() {
         setSituation(data.situation);
         setDomain(data.domain);
         setCharacter(data.character);
+
         setGoals(data.goals ?? []);
         setVocabulary(data.vocabulary ?? []);
         setConversations((data.conversations ?? []).map((c: any) => ({
@@ -487,6 +520,20 @@ export default function RoleplaySessionPage() {
             emotion={latestAi?.emotionTone}
             gesture={latestAi?.gestureHint}
             cameraMode="front"
+            modelUrl={resolvedModelUrl}
+            yaw={-0.8}
+          />
+        </div>
+
+        {/* ── User avatar canvas — right half ── */}
+        <div className="absolute inset-y-0 right-0 w-1/2 z-10 pointer-events-none">
+          <AvatarViewport
+            name={user?.name ?? 'You'}
+            accentColor="#2D3BC5"
+            mode={isListening ? 'talking' : 'idle'}
+            cameraMode="front"
+            modelUrl={currentAvatarModelUrl ?? user?.avatarSrc ?? undefined}
+            yaw={0.8}
           />
         </div>
 
@@ -708,6 +755,16 @@ export default function RoleplaySessionPage() {
 
             <div className="flex flex-col items-center gap-2">
               <button
+                onClick={() => setShowAvatarCreator(v => !v)}
+                className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10 transition-all duration-200"
+                title="Customize Avatar"
+              >
+                <span className="text-sm font-bold">👤</span>
+              </button>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Avatar</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <button
                 onClick={handlePause}
                 className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10 transition-all duration-200"
               >
@@ -724,6 +781,17 @@ export default function RoleplaySessionPage() {
       <aside className="hidden lg:flex w-[272px] shrink-0 flex-col border-l border-dojo-border bg-dojo-sidebar">
         <SessionInfoPanel {...sidePanelProps} />
       </aside>
+
+      {/* ═══════════ AVATURN CREATOR MODAL ═══════════ */}
+      {showAvatarCreator && (
+        <AvatarCreator
+          onExport={(result) => {
+            setAvatarModelUrl(result.url);
+            setShowAvatarCreator(false);
+          }}
+          onClose={() => setShowAvatarCreator(false)}
+        />
+      )}
 
       {/* ═══════════ MOBILE SLIDE-IN PANEL ═══════════ */}
       {showMobilePanel && (

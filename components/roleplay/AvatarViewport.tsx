@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, Suspense, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, Environment, ContactShadows } from '@react-three/drei';
+import { useGLTF, Environment, ContactShadows, useProgress, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { getCurrentViseme } from '@/lib/roleplay/tts';
@@ -77,6 +77,24 @@ function EmotionLight({ emotion }: { emotion?: string }) {
   return <directionalLight ref={lightRef} position={[-2, 3, 3]} intensity={0.4} />;
 }
 
+/* ── Loading progress bar ──────────────────────────── */
+function ModelLoader() {
+  const { progress, active } = useProgress();
+  if (!active) return null;
+  return (
+    <Html center>
+      <div className="flex flex-col items-center gap-2">
+        <div className="h-1 w-32 overflow-hidden rounded-full bg-dojo-border">
+          <div
+            className="h-full rounded-full bg-dojo-accent transition-[width] duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+    </Html>
+  );
+}
+
 /* ── Error boundary around the Canvas ──────────────── */
 class AvatarErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -145,21 +163,25 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
   const hasGesturesRef = useRef(false);
   const clipActions = useRef<Map<AnimClip, { clip: THREE.AnimationClip; action: THREE.AnimationAction | null }>>(new Map());
 
-  // Strip morph weight tracks (MorphTargetController handles the face) AND
-  // strip root-bone position tracks (prevents retargeted mocap root motion
-  // from translating the whole character away from world origin over time —
-  // AutoCamera frames once at mount and never re-frames, so any hip/root
-  // translation drift carries the avatar out of view within a few seconds).
-  const stripMorphTracks = (clip: THREE.AnimationClip): THREE.AnimationClip => {
+  // Collect bone names from the scene for track filtering
+  const sceneBoneNames = useMemo(() => {
+    const names = new Set<string>();
+    scene.traverse((child) => { if (child instanceof THREE.Bone) names.add(child.name); });
+    return names;
+  }, [scene]);
+
+  // Strip tracks for: morph weights, root-bone position, and bones not in the scene
+  const filterTracks = useCallback((clip: THREE.AnimationClip): THREE.AnimationClip => {
     const bodyTracks = clip.tracks.filter(t => {
       if (t.name.endsWith('.weights')) return false;
       const [boneName, prop] = t.name.split('.');
       if (prop === 'position' && /hips|root/i.test(boneName ?? '')) return false;
+      if (boneName && !sceneBoneNames.has(boneName)) return false;
       return true;
     });
     if (bodyTracks.length === clip.tracks.length) return clip;
     return new THREE.AnimationClip(clip.name, clip.duration, bodyTracks);
-  };
+  }, [sceneBoneNames]);
 
   // Build mixer and clip actions once scene is available
   useEffect(() => {
@@ -178,7 +200,7 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
         console.warn(`[AnimationController] No clip for "${name}"`);
         continue;
       }
-      const cleanClip = stripMorphTracks(clip);
+      const cleanClip = filterTracks(clip);
       const action = mixer.clipAction(cleanClip);
       clipActions.current.set(name, { clip: cleanClip, action });
     }
@@ -808,10 +830,11 @@ function AutoCamera({ scene, cameraMode, onFramed }: {
    Loads the GLB, applies rest-pose bone correction, animation controller,
    and morph-target OR fallback pose controller.
    ────────────────────────────────────────────────────────────────────────── */
-function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
+function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed, yaw }: {
   url: string;
   cameraMode?: 'front' | 'over-shoulder';
   onFramed?: () => void;
+  yaw?: number;
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
@@ -834,13 +857,13 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
   const PARTNER_TURN_RAD = typeof window !== 'undefined' && window.__partnerTurn !== undefined
     ? window.__partnerTurn
     : 0.5;
-  const yaw = cameraMode === 'front'
+  const computedYaw = yaw ?? (cameraMode === 'front'
     ? -0.3
-    : -0.3 - PARTNER_TURN_RAD;
+    : -0.3 - PARTNER_TURN_RAD);
 
   return (
     <group>
-      <primitive object={scene} rotation={[0, yaw, 0]} />
+      <primitive object={scene} rotation={[0, computedYaw, 0]} />
       <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} />
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
@@ -856,10 +879,11 @@ function AnimatedModel({ url, mode, emotion, gesture, cameraMode, onFramed }: {
 }
 
 /* ── ThreeScene ─────────────────────────────────── */
-function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, onFramed }: {
+function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, onFramed, yaw }: {
   modelUrl: string;
   cameraMode?: 'front' | 'over-shoulder';
   onFramed?: () => void;
+  yaw?: number;
 } & AvatarAnimationProps) {
   return (
     <div className="h-full w-full">
@@ -878,8 +902,9 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, onFramed }: 
         <directionalLight position={[-3, 2, 3]} intensity={0.3} color="#b0d0ff" />
         <directionalLight position={[0, -2, 2]} intensity={0.2} />
         <EmotionLight emotion={emotion} />
+        <ModelLoader />
         <Suspense fallback={null}>
-          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} onFramed={onFramed} />
+          <AnimatedModel url={modelUrl} mode={mode} emotion={emotion} gesture={gesture} cameraMode={cameraMode} onFramed={onFramed} yaw={yaw} />
           {cameraMode !== 'over-shoulder' && (
             <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={3} blur={2} far={4} />
           )}
@@ -901,7 +926,7 @@ function detectWebGLSupport(): boolean {
 
 /* ── Exported component ──────────────────────────── */
 export function AvatarViewport({
-  name, accentColor, mode = 'idle', emotion, gesture, cameraMode,
+  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, yaw,
 }: {
   name: string;
   accentColor: string;
@@ -910,6 +935,8 @@ export function AvatarViewport({
   emotion?: string;
   gesture?: string;
   cameraMode?: 'front' | 'over-shoulder';
+  modelUrl?: string;
+  yaw?: number;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
@@ -937,18 +964,21 @@ export function AvatarViewport({
     );
   }
 
+  if (!modelUrl) return null;
+
   return (
     <div className="relative h-full w-full">
       <DevOverlay />
       <AvatarErrorBoundary>
         <div className={`h-full w-full transition-opacity duration-200 ${framed ? 'opacity-100' : 'opacity-0'}`}>
           <ThreeScene
-            modelUrl="/avatar.glb"
+            modelUrl={modelUrl}
             mode={mode}
             emotion={emotion}
             gesture={gesture}
             cameraMode={cameraMode}
             onFramed={() => setFramed(true)}
+            yaw={yaw}
           />
         </div>
       </AvatarErrorBoundary>

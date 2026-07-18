@@ -1,6 +1,15 @@
 'use client';
 
-import { AvatarViewport } from './AvatarViewport';
+import dynamic from 'next/dynamic';
+
+const AvatarViewport = dynamic(() => import('./AvatarViewport').then(m => ({ default: m.AvatarViewport })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-lg">
+      <div className="h-12 w-12 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 
 export interface AvatarState {
   emotion?: string;
@@ -11,6 +20,7 @@ interface AvatarStageProps {
   name: string;
   role: string;
   accentColor: string;
+  modelUrl?: string;
   domainSlug?: string;
   state?: AvatarState;
   compact?: boolean;
@@ -44,6 +54,7 @@ export function AvatarStage({
   name,
   role,
   accentColor,
+  modelUrl,
   domainSlug,
   state,
   compact,
@@ -63,6 +74,7 @@ export function AvatarStage({
           mode={mode}
           emotion={state?.emotion}
           gesture={state?.gesture}
+          modelUrl={modelUrl}
         />
       </div>
     );
@@ -81,6 +93,7 @@ export function AvatarStage({
             mode={mode}
             emotion={state?.emotion}
             gesture={state?.gesture}
+            modelUrl={modelUrl}
           />
         </div>
         <div className="pb-4 pt-2 text-center">

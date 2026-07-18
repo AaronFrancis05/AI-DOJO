@@ -1,16 +1,13 @@
-/* ───────────────────────────────────────────────
-   Avatar — initials-based fallback with optional image
-   ─────────────────────────────────────────────── */
-
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@/lib/design-tokens';
 
 interface AvatarProps {
   name: string;
   src?: string | null;
   size?: 'sm' | 'md' | 'lg' | 'xl';
-  color?: string;      // bg hex for initials fallback
+  color?: string;
   className?: string;
 }
 
@@ -30,13 +27,28 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+function isImageUrl(url: string): boolean {
+  if (url.startsWith('data:image/')) return true;
+  if (url.startsWith('data:')) return false;
+  const ext = url.split('?')[0].split('#')[0].toLowerCase();
+  if (ext.endsWith('.glb') || ext.endsWith('.gltf') || ext.endsWith('.hdr')) return false;
+  if (ext.endsWith('.png') || ext.endsWith('.jpg') || ext.endsWith('.jpeg')
+    || ext.endsWith('.webp') || ext.endsWith('.gif') || ext.endsWith('.svg')
+    || ext.endsWith('.avif')) return true;
+  return /^https?:\/\/.*(avaturn|gravatar|googleusercontent|cloudinary)/i.test(url);
+}
+
 export function Avatar({ name, src, size = 'md', color = '#2D3BC5', className }: AvatarProps) {
-  if (src) {
+  const [imgError, setImgError] = useState(false);
+  const showImg = src && isImageUrl(src) && !imgError;
+
+  if (showImg) {
     return (
       <img
         src={src}
         alt={name}
         className={cn('rounded-full object-cover', sizeClasses[size], className)}
+        onError={() => setImgError(true)}
       />
     );
   }

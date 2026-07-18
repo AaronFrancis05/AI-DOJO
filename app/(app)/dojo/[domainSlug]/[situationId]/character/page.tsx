@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
@@ -64,7 +64,11 @@ export default function CharacterSelectionPage() {
     load();
   }, [situationIdNum, domainSlug, searchParams]);
 
-  const startSession = async (characterId: number) => {
+  const startSession = useCallback(async (characterId: number, avatarModelUrl?: string | null) => {
+    if (avatarModelUrl) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(avatarModelUrl));
+    }
+
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,7 +88,7 @@ export default function CharacterSelectionPage() {
     }
     const body = await res.json();
     router.push(`/session/${body.session.id}`);
-  };
+  }, [situationIdNum, behaviorMode, targetLanguage, nativeLanguage, router]);
 
   if (loading) {
     return (
@@ -144,6 +148,7 @@ export default function CharacterSelectionPage() {
                   name={char.name}
                   role={char.role}
                   accentColor={char.avatarColor}
+                  modelUrl={char.avatarModelUrl ?? undefined}
                   compact
                   mode="idle"
                 />
@@ -155,7 +160,7 @@ export default function CharacterSelectionPage() {
                 variant="primary"
                 size="sm"
                 className="mt-4 w-full"
-                onClick={() => startSession(char.id)}
+                onClick={() => startSession(char.id, char.avatarModelUrl)}
               >
                 Start Practice
                 <ChevronRight className="ml-1 h-3.5 w-3.5" />

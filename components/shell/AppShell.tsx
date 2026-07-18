@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { useUser } from '@/lib/auth/user-context';
+import { AvatarProvider } from '@/lib/auth/avatar-context';
 import { Menu, X } from 'lucide-react';
 
 interface AppShellProps {
@@ -27,7 +28,7 @@ export function AppShell({ children }: AppShellProps) {
   if (isSessionRoute) {
     return (
       <div className="h-dvh w-screen overflow-hidden bg-dojo-canvas text-dojo-text-primary">
-        {children}
+        <AvatarProvider>{children}</AvatarProvider>
       </div>
     );
   }
@@ -59,7 +60,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto">
-        {children}
+        <AvatarProvider>{children}</AvatarProvider>
       </main>
     </div>
   );
