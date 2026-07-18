@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-interface AvatarViewportProps {
+interface AkademiaAvatarViewportProps {
   name: string;
   accentColor: string;
   mode: 'idle' | 'listening' | 'talking';
@@ -11,13 +11,12 @@ interface AvatarViewportProps {
   cameraMode?: 'front' | 'over-shoulder';
 }
 
-// 🚨 CRITICAL: The 'export' keyword MUST be here!
-export function AvatarViewport({
+export function AkademiaAvatarViewport({
   mode,
   emotion = 'neutral',
   gesture = 'none',
   cameraMode = 'front',
-}: AvatarViewportProps) {
+}: AkademiaAvatarViewportProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isReady, setIsReady] = useState(false);
 
@@ -32,6 +31,8 @@ export function AvatarViewport({
       }
       
       if (event.data.type === 'USER_SPOKE') {
+        // Optional: If you want Dojo to handle the STT backend logic, 
+        // you can trigger your handleSend(event.data.text) here.
         console.log('🎤 User spoke to Akademia avatar:', event.data.text);
       }
     };
@@ -50,7 +51,7 @@ export function AvatarViewport({
     }, 'https://ai-avatar.akademia.co.jp');
   }, [isReady, mode, emotion, gesture, cameraMode]);
 
-  // The URL pointing to the hosted Akademia app
+  // The URL pointing to your hosted Akademia app
   const iframeSrc = `https://ai-avatar.akademia.co.jp/?mode=avatar-only&camera=${cameraMode}`;
 
   return (
