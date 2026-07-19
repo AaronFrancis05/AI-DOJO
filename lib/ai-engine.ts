@@ -1,14 +1,6 @@
-import { GoogleGenAI } from '@google/genai';
-import 'dotenv/config';
 import { getTargetLangConfig, getNativeLangName } from './language';
-
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error('GEMINI_API_KEY is missing from your environment variables (.env)');
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey });
+import { getAIProvider } from './ai-providers';
+import type { ChatTurn } from './ai-providers';
 
 export interface CorrectionItem {
   correctionType: string;
@@ -20,10 +12,8 @@ export interface CorrectionItem {
   severity: string;
 }
 
-export interface GeminiMessage {
-  role: 'user' | 'model';
-  parts: { text: string }[];
-}
+/** @deprecated kept only so old imports don't break; use ChatTurn from ./ai-providers instead */
+export type GeminiMessage = ChatTurn;
 
 /** Allowed gesture values that map to animation clips */
 export const ALLOWED_GESTURES = ['bow', 'wave', 'shake_hands', 'nod', 'none'] as const;
@@ -95,7 +85,7 @@ export async function analyzeAndGenerateTurn(
     targetPhraseJp: string | null;
   }>,
   completedGoalSequenceOrders: number[],
-  conversationHistory: GeminiMessage[] = [],
+  conversationHistory: ChatTurn[] = [],
   behaviorMode?: string,
   situationContext?: string,
   situationLearningGoals?: string,
@@ -243,25 +233,13 @@ ${correctionRomajiInstruction}      "correctedText": "corrected version",
 - Target language: ${targetLangName}
 - Native language: ${nativeLangName}`;
 
-  const contents = [
+  const provider = await getAIProvider();
+  const rawText = await provider.generateJSON(systemInstruction, [
     ...conversationHistory,
-    { role: 'user' as const, parts: [{ text: userContent }] }
-  ];
+    { role: 'user', content: userContent },
+  ]);
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents,
-    config: {
-      systemInstruction: systemInstruction,
-      responseMimeType: 'application/json'
-    }
-  });
-
-  if (!response.text) {
-    throw new Error('Received an empty response back from the Gemini API system.');
-  }
-
-  const parsed = JSON.parse(response.text) as AIResponseAnalysis;
+  const parsed = JSON.parse(rawText) as AIResponseAnalysis;
 
   if (parsed.gestureHint) parsed.gestureHint = normalizeGesture(parsed.gestureHint);
   if (parsed.nextAiReply?.gestureHint) parsed.nextAiReply.gestureHint = normalizeGesture(parsed.nextAiReply.gestureHint);

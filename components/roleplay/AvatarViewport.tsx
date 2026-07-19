@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from 'react';
 interface AvatarViewportProps {
   name: string;
   accentColor: string;
-  characterId?: string; // 🆕 NEW: The ID of the specific avatar to load
   mode: 'idle' | 'listening' | 'talking';
   emotion?: string;
   gesture?: string;
@@ -13,7 +12,6 @@ interface AvatarViewportProps {
 }
 
 export function AvatarViewport({
-  characterId, // 🆕 NEW
   mode,
   emotion = 'neutral',
   gesture = 'none',
@@ -25,8 +23,12 @@ export function AvatarViewport({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== 'https://ai-avatar.akademia.co.jp') return;
-      if (event.data.type === 'AKADEMIA_READY') setIsReady(true);
-      if (event.data.type === 'USER_SPOKE') console.log('🎤 User spoke:', event.data.text);
+      if (event.data.type === 'AKADEMIA_READY') {
+        setIsReady(true);
+      }
+      if (event.data.type === 'USER_SPOKE') {
+        console.log('🎤 User spoke:', event.data.text);
+      }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
@@ -40,8 +42,7 @@ export function AvatarViewport({
     }, 'https://ai-avatar.akademia.co.jp');
   }, [isReady, mode, emotion, gesture, cameraMode]);
 
-  // 🆕 NEW: Pass the characterId in the URL so our app knows which avatar to load
-  const iframeSrc = `https://ai-avatar.akademia.co.jp/?mode=avatar-only&camera=${cameraMode}&characterId=${characterId || 'uganda-female'}`;
+  const iframeSrc = `https://ai-avatar.akademia.co.jp/?mode=avatar-only&camera=${cameraMode}`;
 
   return (
     <div className="relative h-full w-full overflow-hidden">

@@ -13,6 +13,7 @@
     "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "@gltf-transform/core": "^4.4.1",
     "@gltf-transform/extensions": "^4.4.1",
     "@gltf-transform/functions": "^4.4.1",
@@ -32,6 +33,7 @@
     "meshoptimizer": "^1.2.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.50.0",
     "next": "16.2.9",
+    "openai": "^6.48.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.2",

@@ -1,6 +1,8 @@
 import { db } from '../../../src/db';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
+import type { ChatTurn } from '../../../lib/ai-providers';
+import { AIProviderError, AIQuotaError, AIModelError } from '../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../lib/language';
 import { eq, and, asc } from 'drizzle-orm';
 import { getAuthUser } from '../../../lib/auth/server';
@@ -44,56 +46,53 @@ export async function POST(req: Request) {
     const targetLanguage = session.targetLanguage ?? 'ja';
     const nativeLanguage = session.nativeLanguage ?? 'en';
 
-    const [currentScenario] = await db
-      .select()
-      .from(scenarios)
-      .where(eq(scenarios.id, scenarioId));
+    const [currentScenario, conversationRows, goalsResult, completionsResult, situationResult] = await Promise.all([
+      db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null),
+
+      db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.sessionId, numericSessionId))
+        .orderBy(asc(conversations.turnNo)),
+
+      db
+        .select()
+        .from(scenarioGoals)
+        .where(eq(scenarioGoals.scenarioId, scenarioId))
+        .orderBy(asc(scenarioGoals.sequenceOrder)),
+
+      db
+        .select({ seqOrder: scenarioGoals.sequenceOrder })
+        .from(goalCompletions)
+        .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
+        .where(and(eq(goalCompletions.sessionId, numericSessionId), eq(scenarioGoals.scenarioId, scenarioId))),
+
+      session.situationId
+        ? db.select().from(situations).where(eq(situations.id, session.situationId)).then(r => r[0] ?? null)
+        : Promise.resolve(null),
+    ]);
 
     if (!currentScenario) {
       return Response.json({ error: 'Scenario not found' }, { status: 404 });
     }
 
+    const goals = goalsResult;
+    const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
+
     let situationContext = currentScenario.context;
     let situationLearningGoals = currentScenario.learningGoals;
-
-    if (session.situationId) {
-      const [situation] = await db
-        .select()
-        .from(situations)
-        .where(eq(situations.id, session.situationId));
-      if (situation) {
-        situationContext = situation.context;
-        situationLearningGoals = situation.learningGoals;
-      }
+    if (situationResult) {
+      situationContext = situationResult.context;
+      situationLearningGoals = situationResult.learningGoals;
     }
-
-    const goals = await db
-      .select()
-      .from(scenarioGoals)
-      .where(eq(scenarioGoals.scenarioId, scenarioId))
-      .orderBy(asc(scenarioGoals.sequenceOrder));
-
-    const existingCompletions = await db
-      .select({ seqOrder: scenarioGoals.sequenceOrder })
-      .from(goalCompletions)
-      .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
-      .where(and(eq(goalCompletions.sessionId, numericSessionId), eq(scenarioGoals.scenarioId, scenarioId)));
-
-    const completedSequenceOrders = existingCompletions.map(c => c.seqOrder);
-
-    const conversationRows = await db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.sessionId, numericSessionId))
-      .orderBy(asc(conversations.turnNo));
 
     const currentTurnNo = conversationRows.length > 0
       ? Math.max(...conversationRows.map(c => c.turnNo)) + 1
       : 1;
 
-    const conversationHistory = conversationRows.map(row => ({
-      role: row.speaker === 'ai' ? 'model' as const : 'user' as const,
-      parts: [{ text: row.messageTarget ?? row.messageJp }]
+    const conversationHistory: ChatTurn[] = conversationRows.map(row => ({
+      role: row.speaker === 'ai' ? 'assistant' as const : 'user' as const,
+      content: row.messageTarget ?? row.messageJp,
     }));
 
     const mlPipelineOutput = await analyzeAndGenerateTurn(
@@ -129,18 +128,21 @@ export async function POST(req: Request) {
     }).returning({ id: conversations.id });
 
     if (mlPipelineOutput.corrections && mlPipelineOutput.corrections.length > 0) {
-      await db.insert(corrections).values(
-        mlPipelineOutput.corrections.map(c => ({
-          conversationId: userConversation.id,
-          correctionType: c.correctionType,
-          originalText: c.originalText,
-          originalRomaji: c.originalRomaji ?? null,
-          correctedText: c.correctedText,
-          correctedRomaji: c.correctedRomaji ?? null,
-          explanation: c.explanation,
-          severity: c.severity,
-        }))
-      );
+      const validCorrections = mlPipelineOutput.corrections.filter(c => c.correctedText);
+      if (validCorrections.length > 0) {
+        await db.insert(corrections).values(
+          validCorrections.map(c => ({
+            conversationId: userConversation.id,
+            correctionType: c.correctionType,
+            originalText: c.originalText,
+            originalRomaji: c.originalRomaji ?? null,
+            correctedText: c.correctedText,
+            correctedRomaji: c.correctedRomaji ?? null,
+            explanation: c.explanation,
+            severity: c.severity,
+          }))
+        );
+      }
     }
 
     await db.insert(conversations).values({
@@ -272,10 +274,45 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
-    console.error('Chat API error:', error);
+    if (error instanceof AIQuotaError) {
+      console.error(`[AI QUOTA] ${error.verboseLog}`);
+      const retryAfter = error.retryAfterSeconds ?? 60;
+      return Response.json(
+        {
+          error: 'AI service quota exceeded',
+          detail: error.message,
+          retryAfterSeconds: retryAfter,
+        },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+      );
+    }
+
+    if (error instanceof AIModelError) {
+      console.error(`[AI MODEL] ${error.verboseLog}`);
+      return Response.json(
+        {
+          error: 'AI model unavailable',
+          detail: error.message,
+        },
+        { status: 502 },
+      );
+    }
+
+    if (error instanceof AIProviderError) {
+      console.error(`[AI PROVIDER] ${error.verboseLog}`);
+      return Response.json(
+        {
+          error: 'AI provider error',
+          detail: error.message,
+        },
+        { status: 502 },
+      );
+    }
+
+    console.error('[CHAT] Unhandled error:', error);
     return Response.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
