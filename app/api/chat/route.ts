@@ -128,18 +128,21 @@ export async function POST(req: Request) {
     }).returning({ id: conversations.id });
 
     if (mlPipelineOutput.corrections && mlPipelineOutput.corrections.length > 0) {
-      await db.insert(corrections).values(
-        mlPipelineOutput.corrections.map(c => ({
-          conversationId: userConversation.id,
-          correctionType: c.correctionType,
-          originalText: c.originalText,
-          originalRomaji: c.originalRomaji ?? null,
-          correctedText: c.correctedText,
-          correctedRomaji: c.correctedRomaji ?? null,
-          explanation: c.explanation,
-          severity: c.severity,
-        }))
-      );
+      const validCorrections = mlPipelineOutput.corrections.filter(c => c.correctedText);
+      if (validCorrections.length > 0) {
+        await db.insert(corrections).values(
+          validCorrections.map(c => ({
+            conversationId: userConversation.id,
+            correctionType: c.correctionType,
+            originalText: c.originalText,
+            originalRomaji: c.originalRomaji ?? null,
+            correctedText: c.correctedText,
+            correctedRomaji: c.correctedRomaji ?? null,
+            explanation: c.explanation,
+            severity: c.severity,
+          }))
+        );
+      }
     }
 
     await db.insert(conversations).values({

@@ -38,6 +38,7 @@ interface ChatPanelProps {
   sending: boolean;
   isActive: boolean;
   targetName: string;
+  suggestedReplies?: string[];
 }
 
 /* ── Speaking wave dots ───────────────────────── */
@@ -63,7 +64,7 @@ function SpeakingWave({ active }: { active: boolean }) {
 export function ChatPanel({
   conversations, charName, charColor, avatarMode,
   text, setText, onSend, onReplay,
-  sending, isActive, targetName,
+  sending, isActive, targetName, suggestedReplies,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +81,7 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-3 space-y-3">
         {conversations.map((turn) => {
           const isAi = turn.speaker === 'ai';
           const isLatestAi = isAi && turn.id === Math.max(...conversations.filter(c => c.speaker === 'ai').map(c => c.id), -1);
@@ -168,6 +169,23 @@ export function ChatPanel({
             </div>
           );
         })}
+        {suggestedReplies && suggestedReplies.length > 0 && !sending && conversations.length > 0 && (
+          <div className="px-1">
+            <p className="text-[11px] text-dojo-text-muted mb-2 font-medium">You can say:</p>
+            <div className="flex flex-wrap gap-2">
+              {suggestedReplies.map((reply, i) => (
+                <button
+                  key={i}
+                  onClick={() => onSend(reply)}
+                  disabled={sending || !isActive}
+                  className="rounded-full border border-dojo-border bg-dojo-surface-raised/80 px-3 py-1.5 text-xs text-dojo-text-primary hover:border-dojo-accent transition-colors disabled:opacity-40"
+                >
+                  {reply}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 

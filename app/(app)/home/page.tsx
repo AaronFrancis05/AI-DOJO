@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -15,12 +16,20 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { TrendValue } from '@/components/ui/TrendValue';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { HexBadge } from '@/components/ui/HexBadge';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
-import { useCurrentAvatar } from '@/lib/auth/avatar-context';
+import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { type SessionRecord } from '@/lib/types';
+
+const WelcomeBanner = dynamic(() => import('@/components/roleplay/avatar-variants/WelcomeBanner').then(m => ({ default: m.WelcomeBanner })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-xl">
+      <div className="h-12 w-12 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 import {
   ArrowRight,
   Flame,
@@ -106,7 +115,7 @@ const recentAchievements = [
 export default function HomePage() {
   const router = useRouter();
   const user = useUser();
-  const currentAvatarUrl = useCurrentAvatar();
+  const currentAvatarModelUrl = useCurrentAvatarModel();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -194,9 +203,17 @@ export default function HomePage() {
         
         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="flex items-center gap-6">
-            <div className="relative">
-              <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
-              <Avatar name={user?.name ?? 'Learner'} src={currentAvatarUrl ?? user?.avatarSrc} size="xl" className="relative border-4 border-dojo-surface shadow-2xl" />
+            <div className="relative shrink-0">
+              <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
+              <div className="relative h-28 w-72 overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
+                {currentAvatarModelUrl ? (
+                  <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={user?.name} />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-xl font-bold text-dojo-text-primary">
+                    {user?.name?.[0] ?? '?'}
+                  </div>
+                )}
+              </div>
               <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
                 <Trophy className="h-4 w-4" />
               </div>

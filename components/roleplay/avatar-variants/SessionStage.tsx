@@ -71,7 +71,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
               />
             </group>
           )}
-          <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={6} blur={2} far={4} />
+          <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={6} blur={2} far={4} />
         </Suspense>
         <Suspense fallback={null}>
           <Environment files="/studio_small_03_1k.hdr" />

@@ -99,6 +99,15 @@ body {
   transform-origin: left;
 }
 
+/* ── Hidden scrollbar — keeps wheel/trackpad/touch scrolling, hides track ── */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-shimmer-sweep,
   .animate-typing-bounce,

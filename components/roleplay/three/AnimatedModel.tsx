@@ -120,11 +120,56 @@ export function getDevWarnings(): string[] {
   return [...devWarnings];
 }
 
+/* ── GroundModel ──────────────────────────────────────────────────────
+   Always runs, independent of camera framing. Shifts the model down
+   so its lowest point sits at y=0 (floor level).
+   ──────────────────────────────────────────────────────────────────── */
+function GroundModel({ scene }: { scene: THREE.Group }) {
+  const grounded = useRef(false);
+
+  useEffect(() => {
+    if (!scene || grounded.current) return;
+
+    let rafId: number;
+    let attempts = 0;
+
+    const tryGround = () => {
+      attempts += 1;
+      const box = new THREE.Box3().setFromObject(scene);
+      const size = box.getSize(new THREE.Vector3());
+      const valid = Number.isFinite(box.min.y) && size.y >= 0.1 && size.y <= 100;
+
+      if (!valid) {
+        if (attempts >= 60) return;
+        rafId = requestAnimationFrame(tryGround);
+        return;
+      }
+
+      scene.position.y -= box.min.y;
+      grounded.current = true;
+    };
+
+    tryGround();
+
+    return () => cancelAnimationFrame(rafId);
+  }, [scene]);
+
+  return null;
+}
+
 /* ── AnimationController ────────────────────────────────────────────
    Loads animation clips from separate GLB files,
    manages crossfade state machine driven by mode + gesture.
-   Idle clip is damped to ~35 % weight for subtle breathing-scale motion. ── */
-function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.Group } & AvatarAnimationProps) {
+   
+   Idle uses a two-layer blend: a static rest clip (first frame of idle
+   at weight 0.65) plus the live idle clip (weight 0.35) so the pose is
+   fully resolved and motion is subtle breathing-scale rather than a
+   frozen half-pose or full mocap swing.
+   ── */
+function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
+  scene: THREE.Group;
+  freezeOnIdle?: boolean;
+} & AvatarAnimationProps) {
   const { animations: idleAnims } = useGLTF('/anim_standing Idle.glb');
   const { animations: talkingAnims } = useGLTF('/anim_Talking.glb');
   const { animations: bowAnims } = useGLTF('/anim_bow.glb');
@@ -137,6 +182,9 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
   const returnScheduled = useRef(false);
   const hasGesturesRef = useRef(false);
   const clipActions = useRef<Map<AnimClip, { clip: THREE.AnimationClip; action: THREE.AnimationAction | null }>>(new Map());
+  const restActionRef = useRef<THREE.AnimationAction | null>(null);
+  const freezeRef = useRef(false);
+  freezeRef.current = freezeOnIdle ?? false;
 
   const sceneBoneNames = useMemo(() => {
     const names = new Set<string>();
@@ -187,23 +235,48 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
 
     const hasAny = clipActions.current.size > 0;
     hasGesturesRef.current = hasAny;
-    if (!hasAny) {
-      logDevWarning('No animation clips loaded — body animation disabled');
-    } else {
+
+    if (hasAny && !freezeRef.current) {
+      // Two-layer idle blend: static rest pose (65%) + live idle motion (35%)
       const idleEntry = clipActions.current.get('idle');
-      if (idleEntry?.action) {
+      if (idleEntry?.action && idleEntry.clip.tracks.length > 0) {
+        // Live idle layer at 35 %
         idleEntry.action.reset();
         idleEntry.action.setLoop(THREE.LoopRepeat, Infinity);
-        // Dampen idle to ~35 % for subtle breathing-scale motion
         idleEntry.action.weight = 0.35;
         idleEntry.action.play();
+
+        // Static rest layer from first keyframe of the cleaned idle clip at 65 %
+        const restTracks = idleEntry.clip.tracks.map(track => {
+          const stride = track.getValueSize();
+          const times = new Float32Array([0]);
+          const values = track.values.slice(0, stride);
+          return new THREE.NumberKeyframeTrack(track.name, times, values);
+        });
+        const restClip = new THREE.AnimationClip('idle_rest', Infinity, restTracks);
+        const restAction = mixer.clipAction(restClip);
+        restAction.reset();
+        restAction.setLoop(THREE.LoopRepeat, Infinity);
+        restAction.weight = 0.65;
+        restAction.play();
+        restActionRef.current = restAction;
       }
+    } else if (!hasAny) {
+      logDevWarning('No animation clips loaded — body animation disabled');
     }
 
     return () => {
       mixer.stopAllAction();
     };
   }, [scene, idleAnims, talkingAnims, bowAnims, shakeAnims]);
+
+  // Freeze on demand — stop mixer when freezeOnIdle transitions to true
+  useEffect(() => {
+    if (freezeOnIdle) {
+      mixerRef.current?.stopAllAction();
+      currentState.current = 'idle';
+    }
+  }, [freezeOnIdle]);
 
   const getAction = useCallback((name: AnimClip): THREE.AnimationAction | null => {
     return clipActions.current.get(name)?.action ?? null;
@@ -224,7 +297,6 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
     nextAction.reset();
     nextAction.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
     nextAction.clampWhenFinished = !isLoop;
-    // Keep damped weight for idle
     if (name === 'idle') nextAction.weight = 0.35;
     if (name === 'talking') nextAction.weight = 0.7;
 
@@ -243,6 +315,11 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
       setTimeout(() => {
         if (returnScheduled.current) return;
         returnScheduled.current = true;
+        if (freezeRef.current) {
+          mixer.stopAllAction();
+          currentState.current = 'idle';
+          return;
+        }
         const backTo: AnimClip = prevModeRef.current === 'talking' ? 'talking' : 'idle';
         const backAction = getAction(backTo);
         if (backAction) {
@@ -261,6 +338,7 @@ function AnimationController({ scene, mode, emotion, gesture }: { scene: THREE.G
   }, [getAction]);
 
   useEffect(() => {
+    if (freezeRef.current) return;
     if (mode === 'talking' && currentState.current === 'idle') {
       playClip('talking', 0.35);
     } else if (mode !== 'talking' && currentState.current === 'talking') {
@@ -682,8 +760,13 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   return null;
 }
 
+/* ── GroundModel ─────────────────────────────────────────────────────────────
+   Shifts the model down so its lowest point sits at y=0 (floor level).
+   Runs unconditionally — independent of camera framing.
+   ────────────────────────────────────────────────────────────────────────── */
+
 /* ── AutoCamera ─────────────────────────────────────────────────────────────
-   Frames the camera after the model is grounded.
+   Frames the camera after the model is grounded (assumes GroundModel has run).
    ────────────────────────────────────────────────────────────────────────── */
 const CAMERA_MODES = ['front', 'over-shoulder', 'portrait', 'banner'] as const;
 export type CameraMode = (typeof CAMERA_MODES)[number];
@@ -724,7 +807,7 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
         return;
       }
 
-      scene.position.y -= box.min.y;
+      // Grounding is handled by GroundModel — just measure the already-grounded box
       const groundedBox = new THREE.Box3().setFromObject(scene);
       const groundedHeight = groundedBox.getSize(new THREE.Vector3()).y;
       const center = groundedBox.getCenter(new THREE.Vector3());
@@ -767,15 +850,16 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
 }
 
 /* ── AnimatedModel ─────────────────────────────────────────────────────────
-   Loads the GLB, applies rest-pose bone correction, animation controller,
-   and morph-target OR fallback pose controller.
+   Loads the GLB, applies rest-pose bone correction, grounding,
+   animation controller, and morph-target OR fallback pose controller.
    ────────────────────────────────────────────────────────────────────────── */
-export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, disableAutoCamera }: {
+export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, disableAutoCamera, freezeOnIdle }: {
   url: string;
   cameraMode?: CameraMode;
   cameraIntent: CameraIntent;
   onFramed?: () => void;
   disableAutoCamera?: boolean;
+  freezeOnIdle?: boolean;
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
@@ -799,12 +883,13 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
   return (
     <group>
       <primitive object={scene} rotation={[0, computedYaw, 0]} />
+      <GroundModel scene={scene} />
       {!disableAutoCamera && (
         <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} />
       )}
       <RestPoseApplicator scene={scene} />
       {clipsLoaded && (
-        <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
+        <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} freezeOnIdle={freezeOnIdle} />
       )}
       {hasMorphs ? (
         <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />

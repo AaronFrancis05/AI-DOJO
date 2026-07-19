@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { AvatarStage } from '@/components/roleplay/AvatarStage';
+import { CharacterPreviewCard } from '@/components/roleplay/avatar-variants/CharacterPreviewCard';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { getSituationById, type SituationFixture } from '@/lib/data/situations';
 import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
@@ -144,13 +144,12 @@ export default function CharacterSelectionPage() {
           <Card key={char.id} hoverable className="group p-5">
             <div className="flex flex-col items-center text-center">
               <div className="h-40 w-full">
-                <AvatarStage
+                <CharacterPreviewCard
                   name={char.name}
                   role={char.role}
                   accentColor={char.avatarColor}
                   modelUrl={char.avatarModelUrl ?? undefined}
-                  compact
-                  mode="idle"
+                  domainSlug={domainSlug}
                 />
               </div>
               <h3 className="mt-3 text-sm font-semibold text-dojo-text-primary">{char.name}</h3>

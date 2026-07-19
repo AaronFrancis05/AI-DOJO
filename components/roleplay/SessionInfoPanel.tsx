@@ -43,7 +43,7 @@ export function SessionInfoPanel({
         <p className="text-sm font-semibold text-dojo-text-primary">Session Information</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-0">
+      <div className="flex-1 overflow-y-auto no-scrollbar px-5 py-4 space-y-0">
         <div className="space-y-3 text-sm">
           {domain?.name && (
             <div className="flex items-start justify-between gap-3">

@@ -31,9 +31,14 @@ export async function getAIProvider(): Promise<AIProvider> {
       cachedProvider = mod.createAnthropicProvider();
       break;
     }
+    case 'groq': {
+      const mod = await import('./groq');
+      cachedProvider = mod.createGroqProvider();
+      break;
+    }
     default:
       throw new Error(
-        `Unknown AI_PROVIDER "${selected}". Expected one of: gemini, azure-openai, openai-compatible, anthropic.`
+        `Unknown AI_PROVIDER "${selected}". Expected one of: gemini, azure-openai, openai-compatible, anthropic, groq.`
       );
   }
 

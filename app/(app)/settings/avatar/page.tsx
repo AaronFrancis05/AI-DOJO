@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card } from '@/components/ui/Card';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
-import { Avatar } from '@/components/ui/Avatar';
 import { SliderRow } from '@/components/ui/SliderRow';
 import { Toggle } from '@/components/ui/Toggle';
 import { Badge } from '@/components/ui/Badge';
@@ -12,7 +12,16 @@ import { useUser } from '@/lib/auth/user-context';
 import { useAvatar } from '@/lib/auth/avatar-context';
 import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
 import Link from 'next/link';
-import { ArrowLeft, Smile, UserCheck, Headphones, Star, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
+
+const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-dojo-surface animate-pulse">
+      <div className="h-12 w-12 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 
 const tabs: Tab[] = [
   { id: 'avatar', label: 'My Avatar' },
@@ -52,11 +61,18 @@ export default function AvatarSettingsPage() {
                 <div className="space-y-6">
                   {/* Current avatar preview */}
                   <div className="flex flex-col items-center">
-                    <Avatar
-                      name={user?.name ?? 'You'}
-                      src={selectedAvatar?.avatarUrl ?? selectedAvatar?.thumbnailUrl}
-                      size="xl"
-                    />
+                    <div className="h-28 w-28 overflow-hidden rounded-full border-2 border-dojo-border">
+                      {selectedAvatar ? (
+                        <ProfilePortrait
+                          modelUrl={selectedAvatar.avatarUrl}
+                          userName={user?.name}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-dojo-text-muted">
+                          <User className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
                     <p className="mt-3 text-lg font-semibold text-dojo-text-primary">
                       {user?.name ?? 'You'}
                     </p>
@@ -93,9 +109,9 @@ export default function AvatarSettingsPage() {
                               }`}
                             >
                               <div className="flex h-12 w-12 items-center justify-center rounded-full overflow-hidden bg-dojo-surface">
-                                {av.thumbnailUrl || av.avatarUrl ? (
+                                {av.thumbnailUrl && !av.thumbnailUrl.endsWith('.glb') ? (
                                   <img
-                                    src={av.thumbnailUrl || av.avatarUrl}
+                                    src={av.thumbnailUrl}
                                     alt="Avatar"
                                     className="h-full w-full object-cover"
                                     onError={(e) => {
@@ -103,7 +119,7 @@ export default function AvatarSettingsPage() {
                                     }}
                                   />
                                 ) : (
-                                  <span className="text-xs text-dojo-text-muted">?</span>
+                                  <User className="h-6 w-6 text-dojo-text-muted" />
                                 )}
                               </div>
                               {av.isSelected && (

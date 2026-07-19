@@ -24,7 +24,7 @@ export function AvaturnConnector({
 
       sdk.on('load', () => setLoading(false));
       sdk.on('export', async (data: ExportAvatarResult) => {
-        await addAvatar(data.url, data.url);
+        await addAvatar(data.url, null);
         onClose();
       });
       sdk.on('error', (err) => {

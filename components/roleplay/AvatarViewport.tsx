@@ -58,11 +58,12 @@ function DevOverlay() {
 /* ── ThreeScene ─────────────────────────────────── */
 type AvatarMode = 'idle' | 'listening' | 'talking';
 
-function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent, onFramed }: {
+function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, freezeOnIdle }: {
   modelUrl: string;
   cameraMode?: CameraMode;
   cameraIntent: CameraIntent;
   onFramed?: () => void;
+  freezeOnIdle?: boolean;
   mode?: AvatarMode;
   emotion?: string;
   gesture?: string;
@@ -94,6 +95,7 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent
             cameraMode={cameraMode}
             cameraIntent={cameraIntent}
             onFramed={onFramed}
+            freezeOnIdle={freezeOnIdle}
           />
           {cameraMode !== 'over-shoulder' && (
             <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={3} blur={2} far={4} />
@@ -116,7 +118,7 @@ function detectWebGLSupport(): boolean {
 
 /* ── Exported component ──────────────────────────── */
 export function AvatarViewport({
-  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed,
+  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed, freezeOnIdle,
 }: {
   name: string;
   accentColor: string;
@@ -128,6 +130,7 @@ export function AvatarViewport({
   modelUrl?: string;
   cameraIntent?: CameraIntent;
   onFramed?: () => void;
+  freezeOnIdle?: boolean;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
@@ -169,6 +172,7 @@ export function AvatarViewport({
             gesture={gesture}
             cameraMode={cameraMode}
             cameraIntent={cameraIntent}
+            freezeOnIdle={freezeOnIdle}
             onFramed={() => {
               setFramed(true);
               onFramed?.();

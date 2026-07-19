@@ -58,25 +58,6 @@ function MicPulse({ active }: { active: boolean }) {
   );
 }
 
-/* ─── Speaking wave dots next to character name ─────────────────────────── */
-function SpeakingWave({ active }: { active: boolean }) {
-  if (!active) return null;
-  return (
-    <span className="flex items-end gap-[2px] h-3.5">
-      {[0, 120, 240].map((d) => (
-        <span
-          key={d}
-          className="w-[3px] rounded-full bg-dojo-accent"
-          style={{
-            height: '10px',
-            animation: `typing-bounce 0.9s ease-in-out ${d}ms infinite`,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
    Main page
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -306,7 +287,6 @@ export default function RoleplaySessionPage() {
   const charColor   = character?.avatarColor ?? '#2D3BC5';
   const domainSlug  = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
   const latestAi    = [...conversations].reverse().find(c => c.speaker === 'ai');
-  const latestUser  = [...conversations].reverse().find(c => c.speaker === 'user');
   const totalCorrections = conversations.reduce((sum, c) => sum + (c.corrections?.length ?? 0), 0);
   const targetName  = getTargetLangConfig(targetLanguage).name;
 
@@ -351,6 +331,7 @@ export default function RoleplaySessionPage() {
     sending,
     isActive,
     targetName,
+    suggestedReplies,
   };
 
   /* ── Shared tab bar ── */
@@ -428,7 +409,7 @@ export default function RoleplaySessionPage() {
         </div>
 
         {/* ── Top bar: absolute top-0 left-0 right-0, z-30 ── */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-30">
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-4 z-30">
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => router.push('/home')}
@@ -451,112 +432,12 @@ export default function RoleplaySessionPage() {
           </div>
         </div>
 
-        {/* ── Speech bubble overlay: absolute top-14 right-3, z-20 ── */}
-        <div className="absolute top-14 left-4 right-4 z-20 flex justify-center">
-          <div className="w-full max-w-lg space-y-3">
-            {sending ? (
-              <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-dojo-text-primary">{charName} (AI)</span>
-                  <span className="text-[10px] text-dojo-text-muted">typing…</span>
-                </div>
-              </div>
-            ) : latestAi ? (
-              <>
-                {latestUser && (
-                  <div className="bg-dojo-surface/80 backdrop-blur-md rounded-xl border border-dojo-border/60 shadow-lg px-4 py-3 ml-auto max-w-md">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-xs font-bold text-dojo-text-muted">You</span>
-                      {latestUser.corrections && latestUser.corrections.length > 0 && (
-                        <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-dojo-warning/20 px-2 py-0.5 text-[10px] font-semibold text-dojo-warning">
-                          {latestUser.corrections.length} tip{latestUser.corrections.length > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-dojo-text-primary leading-relaxed">
-                      {latestUser.messageTarget}
-                    </p>
-                    {latestUser.corrections && latestUser.corrections.length > 0 && (
-                      <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
-                        {latestUser.corrections.map((tip, i) => (
-                          <div key={i} className="text-[11px] leading-relaxed">
-                            <div className="flex items-start gap-1.5">
-                              <span className={`shrink-0 mt-0.5 inline-block h-3.5 w-3.5 rounded-full text-[8px] font-bold text-center leading-[14px] ${
-                                tip.severity === 'major' ? 'bg-dojo-danger/20 text-dojo-danger' :
-                                tip.severity === 'moderate' ? 'bg-dojo-warning/20 text-dojo-warning' :
-                                'bg-dojo-accent/20 text-dojo-accent'
-                              }`}>
-                                {tip.severity === 'major' ? '!' : tip.severity === 'moderate' ? '!' : 'i'}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <span className="line-through text-dojo-text-muted">{tip.originalText}</span>
-                                {' '}→{' '}
-                                <span className="font-medium text-dojo-text-primary">{tip.correctedText}</span>
-                                {tip.correctedRomaji && (
-                                  <span className="ml-1 italic text-dojo-text-muted">({tip.correctedRomaji})</span>
-                                )}
-                                <p className="text-dojo-text-muted/80 mt-0.5">{tip.explanation}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3 max-w-md">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-bold text-dojo-text-primary">{charName} (AI)</span>
-                    <SpeakingWave active={avatarMode === 'talking'} />
-                    <button
-                      onClick={() => handleReplay(latestAi.messageTarget, latestAi.messageNative)}
-                      className="ml-auto"
-                    >
-                      <Volume2 className="h-3.5 w-3.5 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
-                    </button>
-                  </div>
-                  <p className="text-sm text-dojo-text-primary leading-relaxed font-medium">
-                    {latestAi.messageTarget}
-                  </p>
-                  {latestAi.messageRomaji && (
-                    <p className="mt-1 text-[11px] text-dojo-text-muted italic">{latestAi.messageRomaji}</p>
-                  )}
-                  {latestAi.messageNative && (
-                    <p className="text-[11px] text-dojo-text-muted mt-1">{latestAi.messageNative}</p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
-                <p className="text-sm text-dojo-text-muted">
-                  Speak or type to begin the conversation with {charName}.
-                </p>
-              </div>
-            )}
-
-            {suggestedReplies.length > 0 && !sending && (
-              <div>
-                <p className="text-[11px] text-dojo-text-muted mb-2 font-medium">You can say:</p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestedReplies.map((reply, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleSend(reply)}
-                      disabled={sending || !isActive}
-                      className="rounded-full border border-dojo-border bg-dojo-surface-raised/80 backdrop-blur-sm px-3 py-1.5 text-xs text-dojo-text-primary hover:border-dojo-accent transition-colors disabled:opacity-40"
-                    >
-                      {reply}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <p className="text-xs text-dojo-danger">{error}</p>
-            )}
+        {/* ── Error indicator: absolute bottom-36, centered, z-25 ── */}
+        {error && (
+          <div className="absolute bottom-36 left-0 right-0 z-25 flex justify-center pointer-events-none">
+            <p className="text-xs text-dojo-danger bg-dojo-surface/80 backdrop-blur-sm px-3 py-1.5 rounded-lg">{error}</p>
           </div>
-        </div>
+        )}
 
         {/* ── Control bar: absolute bottom-0 left-0 right-0, z-30 ── */}
         <div className="absolute bottom-0 left-0 right-0 z-30">

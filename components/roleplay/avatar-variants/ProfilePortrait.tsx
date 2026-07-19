@@ -32,6 +32,7 @@ export function ProfilePortrait({ modelUrl, userName }: ProfilePortraitProps) {
         cameraIntent="face-camera"
         modelUrl={modelUrl}
         gesture={hasGreeted ? undefined : 'bow'}
+        freezeOnIdle={hasGreeted}
         onFramed={() => {
           if (!greetedRef.current) {
             greetedRef.current = true;
