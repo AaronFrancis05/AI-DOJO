@@ -234,7 +234,7 @@ export default function RoleplaySessionPage() {
               collectedAiText += payload.text;
               setStreamingText(collectedAiText);
               if (!muted) {
-                feedStreamTts(payload.text, bcp47, nativeBcp47);
+                feedStreamTts(payload.text, bcp47, nativeBcp47, phase);
               }
               break;
 
@@ -325,7 +325,7 @@ export default function RoleplaySessionPage() {
     } finally {
       setSending(false);
     }
-  }, [sessionId, sending, conversations.length, muted, isRetry]);
+  }, [sessionId, sending, conversations.length, muted, isRetry, phase]);
 
   // Auto-send greeting when session starts in icebreaker phase
   const handleSendRef = useRef(handleSend);
