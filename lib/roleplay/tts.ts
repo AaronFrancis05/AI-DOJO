@@ -133,4 +133,117 @@ export function stop(): void {
   window.speechSynthesis.cancel();
   currentVisemeId = -1;
   isAzureSpeaking = false;
+  stopStreamingTts();
+}
+
+/* ── Span-based language routing ──────────────────────── */
+
+const SPAN_DELIMITER = /⟦([^⟧]*)⟧/g;
+
+interface LangSpan {
+  text: string;
+  lang: 'target' | 'native';
+}
+
+function containsJapaneseScript(text: string): boolean {
+  return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text);
+}
+
+function containsTargetScript(text: string, targetBcp47: string): boolean {
+  if (targetBcp47.startsWith('ja')) return containsJapaneseScript(text);
+  if (targetBcp47.startsWith('zh')) return /[\u4e00-\u9fff]/.test(text);
+  if (targetBcp47.startsWith('ko')) return /[\uac00-\ud7af]/.test(text);
+  return false;
+}
+
+function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string): string {
+  if (phase === 'unguided') return targetBcp47;
+  return lang === 'target' ? targetBcp47 : nativeBcp47;
+}
+
+function splitIntoLangSpans(raw: string): LangSpan[] {
+  const spans: LangSpan[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  SPAN_DELIMITER.lastIndex = 0;
+
+  while ((match = SPAN_DELIMITER.exec(raw))) {
+    if (match.index > lastIndex) {
+      const nativeText = raw.slice(lastIndex, match.index).trim();
+      if (nativeText) spans.push({ text: nativeText, lang: 'native' });
+    }
+    const targetText = match[1].replace(/\([^)]*\)/g, '').trim();
+    if (targetText) spans.push({ text: targetText, lang: 'target' });
+    lastIndex = SPAN_DELIMITER.lastIndex;
+  }
+  if (lastIndex < raw.length) {
+    const rest = raw.slice(lastIndex).trim();
+    if (rest) spans.push({ text: rest, lang: 'native' });
+  }
+  return spans;
+}
+
+/* ── Streaming TTS ────────────────────────────────────── */
+
+let streamTtsBuffer = '';
+let streamTtsBusy = false;
+let streamTtsStopped = false;
+const SENTENCE_BOUNDARY = /[。！？.!?\n]/;
+
+async function processStreamTtsQueue(targetBcp47: string, nativeBcp47: string, phase: string): Promise<void> {
+  if (streamTtsBusy || streamTtsStopped) return;
+  streamTtsBusy = true;
+
+  while (streamTtsBuffer.length > 0 && !streamTtsStopped) {
+    const match = streamTtsBuffer.match(SENTENCE_BOUNDARY);
+    if (!match) break;
+
+    const idx = match.index! + 1;
+    const sentence = streamTtsBuffer.slice(0, idx).trim();
+    streamTtsBuffer = streamTtsBuffer.slice(idx).trim();
+
+    if (!sentence) continue;
+
+    const spans = splitIntoLangSpans(sentence);
+
+    if (spans.length === 0) {
+      /* ── Fallback: no ⟦ ⟧ delimiters found — use script-sniffing ── */
+      const lang = containsTargetScript(sentence, targetBcp47) ? targetBcp47 : nativeBcp47;
+      const voiceLang = phase === 'unguided' ? targetBcp47 : lang;
+      try {
+        await speakWithVisemes(sentence, voiceLang);
+      } catch {
+        await speak(sentence, voiceLang);
+      }
+    } else {
+      for (const span of spans) {
+        const voiceLang = spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase);
+        try {
+          await speakWithVisemes(span.text, voiceLang);
+        } catch {
+          await speak(span.text, voiceLang);
+        }
+      }
+    }
+  }
+
+  streamTtsBusy = false;
+}
+
+export function feedStreamTts(chunk: string, targetBcp47: string, nativeBcp47: string, phase: string): void {
+  if (streamTtsStopped) return;
+  streamTtsBuffer += chunk;
+  processStreamTtsQueue(targetBcp47, nativeBcp47, phase);
+}
+
+export function stopStreamingTts(): void {
+  streamTtsStopped = true;
+  streamTtsBuffer = '';
+  streamTtsBusy = false;
+}
+
+export function resetStreamingTts(): void {
+  streamTtsStopped = false;
+  streamTtsBuffer = '';
+  streamTtsBusy = false;
 }

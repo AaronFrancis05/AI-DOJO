@@ -1,21 +1,27 @@
-/* ───────────────────────────────────────────────
-   Avatar & Character Settings (Panel 14)
-   Tabbed: My Avatar / AI Voice Preferences
-   ─────────────────────────────────────────────── */
-
 'use client';
 
+import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card } from '@/components/ui/Card';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
-import { Avatar } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
 import { SliderRow } from '@/components/ui/SliderRow';
 import { Toggle } from '@/components/ui/Toggle';
 import { Badge } from '@/components/ui/Badge';
 import { characters } from '@/lib/data/characters';
-import { useState } from 'react';
+import { useUser } from '@/lib/auth/user-context';
+import { useAvatar } from '@/lib/auth/avatar-context';
+import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
 import Link from 'next/link';
-import { ArrowLeft, Smile, UserCheck, Headphones, Star } from 'lucide-react';
+import { ArrowLeft, Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
+
+const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-dojo-surface animate-pulse">
+      <div className="h-12 w-12 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 
 const tabs: Tab[] = [
   { id: 'avatar', label: 'My Avatar' },
@@ -29,17 +35,10 @@ const avatarIconMap: Record<string, React.ComponentType<{ className?: string; st
   Star,
 };
 
-const presetAvatars = [
-  { name: 'Alex', color: '#2D3BC5', icon: 'Smile' },
-  { name: 'Maya', color: '#D14343', icon: 'UserCheck' },
-  { name: 'Ryo', color: '#2FAE66', icon: 'Headphones' },
-  { name: 'Lena', color: '#E3A939', icon: 'Star' },
-  { name: 'Kai', color: '#9333EA', icon: 'Smile' },
-  { name: 'Nina', color: '#06B6D4', icon: 'UserCheck' },
-];
-
 export default function AvatarSettingsPage() {
-  const [selectedAvatar, setSelectedAvatar] = useState(0);
+  const user = useUser();
+  const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar } = useAvatar();
+  const [showAvaturn, setShowAvaturn] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState(50);
   const [voicePitch, setVoicePitch] = useState(50);
 
@@ -62,44 +61,95 @@ export default function AvatarSettingsPage() {
                 <div className="space-y-6">
                   {/* Current avatar preview */}
                   <div className="flex flex-col items-center">
-                    <Avatar
-                      name={presetAvatars[selectedAvatar].name}
-                      color={presetAvatars[selectedAvatar].color}
-                      size="xl"
-                    />
+                    <div className="h-28 w-28 overflow-hidden rounded-full border-2 border-dojo-border">
+                      {selectedAvatar ? (
+                        <ProfilePortrait
+                          modelUrl={selectedAvatar.avatarUrl}
+                          userName={user?.name}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-dojo-text-muted">
+                          <User className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
                     <p className="mt-3 text-lg font-semibold text-dojo-text-primary">
-                      {presetAvatars[selectedAvatar].name}
+                      {user?.name ?? 'You'}
                     </p>
-                    <Badge variant="accent" className="mt-1">Current</Badge>
+                    {selectedAvatar && <Badge variant="accent" className="mt-1">Current</Badge>}
+                    {!selectedAvatar && !loading && (
+                      <p className="mt-1 text-xs text-dojo-text-muted">No avatar set — connect Avaturn to create one.</p>
+                    )}
                   </div>
 
-                  {/* Avatar presets */}
+                  {/* Avatar collection grid */}
                   <div>
-                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Choose Your Avatar</h4>
-                    <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-                      {presetAvatars.map((avatar, i) => {
-                        const Icon = avatarIconMap[avatar.icon] ?? Smile;
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => setSelectedAvatar(i)}
-                            className={`flex flex-col items-center gap-2 rounded-xl border p-3 transition-all ${
-                              selectedAvatar === i
-                                ? 'border-dojo-accent bg-dojo-accent/5'
-                                : 'border-dojo-border hover:border-dojo-text-muted'
-                            }`}
+                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">
+                      Your Avatars {avatars.length > 0 && <span className="text-dojo-text-muted font-normal">({avatars.length})</span>}
+                    </h4>
+
+                    {loading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-dojo-accent border-t-transparent" />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+                        {/* Existing avatars */}
+                        {avatars.map((av) => (
+                          <div
+                            key={av.id}
+                            className="relative group"
                           >
-                            <div
-                              className="flex h-12 w-12 items-center justify-center rounded-full"
-                              style={{ backgroundColor: avatar.color + '33' }}
+                            <button
+                              onClick={() => selectAvatar(av.id)}
+                              className={`flex flex-col items-center gap-2 rounded-xl border p-3 w-full transition-all ${
+                                av.isSelected
+                                  ? 'border-dojo-accent bg-dojo-accent/5 ring-2 ring-dojo-accent/30'
+                                  : 'border-dojo-border hover:border-dojo-text-muted'
+                              }`}
                             >
-                              <Icon className="h-6 w-6" style={{ color: avatar.color }} />
-                            </div>
-                            <span className="text-xs font-medium text-dojo-text-primary">{avatar.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full overflow-hidden bg-dojo-surface">
+                                {av.thumbnailUrl && !av.thumbnailUrl.endsWith('.glb') ? (
+                                  <img
+                                    src={av.thumbnailUrl}
+                                    alt="Avatar"
+                                    className="h-full w-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <User className="h-6 w-6 text-dojo-text-muted" />
+                                )}
+                              </div>
+                              {av.isSelected && (
+                                <span className="text-[10px] font-bold text-dojo-accent">Current</span>
+                              )}
+                            </button>
+
+                            {/* Delete button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm('Remove this avatar?')) deleteAvatar(av.id);
+                              }}
+                              className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-dojo-danger text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* Add new via Avaturn */}
+                        <button
+                          onClick={() => setShowAvaturn(true)}
+                          className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-dojo-border hover:border-dojo-accent p-3 transition-all min-h-[96px]"
+                        >
+                          <Plus className="h-6 w-6 text-dojo-text-muted" />
+                          <span className="text-xs font-medium text-dojo-text-muted text-center leading-tight">Connect Avaturn</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -164,6 +214,10 @@ export default function AvatarSettingsPage() {
           }
         }} />
       </Card>
+
+      {showAvaturn && (
+        <AvaturnConnector onClose={() => setShowAvaturn(false)} />
+      )}
     </div>
   );
 }

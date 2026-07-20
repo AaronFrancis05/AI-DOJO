@@ -42,3 +42,8 @@ next-env.d.ts
 
 # local dev logs (may contain sensitive auth data)
 dev-log.txt
+
+#context
+/context/**/**
+ui-registry.md
+MEMORY.md

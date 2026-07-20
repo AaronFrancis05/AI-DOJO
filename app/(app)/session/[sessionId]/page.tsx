@@ -2,14 +2,27 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { AvatarViewport } from '@/components/roleplay/AvatarViewport';
+import dynamic from 'next/dynamic';
+import { AvatarCreator, getStoredAvatarUrl } from '@/components/roleplay/AvatarCreator';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
+import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
+import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { Badge } from '@/components/ui/Badge';
-import { speakWithVisemes, speak as ttsSpeak } from '@/lib/roleplay/tts';
-import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
-import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
-import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, Target, ArrowLeft, Flag } from 'lucide-react';
+import { speakWithVisemes, speak as ttsSpeak, feedStreamTts, resetStreamingTts, stopStreamingTts } from '@/lib/roleplay/tts';
+import { startContinuousRecognition, stopContinuousRecognition } from '@/lib/roleplay/pronunciation';
+import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
+import { useUser } from '@/lib/auth/user-context';
+import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
+import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, ArrowLeft, MessageSquare, Info } from 'lucide-react';
+
+const SessionStage = dynamic(() => import('@/components/roleplay/avatar-variants/SessionStage').then(m => ({ default: m.SessionStage })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-lg">
+      <div className="h-16 w-16 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface CorrectionTip {
@@ -33,7 +46,6 @@ interface TurnData {
   corrections?: CorrectionTip[];
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
-interface VocabData { id: number; japanese: string; english: string; }
 
 /* ─── Mic pulse rings ────────────────────────────────────────────────────── */
 function MicPulse({ active }: { active: boolean }) {
@@ -43,185 +55,6 @@ function MicPulse({ active }: { active: boolean }) {
       <span className="absolute inset-0 rounded-full bg-dojo-danger/30 animate-ping" />
       <span className="absolute inset-0 rounded-full bg-dojo-danger/20 animate-pulse" />
     </>
-  );
-}
-
-/* ─── Speaking wave dots next to character name ─────────────────────────── */
-function SpeakingWave({ active }: { active: boolean }) {
-  if (!active) return null;
-  return (
-    <span className="flex items-end gap-[2px] h-3.5">
-      {[0, 120, 240].map((d) => (
-        <span
-          key={d}
-          className="w-[3px] rounded-full bg-dojo-accent"
-          style={{
-            height: '10px',
-            animation: `typing-bounce 0.9s ease-in-out ${d}ms infinite`,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
-/* ─── Session Info panel (right column) ─────────────────────────────────── */
-function SessionInfoPanel({
-  domain, situation, scenario, session, character,
-  charName, charColor, goals, completedGoals, isActive, isCompleted,
-  onEnd, onViewReport, targetLanguage, nativeLanguage, correctionCount,
-}: {
-  domain: any; situation: any; scenario: any; session: any; character: any;
-  charName: string; charColor: string;
-  goals: GoalData[]; completedGoals: number[];
-  isActive: boolean; isCompleted: boolean;
-  onEnd: () => void; onViewReport: () => void;
-  targetLanguage?: string; nativeLanguage?: string;
-  correctionCount?: number;
-}) {
-  const primaryGoal =
-    situation?.learningGoals ?? scenario?.learningGoals ?? '';
-  const targetName = targetLanguage ? getTargetLangConfig(targetLanguage).name : '';
-  const nativeName = nativeLanguage ? getNativeLangName(nativeLanguage) : '';
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="px-5 py-4 border-b border-dojo-border shrink-0">
-        <p className="text-sm font-semibold text-dojo-text-primary">Session Information</p>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-0">
-        <div className="space-y-3 text-sm">
-          {domain?.name && (
-            <div className="flex items-start justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Scenario</span>
-              <span className="text-dojo-text-primary font-medium text-right capitalize">
-                {domain.name.replace('_', ' ')}
-              </span>
-            </div>
-          )}
-          {(situation?.title ?? scenario?.title) && (
-            <div className="flex items-start justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Situation</span>
-              <span className="text-dojo-text-primary font-medium text-right">
-                {situation?.title ?? scenario?.title}
-              </span>
-            </div>
-          )}
-
-          {/* Target Language */}
-          {targetName && (
-            <div className="flex items-start justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Target</span>
-              <span className="text-dojo-text-primary font-medium text-right">{targetName}</span>
-            </div>
-          )}
-
-          {/* Native Language */}
-          {nativeName && (
-            <div className="flex items-start justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Native</span>
-              <span className="text-dojo-text-primary font-medium text-right">{nativeName}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-dojo-text-muted shrink-0">Characters</span>
-            <div className="flex items-center gap-1.5">
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-dojo-border overflow-hidden"
-                style={{ backgroundColor: charColor }}
-              >
-                <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${charName}&backgroundColor=${charColor.replace('#','')}`} alt={charName} className="h-full w-full object-cover" />
-              </span>
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-[9px] font-medium text-dojo-text-muted">
-                U
-              </span>
-            </div>
-          </div>
-
-          {session?.behaviorMode && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Difficulty</span>
-              <span
-                className={`px-2.5 py-0.5 rounded-[--radius-pill] text-[11px] font-medium border ${
-                  behaviorModeClass[session.behaviorMode as keyof typeof behaviorModeClass] ??
-                  behaviorModeClass.standard
-                }`}
-              >
-                {session.behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
-              </span>
-            </div>
-          )}
-
-          {situation?.skillLevel && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-dojo-text-muted shrink-0">Skill Level</span>
-              <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
-            </div>
-          )}
-        </div>
-
-        {primaryGoal && (
-          <div className="mt-4 pt-4 border-t border-dojo-border">
-            <div className="flex items-start gap-2">
-              <Flag className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
-              <p className="text-xs text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
-            </div>
-          </div>
-        )}
-
-        {goals.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-dojo-border space-y-2">
-            {goals.map((goal) => {
-              const done = completedGoals.includes(goal.sequenceOrder);
-              return (
-                <div key={goal.id} className="flex items-start gap-2">
-                  <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
-                      done ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'
-                    }`}
-                  >
-                    {done ? '✓' : goal.sequenceOrder}
-                  </span>
-                  <span className={`text-[11px] leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
-                    {goal.goalText}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {correctionCount !== undefined && correctionCount > 0 && (
-          <div className="mt-4 pt-4 border-t border-dojo-border">
-            <div className="flex items-center gap-2">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-dojo-warning/20 text-[9px] font-bold text-dojo-warning">!</span>
-              <span className="text-[11px] text-dojo-text-muted">{correctionCount} tip{correctionCount !== 1 ? 's' : ''} this session</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="px-5 py-4 border-t border-dojo-border space-y-2 shrink-0">
-        {isActive && (
-          <button
-            onClick={onEnd}
-            className="w-full rounded-[--radius-md] border border-dojo-danger/40 bg-dojo-danger/10 py-2 text-sm font-medium text-dojo-danger hover:bg-dojo-danger/20 transition-colors"
-          >
-            End Session
-          </button>
-        )}
-        {isCompleted && (
-          <button
-            onClick={onViewReport}
-            className="w-full rounded-[--radius-md] bg-dojo-accent py-2 text-sm font-medium text-white hover:opacity-90 transition-opacity"
-          >
-            View Report
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -238,10 +71,13 @@ export default function RoleplaySessionPage() {
   const [sending,         setSending]         = useState(false);
   const [error,           setError]           = useState('');
   const [showMobilePanel, setShowMobilePanel] = useState(false);
-  const [showTextInput,   setShowTextInput]   = useState(false);
+  const [mobileTab,       setMobileTab]       = useState<'chat' | 'info'>('chat');
+  const [sidebarTab,      setSidebarTab]      = useState<'chat' | 'info'>('chat');
   const [isListening,     setIsListening]     = useState(false);
   const [muted,           setMuted]           = useState(false);
   const [avatarMode,      setAvatarMode]      = useState<'idle' | 'listening' | 'talking'>('idle');
+  const [streamingText,   setStreamingText]   = useState<string | null>(null);
+  const [greetingSent,    setGreetingSent]    = useState(false);
   const [suggestedReplies,setSuggestedReplies]= useState<string[]>([]);
   const [text,            setText]            = useState('');
 
@@ -253,14 +89,39 @@ export default function RoleplaySessionPage() {
   const [domain,        setDomain]        = useState<any>(null);
   const [character,     setCharacter]     = useState<any>(null);
   const [goals,         setGoals]         = useState<GoalData[]>([]);
-  const [vocabulary,    setVocabulary]    = useState<VocabData[]>([]);
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals,setCompletedGoals]= useState<number[]>([]);
+  const [phase,         setPhase]         = useState<string>('icebreaker');
+  const [isRetry,       setIsRetry]       = useState(false);
 
+  const user = useUser();
+  const currentAvatarModelUrl = useCurrentAvatarModel();
   const recognitionRef = useRef<any>(null);
+  const continuousSilenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const targetLangRef = useRef(targetLanguage);
+  const nativeLangRef = useRef(nativeLanguage);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const [avatarModelUrl, setAvatarModelUrl] = useState<string | undefined>(undefined);
+  const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
+  useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
+
+  useEffect(() => {
+    const stored = getStoredAvatarUrl();
+    if (stored) setAvatarModelUrl(stored);
+  }, []);
+
+  const resolvedModelUrl = character?.avatarModelUrl ?? avatarModelUrl ?? undefined;
+
+  useEffect(() => {
+    if (resolvedModelUrl) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(resolvedModelUrl));
+    }
+    if (currentAvatarModelUrl ?? user?.avatarSrc) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(currentAvatarModelUrl ?? user?.avatarSrc!));
+    }
+  }, [resolvedModelUrl, currentAvatarModelUrl, user?.avatarSrc]);
 
   /* ── Load session ── */
   useEffect(() => {
@@ -274,8 +135,8 @@ export default function RoleplaySessionPage() {
         setSituation(data.situation);
         setDomain(data.domain);
         setCharacter(data.character);
+
         setGoals(data.goals ?? []);
-        setVocabulary(data.vocabulary ?? []);
         setConversations((data.conversations ?? []).map((c: any) => ({
           id: c.id,
           turnNo: c.turnNo,
@@ -292,6 +153,7 @@ export default function RoleplaySessionPage() {
         }
         if (data.session?.targetLanguage) setTargetLanguage(data.session.targetLanguage);
         if (data.session?.nativeLanguage) setNativeLanguage(data.session.nativeLanguage);
+        if (data.session?.phase) setPhase(data.session.phase);
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -301,7 +163,7 @@ export default function RoleplaySessionPage() {
     load();
   }, [sessionId]);
 
-  /* ── Send turn ── */
+  /* ── Send turn (streaming) ── */
   const handleSend = useCallback(async (inputText: string) => {
     if (sending) return;
     const trimmed = inputText.trim();
@@ -312,91 +174,234 @@ export default function RoleplaySessionPage() {
     setError('');
     setSuggestedReplies([]);
     setText('');
+    setStreamingText('');
+
+    // Stop listening while AI responds
+    stopContinuousRecognition();
+    if (continuousSilenceRef.current) {
+      clearTimeout(continuousSilenceRef.current);
+      continuousSilenceRef.current = null;
+    }
+    setIsListening(false);
+
+    stopStreamingTts();
+    resetStreamingTts();
 
     try {
-      const res  = await fetch('/api/chat', {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId, userRawInput: trimmed }),
+        body: JSON.stringify({
+          sessionId,
+          userRawInput: trimmed,
+          isRetryOfPreviousMistake: isRetry,
+        }),
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Chat request failed');
 
-      const userTurn: TurnData = {
-        id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
-        messageTarget: data.analysis.messageTarget ?? trimmed,
-        messageNative: data.analysis.messageNative ?? '',
-        messageRomaji: data.analysis.messageRomaji,
-        emotionTone: data.analysis.emotionTone,
-        gestureHint: data.analysis.gestureHint,
-        corrections: data.analysis.corrections ?? [],
-      };
-      const aiTurn: TurnData = {
-        id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
-        messageTarget: data.analysis.nextAiReply.target,
-        messageNative: data.analysis.nextAiReply.native,
-        messageRomaji: data.analysis.nextAiReply.romaji,
-        emotionTone: data.analysis.nextAiReply.emotionTone,
-        gestureHint: data.analysis.nextAiReply.gestureHint,
-      };
-
-      setConversations(prev => [...prev, userTurn, aiTurn]);
-      if (data.analysis.suggestedReplies?.length > 0) setSuggestedReplies(data.analysis.suggestedReplies);
-      if (data.analysis.goalsAddressedThisTurn?.length > 0) {
-        setCompletedGoals(prev => [...new Set([...prev, ...data.analysis.goalsAddressedThisTurn])]);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Chat request failed (${res.status})`);
       }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let collectedAiText = '';
+      let finalPhase: string | null = null;
+      let finalRunningScore: number | null = null;
+      let finalAnalysis: any = null;
+      let isRetryResponse = false;
 
       const bcp47 = getBCP47(targetLangRef.current, 'tts');
-      const aiText = aiTurn.messageTarget || aiTurn.messageNative;
-      if (aiText && !muted) {
-        setAvatarMode('talking');
-        speakWithVisemes(aiText, bcp47)
-          .catch(() => ttsSpeak(aiText, bcp47))
-          .finally(() => setAvatarMode('idle'));
-      } else {
-        setAvatarMode('idle');
+      const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = JSON.parse(line.slice(6));
+
+          switch (payload.type) {
+            case 'token':
+              collectedAiText += payload.text;
+              setStreamingText(collectedAiText);
+              if (!muted) {
+                feedStreamTts(payload.text, bcp47, nativeBcp47, phase);
+              }
+              break;
+
+            case 'retry':
+              isRetryResponse = true;
+              setIsRetry(true);
+              finalPhase = payload.analysis.phase;
+              finalAnalysis = payload.analysis;
+              break;
+
+            case 'done':
+              setIsRetry(false);
+              finalPhase = payload.phase;
+              finalRunningScore = payload.runningScore;
+              finalAnalysis = payload.analysis;
+              break;
+
+            case 'error':
+              throw new Error(payload.message || 'Stream error');
+          }
+        }
       }
 
-      if (data.analysis.scenarioComplete) setSession((p: any) => ({ ...p, status: 'completed' }));
+      if (isRetryResponse && finalAnalysis) {
+        const userTurn: TurnData = {
+          id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
+          messageTarget: finalAnalysis.messageTarget ?? trimmed,
+          messageNative: finalAnalysis.messageNative ?? '',
+          messageRomaji: finalAnalysis.messageRomaji,
+          emotionTone: finalAnalysis.emotionTone,
+          gestureHint: finalAnalysis.gestureHint,
+          corrections: finalAnalysis.corrections ?? [],
+        };
+        setConversations(prev => [...prev, userTurn]);
+        if (finalAnalysis.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
+        setAvatarMode('idle');
+        setStreamingText(null);
+        setSending(false);
+        return;
+      }
+
+      if (finalPhase) setPhase(finalPhase);
+
+      // For session start (__session_start__), only show the AI greeting — no user turn
+      if (trimmed === '__session_start__') {
+        const aiTurn: TurnData = {
+          id: Date.now(), turnNo: 0, speaker: 'ai' as const,
+          messageTarget: collectedAiText,
+          messageNative: '',
+          messageRomaji: null,
+        };
+        setConversations(prev => [...prev, aiTurn]);
+      } else {
+        const userTurn: TurnData = {
+          id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
+          messageTarget: finalAnalysis?.messageTarget ?? trimmed,
+          messageNative: finalAnalysis?.messageNative ?? '',
+          messageRomaji: finalAnalysis?.messageRomaji,
+          emotionTone: finalAnalysis?.emotionTone,
+          gestureHint: finalAnalysis?.gestureHint,
+          corrections: finalAnalysis?.corrections ?? [],
+        };
+        const aiTurn: TurnData = {
+          id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
+          messageTarget: collectedAiText,
+          messageNative: '',
+          messageRomaji: null,
+        };
+        setConversations(prev => [...prev, userTurn, aiTurn]);
+      }
+      setStreamingText(null);
+
+      if (finalAnalysis?.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
+      if (finalAnalysis?.goalsAddressedThisTurn?.length > 0) {
+        setCompletedGoals(prev => [...new Set([...prev, ...finalAnalysis.goalsAddressedThisTurn])]);
+      }
+
+      // TTS for the full AI reply (played by streaming already, but ensure completion audio plays)
+      if (!muted && collectedAiText) {
+        setAvatarMode('talking');
+      }
+
+      if (finalAnalysis?.scenarioComplete) setSession((p: any) => ({ ...p, status: 'completed' }));
     } catch (e: any) {
       setError(e.message);
       setAvatarMode('idle');
+      setStreamingText(null);
     } finally {
       setSending(false);
     }
-  }, [sessionId, sending, conversations.length, muted]);
+  }, [sessionId, sending, conversations.length, muted, isRetry, phase]);
 
-  /* ── Voice input ── */
-  const startListening = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
-    const rec = new SR();
-    rec.lang = getBCP47(targetLangRef.current, 'stt');
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e: any) => { setIsListening(false); handleSend(e.results[0][0].transcript); };
-    rec.onerror  = () => setIsListening(false);
-    rec.onend    = () => setIsListening(false);
-    recognitionRef.current = rec;
-    rec.start();
+  // Auto-send greeting when session starts in icebreaker phase
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  useEffect(() => {
+    if (phase === 'icebreaker' && !greetingSent && !loading && !sending && conversations.length === 0) {
+      setGreetingSent(true);
+      handleSendRef.current('__session_start__');
+    }
+  }, [phase, greetingSent, loading, sending, conversations.length]);
+
+  /* ── Voice input (always continuous) ── */
+  const startListening = useCallback(async () => {
+    if (sending || streamingText) return;
     setIsListening(true);
     setAvatarMode('listening');
-  }, [handleSend]);
+    const bcp47 = getBCP47(targetLangRef.current, 'stt');
+    try {
+      await startContinuousRecognition(bcp47, {
+        onInterim: () => {
+          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
+          continuousSilenceRef.current = setTimeout(() => {}, 2000);
+        },
+        onFinal: (text: string) => {
+          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
+          const trimmed = text.trim();
+          if (trimmed) handleSend(trimmed);
+        },
+        onError: () => {
+          setIsListening(false);
+          setAvatarMode('idle');
+        },
+      });
+    } catch {
+      setIsListening(false);
+      setAvatarMode('idle');
+    }
+  }, [handleSend, sending, streamingText]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
+    stopContinuousRecognition();
+    if (continuousSilenceRef.current) {
+      clearTimeout(continuousSilenceRef.current);
+      continuousSilenceRef.current = null;
+    }
     setIsListening(false);
+    setAvatarMode('idle');
   }, []);
+
+  function detectSpeechLang(text: string): string {
+    const target = getBCP47(targetLangRef.current, 'tts');
+    const native = getNativeLangBcp47(nativeLangRef.current);
+    if (target.startsWith('ja') && /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text)) return target;
+    if (target.startsWith('zh') && /[\u4e00-\u9fff]/.test(text)) return target;
+    if (target.startsWith('ko') && /[\uac00-\ud7af]/.test(text)) return target;
+    return native;
+  }
 
   const handleReplay = useCallback((msgTarget: string, msgNative: string) => {
     if (muted) return;
     const t = msgTarget || msgNative;
     if (!t) return;
-    const bcp47 = getBCP47(targetLangRef.current, 'tts');
+    const lang = detectSpeechLang(t);
     setAvatarMode('talking');
-    speakWithVisemes(t, bcp47).catch(() => ttsSpeak(t, bcp47)).finally(() => setAvatarMode('idle'));
+    speakWithVisemes(t, lang).catch(() => ttsSpeak(t, lang)).finally(() => setAvatarMode('idle'));
   }, [muted]);
+
+  const handleTypeClick = useCallback(() => {
+    if (window.innerWidth < 1024) {
+      setMobileTab('chat');
+      setShowMobilePanel(true);
+    } else {
+      setSidebarTab('chat');
+      chatInputRef.current?.focus();
+    }
+  }, []);
 
   const handleEnd = useCallback(async () => {
     await fetch(`/api/sessions/${sessionId}`, {
@@ -417,14 +422,24 @@ export default function RoleplaySessionPage() {
   /* ── Derived ── */
   const isActive    = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
+
+  const listeningLockedRef = useRef(false);
+  const startMicRef = useRef(startListening);
+  useEffect(() => { startMicRef.current = startListening; }, [startListening]);
   const charName    = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor   = character?.avatarColor ?? '#2D3BC5';
   const domainSlug  = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
   const latestAi    = [...conversations].reverse().find(c => c.speaker === 'ai');
-  const latestUser  = [...conversations].reverse().find(c => c.speaker === 'user');
   const totalCorrections = conversations.reduce((sum, c) => sum + (c.corrections?.length ?? 0), 0);
   const targetName  = getTargetLangConfig(targetLanguage).name;
-  const targetNativeName = getTargetLangConfig(targetLanguage).nativeName;
+
+  // Auto-restart mic after AI response completes
+  useEffect(() => {
+    if (phase === 'icebreaker' && !greetingSent) return;
+    if (!sending && !streamingText && isActive && !isListening && !listeningLockedRef.current) {
+      startMicRef.current();
+    }
+  }, [sending, streamingText, isActive, phase, greetingSent]);
 
   /* ── Loading / error states ── */
   if (loading) {
@@ -455,43 +470,99 @@ export default function RoleplaySessionPage() {
     onViewReport: () => router.push(`/sessions/${sessionId}/report`),
   };
 
+  const chatPanelProps = {
+    conversations,
+    charName,
+    charColor,
+    avatarMode,
+    text,
+    setText,
+    onSend: handleSend,
+    onReplay: handleReplay,
+    sending,
+    isActive,
+    targetName,
+    suggestedReplies,
+    phase,
+    streamingText: streamingText ?? undefined,
+  };
+
+  /* ── Shared tab bar ── */
+  function TabBar({ active, onChange }: { active: 'chat' | 'info'; onChange: (t: 'chat' | 'info') => void }) {
+    return (
+      <div className="flex border-b border-dojo-border shrink-0" role="tablist">
+        <button
+          role="tab"
+          aria-selected={active === 'chat'}
+          onClick={() => onChange('chat')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative ${
+            active === 'chat' ? 'text-dojo-text-primary' : 'text-dojo-text-muted hover:text-dojo-text-primary'
+          }`}
+        >
+          <MessageSquare className="h-4 w-4" />
+          Chat
+          {active === 'chat' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-dojo-accent" />}
+        </button>
+        <button
+          role="tab"
+          aria-selected={active === 'info'}
+          onClick={() => onChange('info')}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors relative ${
+            active === 'info' ? 'text-dojo-text-primary' : 'text-dojo-text-muted hover:text-dojo-text-primary'
+          }`}
+        >
+          <Info className="h-4 w-4" />
+          Session Info
+          {active === 'info' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-dojo-accent" />}
+        </button>
+      </div>
+    );
+  }
+
   /* ══════════════════════════════════════════════════════════════════════
      RENDER
      Layout:
-       ┌─────────────────────────────────┬────────────────┐
-       │  SCENE AREA (flex-1)            │  INFO PANEL    │
-       │  ┌─────────────────────────┐    │  (w-72 fixed)  │
-       │  │     AI avatar           │    │                │
-       │  │     (centered 60%)      │    │                │
-       │  │                         │    │                │
-       │  └─────────────────────────┘    │                │
-       │  ─── speech bubble ───          │                │
-       │  ─── control bar ───           │                │
-       └─────────────────────────────────┴────────────────┘
+       ┌───────────────────────────────────┬──────────────────────────────┐
+       │  SCENE AREA (w-[60%])             │  SIDEBAR (w-[40%])           │
+       │                                   │  min-w-[280px] max-w-[420px] │
+       │  ┌─────────────────────────┐      │                              │
+       │  │  SessionStage           │      │  [ Chat ] [ Session Info ]  │
+       │  │  (merged canvas)        │      │                              │
+       │  │                         │      │  ChatPanel or SessionInfo   │
+       │  └─────────────────────────┘      │                              │
+       │  ─── speech bubble ───            │                              │
+       │  ─── control bar ───             │                              │
+       └───────────────────────────────────┴──────────────────────────────┘
      ═════════════════════════════════════════════════════════════════════ */
   return (
     <div className="flex h-full w-full overflow-hidden">
 
       {/* ═══════════ LEFT COLUMN: SCENE AREA ═══════════ */}
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative w-[60%] overflow-hidden">
 
         {/* Environment photo backdrop fills column (absolute z-0) */}
         <EnvironmentBackdrop domainSlug={domainSlug} />
 
-        {/* ── AI avatar canvas — left half ── */}
-        <div className="absolute inset-y-0 left-0 w-1/2 z-10 pointer-events-none">
-          <AvatarViewport
-            name={charName}
-            accentColor={charColor}
-            mode={avatarMode}
-            emotion={latestAi?.emotionTone}
-            gesture={latestAi?.gestureHint}
-            cameraMode="front"
+        {/* ── Merged avatar canvas — single SessionStage z-10 ── */}
+        <div className="absolute inset-0 z-10 pointer-events-none">
+          <SessionStage
+            ai={{
+              modelUrl: resolvedModelUrl,
+              mode: avatarMode,
+              emotion: latestAi?.emotionTone,
+              gesture: latestAi?.gestureHint,
+              cameraIntent: 'face-partner-left',
+            }}
+            user={{
+              modelUrl: currentAvatarModelUrl ?? user?.avatarSrc ?? undefined,
+              mode: isListening ? 'talking' : 'idle',
+              cameraIntent: 'face-partner-right',
+            }}
           />
         </div>
 
         {/* ── Top bar: absolute top-0 left-0 right-0, z-30 ── */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 z-30">
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-4 z-30">
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => router.push('/home')}
@@ -507,142 +578,17 @@ export default function RoleplaySessionPage() {
           <div className="flex items-center gap-2">
             <button
               className="lg:hidden flex h-8 w-8 items-center justify-center rounded-full bg-dojo-surface-raised/80 border border-dojo-border text-dojo-text-muted"
-              onClick={() => setShowMobilePanel(true)}
+              onClick={() => { setMobileTab('chat'); setShowMobilePanel(true); }}
             >
-              <Target className="h-4 w-4" />
+              <MessageSquare className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {/* ── Speech bubble: absolute top-14 right-3, starting just past avatar ── */}
-        <div className="absolute top-14 left-[52%] right-3 z-20 space-y-3">
-          {sending ? (
-            <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-dojo-text-primary">{charName} (AI)</span>
-                <span className="text-[10px] text-dojo-text-muted">typing…</span>
-              </div>
-            </div>
-          ) : latestAi ? (
-            <>
-              {latestUser && (
-                <div className="bg-dojo-surface/80 backdrop-blur-md rounded-xl border border-dojo-border/60 shadow-lg px-4 py-3 max-w-lg">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-xs font-bold text-dojo-text-muted">You</span>
-                    {latestUser.corrections && latestUser.corrections.length > 0 && (
-                      <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-dojo-warning/20 px-2 py-0.5 text-[10px] font-semibold text-dojo-warning">
-                        {latestUser.corrections.length} tip{latestUser.corrections.length > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-dojo-text-primary leading-relaxed">
-                    {latestUser.messageTarget}
-                  </p>
-                  {latestUser.corrections && latestUser.corrections.length > 0 && (
-                    <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
-                      {latestUser.corrections.map((tip, i) => (
-                        <div key={i} className="text-[11px] leading-relaxed">
-                          <div className="flex items-start gap-1.5">
-                            <span className={`shrink-0 mt-0.5 inline-block h-3.5 w-3.5 rounded-full text-[8px] font-bold text-center leading-[14px] ${
-                              tip.severity === 'major' ? 'bg-dojo-danger/20 text-dojo-danger' :
-                              tip.severity === 'moderate' ? 'bg-dojo-warning/20 text-dojo-warning' :
-                              'bg-dojo-accent/20 text-dojo-accent'
-                            }`}>
-                              {tip.severity === 'major' ? '!' : tip.severity === 'moderate' ? '!' : 'i'}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <span className="line-through text-dojo-text-muted">{tip.originalText}</span>
-                              {' '}→{' '}
-                              <span className="font-medium text-dojo-text-primary">{tip.correctedText}</span>
-                              {tip.correctedRomaji && (
-                                <span className="ml-1 italic text-dojo-text-muted">({tip.correctedRomaji})</span>
-                              )}
-                              <p className="text-dojo-text-muted/80 mt-0.5">{tip.explanation}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3 max-w-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-bold text-dojo-text-primary">{charName} (AI)</span>
-                  <SpeakingWave active={avatarMode === 'talking'} />
-                  <button
-                    onClick={() => handleReplay(latestAi.messageTarget, latestAi.messageNative)}
-                    className="ml-auto"
-                  >
-                    <Volume2 className="h-3.5 w-3.5 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
-                  </button>
-                </div>
-                <p className="text-sm text-dojo-text-primary leading-relaxed font-medium">
-                  {latestAi.messageTarget}
-                </p>
-                {latestAi.messageRomaji && (
-                  <p className="mt-1 text-[11px] text-dojo-text-muted italic">{latestAi.messageRomaji}</p>
-                )}
-                {latestAi.messageNative && (
-                  <p className="text-[11px] text-dojo-text-muted mt-1">{latestAi.messageNative}</p>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="bg-dojo-surface-raised/88 backdrop-blur-md rounded-xl border border-dojo-border shadow-2xl px-4 py-3">
-              <p className="text-sm text-dojo-text-muted">
-                Speak or type to begin the conversation with {charName}.
-              </p>
-            </div>
-          )}
-
-          {suggestedReplies.length > 0 && !sending && (
-            <div>
-              <p className="text-[11px] text-dojo-text-muted mb-2 font-medium">You can say:</p>
-              <div className="flex flex-wrap gap-2">
-                {suggestedReplies.map((reply, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(reply)}
-                    disabled={sending || !isActive}
-                    className="rounded-full border border-dojo-border bg-dojo-surface-raised/80 backdrop-blur-sm px-3 py-1.5 text-xs text-dojo-text-primary hover:border-dojo-accent transition-colors disabled:opacity-40"
-                  >
-                    {reply}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <p className="text-xs text-dojo-danger">{error}</p>
-          )}
-        </div>
-
-        {/* ── Text input row ── */}
-        {showTextInput && (
-          <div className="absolute bottom-24 left-4 right-4 z-40">
-            <div className="mx-auto flex max-w-lg items-center gap-2 rounded-[--radius-lg] border border-dojo-border bg-dojo-surface/90 backdrop-blur-md p-2 shadow-xl">
-              <input
-                type="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(text); }
-                }}
-                placeholder={`Type in ${targetName}…`}
-                disabled={sending || !isActive}
-                autoFocus
-                className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none disabled:opacity-50"
-              />
-              <button
-                onClick={() => handleSend(text)}
-                disabled={!text.trim() || sending || !isActive}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[--radius-md] bg-dojo-accent text-white text-xs font-bold hover:opacity-90 disabled:opacity-40"
-              >
-                ↵
-              </button>
-            </div>
+        {/* ── Error indicator: absolute bottom-36, centered, z-25 ── */}
+        {error && (
+          <div className="absolute bottom-36 left-0 right-0 z-25 flex justify-center pointer-events-none">
+            <p className="text-xs text-dojo-danger bg-dojo-surface/80 backdrop-blur-sm px-3 py-1.5 rounded-lg">{error}</p>
           </div>
         )}
 
@@ -688,18 +634,14 @@ export default function RoleplaySessionPage() {
                 </button>
               </div>
               <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isListening ? 'text-dojo-danger' : 'text-dojo-accent'}`}>
-                {isListening ? 'Listening...' : 'Hold to Talk'}
+                {isListening ? 'Listening...' : 'Tap to Speak'}
               </span>
             </div>
 
             <div className="flex flex-col items-center gap-2">
               <button
-                onClick={() => setShowTextInput(v => !v)}
-                className={`flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border-2 transition-all duration-200 ${
-                  showTextInput
-                    ? 'border-dojo-accent bg-dojo-accent/20 text-dojo-accent shadow-[0_0_15px_rgba(45,59,197,0.3)]'
-                    : 'border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10'
-                }`}
+                onClick={handleTypeClick}
+                className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white hover:border-white/30 hover:bg-white/10 transition-all duration-200"
               >
                 <Keyboard className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
@@ -720,24 +662,46 @@ export default function RoleplaySessionPage() {
       </div>
       {/* ═══════════ END LEFT COLUMN ═══════════ */}
 
-      {/* ═══════════ RIGHT COLUMN (w-[272px] shrink-0) ═══════════ */}
-      <aside className="hidden lg:flex w-[272px] shrink-0 flex-col border-l border-dojo-border bg-dojo-sidebar">
-        <SessionInfoPanel {...sidePanelProps} />
+      {/* ═══════════ RIGHT COLUMN (w-[40%] min-w-[280px] max-w-[420px]) ═══════════ */}
+      <aside className="hidden lg:flex w-[40%] min-w-[280px] max-w-[520px] shrink-0 flex-col border-l border-dojo-border bg-dojo-sidebar">
+        <TabBar active={sidebarTab} onChange={setSidebarTab} />
+        <div className="flex-1 overflow-hidden">
+          {sidebarTab === 'chat' ? (
+              <ChatPanel {...chatPanelProps} />
+          ) : (
+            <SessionInfoPanel {...sidePanelProps} />
+          )}
+        </div>
       </aside>
+
+      {/* ═══════════ AVATURN CREATOR MODAL ═══════════ */}
+      {showAvatarCreator && (
+        <AvatarCreator
+          onExport={(result) => {
+            setAvatarModelUrl(result.url);
+            setShowAvatarCreator(false);
+          }}
+          onClose={() => setShowAvatarCreator(false)}
+        />
+      )}
 
       {/* ═══════════ MOBILE SLIDE-IN PANEL ═══════════ */}
       {showMobilePanel && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowMobilePanel(false)} />
           <div className="absolute right-0 top-0 bottom-0 w-[80vw] max-w-sm bg-dojo-sidebar border-l border-dojo-border flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between border-b border-dojo-border px-4 py-3 shrink-0">
-              <p className="text-sm font-semibold text-dojo-text-primary">Session Information</p>
-              <button onClick={() => setShowMobilePanel(false)}>
+            <div className="flex items-center justify-between border-b border-dojo-border shrink-0">
+              <TabBar active={mobileTab} onChange={setMobileTab} />
+              <button onClick={() => setShowMobilePanel(false)} className="mr-3">
                 <X className="h-4 w-4 text-dojo-text-muted" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto">
-              <SessionInfoPanel {...sidePanelProps} />
+            <div className="flex-1 overflow-hidden">
+              {mobileTab === 'chat' ? (
+                  <ChatPanel {...chatPanelProps} />
+              ) : (
+                <SessionInfoPanel {...sidePanelProps} />
+              )}
             </div>
           </div>
         </div>

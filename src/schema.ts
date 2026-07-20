@@ -14,6 +14,7 @@ export const users = pgTable('users', {
   preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('ja').notNull(),
   streak:                integer('streak').default(0).notNull(),
   lastActiveDate:        varchar('last_active_date', { length: 10 }),
+  avatarSrc:             text('avatar_src'),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
   googleId:              varchar('google_id', { length: 255 }),
@@ -58,6 +59,7 @@ export const characters = pgTable('characters', {
   avatarColor:   varchar('avatar_color', { length: 20 }).notNull(),
   avatarIcon:    varchar('avatar_icon', { length: 40 }).notNull(),
   voiceType:     varchar('voice_type', { length: 80 }).notNull(),
+  avatarModelUrl:text('avatar_model_url'),
   defaultForDomainId: integer('default_for_domain_id').references(() => domains.id, { onDelete: 'set null' }),
   displayOrder:  integer('display_order').default(0).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
@@ -109,6 +111,10 @@ export const sessions = pgTable('sessions', {
   situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
+  phase:           varchar('phase', { length: 20 }).default('icebreaker').notNull(),
+  icebreakerIndex: integer('icebreaker_index').default(0).notNull(),
+  runningScore:    integer('running_score').default(100).notNull(),
+  pendingRetryCorrectionId: integer('pending_retry_correction_id'),
   targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
@@ -152,6 +158,8 @@ export const corrections = pgTable('corrections', {
   correctedRomaji: text('corrected_romaji'),
   explanation:     text('explanation').notNull(),
   severity:        varchar('severity', { length: 20 }).default('minor').notNull(),
+  retryOfCorrectionId: integer('retry_of_correction_id'),
+  isFinalAttempt:      boolean('is_final_attempt').default(false).notNull(),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -185,6 +193,9 @@ export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   conversationId: integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
   vocabularyId:   integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'set null' }),
   usedCorrectly:  boolean('used_correctly').notNull(),
+  attemptNumber:  integer('attempt_number').default(1).notNull(),
+  accuracyScore:  integer('accuracy_score'),
+  phase:          varchar('phase', { length: 20 }).default('icebreaker').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -195,6 +206,16 @@ export const shareTokens = pgTable('share_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const userAvatars = pgTable('user_avatars', {
+  id:           serial('id').primaryKey(),
+  userId:       text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  avatarUrl:    text('avatar_url').notNull(),
+  thumbnailUrl: text('thumbnail_url'),
+  isSelected:   boolean('is_selected').default(false).notNull(),
+  source:       varchar('source', { length: 20 }).default('avaturn').notNull(),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
+});
+
 // ── Relations ────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -202,6 +223,11 @@ export const usersRelations = relations(users, ({ many }) => ({
   conversations:    many(conversations),
   evaluations:      many(evaluations),
   goalCompletions:  many(goalCompletions),
+  avatars:          many(userAvatars),
+}));
+
+export const userAvatarsRelations = relations(userAvatars, ({ one }) => ({
+  user: one(users, { fields: [userAvatars.userId], references: [users.id] }),
 }));
 
 export const domainsRelations = relations(domains, ({ many }) => ({

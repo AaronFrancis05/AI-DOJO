@@ -49,6 +49,15 @@ export function getNativeLangName(code: string): string {
   return NATIVE_LANGUAGES.find(l => l.code === code)?.name ?? code;
 }
 
+export function getNativeLangBcp47(code: string): string {
+  const map: Record<string, string> = {
+    'en': 'en-US', 'ja': 'ja-JP', 'fr': 'fr-FR', 'es': 'es-ES',
+    'de': 'de-DE', 'zh': 'zh-CN', 'ko': 'ko-KR', 'pt': 'pt-BR',
+    'vi': 'vi-VN', 'th': 'th-TH', 'hi': 'hi-IN', 'lg': 'en-US',
+  };
+  return map[code] ?? 'en-US';
+}
+
 export function getBCP47(code: string, type: 'stt' | 'tts'): string {
   return getTargetLangConfig(code).bcp47[type];
 }
