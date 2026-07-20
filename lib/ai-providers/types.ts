@@ -6,6 +6,16 @@ export interface ChatTurn {
 export interface AIProvider {
   readonly name: string;
   generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string>;
+
+  /**
+   * Stream the AI's reply text as it is generated.
+   * Yields plain-text chunks (not JSON mode) — suitable for
+   * progressive display / early TTS.
+   *
+   * The returned text is the model's conversational reply WITHOUT
+   * the structured analysis envelope.
+   */
+  generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string>;
 }
 
 export class AIProviderError extends Error {

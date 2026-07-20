@@ -111,6 +111,10 @@ export const sessions = pgTable('sessions', {
   situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
+  phase:           varchar('phase', { length: 20 }).default('icebreaker').notNull(),
+  icebreakerIndex: integer('icebreaker_index').default(0).notNull(),
+  runningScore:    integer('running_score').default(100).notNull(),
+  pendingRetryCorrectionId: integer('pending_retry_correction_id'),
   targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
@@ -154,6 +158,8 @@ export const corrections = pgTable('corrections', {
   correctedRomaji: text('corrected_romaji'),
   explanation:     text('explanation').notNull(),
   severity:        varchar('severity', { length: 20 }).default('minor').notNull(),
+  retryOfCorrectionId: integer('retry_of_correction_id'),
+  isFinalAttempt:      boolean('is_final_attempt').default(false).notNull(),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -187,6 +193,9 @@ export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   conversationId: integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
   vocabularyId:   integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'set null' }),
   usedCorrectly:  boolean('used_correctly').notNull(),
+  attemptNumber:  integer('attempt_number').default(1).notNull(),
+  accuracyScore:  integer('accuracy_score'),
+  phase:          varchar('phase', { length: 20 }).default('icebreaker').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 

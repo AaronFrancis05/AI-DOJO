@@ -45,5 +45,27 @@ export function createGeminiProvider(): AIProvider {
         throw categorizeProviderError('gemini', modelName, err);
       }
     },
+
+    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+      try {
+        const contents: GeminiMessage[] = history.map(t => ({
+          role: t.role === 'assistant' ? 'model' as const : 'user' as const,
+          parts: [{ text: t.content }],
+        }));
+
+        const stream = await ai.models.generateContentStream({
+          model: modelName,
+          contents,
+          config: { systemInstruction },
+        });
+
+        for await (const chunk of stream) {
+          if (chunk.text) yield chunk.text;
+        }
+      } catch (err) {
+        if (err instanceof AIProviderError) throw err;
+        throw categorizeProviderError('gemini', modelName, err);
+      }
+    },
   };
 }

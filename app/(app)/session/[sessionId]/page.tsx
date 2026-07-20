@@ -8,8 +8,9 @@ import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { speakWithVisemes, speak as ttsSpeak } from '@/lib/roleplay/tts';
-import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { speakWithVisemes, speak as ttsSpeak, feedStreamTts, resetStreamingTts, stopStreamingTts } from '@/lib/roleplay/tts';
+import { startContinuousRecognition, stopContinuousRecognition } from '@/lib/roleplay/pronunciation';
+import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, ArrowLeft, MessageSquare, Info } from 'lucide-react';
@@ -45,7 +46,6 @@ interface TurnData {
   corrections?: CorrectionTip[];
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
-interface VocabData { id: number; japanese: string; english: string; }
 
 /* ─── Mic pulse rings ────────────────────────────────────────────────────── */
 function MicPulse({ active }: { active: boolean }) {
@@ -76,6 +76,8 @@ export default function RoleplaySessionPage() {
   const [isListening,     setIsListening]     = useState(false);
   const [muted,           setMuted]           = useState(false);
   const [avatarMode,      setAvatarMode]      = useState<'idle' | 'listening' | 'talking'>('idle');
+  const [streamingText,   setStreamingText]   = useState<string | null>(null);
+  const [greetingSent,    setGreetingSent]    = useState(false);
   const [suggestedReplies,setSuggestedReplies]= useState<string[]>([]);
   const [text,            setText]            = useState('');
 
@@ -87,19 +89,23 @@ export default function RoleplaySessionPage() {
   const [domain,        setDomain]        = useState<any>(null);
   const [character,     setCharacter]     = useState<any>(null);
   const [goals,         setGoals]         = useState<GoalData[]>([]);
-  const [vocabulary,    setVocabulary]    = useState<VocabData[]>([]);
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals,setCompletedGoals]= useState<number[]>([]);
+  const [phase,         setPhase]         = useState<string>('icebreaker');
+  const [isRetry,       setIsRetry]       = useState(false);
 
   const user = useUser();
   const currentAvatarModelUrl = useCurrentAvatarModel();
   const recognitionRef = useRef<any>(null);
+  const continuousSilenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const targetLangRef = useRef(targetLanguage);
+  const nativeLangRef = useRef(nativeLanguage);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const [avatarModelUrl, setAvatarModelUrl] = useState<string | undefined>(undefined);
   const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
+  useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
 
   useEffect(() => {
     const stored = getStoredAvatarUrl();
@@ -131,7 +137,6 @@ export default function RoleplaySessionPage() {
         setCharacter(data.character);
 
         setGoals(data.goals ?? []);
-        setVocabulary(data.vocabulary ?? []);
         setConversations((data.conversations ?? []).map((c: any) => ({
           id: c.id,
           turnNo: c.turnNo,
@@ -148,6 +153,7 @@ export default function RoleplaySessionPage() {
         }
         if (data.session?.targetLanguage) setTargetLanguage(data.session.targetLanguage);
         if (data.session?.nativeLanguage) setNativeLanguage(data.session.nativeLanguage);
+        if (data.session?.phase) setPhase(data.session.phase);
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -157,7 +163,7 @@ export default function RoleplaySessionPage() {
     load();
   }, [sessionId]);
 
-  /* ── Send turn ── */
+  /* ── Send turn (streaming) ── */
   const handleSend = useCallback(async (inputText: string) => {
     if (sending) return;
     const trimmed = inputText.trim();
@@ -168,90 +174,223 @@ export default function RoleplaySessionPage() {
     setError('');
     setSuggestedReplies([]);
     setText('');
+    setStreamingText('');
+
+    // Stop listening while AI responds
+    stopContinuousRecognition();
+    if (continuousSilenceRef.current) {
+      clearTimeout(continuousSilenceRef.current);
+      continuousSilenceRef.current = null;
+    }
+    setIsListening(false);
+
+    stopStreamingTts();
+    resetStreamingTts();
 
     try {
-      const res  = await fetch('/api/chat', {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId, userRawInput: trimmed }),
+        body: JSON.stringify({
+          sessionId,
+          userRawInput: trimmed,
+          isRetryOfPreviousMistake: isRetry,
+        }),
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Chat request failed');
 
-      const userTurn: TurnData = {
-        id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
-        messageTarget: data.analysis.messageTarget ?? trimmed,
-        messageNative: data.analysis.messageNative ?? '',
-        messageRomaji: data.analysis.messageRomaji,
-        emotionTone: data.analysis.emotionTone,
-        gestureHint: data.analysis.gestureHint,
-        corrections: data.analysis.corrections ?? [],
-      };
-      const aiTurn: TurnData = {
-        id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
-        messageTarget: data.analysis.nextAiReply.target,
-        messageNative: data.analysis.nextAiReply.native,
-        messageRomaji: data.analysis.nextAiReply.romaji,
-        emotionTone: data.analysis.nextAiReply.emotionTone,
-        gestureHint: data.analysis.nextAiReply.gestureHint,
-      };
-
-      setConversations(prev => [...prev, userTurn, aiTurn]);
-      if (data.analysis.suggestedReplies?.length > 0) setSuggestedReplies(data.analysis.suggestedReplies);
-      if (data.analysis.goalsAddressedThisTurn?.length > 0) {
-        setCompletedGoals(prev => [...new Set([...prev, ...data.analysis.goalsAddressedThisTurn])]);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Chat request failed (${res.status})`);
       }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let collectedAiText = '';
+      let finalPhase: string | null = null;
+      let finalRunningScore: number | null = null;
+      let finalAnalysis: any = null;
+      let isRetryResponse = false;
 
       const bcp47 = getBCP47(targetLangRef.current, 'tts');
-      const aiText = aiTurn.messageTarget || aiTurn.messageNative;
-      if (aiText && !muted) {
-        setAvatarMode('talking');
-        speakWithVisemes(aiText, bcp47)
-          .catch(() => ttsSpeak(aiText, bcp47))
-          .finally(() => setAvatarMode('idle'));
-      } else {
-        setAvatarMode('idle');
+      const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = JSON.parse(line.slice(6));
+
+          switch (payload.type) {
+            case 'token':
+              collectedAiText += payload.text;
+              setStreamingText(collectedAiText);
+              if (!muted) {
+                feedStreamTts(payload.text, bcp47, nativeBcp47);
+              }
+              break;
+
+            case 'retry':
+              isRetryResponse = true;
+              setIsRetry(true);
+              finalPhase = payload.analysis.phase;
+              finalAnalysis = payload.analysis;
+              break;
+
+            case 'done':
+              setIsRetry(false);
+              finalPhase = payload.phase;
+              finalRunningScore = payload.runningScore;
+              finalAnalysis = payload.analysis;
+              break;
+
+            case 'error':
+              throw new Error(payload.message || 'Stream error');
+          }
+        }
       }
 
-      if (data.analysis.scenarioComplete) setSession((p: any) => ({ ...p, status: 'completed' }));
+      if (isRetryResponse && finalAnalysis) {
+        const userTurn: TurnData = {
+          id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
+          messageTarget: finalAnalysis.messageTarget ?? trimmed,
+          messageNative: finalAnalysis.messageNative ?? '',
+          messageRomaji: finalAnalysis.messageRomaji,
+          emotionTone: finalAnalysis.emotionTone,
+          gestureHint: finalAnalysis.gestureHint,
+          corrections: finalAnalysis.corrections ?? [],
+        };
+        setConversations(prev => [...prev, userTurn]);
+        if (finalAnalysis.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
+        setAvatarMode('idle');
+        setStreamingText(null);
+        setSending(false);
+        return;
+      }
+
+      if (finalPhase) setPhase(finalPhase);
+
+      // For session start (__session_start__), only show the AI greeting — no user turn
+      if (trimmed === '__session_start__') {
+        const aiTurn: TurnData = {
+          id: Date.now(), turnNo: 0, speaker: 'ai' as const,
+          messageTarget: collectedAiText,
+          messageNative: '',
+          messageRomaji: null,
+        };
+        setConversations(prev => [...prev, aiTurn]);
+      } else {
+        const userTurn: TurnData = {
+          id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
+          messageTarget: finalAnalysis?.messageTarget ?? trimmed,
+          messageNative: finalAnalysis?.messageNative ?? '',
+          messageRomaji: finalAnalysis?.messageRomaji,
+          emotionTone: finalAnalysis?.emotionTone,
+          gestureHint: finalAnalysis?.gestureHint,
+          corrections: finalAnalysis?.corrections ?? [],
+        };
+        const aiTurn: TurnData = {
+          id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
+          messageTarget: collectedAiText,
+          messageNative: '',
+          messageRomaji: null,
+        };
+        setConversations(prev => [...prev, userTurn, aiTurn]);
+      }
+      setStreamingText(null);
+
+      if (finalAnalysis?.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
+      if (finalAnalysis?.goalsAddressedThisTurn?.length > 0) {
+        setCompletedGoals(prev => [...new Set([...prev, ...finalAnalysis.goalsAddressedThisTurn])]);
+      }
+
+      // TTS for the full AI reply (played by streaming already, but ensure completion audio plays)
+      if (!muted && collectedAiText) {
+        setAvatarMode('talking');
+      }
+
+      if (finalAnalysis?.scenarioComplete) setSession((p: any) => ({ ...p, status: 'completed' }));
     } catch (e: any) {
       setError(e.message);
       setAvatarMode('idle');
+      setStreamingText(null);
     } finally {
       setSending(false);
     }
-  }, [sessionId, sending, conversations.length, muted]);
+  }, [sessionId, sending, conversations.length, muted, isRetry]);
 
-  /* ── Voice input ── */
-  const startListening = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
-    const rec = new SR();
-    rec.lang = getBCP47(targetLangRef.current, 'stt');
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e: any) => { setIsListening(false); handleSend(e.results[0][0].transcript); };
-    rec.onerror  = () => setIsListening(false);
-    rec.onend    = () => setIsListening(false);
-    recognitionRef.current = rec;
-    rec.start();
+  // Auto-send greeting when session starts in icebreaker phase
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  useEffect(() => {
+    if (phase === 'icebreaker' && !greetingSent && !loading && !sending && conversations.length === 0) {
+      setGreetingSent(true);
+      handleSendRef.current('__session_start__');
+    }
+  }, [phase, greetingSent, loading, sending, conversations.length]);
+
+  /* ── Voice input (always continuous) ── */
+  const startListening = useCallback(async () => {
+    if (sending || streamingText) return;
     setIsListening(true);
     setAvatarMode('listening');
-  }, [handleSend]);
+    const bcp47 = getBCP47(targetLangRef.current, 'stt');
+    try {
+      await startContinuousRecognition(bcp47, {
+        onInterim: () => {
+          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
+          continuousSilenceRef.current = setTimeout(() => {}, 2000);
+        },
+        onFinal: (text: string) => {
+          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
+          const trimmed = text.trim();
+          if (trimmed) handleSend(trimmed);
+        },
+        onError: () => {
+          setIsListening(false);
+          setAvatarMode('idle');
+        },
+      });
+    } catch {
+      setIsListening(false);
+      setAvatarMode('idle');
+    }
+  }, [handleSend, sending, streamingText]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
+    stopContinuousRecognition();
+    if (continuousSilenceRef.current) {
+      clearTimeout(continuousSilenceRef.current);
+      continuousSilenceRef.current = null;
+    }
     setIsListening(false);
+    setAvatarMode('idle');
   }, []);
+
+  function detectSpeechLang(text: string): string {
+    const target = getBCP47(targetLangRef.current, 'tts');
+    const native = getNativeLangBcp47(nativeLangRef.current);
+    if (target.startsWith('ja') && /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text)) return target;
+    if (target.startsWith('zh') && /[\u4e00-\u9fff]/.test(text)) return target;
+    if (target.startsWith('ko') && /[\uac00-\ud7af]/.test(text)) return target;
+    return native;
+  }
 
   const handleReplay = useCallback((msgTarget: string, msgNative: string) => {
     if (muted) return;
     const t = msgTarget || msgNative;
     if (!t) return;
-    const bcp47 = getBCP47(targetLangRef.current, 'tts');
+    const lang = detectSpeechLang(t);
     setAvatarMode('talking');
-    speakWithVisemes(t, bcp47).catch(() => ttsSpeak(t, bcp47)).finally(() => setAvatarMode('idle'));
+    speakWithVisemes(t, lang).catch(() => ttsSpeak(t, lang)).finally(() => setAvatarMode('idle'));
   }, [muted]);
 
   const handleTypeClick = useCallback(() => {
@@ -283,12 +422,24 @@ export default function RoleplaySessionPage() {
   /* ── Derived ── */
   const isActive    = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
+
+  const listeningLockedRef = useRef(false);
+  const startMicRef = useRef(startListening);
+  useEffect(() => { startMicRef.current = startListening; }, [startListening]);
   const charName    = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor   = character?.avatarColor ?? '#2D3BC5';
   const domainSlug  = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
   const latestAi    = [...conversations].reverse().find(c => c.speaker === 'ai');
   const totalCorrections = conversations.reduce((sum, c) => sum + (c.corrections?.length ?? 0), 0);
   const targetName  = getTargetLangConfig(targetLanguage).name;
+
+  // Auto-restart mic after AI response completes
+  useEffect(() => {
+    if (phase === 'icebreaker' && !greetingSent) return;
+    if (!sending && !streamingText && isActive && !isListening && !listeningLockedRef.current) {
+      startMicRef.current();
+    }
+  }, [sending, streamingText, isActive, phase, greetingSent]);
 
   /* ── Loading / error states ── */
   if (loading) {
@@ -332,6 +483,8 @@ export default function RoleplaySessionPage() {
     isActive,
     targetName,
     suggestedReplies,
+    phase,
+    streamingText: streamingText ?? undefined,
   };
 
   /* ── Shared tab bar ── */
@@ -481,7 +634,7 @@ export default function RoleplaySessionPage() {
                 </button>
               </div>
               <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${isListening ? 'text-dojo-danger' : 'text-dojo-accent'}`}>
-                {isListening ? 'Listening...' : 'Hold to Talk'}
+                {isListening ? 'Listening...' : 'Tap to Speak'}
               </span>
             </div>
 
@@ -510,11 +663,11 @@ export default function RoleplaySessionPage() {
       {/* ═══════════ END LEFT COLUMN ═══════════ */}
 
       {/* ═══════════ RIGHT COLUMN (w-[40%] min-w-[280px] max-w-[420px]) ═══════════ */}
-      <aside className="hidden lg:flex w-[40%] min-w-[280px] max-w-[420px] shrink-0 flex-col border-l border-dojo-border bg-dojo-sidebar">
+      <aside className="hidden lg:flex w-[40%] min-w-[280px] max-w-[520px] shrink-0 flex-col border-l border-dojo-border bg-dojo-sidebar">
         <TabBar active={sidebarTab} onChange={setSidebarTab} />
         <div className="flex-1 overflow-hidden">
           {sidebarTab === 'chat' ? (
-            <ChatPanel {...chatPanelProps} />
+              <ChatPanel {...chatPanelProps} />
           ) : (
             <SessionInfoPanel {...sidePanelProps} />
           )}
@@ -545,7 +698,7 @@ export default function RoleplaySessionPage() {
             </div>
             <div className="flex-1 overflow-hidden">
               {mobileTab === 'chat' ? (
-                <ChatPanel {...chatPanelProps} />
+                  <ChatPanel {...chatPanelProps} />
               ) : (
                 <SessionInfoPanel {...sidePanelProps} />
               )}

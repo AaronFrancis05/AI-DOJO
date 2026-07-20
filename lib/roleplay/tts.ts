@@ -133,4 +133,74 @@ export function stop(): void {
   window.speechSynthesis.cancel();
   currentVisemeId = -1;
   isAzureSpeaking = false;
+  stopStreamingTts();
+}
+
+/* ── Language detection for bilingual TTS ─────────────── */
+
+function containsJapaneseScript(text: string): boolean {
+  return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text);
+}
+
+function detectSentenceLang(sentence: string, targetBcp47: string, nativeBcp47: string): string {
+  if (targetBcp47.startsWith('ja') && containsJapaneseScript(sentence)) {
+    return targetBcp47;
+  }
+  if (targetBcp47.startsWith('zh') && /[\u4e00-\u9fff]/.test(sentence)) {
+    return targetBcp47;
+  }
+  if (targetBcp47.startsWith('ko') && /[\uac00-\ud7af]/.test(sentence)) {
+    return targetBcp47;
+  }
+  return nativeBcp47;
+}
+
+/* ── Streaming TTS ────────────────────────────────────── */
+
+let streamTtsBuffer = '';
+let streamTtsBusy = false;
+let streamTtsStopped = false;
+const SENTENCE_BOUNDARY = /[。！？.!?\n]/;
+
+async function processStreamTtsQueue(targetLang: string, nativeLang: string): Promise<void> {
+  if (streamTtsBusy || streamTtsStopped) return;
+  streamTtsBusy = true;
+
+  while (streamTtsBuffer.length > 0 && !streamTtsStopped) {
+    const match = streamTtsBuffer.match(SENTENCE_BOUNDARY);
+    if (!match) break;
+
+    const idx = match.index! + 1;
+    const sentence = streamTtsBuffer.slice(0, idx).trim();
+    streamTtsBuffer = streamTtsBuffer.slice(idx).trim();
+
+    if (sentence) {
+      const lang = detectSentenceLang(sentence, targetLang, nativeLang);
+      try {
+        await speakWithVisemes(sentence, lang);
+      } catch {
+        await speak(sentence, lang);
+      }
+    }
+  }
+
+  streamTtsBusy = false;
+}
+
+export function feedStreamTts(chunk: string, targetLang: string, nativeLang: string): void {
+  if (streamTtsStopped) return;
+  streamTtsBuffer += chunk;
+  processStreamTtsQueue(targetLang, nativeLang);
+}
+
+export function stopStreamingTts(): void {
+  streamTtsStopped = true;
+  streamTtsBuffer = '';
+  streamTtsBusy = false;
+}
+
+export function resetStreamingTts(): void {
+  streamTtsStopped = false;
+  streamTtsBuffer = '';
+  streamTtsBusy = false;
 }

@@ -103,6 +103,28 @@ export function ModelLoader() {
   );
 }
 
+/* ── Suspense-native loading fallback ───────────────────────────────
+   ModelLoader reads useProgress(), a global store that gets a
+   synchronous update the moment useGLTF() starts fetching. Since that
+   fetch is kicked off from inside AnimatedModel's render, and
+   ModelLoader is a *sibling* subscribed to that same store, React sees
+   a component (ModelLoader) being updated while a different component
+   (AnimatedModel) is still rendering — the "Cannot update a component
+   while rendering a different component" warning.
+
+   Passing this as <Suspense fallback={...}> instead avoids the problem
+   at the root: React shows/hides the fallback itself as part of the
+   Suspense contract, with no external store and no render-phase
+   setState involved.
+   ──────────────────────────────────────────────────────────────────── */
+export function SceneLoadingFallback() {
+  return (
+    <Html center>
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-dojo-accent border-t-transparent" />
+    </Html>
+  );
+}
+
 /* ── Dev warnings ─────────────────────────────────────────────────── */
 let devWarnings: string[] = [];
 export function logDevWarning(msg: string) {
@@ -149,7 +171,11 @@ function GroundModel({ scene }: { scene: THREE.Group }) {
       grounded.current = true;
     };
 
-    tryGround();
+    // Wait a frame before the first measurement so RestPoseApplicator (which
+    // runs its own mount effect right after this one, synchronously rotating
+    // arms out of T-pose) has already updated the skeleton — otherwise we'd
+    // ground against the raw bind pose instead of the pose actually shown.
+    rafId = requestAnimationFrame(tryGround);
 
     return () => cancelAnimationFrame(rafId);
   }, [scene]);
@@ -183,6 +209,9 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
   const hasGesturesRef = useRef(false);
   const clipActions = useRef<Map<AnimClip, { clip: THREE.AnimationClip; action: THREE.AnimationAction | null }>>(new Map());
   const restActionRef = useRef<THREE.AnimationAction | null>(null);
+  // Every action we've ever .play()'d, so we can sweep up anything that has
+  // faded to (near) zero weight instead of leaving it enabled forever.
+  const everPlayedRef = useRef<Set<THREE.AnimationAction>>(new Set());
   const freezeRef = useRef(false);
   freezeRef.current = freezeOnIdle ?? false;
 
@@ -245,6 +274,7 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
         idleEntry.action.setLoop(THREE.LoopRepeat, Infinity);
         idleEntry.action.weight = 0.35;
         idleEntry.action.play();
+        everPlayedRef.current.add(idleEntry.action);
 
         // Static rest layer from first keyframe of the cleaned idle clip at 65 %
         const restTracks = idleEntry.clip.tracks.map(track => {
@@ -260,6 +290,7 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
         restAction.weight = 0.65;
         restAction.play();
         restActionRef.current = restAction;
+        everPlayedRef.current.add(restAction);
       }
     } else if (!hasAny) {
       logDevWarning('No animation clips loaded — body animation disabled');
@@ -267,6 +298,7 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
 
     return () => {
       mixer.stopAllAction();
+      everPlayedRef.current.clear();
     };
   }, [scene, idleAnims, talkingAnims, bowAnims, shakeAnims]);
 
@@ -280,6 +312,17 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
 
   const getAction = useCallback((name: AnimClip): THREE.AnimationAction | null => {
     return clipActions.current.get(name)?.action ?? null;
+  }, []);
+
+  // Stop anything that has faded down to (near) zero weight so it stops
+  // contributing to the blend. Never touches actions still mid-fade.
+  const sweepStaleActions = useCallback((keep: THREE.AnimationAction) => {
+    for (const action of everPlayedRef.current) {
+      if (action === keep) continue;
+      if (action.isRunning() && action.getEffectiveWeight() < 0.02) {
+        action.stop();
+      }
+    }
   }, []);
 
   const playClip = useCallback((name: AnimClip, fadeDuration = 0.3) => {
@@ -306,7 +349,28 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
     }
 
     nextAction.play();
+    everPlayedRef.current.add(nextAction);
     currentState.current = name;
+
+    // The static "rest" layer only makes sense while idling — it exists to
+    // fully resolve the idle pose, not to permanently pull every other
+    // animation (talking, bow, handshake) back toward a frozen first frame.
+    const restAction = restActionRef.current;
+    if (restAction && restAction !== nextAction) {
+      if (name === 'idle') {
+        restAction.reset();
+        restAction.setLoop(THREE.LoopRepeat, Infinity);
+        restAction.weight = 0.65;
+        restAction.play();
+        everPlayedRef.current.add(restAction);
+      } else if (restAction.isRunning()) {
+        restAction.fadeOut(fadeDuration);
+      }
+    }
+
+    // Sweep up anything left over from earlier transitions once this fade
+    // has had time to finish, instead of letting it sit enabled forever.
+    setTimeout(() => sweepStaleActions(nextAction), fadeDuration * 1000 + 80);
 
     if (!isLoop) {
       const clip = nextEntry.clip;
@@ -331,11 +395,27 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
             backAction.crossFadeFrom(currentAct, fadeDuration, true);
           }
           backAction.play();
+          everPlayedRef.current.add(backAction);
           currentState.current = backTo;
+
+          const restAction = restActionRef.current;
+          if (restAction && restAction !== backAction) {
+            if (backTo === 'idle') {
+              restAction.reset();
+              restAction.setLoop(THREE.LoopRepeat, Infinity);
+              restAction.weight = 0.65;
+              restAction.play();
+              everPlayedRef.current.add(restAction);
+            } else if (restAction.isRunning()) {
+              restAction.fadeOut(fadeDuration);
+            }
+          }
+
+          setTimeout(() => sweepStaleActions(backAction), fadeDuration * 1000 + 80);
         }
       }, returnAt);
     }
-  }, [getAction]);
+  }, [getAction, sweepStaleActions]);
 
   useEffect(() => {
     if (freezeRef.current) return;
@@ -379,9 +459,16 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
 function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & AvatarAnimationProps) {
   const timeRef = useRef(0);
   const currentPose = useRef<[number, number, number, number]>([0, 0, 0, 0]);
+  // GroundModel sets fbx.position.y once, before this ever runs. Capture that
+  // baseline so we can offset from it instead of overwriting it outright —
+  // otherwise every frame here would erase the grounding and drop the model
+  // back down near y=0.
+  const baselineY = useRef<number | null>(null);
 
   useFrame((_, delta) => {
     try {
+      if (baselineY.current === null) baselineY.current = fbx.position.y;
+
       timeRef.current += delta;
 
       const basePose: [number, number, number, number] = [0, 0, 0, 0];
@@ -404,7 +491,7 @@ function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & 
 
       fbx.rotation.x = currentPose.current[0];
       fbx.rotation.z = currentPose.current[1];
-      fbx.position.y = currentPose.current[2];
+      fbx.position.y = baselineY.current + currentPose.current[2];
     } catch (err) {
       console.error('[PoseController] frame error:', err);
     }
@@ -868,6 +955,16 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
 
   useEffect(() => {
     if (scene) setHasMorphs(checkMorphTargets(scene));
+  }, [scene]);
+
+  useEffect(() => {
+    if (!scene) return;
+    scene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = false; // avoid self-shadowing artifacts on skinned meshes
+      }
+    });
   }, [scene]);
 
   useEffect(() => {

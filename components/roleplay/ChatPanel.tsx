@@ -39,6 +39,9 @@ interface ChatPanelProps {
   isActive: boolean;
   targetName: string;
   suggestedReplies?: string[];
+  phase?: string;
+  /** Text arriving progressively from the streaming AI reply */
+  streamingText?: string;
 }
 
 /* ── Speaking wave dots ───────────────────────── */
@@ -64,7 +67,8 @@ function SpeakingWave({ active }: { active: boolean }) {
 export function ChatPanel({
   conversations, charName, charColor, avatarMode,
   text, setText, onSend, onReplay,
-  sending, isActive, targetName, suggestedReplies,
+  sending, isActive, targetName, suggestedReplies, phase,
+  streamingText,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -138,8 +142,8 @@ export function ChatPanel({
                   </p>
                 )}
 
-                {/* Corrections */}
-                {turn.corrections && turn.corrections.length > 0 && (
+                {/* Corrections — hidden during unguided phase */}
+                {turn.corrections && turn.corrections.length > 0 && phase !== 'unguided' && (
                   <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
                     {turn.corrections.map((tip, i) => (
                       <div key={i} className="text-[11px] leading-relaxed">
@@ -169,6 +173,27 @@ export function ChatPanel({
             </div>
           );
         })}
+        {/* Streaming AI reply */}
+        {streamingText && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-dojo-surface-raised/90 border border-dojo-border">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white shrink-0"
+                  style={{ backgroundColor: charColor }}
+                >
+                  {charName[0]}
+                </span>
+                <span className="text-[11px] font-semibold text-dojo-text-primary">{charName}</span>
+                <SpeakingWave active={true} />
+              </div>
+              <p className="text-sm text-dojo-text-primary leading-relaxed">
+                {streamingText}
+                <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse" />
+              </p>
+            </div>
+          </div>
+        )}
         {suggestedReplies && suggestedReplies.length > 0 && !sending && conversations.length > 0 && (
           <div className="px-1">
             <p className="text-[11px] text-dojo-text-muted mb-2 font-medium">You can say:</p>

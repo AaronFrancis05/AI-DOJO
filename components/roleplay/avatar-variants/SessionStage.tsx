@@ -6,7 +6,7 @@ import { Environment, ContactShadows } from '@react-three/drei';
 import {
   AnimatedModel,
   EmotionLight,
-  ModelLoader,
+  SceneLoadingFallback,
   CameraIntent,
 } from '@/components/roleplay/three/AnimatedModel';
 
@@ -32,21 +32,44 @@ export function SessionStage({ ai, user }: SessionStageProps) {
   return (
     <div className="h-full w-full">
       <Canvas
-        camera={{ position: [0, 1.2, 4.5], fov: 35, near: 0.1, far: 20 }}
+        camera={{ position: [0, 1.15, 3.7], fov: 32, near: 0.1, far: 20 }}
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
+        shadows="soft"
         style={{ background: 'transparent' }}
-        onCreated={({ gl }) => {
+        onCreated={({ gl, camera }) => {
+          // disableAutoCamera means AutoCamera never runs its own lookAt(),
+          // so without this the camera just faces -Z from its position and
+          // never actually points at the grounded (y=0) models — that's
+          // what reads as the avatars "floating".
+          camera.lookAt(0, 0.85, 0);
           gl.domElement.addEventListener('webglcontextrestored', () => {
             console.warn('[SessionStage] WebGL context restored by R3F');
           });
         }}
       >
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[4, 4, 4]} intensity={0.8} />
-        <directionalLight position={[-3, 2, 3]} intensity={0.3} color="#b0d0ff" />
-        <directionalLight position={[0, -2, 2]} intensity={0.2} />
-        <ModelLoader />
-        <Suspense fallback={null}>
+        {/* Lower ambient + stronger key light = more contrast and shape on
+            the face/body instead of the flat, evenly-lit look. */}
+        <ambientLight intensity={0.28} />
+        {/* Key light casts the real shadow — shadow-camera box is tight
+            around the two avatars (roughly x:[-2.5,2.5] z:[-1.5,1.5]) so
+            the shadow map resolution isn't wasted on empty space. */}
+        <directionalLight
+          position={[3, 4.5, 3.5]}
+          intensity={1.15}
+          color="#fff4e0"
+          castShadow
+          shadow-mapSize={[1024, 1024]}
+          shadow-camera-left={-2.5}
+          shadow-camera-right={2.5}
+          shadow-camera-top={2.5}
+          shadow-camera-bottom={-1.5}
+          shadow-camera-near={0.5}
+          shadow-camera-far={10}
+          shadow-bias={-0.0005}
+        />
+        <directionalLight position={[-3, 2, 3]} intensity={0.35} color="#b0d0ff" />
+        <directionalLight position={[0, -1, 2.5]} intensity={0.15} />
+        <Suspense fallback={<SceneLoadingFallback />}>
           {hasAiModel && (
             <group position={[-1.1, 0, 0]}>
               <AnimatedModel
@@ -57,6 +80,10 @@ export function SessionStage({ ai, user }: SessionStageProps) {
                 cameraIntent={ai.cameraIntent}
                 disableAutoCamera
               />
+              {/* Soft ambient-occlusion-style base shadow — subtler now
+                  that the directional light above casts the real, pose-
+                  accurate shadow. This just fills in the contact point. */}
+              <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={1.6} blur={1.4} far={1.2} resolution={512} />
             </group>
           )}
           {hasUserModel && (
@@ -69,9 +96,17 @@ export function SessionStage({ ai, user }: SessionStageProps) {
                 cameraIntent={user.cameraIntent}
                 disableAutoCamera
               />
+              <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={1.6} blur={1.4} far={1.2} resolution={512} />
             </group>
           )}
-          <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={6} blur={2} far={4} />
+          {/* Invisible shadow-catcher plane — renders only the real cast
+              shadow from the key light (via shadowMaterial), nothing else,
+              so it composites cleanly over the gradient backdrop without
+              drawing a visible floor mesh. */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+            <planeGeometry args={[8, 6]} />
+            <shadowMaterial transparent opacity={0.45} />
+          </mesh>
         </Suspense>
         <Suspense fallback={null}>
           <Environment files="/studio_small_03_1k.hdr" />
