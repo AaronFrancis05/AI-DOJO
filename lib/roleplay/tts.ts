@@ -1,8 +1,26 @@
+import {
+  containsTargetScript,
+  splitIntoLangSpans,
+  detectSpeechLang as detectLang,
+  type LangSpan,
+} from './lang-detect';
+
 let currentVisemeId = -1;
 let isAzureSpeaking = false;
 let azureStopCallback: (() => void) | null = null;
 
 let currentGeneration = 0;
+
+export type SpeakingCallback = (speaking: boolean) => void;
+let onSpeakingChange: SpeakingCallback | null = null;
+
+export function setOnSpeakingChange(cb: SpeakingCallback | null): void {
+  onSpeakingChange = cb;
+}
+
+function notifySpeaking(speaking: boolean): void {
+  if (onSpeakingChange) onSpeakingChange(speaking);
+}
 
 export function getCurrentViseme(): number {
   return currentVisemeId;
@@ -14,12 +32,13 @@ export function isSpeaking(): boolean {
 
 export function speak(text: string, lang: string = 'ja-JP'): Promise<void> {
   return new Promise((resolve) => {
+    notifySpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
+    utterance.onend = () => { notifySpeaking(false); resolve(); };
+    utterance.onerror = () => { notifySpeaking(false); resolve(); };
     window.speechSynthesis.speak(utterance);
   });
 }
@@ -65,6 +84,7 @@ export async function speakWithVisemes(
     source.start(0);
 
     isAzureSpeaking = true;
+    notifySpeaking(true);
     currentVisemeId = -1;
 
     const startTime = audioCtx.currentTime;
@@ -83,6 +103,7 @@ export async function speakWithVisemes(
           if (myGeneration === currentGeneration) {
             currentVisemeId = -1;
             isAzureSpeaking = false;
+            notifySpeaking(false);
           }
           resolve();
           return;
@@ -98,6 +119,7 @@ export async function speakWithVisemes(
         if (visemeIndex >= visemes.length) {
           currentVisemeId = -1;
           isAzureSpeaking = false;
+          notifySpeaking(false);
           resolve();
           return;
         }
@@ -111,6 +133,7 @@ export async function speakWithVisemes(
         if (!cancelled.value && myGeneration === currentGeneration) {
           currentVisemeId = -1;
           isAzureSpeaking = false;
+          notifySpeaking(false);
           resolve();
         }
       };
@@ -119,6 +142,7 @@ export async function speakWithVisemes(
     if (myGeneration === currentGeneration) {
       currentVisemeId = -1;
       isAzureSpeaking = false;
+      notifySpeaking(false);
     }
     return speak(text, lang);
   }
@@ -133,54 +157,47 @@ export function stop(): void {
   window.speechSynthesis.cancel();
   currentVisemeId = -1;
   isAzureSpeaking = false;
+  notifySpeaking(false);
   stopStreamingTts();
 }
 
-/* ── Span-based language routing ──────────────────────── */
-
-const SPAN_DELIMITER = /⟦([^⟧]*)⟧/g;
-
-interface LangSpan {
-  text: string;
-  lang: 'target' | 'native';
-}
-
-function containsJapaneseScript(text: string): boolean {
-  return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text);
-}
-
-function containsTargetScript(text: string, targetBcp47: string): boolean {
-  if (targetBcp47.startsWith('ja')) return containsJapaneseScript(text);
-  if (targetBcp47.startsWith('zh')) return /[\u4e00-\u9fff]/.test(text);
-  if (targetBcp47.startsWith('ko')) return /[\uac00-\ud7af]/.test(text);
-  return false;
-}
+/* ── Span-based mixed-language speech ──────────────────── */
 
 function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string): string {
   if (phase === 'unguided') return targetBcp47;
   return lang === 'target' ? targetBcp47 : nativeBcp47;
 }
 
-function splitIntoLangSpans(raw: string): LangSpan[] {
-  const spans: LangSpan[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  SPAN_DELIMITER.lastIndex = 0;
+/**
+ * Speak a text that may contain mixed ⟦target (romaji)⟧ and native-language spans.
+ * Correctly voices each span with the right accent.
+ */
+export async function speakMixedText(
+  raw: string,
+  targetBcp47: string,
+  nativeBcp47: string,
+  phase: string = 'guided',
+): Promise<void> {
+  const spans = splitIntoLangSpans(raw);
 
-  while ((match = SPAN_DELIMITER.exec(raw))) {
-    if (match.index > lastIndex) {
-      const nativeText = raw.slice(lastIndex, match.index).trim();
-      if (nativeText) spans.push({ text: nativeText, lang: 'native' });
+  if (spans.length === 0) {
+    const lang = detectLang(raw, targetBcp47, nativeBcp47);
+    try {
+      await speakWithVisemes(raw, lang);
+    } catch {
+      await speak(raw, lang);
     }
-    const targetText = match[1].replace(/\([^)]*\)/g, '').trim();
-    if (targetText) spans.push({ text: targetText, lang: 'target' });
-    lastIndex = SPAN_DELIMITER.lastIndex;
+    return;
   }
-  if (lastIndex < raw.length) {
-    const rest = raw.slice(lastIndex).trim();
-    if (rest) spans.push({ text: rest, lang: 'native' });
+
+  for (const span of spans) {
+    const voiceLang = spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase);
+    try {
+      await speakWithVisemes(span.text, voiceLang);
+    } catch {
+      await speak(span.text, voiceLang);
+    }
   }
-  return spans;
 }
 
 /* ── Streaming TTS ────────────────────────────────────── */
@@ -204,27 +221,7 @@ async function processStreamTtsQueue(targetBcp47: string, nativeBcp47: string, p
 
     if (!sentence) continue;
 
-    const spans = splitIntoLangSpans(sentence);
-
-    if (spans.length === 0) {
-      /* ── Fallback: no ⟦ ⟧ delimiters found — use script-sniffing ── */
-      const lang = containsTargetScript(sentence, targetBcp47) ? targetBcp47 : nativeBcp47;
-      const voiceLang = phase === 'unguided' ? targetBcp47 : lang;
-      try {
-        await speakWithVisemes(sentence, voiceLang);
-      } catch {
-        await speak(sentence, voiceLang);
-      }
-    } else {
-      for (const span of spans) {
-        const voiceLang = spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase);
-        try {
-          await speakWithVisemes(span.text, voiceLang);
-        } catch {
-          await speak(span.text, voiceLang);
-        }
-      }
-    }
+    await speakMixedText(sentence, targetBcp47, nativeBcp47, phase);
   }
 
   streamTtsBusy = false;

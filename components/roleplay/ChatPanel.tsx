@@ -26,6 +26,8 @@ interface TurnData {
   corrections?: CorrectionTip[];
   pending?: boolean;
   failed?: boolean;
+  audioUrl?: string | null;
+  audioStatus?: string | null;
 }
 
 interface ChatPanelProps {
@@ -36,7 +38,7 @@ interface ChatPanelProps {
   text: string;
   setText: (val: string) => void;
   onSend: (text: string) => void;
-  onReplay: (target: string, native: string) => void;
+  onReplay: (turn: TurnData) => void;
   sending: boolean;
   isActive: boolean;
   targetName: string;
@@ -122,7 +124,7 @@ export function ChatPanel({
                   )}
                   {isAi && (
                     <button
-                      onClick={() => onReplay(turn.messageTarget, turn.messageNative)}
+                      onClick={() => onReplay(turn)}
                       className="ml-auto"
                     >
                       <Volume2 className="h-3 w-3 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />

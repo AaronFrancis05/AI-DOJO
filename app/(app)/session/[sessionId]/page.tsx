@@ -8,8 +8,9 @@ import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { speakWithVisemes, speak as ttsSpeak, feedStreamTts, resetStreamingTts, stopStreamingTts } from '@/lib/roleplay/tts';
-import { startContinuousRecognition, stopContinuousRecognition } from '@/lib/roleplay/pronunciation';
+import { speakWithVisemes, speak as ttsSpeak, speakMixedText, feedStreamTts, resetStreamingTts, stopStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
+import { detectSpeechLang } from '@/lib/roleplay/lang-detect';
+import { startContinuousRecognition, stopContinuousRecognition, ensureRecognizer } from '@/lib/roleplay/pronunciation';
 import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
@@ -46,6 +47,8 @@ interface TurnData {
   corrections?: CorrectionTip[];
   pending?: boolean;
   failed?: boolean;
+  audioUrl?: string | null;
+  audioStatus?: string | null;
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
 
@@ -109,6 +112,14 @@ export default function RoleplaySessionPage() {
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
 
+  // Wire speaking callback to avatar mode (drives 'talking' state from audio, not text)
+  useEffect(() => {
+    setOnSpeakingChange((speaking) => {
+      setAvatarMode(speaking ? 'talking' : 'idle');
+    });
+    return () => setOnSpeakingChange(null);
+  }, []);
+
   useEffect(() => {
     const stored = getStoredAvatarUrl();
     if (stored) setAvatarModelUrl(stored);
@@ -149,6 +160,8 @@ export default function RoleplaySessionPage() {
           emotionTone: c.emotionTone,
           gestureHint: c.gestureHint,
           corrections: c.corrections ?? [],
+          audioUrl: c.audioUrl,
+          audioStatus: c.audioStatus,
         })));
         if (data.goalCompletions) {
           setCompletedGoals(data.goalCompletions.map((gc: any) => gc.sequenceOrder));
@@ -345,11 +358,6 @@ export default function RoleplaySessionPage() {
         setCompletedGoals(prev => [...new Set([...prev, ...finalAnalysis.goalsAddressedThisTurn])]);
       }
 
-      // TTS for the full AI reply (played by streaming already, but ensure completion audio plays)
-      if (!muted && collectedAiText) {
-        setAvatarMode('talking');
-      }
-
       if (finalAnalysis?.scenarioComplete) setSession((p: any) => ({ ...p, status: 'completed' }));
     } catch (e: any) {
       setError(e.message);
@@ -374,6 +382,14 @@ export default function RoleplaySessionPage() {
     }
   }, [phase, greetingSent, loading, sending, conversations.length]);
 
+  /* ── Pre-warm recognizer after session loads ── */
+  useEffect(() => {
+    if (!loading && targetLanguage) {
+      const bcp47 = getBCP47(targetLanguage, 'stt');
+      ensureRecognizer(bcp47).catch(() => {});
+    }
+  }, [loading, targetLanguage]);
+
   /* ── Voice input (always continuous) ── */
   const startListening = useCallback(async () => {
     if (sending || streamingText) return;
@@ -382,12 +398,10 @@ export default function RoleplaySessionPage() {
     const bcp47 = getBCP47(targetLangRef.current, 'stt');
     try {
       await startContinuousRecognition(bcp47, {
-        onInterim: () => {
-          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
-          continuousSilenceRef.current = setTimeout(() => {}, 2000);
+        onInterim: (text: string) => {
+          setText(text);
         },
         onFinal: (text: string) => {
-          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
           const trimmed = text.trim();
           if (trimmed) handleSend(trimmed);
         },
@@ -402,8 +416,8 @@ export default function RoleplaySessionPage() {
     }
   }, [handleSend, sending, streamingText]);
 
-  const stopListening = useCallback(() => {
-    stopContinuousRecognition();
+  const stopListening = useCallback(async () => {
+    await stopContinuousRecognition();
     if (continuousSilenceRef.current) {
       clearTimeout(continuousSilenceRef.current);
       continuousSilenceRef.current = null;
@@ -412,23 +426,33 @@ export default function RoleplaySessionPage() {
     setAvatarMode('idle');
   }, []);
 
-  function detectSpeechLang(text: string): string {
-    const target = getBCP47(targetLangRef.current, 'tts');
-    const native = getNativeLangBcp47(nativeLangRef.current);
-    if (target.startsWith('ja') && /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text)) return target;
-    if (target.startsWith('zh') && /[\u4e00-\u9fff]/.test(text)) return target;
-    if (target.startsWith('ko') && /[\uac00-\ud7af]/.test(text)) return target;
-    return native;
-  }
-
-  const handleReplay = useCallback((msgTarget: string, msgNative: string) => {
+  const handleReplay = useCallback((turn: TurnData) => {
     if (muted) return;
-    const t = msgTarget || msgNative;
+    const t = turn.messageTarget || turn.messageNative;
     if (!t) return;
-    const lang = detectSpeechLang(t);
+
+    // Use cached audio if available
+    if (turn.audioUrl) {
+      const audio = new Audio(turn.audioUrl);
+      setAvatarMode('talking');
+      audio.play().catch(() => {
+        // Fallback to TTS if cached audio fails to play
+        const bcp47 = getBCP47(targetLangRef.current, 'tts');
+        const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
+        speakMixedText(t, bcp47, nativeBcp47, phase);
+      });
+      audio.onended = () => setAvatarMode('idle');
+      return;
+    }
+
+    const bcp47 = getBCP47(targetLangRef.current, 'tts');
+    const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
     setAvatarMode('talking');
-    speakWithVisemes(t, lang).catch(() => ttsSpeak(t, lang)).finally(() => setAvatarMode('idle'));
-  }, [muted]);
+    speakMixedText(t, bcp47, nativeBcp47, phase).catch(() => {
+      const lang = detectSpeechLang(t, bcp47, nativeBcp47);
+      return ttsSpeak(t, lang);
+    });
+  }, [muted, phase]);
 
   const handleTypeClick = useCallback(() => {
     if (window.innerWidth < 1024) {
