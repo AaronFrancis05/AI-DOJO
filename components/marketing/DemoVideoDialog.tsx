@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Play, Pause, Maximize, Minimize } from 'lucide-react';
 
-const DEMO_VIDEO_PATH = '/demo.mp4';
+const DEMO_VIDEO_PATH = '/demo-video.MP4';
 
 export function DemoVideoDialog() {
   const [open, setOpen] = useState(false);

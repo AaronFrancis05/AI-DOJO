@@ -2,6 +2,14 @@ import { db } from '../../../../src/db';
 import { sessions, scenarios, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabulary, situations, domains, characters } from '../../../../src/schema';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray } from 'drizzle-orm';
+import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
+
+type ScenarioRow = typeof scenarios.$inferSelect;
+type SituationRow = typeof situations.$inferSelect;
+type CharacterRow = typeof characters.$inferSelect;
+type VocabRow = typeof vocabulary.$inferSelect;
+type GoalRow = typeof scenarioGoals.$inferSelect;
+type DomainRow = typeof domains.$inferSelect;
 
 export async function GET(
   req: Request,
@@ -28,23 +36,44 @@ export async function GET(
   }
 
   const [
-    scenarioResult,
-    situationResult,
-    characterResult,
+    scenario,
+    situation,
+    character,
     conversationList,
     evaluationResult,
     goalCompletionList,
   ] = await Promise.all([
     session.scenarioId
-      ? db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId)).then(r => r[0] ?? null)
+      ? (async (): Promise<ScenarioRow | null> => {
+          const k = cacheKeys.scenario(session.scenarioId!);
+          const c = await cacheGet<ScenarioRow | null>(k);
+          if (c) return c;
+          const r = await db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId!)).then(r => r[0] ?? null);
+          if (r) await cacheSet(k, r, TTL.SCENARIO);
+          return r;
+        })()
       : Promise.resolve(null),
 
     session.situationId
-      ? db.select().from(situations).where(eq(situations.id, session.situationId)).then(r => r[0] ?? null)
+      ? (async (): Promise<SituationRow | null> => {
+          const k = cacheKeys.situation(session.situationId!);
+          const c = await cacheGet<SituationRow | null>(k);
+          if (c) return c;
+          const r = await db.select().from(situations).where(eq(situations.id, session.situationId!)).then(r => r[0] ?? null);
+          if (r) await cacheSet(k, r, TTL.SITUATION);
+          return r;
+        })()
       : Promise.resolve(null),
 
     session.characterId
-      ? db.select().from(characters).where(eq(characters.id, session.characterId)).then(r => r[0] ?? null)
+      ? (async (): Promise<CharacterRow | null> => {
+          const k = cacheKeys.character(session.characterId!);
+          const c = await cacheGet<CharacterRow | null>(k);
+          if (c) return c;
+          const r = await db.select().from(characters).where(eq(characters.id, session.characterId!)).then(r => r[0] ?? null);
+          if (r) await cacheSet(k, r, TTL.CHARACTER);
+          return r;
+        })()
       : Promise.resolve(null),
 
     db
@@ -75,19 +104,38 @@ export async function GET(
       .where(eq(goalCompletions.sessionId, sessionId)),
   ]);
 
-  const scenario = scenarioResult;
-
   const [vocabItems, goals, domainResult] = await Promise.all([
     scenario
-      ? db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenario.id))
+      ? (async (): Promise<VocabRow[]> => {
+          const k = cacheKeys.vocabulary(scenario.id);
+          const c = await cacheGet<VocabRow[]>(k);
+          if (c) return c;
+          const r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenario.id));
+          await cacheSet(k, r, TTL.VOCABULARY);
+          return r;
+        })()
       : Promise.resolve([]),
 
     scenario
-      ? db.select().from(scenarioGoals).where(eq(scenarioGoals.scenarioId, scenario.id)).orderBy(asc(scenarioGoals.sequenceOrder))
+      ? (async (): Promise<GoalRow[]> => {
+          const k = cacheKeys.goals(scenario.id);
+          const c = await cacheGet<GoalRow[]>(k);
+          if (c) return c;
+          const r = await db.select().from(scenarioGoals).where(eq(scenarioGoals.scenarioId, scenario.id)).orderBy(asc(scenarioGoals.sequenceOrder));
+          await cacheSet(k, r, TTL.GOALS);
+          return r;
+        })()
       : Promise.resolve([]),
 
-    situationResult
-      ? db.select().from(domains).where(eq(domains.id, situationResult.domainId)).then(r => r[0] ?? null)
+    situation
+      ? (async (): Promise<DomainRow | null> => {
+          const k = cacheKeys.domain(situation.domainId);
+          const c = await cacheGet<DomainRow | null>(k);
+          if (c) return c;
+          const r = await db.select().from(domains).where(eq(domains.id, situation.domainId)).then(r => r[0] ?? null);
+          if (r) await cacheSet(k, r, TTL.DOMAIN);
+          return r;
+        })()
       : Promise.resolve(null),
   ]);
 
@@ -115,9 +163,9 @@ export async function GET(
     success: true,
     session,
     scenario: scenario ?? null,
-    situation: situationResult,
+    situation,
     domain: domainResult,
-    character: characterResult,
+    character,
     vocabulary: vocabItems,
     goals,
     conversations: conversationWithCorrections,
