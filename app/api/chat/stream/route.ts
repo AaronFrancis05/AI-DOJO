@@ -1,5 +1,9 @@
 import { db } from '../../../../src/db';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, vocabulary, audioJobs } from '../../../../src/schema';
+
+type ScenarioRow = typeof scenarios.$inferSelect;
+type SituationRow = typeof situations.$inferSelect;
+type GoalRow = typeof scenarioGoals.$inferSelect;
 import { analyzeUserTurn } from '../../../../lib/ai-engine';
 import type { ChatTurn } from '../../../../lib/ai-providers';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
@@ -8,6 +12,7 @@ import { nextPhase, UNGUIDED_MISTAKE_PENALTY, UNGUIDED_ENGLISH_PENALTY, type Ses
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
+import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 
 const SAFETY_CAP_TURN = 15;
 const MAX_ICEBREAKER_VOCAB = 5;
@@ -84,7 +89,14 @@ export async function POST(req: Request) {
     const nativeLanguage = session.nativeLanguage ?? 'en';
 
     const [currentScenario, conversationRows, goalsResult, completionsResult, situationResult] = await Promise.all([
-      db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null),
+      (async (): Promise<ScenarioRow | null> => {
+        const k = cacheKeys.scenario(scenarioId);
+        const c = await cacheGet<ScenarioRow | null>(k);
+        if (c) return c;
+        const r = await db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null);
+        if (r) await cacheSet(k, r, TTL.SCENARIO);
+        return r;
+      })(),
 
       db
         .select()
@@ -92,11 +104,14 @@ export async function POST(req: Request) {
         .where(eq(conversations.sessionId, numericSessionId))
         .orderBy(asc(conversations.turnNo)),
 
-      db
-        .select()
-        .from(scenarioGoals)
-        .where(eq(scenarioGoals.scenarioId, scenarioId))
-        .orderBy(asc(scenarioGoals.sequenceOrder)),
+      (async (): Promise<GoalRow[]> => {
+        const k = cacheKeys.goals(scenarioId);
+        const c = await cacheGet<GoalRow[]>(k);
+        if (c) return c;
+        const r = await db.select().from(scenarioGoals).where(eq(scenarioGoals.scenarioId, scenarioId)).orderBy(asc(scenarioGoals.sequenceOrder));
+        await cacheSet(k, r, TTL.GOALS);
+        return r;
+      })(),
 
       db
         .select({ seqOrder: scenarioGoals.sequenceOrder })
@@ -105,7 +120,14 @@ export async function POST(req: Request) {
         .where(and(eq(goalCompletions.sessionId, numericSessionId), eq(scenarioGoals.scenarioId, scenarioId))),
 
       session.situationId
-        ? db.select().from(situations).where(eq(situations.id, session.situationId)).then(r => r[0] ?? null)
+        ? (async (): Promise<SituationRow | null> => {
+            const k = cacheKeys.situation(session.situationId!);
+            const c = await cacheGet<SituationRow | null>(k);
+            if (c) return c;
+            const r = await db.select().from(situations).where(eq(situations.id, session.situationId!)).then(r => r[0] ?? null);
+            if (r) await cacheSet(k, r, TTL.SITUATION);
+            return r;
+          })()
         : Promise.resolve(null),
     ]);
 
@@ -138,11 +160,14 @@ export async function POST(req: Request) {
 
     // ── Load scenario vocabulary for icebreaker phase ──
     let vocabRows = currentPhase === 'icebreaker' || currentPhase === 'guided'
-      ? await db
-            .select()
-            .from(vocabulary)
-            .where(eq(vocabulary.scenarioId, scenarioId))
-            .orderBy(vocabulary.id)
+      ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {
+            const k = cacheKeys.vocabulary(scenarioId);
+            const c = await cacheGet<typeof vocabulary.$inferSelect[]>(k);
+            if (c) return c;
+            const r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenarioId)).orderBy(vocabulary.id);
+            await cacheSet(k, r, TTL.VOCABULARY);
+            return r;
+          })()
       : [];
 
     if (currentPhase === 'icebreaker' && vocabRows.length > MAX_ICEBREAKER_VOCAB) {

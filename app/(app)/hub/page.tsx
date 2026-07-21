@@ -19,8 +19,10 @@ import {
   Compass,
   Sun,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import type { DomainFixture } from '@/lib/data/domains';
+import { CreateDomainDialog } from '@/components/CreateDomainDialog';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   UtensilsCrossed,
@@ -36,6 +38,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 export default function HubPage() {
   const [domains, setDomains] = useState<DomainFixture[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     getDomains().then(({ data }) => {
@@ -111,8 +114,27 @@ export default function HubPage() {
               </Link>
             );
           })}
+
+          {/* ── Create Custom Card ── */}
+          <button onClick={() => setShowCreate(true)} className="block text-left w-full">
+            <Card className="group h-full !p-0 overflow-hidden border-2 border-dashed border-dojo-border hover:border-dojo-accent transition-all duration-300 cursor-pointer bg-dojo-surface/50 hover:bg-dojo-surface">
+              <div className="flex h-full min-h-[17rem] flex-col items-center justify-center gap-3 p-6">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-dojo-text-muted/40 transition-colors duration-300 group-hover:border-dojo-accent group-hover:bg-dojo-accent/10">
+                  <Plus className="h-8 w-8 text-dojo-text-muted/50 group-hover:text-dojo-accent transition-colors duration-300" />
+                </div>
+                <h3 className="text-base font-semibold text-dojo-text-muted group-hover:text-dojo-text-primary transition-colors duration-300">
+                  Create Custom
+                </h3>
+                <p className="text-xs text-dojo-text-muted/60 text-center leading-relaxed">
+                  Design your own scenario from scratch
+                </p>
+              </div>
+            </Card>
+          </button>
         </div>
       )}
+
+      <CreateDomainDialog open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   );
 }
