@@ -145,7 +145,26 @@ export const conversations = pgTable('conversations', {
   gestureHint:           varchar('gesture_hint', { length: 120 }),
   isEnglishWhenExpected: boolean('is_english_when_expected').default(false).notNull(),
   isValidInContext:      boolean('is_valid_in_context').default(true).notNull(),
+  audioStatus:           varchar('audio_status', { length: 20 }).default('pending').notNull(),
+  audioUrl:              text('audio_url'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
+});
+
+export const audioJobs = pgTable('audio_jobs', {
+  id:             serial('id').primaryKey(),
+  conversationId: integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
+  sessionId:      integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull(),
+  text:           text('text').notNull(),
+  lang:           varchar('lang', { length: 20 }).notNull(),
+  phase:          varchar('phase', { length: 20 }).notNull(),
+  speaker:        varchar('speaker', { length: 20 }).notNull(),
+  status:         varchar('status', { length: 20 }).default('pending').notNull(),
+  attempts:       integer('attempts').default(0).notNull(),
+  maxAttempts:    integer('max_attempts').default(3).notNull(),
+  error:          text('error'),
+  audioUrl:       text('audio_url'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  processedAt:    timestamp('processed_at'),
 });
 
 export const corrections = pgTable('corrections', {
@@ -277,6 +296,12 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
   session:     one(sessions, { fields: [conversations.sessionId], references: [sessions.id] }),
   user:        one(users,    { fields: [conversations.userId],   references: [users.id] }),
   corrections: many(corrections),
+  audioJobs:   many(audioJobs),
+}));
+
+export const audioJobsRelations = relations(audioJobs, ({ one }) => ({
+  conversation: one(conversations, { fields: [audioJobs.conversationId], references: [conversations.id] }),
+  session:      one(sessions,      { fields: [audioJobs.sessionId],      references: [sessions.id] }),
 }));
 
 export const correctionsRelations = relations(corrections, ({ one }) => ({

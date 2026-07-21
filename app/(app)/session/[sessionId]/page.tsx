@@ -8,8 +8,9 @@ import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { speakWithVisemes, speak as ttsSpeak, feedStreamTts, resetStreamingTts, stopStreamingTts } from '@/lib/roleplay/tts';
-import { startContinuousRecognition, stopContinuousRecognition } from '@/lib/roleplay/pronunciation';
+import { speakWithVisemes, speak as ttsSpeak, speakMixedText, feedStreamTts, resetStreamingTts, stopStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
+import { detectSpeechLang } from '@/lib/roleplay/lang-detect';
+import { startContinuousRecognition, stopContinuousRecognition, ensureRecognizer } from '@/lib/roleplay/pronunciation';
 import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
@@ -44,6 +45,10 @@ interface TurnData {
   emotionTone?: string;
   gestureHint?: string;
   corrections?: CorrectionTip[];
+  pending?: boolean;
+  failed?: boolean;
+  audioUrl?: string | null;
+  audioStatus?: string | null;
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
 
@@ -107,6 +112,14 @@ export default function RoleplaySessionPage() {
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
 
+  // Wire speaking callback to avatar mode (drives 'talking' state from audio, not text)
+  useEffect(() => {
+    setOnSpeakingChange((speaking) => {
+      setAvatarMode(speaking ? 'talking' : 'idle');
+    });
+    return () => setOnSpeakingChange(null);
+  }, []);
+
   useEffect(() => {
     const stored = getStoredAvatarUrl();
     if (stored) setAvatarModelUrl(stored);
@@ -147,6 +160,8 @@ export default function RoleplaySessionPage() {
           emotionTone: c.emotionTone,
           gestureHint: c.gestureHint,
           corrections: c.corrections ?? [],
+          audioUrl: c.audioUrl,
+          audioStatus: c.audioStatus,
         })));
         if (data.goalCompletions) {
           setCompletedGoals(data.goalCompletions.map((gc: any) => gc.sequenceOrder));
@@ -168,6 +183,20 @@ export default function RoleplaySessionPage() {
     if (sending) return;
     const trimmed = inputText.trim();
     if (!trimmed) return;
+
+    // Optimistic user turn — appears before the server responds
+    const optimisticId = trimmed !== '__session_start__' ? Date.now() : null;
+    if (optimisticId) {
+      setConversations(prev => [...prev, {
+        id: optimisticId,
+        turnNo: prev.length + 1,
+        speaker: 'user',
+        messageTarget: trimmed,
+        messageNative: '',
+        messageRomaji: null,
+        pending: true,
+      }]);
+    }
 
     setSending(true);
     setAvatarMode('listening');
@@ -268,7 +297,15 @@ export default function RoleplaySessionPage() {
           gestureHint: finalAnalysis.gestureHint,
           corrections: finalAnalysis.corrections ?? [],
         };
-        setConversations(prev => [...prev, userTurn]);
+        // Replace optimistic turn in-place
+        setConversations(prev => {
+          if (optimisticId === null) return [...prev, userTurn];
+          const idx = prev.findIndex(t => t.id === optimisticId);
+          if (idx === -1) return [...prev, userTurn];
+          const updated = [...prev];
+          updated[idx] = { ...userTurn, pending: false };
+          return updated;
+        });
         if (finalAnalysis.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
         setAvatarMode('idle');
         setStreamingText(null);
@@ -303,7 +340,16 @@ export default function RoleplaySessionPage() {
           messageNative: '',
           messageRomaji: null,
         };
-        setConversations(prev => [...prev, userTurn, aiTurn]);
+        // Replace optimistic turn in-place, then insert AI turn after it
+        setConversations(prev => {
+          if (optimisticId === null) return [...prev, userTurn, aiTurn];
+          const idx = prev.findIndex(t => t.id === optimisticId);
+          if (idx === -1) return [...prev, userTurn, aiTurn];
+          const updated = [...prev];
+          updated[idx] = { ...userTurn, pending: false };
+          updated.splice(idx + 1, 0, aiTurn);
+          return updated;
+        });
       }
       setStreamingText(null);
 
@@ -312,16 +358,15 @@ export default function RoleplaySessionPage() {
         setCompletedGoals(prev => [...new Set([...prev, ...finalAnalysis.goalsAddressedThisTurn])]);
       }
 
-      // TTS for the full AI reply (played by streaming already, but ensure completion audio plays)
-      if (!muted && collectedAiText) {
-        setAvatarMode('talking');
-      }
-
       if (finalAnalysis?.scenarioComplete) setSession((p: any) => ({ ...p, status: 'completed' }));
     } catch (e: any) {
       setError(e.message);
       setAvatarMode('idle');
       setStreamingText(null);
+      // Mark optimistic turn as failed so the user's message isn't lost
+      if (optimisticId) {
+        setConversations(prev => prev.map(t => t.id === optimisticId ? { ...t, pending: false, failed: true } : t));
+      }
     } finally {
       setSending(false);
     }
@@ -337,6 +382,14 @@ export default function RoleplaySessionPage() {
     }
   }, [phase, greetingSent, loading, sending, conversations.length]);
 
+  /* ── Pre-warm recognizer after session loads ── */
+  useEffect(() => {
+    if (!loading && targetLanguage) {
+      const bcp47 = getBCP47(targetLanguage, 'stt');
+      ensureRecognizer(bcp47).catch(() => {});
+    }
+  }, [loading, targetLanguage]);
+
   /* ── Voice input (always continuous) ── */
   const startListening = useCallback(async () => {
     if (sending || streamingText) return;
@@ -345,12 +398,10 @@ export default function RoleplaySessionPage() {
     const bcp47 = getBCP47(targetLangRef.current, 'stt');
     try {
       await startContinuousRecognition(bcp47, {
-        onInterim: () => {
-          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
-          continuousSilenceRef.current = setTimeout(() => {}, 2000);
+        onInterim: (text: string) => {
+          setText(text);
         },
         onFinal: (text: string) => {
-          if (continuousSilenceRef.current) clearTimeout(continuousSilenceRef.current);
           const trimmed = text.trim();
           if (trimmed) handleSend(trimmed);
         },
@@ -365,8 +416,8 @@ export default function RoleplaySessionPage() {
     }
   }, [handleSend, sending, streamingText]);
 
-  const stopListening = useCallback(() => {
-    stopContinuousRecognition();
+  const stopListening = useCallback(async () => {
+    await stopContinuousRecognition();
     if (continuousSilenceRef.current) {
       clearTimeout(continuousSilenceRef.current);
       continuousSilenceRef.current = null;
@@ -375,23 +426,33 @@ export default function RoleplaySessionPage() {
     setAvatarMode('idle');
   }, []);
 
-  function detectSpeechLang(text: string): string {
-    const target = getBCP47(targetLangRef.current, 'tts');
-    const native = getNativeLangBcp47(nativeLangRef.current);
-    if (target.startsWith('ja') && /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text)) return target;
-    if (target.startsWith('zh') && /[\u4e00-\u9fff]/.test(text)) return target;
-    if (target.startsWith('ko') && /[\uac00-\ud7af]/.test(text)) return target;
-    return native;
-  }
-
-  const handleReplay = useCallback((msgTarget: string, msgNative: string) => {
+  const handleReplay = useCallback((turn: TurnData) => {
     if (muted) return;
-    const t = msgTarget || msgNative;
+    const t = turn.messageTarget || turn.messageNative;
     if (!t) return;
-    const lang = detectSpeechLang(t);
+
+    // Use cached audio if available
+    if (turn.audioUrl) {
+      const audio = new Audio(turn.audioUrl);
+      setAvatarMode('talking');
+      audio.play().catch(() => {
+        // Fallback to TTS if cached audio fails to play
+        const bcp47 = getBCP47(targetLangRef.current, 'tts');
+        const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
+        speakMixedText(t, bcp47, nativeBcp47, phase);
+      });
+      audio.onended = () => setAvatarMode('idle');
+      return;
+    }
+
+    const bcp47 = getBCP47(targetLangRef.current, 'tts');
+    const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
     setAvatarMode('talking');
-    speakWithVisemes(t, lang).catch(() => ttsSpeak(t, lang)).finally(() => setAvatarMode('idle'));
-  }, [muted]);
+    speakMixedText(t, bcp47, nativeBcp47, phase).catch(() => {
+      const lang = detectSpeechLang(t, bcp47, nativeBcp47);
+      return ttsSpeak(t, lang);
+    });
+  }, [muted, phase]);
 
   const handleTypeClick = useCallback(() => {
     if (window.innerWidth < 1024) {
@@ -423,9 +484,6 @@ export default function RoleplaySessionPage() {
   const isActive    = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
 
-  const listeningLockedRef = useRef(false);
-  const startMicRef = useRef(startListening);
-  useEffect(() => { startMicRef.current = startListening; }, [startListening]);
   const charName    = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor   = character?.avatarColor ?? '#2D3BC5';
   const domainSlug  = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
@@ -433,13 +491,12 @@ export default function RoleplaySessionPage() {
   const totalCorrections = conversations.reduce((sum, c) => sum + (c.corrections?.length ?? 0), 0);
   const targetName  = getTargetLangConfig(targetLanguage).name;
 
-  // Auto-restart mic after AI response completes
+  // Defensive safeguard: if a response starts while mic is open, auto-stop (consent-preserving)
   useEffect(() => {
-    if (phase === 'icebreaker' && !greetingSent) return;
-    if (!sending && !streamingText && isActive && !isListening && !listeningLockedRef.current) {
-      startMicRef.current();
+    if (isListening && (sending || streamingText)) {
+      stopListening();
     }
-  }, [sending, streamingText, isActive, phase, greetingSent]);
+  }, [isListening, sending, streamingText, stopListening]);
 
   /* ── Loading / error states ── */
   if (loading) {

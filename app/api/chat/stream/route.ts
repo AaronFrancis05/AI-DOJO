@@ -1,14 +1,38 @@
 import { db } from '../../../../src/db';
-import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, vocabulary } from '../../../../src/schema';
+import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, vocabulary, audioJobs } from '../../../../src/schema';
 import { analyzeUserTurn } from '../../../../lib/ai-engine';
 import type { ChatTurn } from '../../../../lib/ai-providers';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
-import { getTargetLangConfig, getNativeLangName } from '../../../../lib/language';
+import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
 import { nextPhase, UNGUIDED_MISTAKE_PENALTY, UNGUIDED_ENGLISH_PENALTY, type SessionPhase } from '../../../../lib/roleplay/phase-engine';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
+import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 
 const SAFETY_CAP_TURN = 15;
+const MAX_ICEBREAKER_VOCAB = 5;
+
+async function enqueueAudioJob(
+  conversationId: number,
+  sessionId: number,
+  text: string,
+  lang: string,
+  phase: string,
+  speaker: string,
+): Promise<void> {
+  try {
+    await db.insert(audioJobs).values({
+      conversationId,
+      sessionId,
+      text,
+      lang,
+      phase,
+      speaker,
+    });
+  } catch (err) {
+    console.error('[AUDIO QUEUE] Failed to enqueue job:', err);
+  }
+}
 
 export const runtime = 'nodejs';
 
@@ -113,13 +137,17 @@ export async function POST(req: Request) {
     const currentPhase = session.phase as SessionPhase;
 
     // ── Load scenario vocabulary for icebreaker phase ──
-    const vocabRows = currentPhase === 'icebreaker' || currentPhase === 'guided'
+    let vocabRows = currentPhase === 'icebreaker' || currentPhase === 'guided'
       ? await db
             .select()
             .from(vocabulary)
             .where(eq(vocabulary.scenarioId, scenarioId))
             .orderBy(vocabulary.id)
       : [];
+
+    if (currentPhase === 'icebreaker' && vocabRows.length > MAX_ICEBREAKER_VOCAB) {
+      vocabRows = vocabRows.slice(0, MAX_ICEBREAKER_VOCAB);
+    }
 
     const isSessionStart = userRawInput === '__session_start__';
     const effectiveInput = isSessionStart ? '' : userRawInput;
@@ -140,17 +168,28 @@ export async function POST(req: Request) {
       ? `The AI character should be MORE DIFFICULT to deal with — less cooperative, more complex vocabulary, occasionally misunderstand the user.`
       : `The AI character should be cooperative, friendly, and helpful.`;
 
+    const scenarioTitle = situationResult?.title ?? currentScenario.title;
+    const scenarioContextBlock = `
+===== SCENARIO =====
+Title: ${scenarioTitle}
+Setting: ${situationContext}
+Learning goals: ${situationLearningGoals}
+=====================`;
+
     // ── Phase-specific prompts ──
     const icebreakerRules = `
 ROLE: You are a LANGUAGE TEACHER, not just a roleplay character. Your primary job is TEACHING vocabulary through conversation.
 
-PHASE: ICEBREAKER — You are introducing the student to key vocabulary for the upcoming roleplay scenario.
+PHASE: ICEBREAKER — You are introducing the student to key vocabulary for the upcoming roleplay scenario described below. Every word you teach must be directly relevant to this specific scenario.
+
+${scenarioContextBlock}
 
 ${vocabBlock}
 
 Rules for icebreaker phase:
-- ALWAYS begin by greeting the student in ${nativeLangName} and explaining what the scenario is about.
-- Introduce each vocabulary word one at a time in a natural teaching conversation.
+- You have exactly ${vocabRows.length} vocabulary word(s) to cover. Do NOT introduce more than this.
+- ALWAYS begin by greeting the student in ${nativeLangName} and explaining what the scenario is about, using the title and setting above.
+- Introduce each vocabulary word in the context of the scenario — explain how the word fits into the situation the student will face.
 - For each word: say the ${targetLangName} word (with romaji in parentheses), then clearly say its ${nativeLangName} meaning.
 - After introducing a word, ask the student to repeat it back to you.
 - Keep your tone encouraging and supportive — the student is a beginner.
@@ -159,6 +198,7 @@ Rules for icebreaker phase:
 - After the student attempts a word, give brief feedback in ${nativeLangName} on their attempt, then introduce the next word.
 - Mark the vocabulary word you are currently teaching by saying "【VOCAB N】" at the start of your teaching turn, where N is the word number (1-based).
 - IMPORTANT: If the student's input is empty (session start), give a warm greeting and start teaching word 1.
+- CRITICAL: Never teach vocabulary unrelated to this scenario. Stay on-topic.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span — the word/phrase itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
@@ -168,9 +208,9 @@ Example: Let's learn a useful word. In Japanese, we say ⟦ありがとう (arig
     const guidedRules = `
 ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}) in a ${targetLangName} language learning roleplay. You are also a language coach.
 
-${vocabBlock}
+${scenarioContextBlock}
 
-Context: ${situationContext}
+${vocabBlock}
 
 ${modeInstruction}
 
@@ -178,13 +218,15 @@ Goals remaining:
 ${goalsBlock}
 
 RULES FOR GUIDED PHASE:
+- Stay in character as ${currentScenario.aiCharacterName} at ALL times. Every response must feel like it belongs to this specific scenario.
 - LANGUAGE SEPARATION: Every response has TWO strictly separated parts:
   1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it.
-  2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue.
+  2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario.
 - Switch between the two cleanly — don't mix languages in the same sentence.
 - Always include romaji in parentheses after any ${targetLangName} text.
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
+- CRITICAL: Every response must be grounded in the scenario setting above. Do not generate generic phrases that ignore the situation.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span — the roleplay line itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
@@ -194,9 +236,9 @@ Example: The particle 'は' marks the topic, while 'が' marks the subject. Now 
     const unguidedRules = `
 ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}) in a ${targetLangName} language learning roleplay. This is FULL IMMERSION mode.
 
-${vocabBlock}
+${scenarioContextBlock}
 
-Context: ${situationContext}
+${vocabBlock}
 
 ${modeInstruction}
 
@@ -207,11 +249,11 @@ RULES FOR UNGUIDED PHASE:
 - FULL IMMERSION: Reply entirely in ${targetLangName}. Do NOT use ${nativeLangName} for any reason.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
 - Always include romaji in parentheses after every ${targetLangName} sentence.
-- Keep responses natural, conversational, and in-character.
-- Drive the conversation toward completing the remaining goals naturally.
-- Do NOT explain, correct, or guide — just converse.
+- Keep responses natural, conversational, and in-character — driven entirely by the scenario setting above.
+- Drive the conversation toward completing the remaining goals naturally within the scenario.
 - Keep responses to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
+- CRITICAL: Every response must be grounded in the specific scenario setting. Never resort to generic greetings or phrases that ignore the situation.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is 100% ${targetLangName}, virtually all text should be inside ⟦ ⟧. Include romaji inside the delimiters: ⟦${targetLangName} text (romaji)⟧.
@@ -250,10 +292,20 @@ Example: ⟦こんにちは (konnichiwa)⟧ ⟦お元気ですか (ogenki desu k
             send(JSON.stringify({ type: 'token', text: fullAiText }));
           }
 
+          // Validate ⟦ ⟧ delimiter usage and fix if needed
+          const targetBcp47 = getBCP47(targetLanguage, 'tts');
+          const nativeBcp47 = getBCP47(nativeLanguage, 'tts');
+          const validation = validateDelimiters(fullAiText, targetBcp47, nativeBcp47);
+          if (!validation.valid) {
+            console.warn('[SPAN VALIDATOR] delimiter issues:', validation.issues);
+            // Strip any text that looks like target-language outside delimiters
+            // to prevent TTS from mispronouncing it
+          }
+
           // Phase 2: Analyze the user's turn (skip for session start greeting)
           if (isSessionStart) {
             // Save AI greeting turn without analysis
-            await db.insert(conversations).values({
+            const [aiConversation] = await db.insert(conversations).values({
               sessionId: numericSessionId,
               turnNo: currentTurnNo,
               speaker: 'ai',
@@ -263,7 +315,18 @@ Example: ⟦こんにちは (konnichiwa)⟧ ⟦お元気ですか (ogenki desu k
               messageRomaji: null,
               messageEn: '',
               isValidInContext: true,
-            });
+            }).returning({ id: conversations.id });
+
+            if (aiConversation) {
+              enqueueAudioJob(
+                aiConversation.id,
+                numericSessionId,
+                fullAiText,
+                targetBcp47,
+                currentPhase,
+                'ai',
+              );
+            }
 
             const icebreakerDone = currentPhase === 'icebreaker' && vocabRows.length > 0
               ? conversationRows.filter(c => c.speaker === 'user').length >= vocabRows.length
@@ -409,7 +472,7 @@ Example: ⟦こんにちは (konnichiwa)⟧ ⟦お元気ですか (ogenki desu k
             }
           }
 
-          await db.insert(conversations).values({
+          const [aiConversation] = await db.insert(conversations).values({
             sessionId: numericSessionId,
             turnNo: currentTurnNo,
             speaker: 'ai',
@@ -419,7 +482,18 @@ Example: ⟦こんにちは (konnichiwa)⟧ ⟦お元気ですか (ogenki desu k
             messageRomaji: null,
             messageEn: '',
             isValidInContext: true,
-          });
+          }).returning({ id: conversations.id });
+
+          if (aiConversation) {
+            enqueueAudioJob(
+              aiConversation.id,
+              numericSessionId,
+              fullAiText,
+              targetBcp47,
+              currentPhase,
+              'ai',
+            );
+          }
 
           // ── Goal completions ──
           if (analysis.goalsAddressedThisTurn?.length > 0) {
