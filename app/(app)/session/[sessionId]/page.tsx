@@ -487,6 +487,7 @@ export default function RoleplaySessionPage() {
             emotion={latestAi?.emotionTone}
             gesture={latestAi?.gestureHint}
             cameraMode="front"
+            textToSpeak={latestAi?.messageTarget || latestAi?.messageNative} /* 🚀 ADDED THIS LINE */
           />
         </div>
 
