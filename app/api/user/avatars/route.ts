@@ -10,7 +10,7 @@ export async function GET() {
 
   const cacheKey = cacheKeys.userAvatars(user.id);
 
-  const cached = await cacheGet<typeof avatars>(cacheKey);
+  const cached = await cacheGet<(typeof userAvatars.$inferSelect)[]>(cacheKey);
   if (cached) return Response.json({ success: true, avatars: cached });
 
   const avatars = await db

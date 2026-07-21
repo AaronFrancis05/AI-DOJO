@@ -19,10 +19,10 @@ export default function NotFound() {
         </p>
         <Link
           href="/hub"
-          className="mt-8 inline-flex items-center gap-2 rounded-[--radius-md] bg-dojo-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
+          className="mt-8 inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-dojo-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Home
+          Back to Hub
         </Link>
       </div>
     </div>

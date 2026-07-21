@@ -36,9 +36,9 @@ export async function GET(
   }
 
   const [
-    scenarioResult_,
-    situationResult_,
-    characterResult_,
+    scenario,
+    situation,
+    character,
     conversationList,
     evaluationResult,
     goalCompletionList,
@@ -104,12 +104,6 @@ export async function GET(
       .where(eq(goalCompletions.sessionId, sessionId)),
   ]);
 
-  const scenarioResult = scenarioResult_ as typeof scenarioResult_;
-  const situationResult = situationResult_ as typeof situationResult_;
-  const characterResult = characterResult_ as typeof characterResult_;
-
-  const scenario = scenarioResult;
-
   const [vocabItems, goals, domainResult] = await Promise.all([
     scenario
       ? (async (): Promise<VocabRow[]> => {
@@ -133,12 +127,12 @@ export async function GET(
         })()
       : Promise.resolve([]),
 
-    situationResult
+    situation
       ? (async (): Promise<DomainRow | null> => {
-          const k = cacheKeys.domain(situationResult.domainId);
+          const k = cacheKeys.domain(situation.domainId);
           const c = await cacheGet<DomainRow | null>(k);
           if (c) return c;
-          const r = await db.select().from(domains).where(eq(domains.id, situationResult.domainId)).then(r => r[0] ?? null);
+          const r = await db.select().from(domains).where(eq(domains.id, situation.domainId)).then(r => r[0] ?? null);
           if (r) await cacheSet(k, r, TTL.DOMAIN);
           return r;
         })()
@@ -169,9 +163,9 @@ export async function GET(
     success: true,
     session,
     scenario: scenario ?? null,
-    situation: situationResult,
+    situation,
     domain: domainResult,
-    character: characterResult,
+    character,
     vocabulary: vocabItems,
     goals,
     conversations: conversationWithCorrections,

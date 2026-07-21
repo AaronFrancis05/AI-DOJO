@@ -34,13 +34,14 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
 
   useEffect(() => {
     if (!open) return;
-    setCharacters([]);
-    fetch('/api/characters')
+    const controller = new AbortController();
+    fetch('/api/characters', { signal: controller.signal })
       .then(r => r.json())
       .then(body => {
-        if (body.success) setCharacters(body.characters);
+        if (body.success && !controller.signal.aborted) setCharacters(body.characters);
       })
       .catch(() => {});
+    return () => controller.abort();
   }, [open]);
 
   const handleSubmit = async () => {
