@@ -44,6 +44,8 @@ interface TurnData {
   emotionTone?: string;
   gestureHint?: string;
   corrections?: CorrectionTip[];
+  pending?: boolean;
+  failed?: boolean;
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
 
@@ -169,6 +171,20 @@ export default function RoleplaySessionPage() {
     const trimmed = inputText.trim();
     if (!trimmed) return;
 
+    // Optimistic user turn — appears before the server responds
+    const optimisticId = trimmed !== '__session_start__' ? Date.now() : null;
+    if (optimisticId) {
+      setConversations(prev => [...prev, {
+        id: optimisticId,
+        turnNo: prev.length + 1,
+        speaker: 'user',
+        messageTarget: trimmed,
+        messageNative: '',
+        messageRomaji: null,
+        pending: true,
+      }]);
+    }
+
     setSending(true);
     setAvatarMode('listening');
     setError('');
@@ -268,7 +284,15 @@ export default function RoleplaySessionPage() {
           gestureHint: finalAnalysis.gestureHint,
           corrections: finalAnalysis.corrections ?? [],
         };
-        setConversations(prev => [...prev, userTurn]);
+        // Replace optimistic turn in-place
+        setConversations(prev => {
+          if (optimisticId === null) return [...prev, userTurn];
+          const idx = prev.findIndex(t => t.id === optimisticId);
+          if (idx === -1) return [...prev, userTurn];
+          const updated = [...prev];
+          updated[idx] = { ...userTurn, pending: false };
+          return updated;
+        });
         if (finalAnalysis.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
         setAvatarMode('idle');
         setStreamingText(null);
@@ -303,7 +327,16 @@ export default function RoleplaySessionPage() {
           messageNative: '',
           messageRomaji: null,
         };
-        setConversations(prev => [...prev, userTurn, aiTurn]);
+        // Replace optimistic turn in-place, then insert AI turn after it
+        setConversations(prev => {
+          if (optimisticId === null) return [...prev, userTurn, aiTurn];
+          const idx = prev.findIndex(t => t.id === optimisticId);
+          if (idx === -1) return [...prev, userTurn, aiTurn];
+          const updated = [...prev];
+          updated[idx] = { ...userTurn, pending: false };
+          updated.splice(idx + 1, 0, aiTurn);
+          return updated;
+        });
       }
       setStreamingText(null);
 
@@ -322,6 +355,10 @@ export default function RoleplaySessionPage() {
       setError(e.message);
       setAvatarMode('idle');
       setStreamingText(null);
+      // Mark optimistic turn as failed so the user's message isn't lost
+      if (optimisticId) {
+        setConversations(prev => prev.map(t => t.id === optimisticId ? { ...t, pending: false, failed: true } : t));
+      }
     } finally {
       setSending(false);
     }
@@ -423,9 +460,6 @@ export default function RoleplaySessionPage() {
   const isActive    = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
 
-  const listeningLockedRef = useRef(false);
-  const startMicRef = useRef(startListening);
-  useEffect(() => { startMicRef.current = startListening; }, [startListening]);
   const charName    = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor   = character?.avatarColor ?? '#2D3BC5';
   const domainSlug  = domain?.slug ?? situation?.domainSlug ?? 'daily-life';
@@ -433,13 +467,12 @@ export default function RoleplaySessionPage() {
   const totalCorrections = conversations.reduce((sum, c) => sum + (c.corrections?.length ?? 0), 0);
   const targetName  = getTargetLangConfig(targetLanguage).name;
 
-  // Auto-restart mic after AI response completes
+  // Defensive safeguard: if a response starts while mic is open, auto-stop (consent-preserving)
   useEffect(() => {
-    if (phase === 'icebreaker' && !greetingSent) return;
-    if (!sending && !streamingText && isActive && !isListening && !listeningLockedRef.current) {
-      startMicRef.current();
+    if (isListening && (sending || streamingText)) {
+      stopListening();
     }
-  }, [sending, streamingText, isActive, phase, greetingSent]);
+  }, [isListening, sending, streamingText, stopListening]);
 
   /* ── Loading / error states ── */
   if (loading) {

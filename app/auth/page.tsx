@@ -297,19 +297,7 @@ export default function AuthPage() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-2">
-                  {['S', 'J', 'M'].map((l) => (
-                    <div key={l} className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dojo-sidebar bg-dojo-accent/30 text-xs font-bold text-dojo-accent">
-                      {l}
-                    </div>
-                  ))}
-                </div>
-                <div className="ml-3">
-                  <div className="text-sm font-semibold text-white">50,000+</div>
-                  <div className="text-xs text-white/70">learners already joined</div>
-                </div>
-              </div>
+              
             </div>
           </>
         )}

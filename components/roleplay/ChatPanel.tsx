@@ -24,6 +24,8 @@ interface TurnData {
   emotionTone?: string;
   gestureHint?: string;
   corrections?: CorrectionTip[];
+  pending?: boolean;
+  failed?: boolean;
 }
 
 interface ChatPanelProps {
@@ -91,25 +93,30 @@ export function ChatPanel({
           const isLatestAi = isAi && turn.id === Math.max(...conversations.filter(c => c.speaker === 'ai').map(c => c.id), -1);
 
           return (
-            <div key={turn.id} className={`flex ${!isAi ? 'justify-end' : 'justify-start'}`}>
+            <div key={turn.id} className={`flex ${!isAi ? 'justify-end' : 'justify-start'} ${turn.pending ? 'opacity-60' : ''}`}>
               <div
                 className={`max-w-[85%] rounded-xl px-3.5 py-2.5 ${
                   isAi
                     ? 'bg-dojo-surface-raised/90 border border-dojo-border'
-                    : 'bg-dojo-accent/20 border border-dojo-accent/30'
+                    : turn.failed
+                      ? 'bg-dojo-danger/10 border border-dojo-danger/30'
+                      : 'bg-dojo-accent/20 border border-dojo-accent/30'
                 }`}
               >
                 {/* Header */}
                 <div className="flex items-center gap-1.5 mb-1">
                   <span
                     className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: isAi ? charColor : '#2D3BC5' }}
+                    style={{ backgroundColor: isAi ? charColor : turn.failed ? '#DC2626' : '#2D3BC5' }}
                   >
                     {isAi ? charName[0] : 'U'}
                   </span>
                   <span className="text-[11px] font-semibold text-dojo-text-primary">
                     {isAi ? charName : 'You'}
                   </span>
+                  {turn.failed && (
+                    <span className="text-[10px] text-dojo-danger font-medium">Failed to send</span>
+                  )}
                   {isAi && isLatestAi && (
                     <SpeakingWave active={avatarMode === 'talking'} />
                   )}
@@ -128,8 +135,8 @@ export function ChatPanel({
                   {turn.messageTarget}
                 </p>
 
-                {/* Romaji */}
-                {turn.messageRomaji && (
+                {/* Romaji — hidden while pending (analysis hasn't arrived) */}
+                {turn.messageRomaji && !turn.pending && (
                   <p className="mt-0.5 text-[11px] text-dojo-text-muted italic">
                     {turn.messageRomaji}
                   </p>
@@ -142,8 +149,8 @@ export function ChatPanel({
                   </p>
                 )}
 
-                {/* Corrections — hidden during unguided phase */}
-                {turn.corrections && turn.corrections.length > 0 && phase !== 'unguided' && (
+                {/* Corrections — hidden while pending and during unguided phase */}
+                {turn.corrections && turn.corrections.length > 0 && !turn.pending && phase !== 'unguided' && (
                   <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
                     {turn.corrections.map((tip, i) => (
                       <div key={i} className="text-[11px] leading-relaxed">
