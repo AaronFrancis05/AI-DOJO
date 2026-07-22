@@ -1,91 +1,68 @@
-# AI DOJO — Memory & Status
+# Memory — Multi-Language Pivot (§1–§9)
 
----
+Last updated: 2026-07-23
 
-## Goal
-Interactive Japanese role-play training app for Ugandan learners using Neon Auth, Google Gemini, Next.js 16
+## What was built
 
-## Constraints & Preferences
-- Neon Auth SDK (`@neondatabase/auth` v0.4.2-beta) — Better Auth hosted, unstable
-- Cookie SameSite must support cross-site OAuth redirect; `lax` configured globally
-- OAuth callback goes through custom `handleOAuthExchange` (not SDK middleware)
-- Deployed on Vercel at `ai-dojo-opal.vercel.app`; preview deployments get separate `ai-dojo-<hash>...vercel.app` URLs
+**§1 Schema migration** — Manual Drizzle migration `0016_multi_language_pivot.sql` with 6 column changes using RENAME COLUMN: `vocabulary.japanese`→`target_text`, `vocabulary.english`→`translation`, added `language_code`; `conversations.message_jp`/`message_en` dropped, `message_target` made NOT NULL; `scenario_goals.target_phrase_jp`→`target_phrase`, added `language_code`; `characters` added `gender`; `audio_jobs` added `voice_gender`; `sessions` added `avatar_enabled`. Journal, snapshot, and `src/schema.ts` all updated. 44 downstream references across 12 files fixed.
 
-## Progress
+**§2 Language config** — `lib/language.ts` expanded with `LanguageConfig` (azureVoice: { female, male }, ttsSupported). `TARGET_LANGUAGES` includes en, ja, fr, lg. `resolveAzureVoice(bcp47, gender)` covers all 12 languages × 2 genders.
 
-### Done
-- Google OAuth full flow works on desktop: click → Google → callback → session → home
-- Email/password sign-up, sign-in, reset, email OTP verification
-- Chat/role-play with Google Gemini (`gemini-2.5-flash`) with 10-turn cap
-- Session management (list, share, delete) with share token public view
-- Profile page (name update, password change, sign-out)
-- Dashboard scenario card grid with difficulty badges, context, learning goals
-- NavBar with active route highlighting and logout
-- Middleware protects all page routes; `/api/*` excluded (handles auth internally)
-- Cookie rewriting: strips `Domain`, strips `SameSite`, conditionally strips `Secure` (preserved for `__Secure-` prefix), adds `SameSite=Lax; Path=/`
-- `x-neon-auth-middleware: true` header added to all upstream fetches
-- Clipboard `NotAllowedError` silenced with `.catch(() => {})`
-- **Mobile OAuth session drop fix**: `handleOAuthExchange` now routes through `builtin.GET!()` (SDK handler) instead of raw upstream fetch, so `mintSessionDataCookie()` runs and `__Secure-neon-auth.local.session_data` cookie is created on successful OAuth login
-- **`refetchOnWindowFocus` disabled** in `lib/auth/client.ts` via `sessionOptions: { refetchOnWindowFocus: false }` — mobile browsers no longer re-validate session on every tab-switch after OAuth redirect
-- Sign-out diagnostic logging added to `handlePOST` for `sign-out` path
+**§3 AI engine reprompt** — Both `analyzeAndGenerateTurn` and `analyzeUserTurn` in `lib/ai-engine.ts` rewritten from full-immersion to code-switching (native-language-primary). `messageTarget` = highlighted target phrases; `messageNative` = full utterance. Conversation history uses `messageNative ?? messageTarget`. `wrong_language` correction type removed.
 
-### Blocked
-- **Sign-out source still unresolved**: log-capture from real mobile device needed to identify the caller of `POST /api/auth/sign-out`
+**§4 Seed rewrite** — `src/seed.ts` made idempotent (checks for existing users before seeding).
 
-## Key Decisions
-- **`handleOAuthExchange` now proxies through built-in handler (`builtin.GET!()`)**: instead of hand-rolling `fetch(${baseUrl}/get-session)`, passes request to SDK's `handleAuthProxyRequest` which calls `handleAuthResponse` → `mintSessionDataFromResponse` → `mintSessionDataCookie`. This ensures `session_data` cache cookie is minted on OAuth login. Custom redirect to `/` is preserved via `responseHeaders.set('Location', '/')`.
-- **`lib/auth/client.ts` uses vanilla `createAuthClient` from `@neondatabase/auth`** (not `@neondatabase/auth/next`): the Next.js wrapper doesn't accept options, so we use the vanilla entry which accepts `BetterAuthReactAdapter({ sessionOptions })`. The URL is passed as `''` (relative — auto-detected from page origin at runtime). Return type is `ReactBetterAuthClient` which includes all hooks.
-- **`SameSite=Lax` hardcoded in `rewriteSetCookieForLocalDomain`**: chosen for top-level navigation compatibility; may need `None; Secure` if cross-site redirects cause cookie drops
-- **Synchronous redirect for OAuth init** (`window.location.href = '/api/auth/google/init'`): avoids async fetch losing user gesture on mobile (replaced `authClient.signIn.social()`)
-- **All `/api/*` excluded from middleware**: prevents API fetch responses being HTML login pages; API routes handle auth internally via `getAuthUser()`
+**§5 Session UI** — `components/roleplay/VoiceOnlyStage.tsx` (SVG/CSS voice-orb fallback, 3 states: idle/listening/talking). Session page `app/(app)/session/[sessionId]/page.tsx` wires `avatarEnabled` to toggle between `AvatarViewport` and `VoiceOnlyStage`. User `AvatarViewport` removed.
 
-## Next Steps
-1. Deploy to preview environment and test OAuth login on real mobile devices (iOS Safari, Android Chrome)
-2. Confirm `__Secure-neon-auth.local.session_data` cookie is present in callback response after OAuth login (inspect Set-Cookie headers)
-3. Check server logs for the diagnostic sign-out logging to identify the caller of `POST /api/auth/sign-out`
-4. If the sign-out is triggered by browser tab-resume (iOS Safari replaying in-flight requests), consider adding a user-agent check to suppress duplicate sign-out requests
-5. If the automatic sign-out is confirmed to be from `better-auth` client's session error handling (and not a manual click), consider wrapping `signOut()` calls with a guard
+**§6 Voice maps consolidation** — `lib/language.ts` now has complete `AZURE_VOICE_MAP` (all 12 native languages × female/male) and `resolveAzureVoice()`. All 3 hardcoded maps removed: `lib/roleplay/tts.ts`, `app/api/tts/route.ts`, `app/api/audio/process/route.ts`. `enqueueAudioJob` accepts optional `voiceGender`.
 
-## Findings from SDK Source Investigation
+**§7 Gender selection UI** — Migration `0017_voice_gender.sql` adds `voice_gender` to `sessions` + `user_preferences` table. `app/api/user/preferences/route.ts` (GET/PUT). Settings page (`app/(app)/settings/page.tsx`) has feminine/masculine toggle with auto-save. Session creation (`app/api/sessions/route.ts`, `app/api/domains/create-custom/route.ts`) falls back to user preference. Session new page (`app/(app)/session/new/page.tsx`) has inline gender selector.
 
-### No `hostedGetSession` function exists
-The function `hostedGetSession` does NOT exist anywhere in `@neondatabase/auth` v0.4.2-beta or `better-auth` v1.4.18. The `MEMORY.md` prior notes referencing it were incorrect. What exists instead:
-- `processAuthMiddleware` — middleware-level OAuth verifier exchange and session check
-- `getSession` — API handler that proxies to upstream `/get-session` and caches via `session_data` cookie
-- Client-side session refresh via `session-refresh.mjs`
+**§8 Character gender field** — `gender` added to `CharacterFixture` type and all 8 character objects in `lib/mock-data/characters.ts`. Seed script (`scripts/seed-domain-data.ts`) updated. Data adapter maps `gender`. Character selection cards show gender badge (pink ♀ / sky ♂).
 
-### No automatic `signOut()` call found in SDK
-Full search of the SDK's bundled client code (adapter-core, session-refresh, query hooks) found **no code path that calls `signOut()` automatically on session check failure**. The only `signOut()` calls in the codebase are manual (button click in `NavBar.tsx` and `profile/page.tsx`). The sign-out source remains unresolved and requires diagnostic logging on a real device.
+**§9 Character editor gender picker** — `components/ui/GenderPicker.tsx` (reusable toggle). `app/api/characters/[id]/route.ts` (PATCH handler). Settings Avatar page "AI Voice Preferences" tab now shows inline GenderPicker per character with save-on-change.
 
-### `session_data` cookie minting chain
-The SDK mints `session_data` through: `handleAuthResponse` → `mintSessionDataFromResponse` → `mintSessionDataCookie`. This function:
-- Cookie name: `__Secure-neon-auth.local.session_data`
-- Default TTL: 300 seconds (configurable via `cookies.sessionDataTtl`)
-- Signs session data into a JWT using `jose` `SignJWT` with `HS256`
-- Cookie flags: `Path=/`, `HttpOnly`, `Secure`, `SameSite` from config (default `strict`)
-- Only created when upstream `/get-session` response includes a `session_token` Set-Cookie
+## Decisions made
 
-### `exchangeOAuthToken` is middleware-only (not API handler)
-The OAuth verifier exchange (`exchangeOAuthToken`) is handled exclusively by `processAuthMiddleware`, NOT by `authApiHandler` (the built-in handler). The API handler has NO `callback/oauth` route. The only way `exchangeOAuthToken` runs is through middleware interception of page routes. Our custom handler at `/api/auth/oauth/callback` (excluded from middleware) must proxy through the built-in handler's `get-session` path to trigger `mintSessionDataCookie`.
+- **Don't touch `users` table** — all multi-language columns and preferences go on other tables or a new `user_preferences` table.
+- **Code-switching, not immersion** — AI speaks primarily in the user's native language with embedded target-language phrases, matching the Ugandan learning context.
+- **Avatar is opt-in** — `sessions.avatarEnabled` defaults to `false`. The `VoiceOnlyStage` SVG/CSS fallback is the default experience.
+- **Azure Speech has no `lg-UG` locale** — Luganda falls back to en-US voices with `ttsSupported: false`.
+- **Gender-aware TTS** — voice selection uses `resolveAzureVoice(bcp47, gender)` from `language.ts` as single source of truth. Session-level `voiceGender` defaults to `female`; user preference stored in `user_preferences` table.
+- **Characters are seed data** — no character creation form exists. Gender is edited via the settings page AI Voice Preferences tab (inline `GenderPicker` + PATCH API).
 
-### `BetterAuthReactAdapter` option forwarding
-`BetterAuthReactAdapter(options)` spreads `options` into `BetterAuthReactAdapterImpl(betterAuthClientOptions)`, which feeds into `NeonAuthAdapterCore`. `NeonAuthAdapterCore` spreads `betterAuthClientOptions` into `this.betterAuthOptions`, which is passed to `better-auth/react`'s `createAuthClient`. Any property in `options` (including `sessionOptions`) is forwarded if it matches `BetterAuthClientOptions`. The Next.js wrapper (`@neondatabase/auth/next`'s `createAuthClient`) does NOT forward any options — it calls `BetterAuthReactAdapter()` with zero arguments.
+## Problems solved
 
-## Critical Context
-- **Two domains in Vercel logs**: production alias `ai-dojo-opal.vercel.app` and preview URL `ai-dojo-<hash>-taremwa-aaron-francis-projects.vercel.app` — session set on one domain won't be sent to the other
-- `session_data` cookie (signed JWT, 300s default TTL) is minted by SDK middleware during `exchangeOAuthToken`/`processAuthMiddleware`; `session_token` cookie (from upstream) has upstream's Max-Age preserved
-- `proxyOAuthInitRedirect` (for `GET sign-in/social/init`) uses `redirect: 'manual'` to capture Set-Cookie headers from the upstream's 307 redirect; `proxyToUpstream` (for `POST sign-in/social`) uses default `'follow'`
-- `rewriteSetCookieForLocalDomain` preserves `Max-Age` and `Expires` from upstream — short upstream session TTL would cause early expiry; also preserves `Secure` for `__Secure-`-prefixed cookies, strips it otherwise
-- `proxyGoogleInitRedirect` constructs synthetic POST to `proxyToUpstream` with hardcoded `callbackURL: '/api/auth/oauth/callback'` and `redirect: 'manual'` — upstream resolves this to absolute URL using `Origin` header (set to incoming request origin)
-- Cookie `Domain` attribute is always stripped by `rewriteSetCookieForLocalDomain`; no domain is set — cookie scoped to request origin. The SDK's `prepareResponseHeaders` does NOT strip Domain if `cookieConfig.domain` is unset (it preserves upstream's Domain in that case), but since upstream doesn't set Domain, both approaches produce the same result.
-- `SameSite=Lax` is hardcoded in all rewritten cookies — sufficient for same-site top-level navigation; may need `None; Secure` if cross-site redirects cause cookie drops
-- The `session_data` cookie is now properly minted by routing `handleOAuthExchange` through `builtin.GET!()` with path `['get-session']`, which goes through `handleAuthProxyRequest` → `handleAuthResponse` → `mintSessionDataFromResponse` → `mintSessionDataCookie`. The `session_data` cache cookie prevents fragile upstream calls on every navigation.
+- Schema migration used data-preserving RENAME COLUMN instead of DROP/RECREATE to avoid data loss.
+- AI engine reprompt required careful JSON schema update alongside prompt changes to avoid type mismatches.
+- 44 downstream references fixed after column renames — caught by TypeScript strict mode.
+- `enqueueAudioJob` needed `voiceGender` parameter threading through the stream route callers.
+- Character type (`CharacterFixture`) was missing `gender` even though the DB column existed after §1 migration — added in §8.
 
-## Relevant Files
-- `app/api/auth/[...path]/route.ts`: Custom OAuth handlers (`handleOAuthExchange`, `proxyGoogleInitRedirect`, `proxyToUpstream`) and `rewriteSetCookieForLocalDomain`; `handleOAuthExchange` now routes through `builtin.GET!()` for proper `session_data` cookie minting
-- `proxy.ts`: Middleware matcher (`'/', '/((?!_next/static|_next/image|favicon.ico|auth|api).*)'`), `auth.middleware({ loginUrl: '/auth' })`
-- `lib/auth/server.ts`: `getConfig()` — `sameSite: 'lax'`, no `domain` or `sessionDataTtl` set
-- `lib/auth/client.ts`: Now uses `@neondatabase/auth` (vanilla) with `BetterAuthReactAdapter({ sessionOptions: { refetchOnWindowFocus: false } })` — disables focus-triggered session refetching that exacerbates session check race on mobile
-- `app/auth/page.tsx`: `handleGoogleAuth()` — synchronous `window.location.href = '/api/auth/google/init'`
-- `node_modules/@neondatabase/auth/dist/next/server/index.mjs`: SDK internals — `mintSessionDataCookie` (300s default TTL, `sameSite` from config, `secure: true`), `exchangeOAuthToken` (checks verifier + challenge cookie locally before upstream call), `processAuthMiddleware`, `handleAuthResponse`, `authApiHandler`
-- `app/sessions/page.tsx`, `app/chat/[id]/page.tsx`: Share API calls with silenced clipboard error
+## Current state
+
+All 9 workstreams (§1–§9) are complete. The multi-language pivot is fully wired at the schema, engine, TTS, and UI levels. TypeScript compiles cleanly (`npx tsc --noEmit` passes).
+
+**What works:**
+- Schema supports multi-language (en, ja, fr, lg) with gender on characters and gender-aware TTS
+- AI engine produces code-switched output (native-primary with embedded target phrases)
+- Voice maps consolidate to a single `resolveAzureVoice()` source of truth
+- Gender preference flows: settings → user_preferences table → session creation → TTS voice selection
+- Character gender displayed in selection cards and editable in settings
+- Avatar toggle works (AvatarViewport vs VoiceOnlyStage)
+
+**Known gaps (not blocking):**
+- Stream route (`app/api/chat/stream/route.ts`) accepts `voiceGender` but doesn't read character gender yet — defaults to user preference or 'female'
+- `connected_accounts` and `session` tables in DB may reference old column names — not migrated
+- Tests not run (no test framework configured for this project)
+- Migration SQL not yet applied to production DB
+
+## Next session starts with
+
+Apply the pending migrations (0016, 0017) to the production database, or move on to post-pivot work (tests, deployment, additional languages).
+
+## Open questions
+
+- Should `voiceGender` on the stream route be derived from the selected character's gender rather than user preference?
+- Do we need a character creation/edit page (currently characters are seed data only)?
+- Should the `gender` display on character cards be hidden when gender data isn't available (backfill scenario)?

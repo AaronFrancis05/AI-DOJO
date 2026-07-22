@@ -25,6 +25,7 @@ async function enqueueAudioJob(
   lang: string,
   phase: string,
   speaker: string,
+  voiceGender?: string,
 ): Promise<void> {
   try {
     await db.insert(audioJobs).values({
@@ -34,6 +35,7 @@ async function enqueueAudioJob(
       lang,
       phase,
       speaker,
+      voiceGender: voiceGender ?? null,
     });
   } catch (err) {
     console.error('[AUDIO QUEUE] Failed to enqueue job:', err);
@@ -154,7 +156,7 @@ export async function POST(req: Request) {
 
     const conversationHistory: ChatTurn[] = conversationRows.map(row => ({
       role: row.speaker === 'ai' ? 'assistant' as const : 'user' as const,
-      content: row.messageTarget ?? row.messageJp,
+      content: row.messageNative ?? row.messageTarget,
     }));
 
     const targetLangName = getTargetLangConfig(targetLanguage).name;
@@ -183,8 +185,8 @@ export async function POST(req: Request) {
     const vocabBlock = vocabRows.length > 0
       ? `Key vocabulary for this lesson:\n${
           isSameLanguage
-            ? vocabRows.map((v, i) => `  ${i + 1}. "${v.english}"${v.usageTip ? ` — ${v.usageTip}` : ''}`).join('\n')
-            : vocabRows.map((v, i) => `  ${i + 1}. "${v.japanese}" (${v.romaji ?? ''}) = "${v.english}"`).join('\n')
+            ? vocabRows.map((v, i) => `  ${i + 1}. "${v.translation}"${v.usageTip ? ` — ${v.usageTip}` : ''}`).join('\n')
+            : vocabRows.map((v, i) => `  ${i + 1}. "${v.targetText}" (${v.romaji ?? ''}) = "${v.translation}"`).join('\n')
         }`
       : '';
 
@@ -429,9 +431,7 @@ RULES:
                 speaker: 'ai',
                 messageTarget: fullAiText,
                 messageNative: '',
-                messageJp: fullAiText,
                 messageRomaji: null,
-                messageEn: '',
                 isValidInContext: true,
               }).returning({ id: conversations.id });
 
@@ -529,9 +529,7 @@ RULES:
                     speaker: 'user',
                     messageTarget: analysis.messageTarget,
                     messageNative: analysis.messageNative,
-                    messageJp: targetLanguage === 'ja' ? analysis.messageTarget : (analysis.messageTarget ?? userRawInput),
                     messageRomaji: analysis.messageRomaji,
-                    messageEn: analysis.messageNative,
                     emotionTone: analysis.emotionTone ?? null,
                     gestureHint: analysis.gestureHint ?? null,
                   }).returning({ id: conversations.id });
@@ -605,9 +603,7 @@ RULES:
               speaker: 'user',
               messageTarget: analysis.messageTarget,
               messageNative: analysis.messageNative,
-              messageJp: targetLanguage === 'ja' ? analysis.messageTarget : (analysis.messageTarget ?? userRawInput),
               messageRomaji: analysis.messageRomaji,
-              messageEn: analysis.messageNative,
               emotionTone: analysis.emotionTone ?? null,
               gestureHint: analysis.gestureHint ?? null,
             }).returning({ id: conversations.id });
@@ -636,9 +632,7 @@ RULES:
               speaker: 'ai',
               messageTarget: fullAiText,
               messageNative: '',
-              messageJp: fullAiText,
               messageRomaji: null,
-              messageEn: '',
               isValidInContext: true,
             }).returning({ id: conversations.id });
 

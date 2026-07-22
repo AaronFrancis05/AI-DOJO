@@ -73,7 +73,7 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent
   return (
     <div className="h-full w-full">
       <Canvas
-        camera={{ position: [0, 1.2, 3], fov: 35 }}
+        camera={{ position: [0, 1.2, 3.5], fov: 42 }}
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         style={{ background: 'transparent' }}
         onCreated={({ gl }) => {

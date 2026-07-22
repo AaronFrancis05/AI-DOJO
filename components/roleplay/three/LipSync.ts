@@ -207,58 +207,36 @@ export class LipSync {
     if (!dict || !influences) return;
 
     const realVisemeId = getCurrentViseme();
+    const hasViseme = realVisemeId >= 0;
 
-    if (realVisemeId >= 0) {
-      VISEME_TARGETS.forEach((v) => {
-        const idx = dict[v];
-        if (idx !== undefined) influences[idx] = 0;
-      });
+    if (hasViseme) {
+      this.playing = true;
+      this.targetMouthOpen = 0.35;
+    }
 
-      const visemeAA = dict['viseme_aa'];
-      const visemeO = dict['viseme_O'];
-      const jawFallback =
-        dict['jawOpen'] ?? dict['mouthOpen'] ?? dict['mouthClose'];
+    const visemeAA = dict['viseme_aa'];
+    const visemeO = dict['viseme_O'];
+    const jawFallback =
+      dict['jawOpen'] ?? dict['mouthOpen'] ?? dict['mouthClose'];
 
+    VISEME_TARGETS.forEach((v) => {
+      const idx = dict[v];
+      if (idx !== undefined) influences[idx] = 0;
+    });
+
+    if (hasViseme) {
       if (visemeAA !== undefined && visemeO !== undefined) {
-        influences[visemeAA] = Math.min(
-          1.0,
-          (influences[visemeAA] ?? 0) + this.currentMouthOpen * 0.85,
-        );
-        influences[visemeO] = Math.min(
-          1.0,
-          (influences[visemeO] ?? 0) + this.currentMouthOpen * 0.15,
-        );
+        influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
+        influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
       } else if (jawFallback !== undefined) {
-        influences[jawFallback] = Math.min(
-          1.0,
-          (influences[jawFallback] ?? 0) + this.currentMouthOpen,
-        );
+        influences[jawFallback] = Math.min(1.0, this.currentMouthOpen);
       }
     } else {
-      VISEME_TARGETS.forEach((v) => {
-        const idx = dict[v];
-        if (idx !== undefined) influences[idx] = 0;
-      });
-
-      const visemeAA = dict['viseme_aa'];
-      const visemeO = dict['viseme_O'];
-      const jawFallback =
-        dict['jawOpen'] ?? dict['mouthOpen'] ?? dict['mouthClose'];
-
       if (visemeAA !== undefined && visemeO !== undefined) {
-        influences[visemeAA] = Math.min(
-          1.0,
-          this.currentMouthOpen * 0.85,
-        );
-        influences[visemeO] = Math.min(
-          1.0,
-          this.currentMouthOpen * 0.15,
-        );
+        influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
+        influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
       } else if (jawFallback !== undefined) {
-        influences[jawFallback] = Math.min(
-          1.0,
-          this.currentMouthOpen,
-        );
+        influences[jawFallback] = Math.min(1.0, this.currentMouthOpen);
       }
     }
   }

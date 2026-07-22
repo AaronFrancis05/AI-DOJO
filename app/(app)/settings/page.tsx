@@ -12,7 +12,7 @@ import { SliderRow } from '@/components/ui/SliderRow';
 import { Button } from '@/components/ui/Button';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { type BehaviorMode } from '@/lib/design-tokens';
 import { ChevronRight, User, CreditCard } from 'lucide-react';
@@ -27,6 +27,8 @@ export default function SettingsPage() {
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
+  const [voiceGender, setVoiceGender] = useState<string | null>(null);
+  const [voiceGenderDirty, setVoiceGenderDirty] = useState(false);
   const [notifications, setNotifications] = useState({
     push: true,
     email: false,
@@ -34,6 +36,26 @@ export default function SettingsPage() {
     progressReports: true,
     weeklyDigest: false,
   });
+
+  useEffect(() => {
+    fetch('/api/user/preferences')
+      .then(r => r.json())
+      .then(data => setVoiceGender(data.voiceGender ?? 'female'))
+      .catch(() => setVoiceGender('female'));
+  }, []);
+
+  useEffect(() => {
+    if (!voiceGenderDirty || !voiceGender) return;
+    const timer = setTimeout(() => {
+      fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voiceGender }),
+      }).catch(() => {});
+      setVoiceGenderDirty(false);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [voiceGender, voiceGenderDirty]);
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -105,6 +127,39 @@ export default function SettingsPage() {
                     onChange={setResponseSpeed}
                     showValue
                   />
+                  <div className="border-t border-dojo-border pt-6">
+                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">AI Voice Gender</h4>
+                    <p className="text-xs text-dojo-text-muted mb-3">
+                      Choose the voice gender for AI character speech in new sessions.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => { setVoiceGender('female'); setVoiceGenderDirty(true); }}
+                        className={`flex-1 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-colors ${
+                          voiceGender === 'female'
+                            ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-accent'
+                            : 'border-dojo-border bg-dojo-surface text-dojo-text-muted hover:border-dojo-text-muted'
+                        }`}
+                      >
+                        <div className="text-lg mb-1">♀</div>
+                        Feminine
+                      </button>
+                      <button
+                        onClick={() => { setVoiceGender('male'); setVoiceGenderDirty(true); }}
+                        className={`flex-1 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-colors ${
+                          voiceGender === 'male'
+                            ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-accent'
+                            : 'border-dojo-border bg-dojo-surface text-dojo-text-muted hover:border-dojo-text-muted'
+                        }`}
+                      >
+                        <div className="text-lg mb-1">♂</div>
+                        Masculine
+                      </button>
+                    </div>
+                    {voiceGenderDirty && (
+                      <p className="mt-2 text-xs text-dojo-text-muted">Saving\u2026</p>
+                    )}
+                  </div>
                 </div>
               );
             case 'notifications':

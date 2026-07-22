@@ -251,7 +251,7 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
 
       const modeConfig: Record<CameraMode, { visibleFraction: number; focusYOffset: number; sideOffset: number; zOffset: number; lookAtOffsetY: number }> = {
         'over-shoulder': { visibleFraction: 0.28, focusYOffset: 0.48, sideOffset: 0.35, zOffset: -1, lookAtOffsetY: -0.02 },
-        front:           { visibleFraction: 0.52, focusYOffset: 0.42, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
+        front:           { visibleFraction: 0.85, focusYOffset: 0.38, sideOffset: 0.05, zOffset: 0.80, lookAtOffsetY: -0.05 },
         portrait:        { visibleFraction: 0.20, focusYOffset: 0.52, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
         banner:          { visibleFraction: 0.40, focusYOffset: 0.44, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
       };

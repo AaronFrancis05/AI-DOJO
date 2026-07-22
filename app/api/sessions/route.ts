@@ -1,5 +1,5 @@
 import { db } from '../../../src/db';
-import { sessions, scenarios, evaluations, situations, domains, characters } from '../../../src/schema';
+import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
 import { eq, and, count, desc } from 'drizzle-orm';
 
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage } = body;
+  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, voiceGender: reqVoiceGender } = body;
 
   let resolvedScenarioId = scenarioId ? Number(scenarioId) : null;
 
@@ -143,6 +143,15 @@ export async function POST(req: Request) {
 
   const sessionNumber = (result?.count ?? 0) + 1;
 
+  let voiceGender = reqVoiceGender ?? 'female';
+  if (!reqVoiceGender) {
+    const [prefs] = await db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, user.id));
+    if (prefs?.voiceGender) voiceGender = prefs.voiceGender;
+  }
+
   const [session] = await db.insert(sessions).values({
     userId: user.id,
     scenarioId: numericScenarioId,
@@ -151,6 +160,7 @@ export async function POST(req: Request) {
     behaviorMode: behaviorMode ?? 'standard',
     targetLanguage: targetLanguage ?? 'ja',
     nativeLanguage: nativeLanguage ?? 'en',
+    voiceGender,
     sessionNumber,
     status: 'active',
   }).returning();

@@ -48,7 +48,7 @@ export async function POST(
   if (!passed && currentAttempt === 1) {
     return Response.json({
       retry: true,
-      feedback: 'Not quite — try again: ' + word.english,
+      feedback: 'Not quite — try again: ' + word.translation,
       vocabId: vocabularyId,
       attemptNumber: 2,
     });

@@ -59,6 +59,7 @@ export const characters = pgTable('characters', {
   avatarColor:   varchar('avatar_color', { length: 20 }).notNull(),
   avatarIcon:    varchar('avatar_icon', { length: 40 }).notNull(),
   voiceType:     varchar('voice_type', { length: 80 }).notNull(),
+  gender:        varchar('gender', { length: 10 }),
   avatarModelUrl:text('avatar_model_url'),
   defaultForDomainId: integer('default_for_domain_id').references(() => domains.id, { onDelete: 'set null' }),
   displayOrder:  integer('display_order').default(0).notNull(),
@@ -85,9 +86,10 @@ export const scenarios = pgTable('scenarios', {
 export const vocabulary = pgTable('vocabulary', {
   id:             serial('id').primaryKey(),
   scenarioId:     integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
-  japanese:       varchar('japanese', { length: 200 }).notNull(),
+  targetText:     varchar('target_text', { length: 200 }).notNull(),
   romaji:         varchar('romaji', { length: 200 }).notNull(),
-  english:        varchar('english', { length: 300 }).notNull(),
+  translation:    varchar('translation', { length: 300 }).notNull(),
+  languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   category:       varchar('category', { length: 60 }).notNull(),
   usageTip:       text('usage_tip'),
   formalityLevel: varchar('formality_level', { length: 20 }).default('polite').notNull(),
@@ -100,7 +102,8 @@ export const scenarioGoals = pgTable('scenario_goals', {
   sequenceOrder:  integer('sequence_order').notNull(),
   goalText:       text('goal_text').notNull(),
   goalType:       varchar('goal_type', { length: 30 }).notNull(),
-  targetPhraseJp: varchar('target_phrase_jp', { length: 200 }),
+  targetPhrase:   varchar('target_phrase', { length: 200 }),
+  languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -127,8 +130,16 @@ export const sessions = pgTable('sessions', {
   culturalScore:   integer('cultural_score'),
   taskScore:       integer('task_score'),
   feedback:        text('feedback'),
+  avatarEnabled:   boolean('avatar_enabled').default(false).notNull(),
+  voiceGender:     varchar('voice_gender', { length: 10 }).default('female').notNull(),
   startedAt:       timestamp('started_at').defaultNow().notNull(),
   completedAt:     timestamp('completed_at'),
+});
+
+export const userPreferences = pgTable('user_preferences', {
+  userId:      text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  voiceGender: varchar('voice_gender', { length: 10 }).default('female').notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow(),
 });
 
 export const conversations = pgTable('conversations', {
@@ -137,11 +148,9 @@ export const conversations = pgTable('conversations', {
   userId:                text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   turnNo:                integer('turn_no').notNull(),
   speaker:               varchar('speaker', { length: 20 }).notNull(),
-  messageTarget:         text('message_target'),
+  messageTarget:         text('message_target').notNull(),
   messageNative:         text('message_native'),
-  messageJp:             text('message_jp').notNull(),
   messageRomaji:         text('message_romaji'),
-  messageEn:             text('message_en').notNull(),
   emotionTone:           varchar('emotion_tone', { length: 40 }),
   gestureHint:           varchar('gesture_hint', { length: 120 }),
   isEnglishWhenExpected: boolean('is_english_when_expected').default(false).notNull(),
@@ -159,6 +168,7 @@ export const audioJobs = pgTable('audio_jobs', {
   lang:           varchar('lang', { length: 20 }).notNull(),
   phase:          varchar('phase', { length: 20 }).notNull(),
   speaker:        varchar('speaker', { length: 20 }).notNull(),
+  voiceGender:    varchar('voice_gender', { length: 10 }),
   status:         varchar('status', { length: 20 }).default('pending').notNull(),
   attempts:       integer('attempts').default(0).notNull(),
   maxAttempts:    integer('max_attempts').default(3).notNull(),

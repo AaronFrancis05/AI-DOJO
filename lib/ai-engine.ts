@@ -108,7 +108,7 @@ export async function analyzeAndGenerateTurn(
     sequenceOrder: number;
     goalText: string;
     goalType: string;
-    targetPhraseJp: string | null;
+    targetPhrase: string | null;
   }>,
   completedGoalSequenceOrders: number[],
   conversationHistory: ChatTurn[] = [],
@@ -128,7 +128,7 @@ export async function analyzeAndGenerateTurn(
   const goalsBlock = goals.map(g => {
     const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
     const status = done ? '[COVERED]' : '[PENDING]';
-    const phrase = g.targetPhraseJp ? ` (target phrase: "${g.targetPhraseJp}")` : '';
+    const phrase = g.targetPhrase ? ` (target phrase: "${g.targetPhrase}")` : '';
     return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${g.goalText}${phrase}`;
   }).join('\n');
 
@@ -180,10 +180,10 @@ The user is re-attempting a corrected sentence from the previous turn. If they s
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
 ===== LANGUAGE RULES =====
-- ROLEPLAY DIALOGUE (character speech) MUST be entirely in ${targetLangName}. Never let the AI character explain grammar, vocabulary, or cultural notes in the middle of their in-character line.
+- CONVERSATION STYLE: The AI character speaks primarily in ${nativeLangName} (the learner's native language), naturally code-switching key ${targetLangName} phrases into the dialogue. This mirrors how language learners actually acquire vocabulary — through contextual usage within a familiar linguistic framework.
+- The ${targetLangName} elements should be high-value, contextual, and relevant to the scenario — greetings, set expressions, key vocabulary, or situational phrases embedded naturally in the ${nativeLangName} conversation. They are highlighted insertions, not full sentences.
 - ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is. This is scaffolding, not dialogue, and must never switch to ${targetLangName} even partially.
-- The user's input should ideally be in ${targetLangName}. If they use ${nativeLangName} instead, flag it via isEnglishWhenExpected AND add a "wrong_language" correction — but still respond in-character in ${targetLangName}; do not let the AI character switch languages just because the user did.
-- Always provide a ${nativeLangName} translation of both the user's turn (messageNative) and the AI's turn (nextAiReply.native) so the learner can follow along without needing outside help.
+- The user is encouraged to attempt ${targetLangName} phrases alongside their ${nativeLangName}. Using only ${nativeLangName} is acceptable and should not be flagged as an error. If the user does attempt ${targetLangName}, praise their effort.
 ${hasRomaji ? '- Provide romaji transcription for Japanese target-language text (messageRomaji, nextAiReply.romaji, and correction romaji fields below).' : '- Romaji is NOT relevant for this language — always set romaji fields to null.'}
 
 ===== SCENARIO GOALS =====
@@ -201,7 +201,7 @@ Examples of what is INVALID (isValidInContext = false):
 - The user explicitly says they are not participating or switches to an unrelated topic
 
 ===== isEnglishWhenExpected =====
-Set isEnglishWhenExpected to true if the user typed in ${nativeLangName} when the scenario and preceding conversation clearly expected ${targetLangName}. Set to false if they used ${targetLangName} or if ${nativeLangName} was appropriate for context.
+Set isEnglishWhenExpected to true only if the user explicitly refuses to engage in the roleplay or writes unrelated content. Code-switching is expected behavior — the user may write purely in ${nativeLangName}, purely in ${targetLangName}, or a mix of both. None of these warrant isEnglishWhenExpected = true.
 
 ===== EMOTION TONE & GESTURE HINT =====
 For each AI reply, optionally provide:
@@ -220,7 +220,7 @@ For the user's turn, optionally detect:
 
 YOUR THREE JOBS:
 1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses and list their sequenceOrder numbers in goalsAddressedThisTurn. If any errors are detected, populate the corrections array with structured correction objects.
-2. CORRECT: If the user made a grammar, vocabulary, particle, verb conjugation, politeness level, or spelling error, add a structured correction object. If they wrote in ${nativeLangName} (isEnglishWhenExpected), add a correction with type "wrong_language". If no corrections needed, return an empty array [].
+2. CORRECT: If the user made a grammar, vocabulary, particle, verb conjugation, politeness level, or spelling error (in their ${targetLangName} attempt), add a structured correction object. If no corrections needed, return an empty array [].
 3. RESPOND: Generate a dynamic context-aware response from the perspective of ${scenario.aiCharacterName}. Based on the goals, drive the conversation forward naturally.
 
 ===== SCENARIO COMPLETION RULE =====
@@ -228,14 +228,14 @@ Set scenarioComplete to true ONLY when ALL goals in the list above show [COVERED
 
 Provide your response strictly as a single JSON object matching this schema blueprint:
 {
-  "messageTarget": "What the user said in ${targetLangName} (transcribed/cleaned)",
-  "messageNative": "${nativeLangName} translation of what the user said",
+  "messageTarget": "The ${targetLangName} phrase(s) the user produced — empty string if they used only ${nativeLangName}",
+  "messageNative": "The user's full utterance (primarily ${nativeLangName}, may include code-switched ${targetLangName} phrases)",
   "messageRomaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
   "isValidInContext": true,
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",
   "gestureHint": "none",
-  "suggestedReplies": ["2-3 short options in ${targetLangName} the user might say next, natural and contextual"],
+  "suggestedReplies": ["2-3 short options in ${nativeLangName} the user might say next (can code-switch a ${targetLangName} phrase naturally)"],
   "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [
@@ -248,8 +248,8 @@ ${correctionRomajiInstruction}      "correctedText": "corrected version",
     }
   ],
   "nextAiReply": {
-    "target": "The next sentence spoken by ${scenario.aiCharacterName} in natural ${targetLangName}",
-    "native": "${nativeLangName} translation of that AI response sentence",
+    "target": "The ${targetLangName} phrase(s) the AI character code-switches into this response — a word, expression, or phrase, or empty string if none",
+    "native": "The AI character's full response (primarily ${nativeLangName} with code-switched ${targetLangName} phrases embedded)",
     "romaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
     "emotionTone": "formal-polite",
     "gestureHint": "bow"
@@ -305,7 +305,7 @@ export async function analyzeUserTurn(
     sequenceOrder: number;
     goalText: string;
     goalType: string;
-    targetPhraseJp: string | null;
+    targetPhrase: string | null;
   }>,
   completedGoalSequenceOrders: number[],
   conversationHistory: ChatTurn[] = [],
@@ -323,7 +323,7 @@ export async function analyzeUserTurn(
   const goalsBlock = goals.map(g => {
     const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
     const status = done ? '[COVERED]' : '[PENDING]';
-    const phrase = g.targetPhraseJp ? ` (target phrase: "${g.targetPhraseJp}")` : '';
+    const phrase = g.targetPhrase ? ` (target phrase: "${g.targetPhrase}")` : '';
     return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${g.goalText}${phrase}`;
   }).join('\n');
 
@@ -367,9 +367,10 @@ ${modeInstruction}
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
 ===== LANGUAGE RULES =====
-- The AI character who just replied used ${targetLangName}. Evaluate the user's input in that context.
+- The AI character replied in a code-switching style (primarily ${nativeLangName} with embedded ${targetLangName} phrases). Evaluate the user's input in that context.
+- Code-switching is expected — the user may respond primarily in ${nativeLangName}, primarily in ${targetLangName}, or a mix. All are valid.
 - ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is.
-- Always provide a ${nativeLangName} translation of the user's turn (messageNative).
+- messageNative should contain the user's full utterance. messageTarget should contain only the ${targetLangName} phrase(s) the user produced, or empty string if none.
 ${hasRomaji ? '- Provide romaji transcription for Japanese target-language text (messageRomaji and correction romaji fields below).' : '- Romaji is NOT relevant for this language — always set romaji fields to null.'}
 
 ===== SCENARIO GOALS =====
@@ -379,7 +380,7 @@ ${goalsBlock}
 isValidInContext must be set to TRUE unless the user's input is genuinely off-topic or inconsistent with the SCENARIO SITUATION.
 
 ===== isEnglishWhenExpected =====
-Set isEnglishWhenExpected to true if the user typed in ${nativeLangName} when the scenario and preceding conversation clearly expected ${targetLangName}. Set to false if they used ${targetLangName} or if ${nativeLangName} was appropriate for context.
+Set isEnglishWhenExpected to true only if the user explicitly refuses to engage in the roleplay or writes unrelated content. Code-switching is expected — using only ${nativeLangName} is acceptable.
 
 ===== EMOTION TONE & GESTURE HINT =====
 For the user's turn, optionally detect:
@@ -395,14 +396,14 @@ Set scenarioComplete to true ONLY when ALL goals show [COVERED]. If even one goa
 
 Provide your response strictly as a single JSON object matching this schema blueprint:
 {
-  "messageTarget": "What the user said in ${targetLangName} (transcribed/cleaned)",
-  "messageNative": "${nativeLangName} translation of what the user said",
+  "messageTarget": "The ${targetLangName} phrase(s) the user produced — empty string if they used only ${nativeLangName}",
+  "messageNative": "The user's full utterance (primarily ${nativeLangName}, may include code-switched ${targetLangName} phrases)",
   "messageRomaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
   "isValidInContext": true,
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",
   "gestureHint": "none",
-  "suggestedReplies": ["2-3 short options in ${targetLangName} the user might say next, natural and contextual"],
+  "suggestedReplies": ["2-3 short options in ${nativeLangName} the user might say next (can code-switch a ${targetLangName} phrase naturally)"],
   "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [

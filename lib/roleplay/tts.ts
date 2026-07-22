@@ -4,6 +4,7 @@ import {
   detectSpeechLang as detectLang,
   type LangSpan,
 } from './lang-detect';
+import { resolveAzureVoice } from '../language';
 
 function cleanTextForTTS(text: string): string {
   return text
@@ -189,23 +190,8 @@ export function stop(): void {
 
 /* ── Span-based mixed-language speech ──────────────────── */
 
-const FEMALE_VOICES: Record<string, string> = {
-  'ja-JP': 'ja-JP-NanamiNeural',
-  'en-US': 'en-US-JennyNeural',
-  'ja': 'ja-JP-NanamiNeural',
-  'en': 'en-US-JennyNeural',
-};
-
-const MALE_VOICES: Record<string, string> = {
-  'ja-JP': 'ja-JP-KeitaNeural',
-  'en-US': 'en-US-GuyNeural',
-  'ja': 'ja-JP-KeitaNeural',
-  'en': 'en-US-GuyNeural',
-};
-
 function resolveTTSVoice(bcp47: string): string {
-  const map = currentVoiceGender === 'Male' ? MALE_VOICES : FEMALE_VOICES;
-  return map[bcp47] ?? map[bcp47?.split('-')[0]] ?? 'en-US-JennyNeural';
+  return resolveAzureVoice(bcp47, currentVoiceGender);
 }
 
 function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string, text?: string): string {
