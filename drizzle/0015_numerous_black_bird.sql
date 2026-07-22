@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "phase_turn_count" integer DEFAULT 0 NOT NULL;

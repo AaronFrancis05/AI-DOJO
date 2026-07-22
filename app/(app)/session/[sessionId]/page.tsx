@@ -8,7 +8,8 @@ import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { speakWithVisemes, speak as ttsSpeak, speakMixedText, feedStreamTts, resetStreamingTts, stopStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
+import { Badge } from '@/components/ui/Badge';
+import { speakWithVisemes, speak as ttsSpeak, speakMixedText, feedStreamTts, resetStreamingTts, stopStreamingTts, setOnSpeakingChange, stop as stopTts, setVoiceGender } from '@/lib/roleplay/tts';
 import { detectSpeechLang } from '@/lib/roleplay/lang-detect';
 import { startContinuousRecognition, stopContinuousRecognition, ensureRecognizer } from '@/lib/roleplay/pronunciation';
 import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
@@ -51,6 +52,10 @@ interface TurnData {
   audioStatus?: string | null;
 }
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
+
+function cleanDisplay(text: string): string {
+  return text.replace(/【[^】]*】/g, '').trim();
+}
 
 /* ─── Mic pulse rings ────────────────────────────────────────────────────── */
 function MicPulse({ active }: { active: boolean }) {
@@ -98,6 +103,24 @@ export default function RoleplaySessionPage() {
   const [completedGoals,setCompletedGoals]= useState<number[]>([]);
   const [phase,         setPhase]         = useState<string>('icebreaker');
   const [isRetry,       setIsRetry]       = useState(false);
+  const [celebration,   setCelebration]   = useState(false);
+  const [phaseToast,    setPhaseToast]    = useState<string | null>(null);
+
+  const PHASE_LABELS: Record<string, string> = {
+    icebreaker: 'Icebreaker',
+    guided: 'Guided',
+    unguided: 'Immersion',
+    evaluation: 'Evaluation',
+    completed: 'Completed',
+  };
+
+  const PHASE_BADGE_VARIANTS: Record<string, 'accent' | 'default' | 'premium' | 'outline' | 'success'> = {
+    icebreaker: 'outline',
+    guided: 'accent',
+    unguided: 'premium',
+    evaluation: 'success',
+    completed: 'success',
+  };
 
   const user = useUser();
   const currentAvatarModelUrl = useCurrentAvatarModel();
@@ -136,6 +159,26 @@ export default function RoleplaySessionPage() {
     }
   }, [resolvedModelUrl, currentAvatarModelUrl, user?.avatarSrc]);
 
+  // Play celebration sound effect
+  useEffect(() => {
+    if (!celebration) return;
+    try {
+      const ctx = new AudioContext();
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.5);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(ctx.currentTime + i * 0.12);
+        osc.stop(ctx.currentTime + i * 0.12 + 0.5);
+      });
+    } catch {}
+  }, [celebration]);
+
   /* ── Load session ── */
   useEffect(() => {
     async function load() {
@@ -149,12 +192,16 @@ export default function RoleplaySessionPage() {
         setDomain(data.domain);
         setCharacter(data.character);
 
+        if (data.character?.voiceType) {
+          setVoiceGender(data.character.voiceType.includes('Male') ? 'Male' : 'Female');
+        }
+
         setGoals(data.goals ?? []);
         setConversations((data.conversations ?? []).map((c: any) => ({
           id: c.id,
           turnNo: c.turnNo,
           speaker: c.speaker,
-          messageTarget: c.messageTarget ?? c.messageJp,
+          messageTarget: cleanDisplay(c.messageTarget ?? c.messageJp),
           messageNative: c.messageNative ?? c.messageEn,
           messageRomaji: c.messageRomaji,
           emotionTone: c.emotionTone,
@@ -213,7 +260,7 @@ export default function RoleplaySessionPage() {
     }
     setIsListening(false);
 
-    stopStreamingTts();
+    stopTts();
     resetStreamingTts();
 
     try {
@@ -261,10 +308,7 @@ export default function RoleplaySessionPage() {
           switch (payload.type) {
             case 'token':
               collectedAiText += payload.text;
-              setStreamingText(collectedAiText);
-              if (!muted) {
-                feedStreamTts(payload.text, bcp47, nativeBcp47, phase);
-              }
+              setStreamingText(cleanDisplay(collectedAiText));
               break;
 
             case 'retry':
@@ -279,6 +323,7 @@ export default function RoleplaySessionPage() {
               finalPhase = payload.phase;
               finalRunningScore = payload.runningScore;
               finalAnalysis = payload.analysis;
+              if (payload.celebration) setCelebration(true);
               break;
 
             case 'error':
@@ -313,13 +358,19 @@ export default function RoleplaySessionPage() {
         return;
       }
 
-      if (finalPhase) setPhase(finalPhase);
+      if (finalPhase) {
+        if (finalPhase !== phase && conversations.length > 0 && PHASE_LABELS[finalPhase]) {
+          setPhaseToast(PHASE_LABELS[finalPhase]);
+          setTimeout(() => setPhaseToast(null), 4000);
+        }
+        setPhase(finalPhase);
+      }
 
       // For session start (__session_start__), only show the AI greeting — no user turn
       if (trimmed === '__session_start__') {
         const aiTurn: TurnData = {
           id: Date.now(), turnNo: 0, speaker: 'ai' as const,
-          messageTarget: collectedAiText,
+          messageTarget: cleanDisplay(collectedAiText),
           messageNative: '',
           messageRomaji: null,
         };
@@ -336,7 +387,7 @@ export default function RoleplaySessionPage() {
         };
         const aiTurn: TurnData = {
           id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
-          messageTarget: collectedAiText,
+          messageTarget: cleanDisplay(collectedAiText),
           messageNative: '',
           messageRomaji: null,
         };
@@ -352,6 +403,12 @@ export default function RoleplaySessionPage() {
         });
       }
       setStreamingText(null);
+
+      if (!muted && collectedAiText) {
+        const bcp47 = getBCP47(targetLangRef.current, 'tts');
+        const nativeBcp47 = getNativeLangBcp47(nativeLangRef.current);
+        speakMixedText(cleanDisplay(collectedAiText), bcp47, nativeBcp47, phase).catch(() => {});
+      }
 
       if (finalAnalysis?.suggestedReplies?.length > 0) setSuggestedReplies(finalAnalysis.suggestedReplies);
       if (finalAnalysis?.goalsAddressedThisTurn?.length > 0) {
@@ -618,6 +675,15 @@ export default function RoleplaySessionPage() {
           />
         </div>
 
+        {/* ── Celebration overlay ── */}
+        {celebration && (
+          <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
+            <div className="animate-bounce text-6xl sm:text-7xl drop-shadow-2xl">
+              🎉
+            </div>
+          </div>
+        )}
+
         {/* ── Top bar: absolute top-0 left-0 right-0, z-30 ── */}
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-4 z-30">
           <div className="flex items-center gap-2.5">
@@ -630,6 +696,9 @@ export default function RoleplaySessionPage() {
             <span className="text-sm font-semibold text-dojo-text-primary">
               {situation?.title ?? scenario?.title ?? 'Roleplay in Progress'}
             </span>
+            <Badge variant={PHASE_BADGE_VARIANTS[phase]} className="ml-2">
+              {PHASE_LABELS[phase] ?? phase}
+            </Badge>
             <LiveBadge />
           </div>
           <div className="flex items-center gap-2">
@@ -641,6 +710,17 @@ export default function RoleplaySessionPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Phase change toast: absolute top-16, centered, z-25 ── */}
+        {phaseToast && (
+          <div className="absolute top-16 left-0 right-0 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="bg-dojo-accent/90 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg backdrop-blur-sm flex items-center gap-2">
+              <span>Phase Complete</span>
+              <span className="text-white/50">→</span>
+              <span>{phaseToast}</span>
+            </div>
+          </div>
+        )}
 
         {/* ── Error indicator: absolute bottom-36, centered, z-25 ── */}
         {error && (

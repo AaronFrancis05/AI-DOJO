@@ -275,6 +275,23 @@ function setEyelashWeight(
   }
 }
 
+/* ── Generic talking animation (used when avatar is in 'talking' mode but no Azure visemes) ── */
+const GENERIC_TALKING_OFFSET = 100;
+const GENERIC_TALKING_INTERVAL = 0.18;
+
+const GENERIC_TALKING_SHAPES: VisemeShapeMap[] = [
+  { jawOpen: 0.5, mouthSmileLeft: 0.05, mouthSmileRight: 0.05 },
+  { mouthClose: 0.25, mouthPressLeft: 0.1, mouthPressRight: 0.1 },
+  { jawOpen: 0.4 },
+  { jawOpen: 0.3, mouthSmileLeft: 0.2, mouthSmileRight: 0.2 },
+  { mouthClose: 0.3, mouthPressLeft: 0.05, mouthPressRight: 0.05 },
+  { jawOpen: 0.2, mouthPucker: 0.3, mouthFunnel: 0.25 },
+  { jawOpen: 0.55 },
+  { jawOpen: 0.3, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
+  { mouthClose: 0.2 },
+  { jawOpen: 0.35, mouthFunnel: 0.1 },
+];
+
 /* ── MorphTargetController — drives blend shapes ── */
 
 function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & AvatarAnimationProps) {
@@ -303,9 +320,19 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   const nextBlink = useRef(2 + Math.random() * 4);
   const blinkWeight = useRef(0);
 
-  const targetVisemeShapes = useRef<VisemeShapeMap>({});
-  const currentVisemeShapes = useRef<VisemeShapeMap>({});
+  const targetVisemeShapes = useRef<VisemeShapeMap>({
+    mouthClose: 0.25,
+    mouthPressLeft: 0.05,
+    mouthPressRight: 0.05,
+  });
+  const currentVisemeShapes = useRef<VisemeShapeMap>({
+    mouthClose: 0.25,
+    mouthPressLeft: 0.05,
+    mouthPressRight: 0.05,
+  });
   const prevVisemeId = useRef(-1);
+  const fadingVisemeKeys = useRef<Set<string>>(new Set());
+  const genericTalkingTimer = useRef(0);
 
   const targetEmotionShapes = useMemo<EmotionShapeMap>(() => {
     if (emotion && EMOTION_SHAPES[emotion]) return EMOTION_SHAPES[emotion];
@@ -313,81 +340,111 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   }, [emotion]);
 
   useFrame((_, delta) => {
-    timeRef.current += delta;
+    try {
+      timeRef.current += delta;
 
-    // ── 1. Viseme-driven lip sync ──
-    const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
+      // Resolve viseme ID: real Azure viseme, generic talking cycle, or -1 (idle)
+      const realVisemeId = mode === 'talking' ? getCurrentViseme() : -1;
+      let visemeId: number;
 
-    if (visemeId !== prevVisemeId.current && visemeId >= 0) {
-      targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
-      prevVisemeId.current = visemeId;
-    } else if (visemeId < 0) {
-      targetVisemeShapes.current = {};
-      prevVisemeId.current = -1;
-    }
-
-    const allShapeKeys = new Set([
-      ...Object.keys(targetVisemeShapes.current),
-      ...Object.keys(targetEmotionShapes),
-    ]);
-
-    // ── 2. Idle blink cycle ──
-    let currentBlink = blinkWeight.current;
-    if (mode === 'idle' || mode === 'listening') {
-      blinkTimer.current += delta;
-      if (blinkTimer.current >= nextBlink.current) {
-        blinkWeight.current = 1;
-        blinkTimer.current = 0;
-        nextBlink.current = 2 + Math.random() * 5;
+      if (realVisemeId >= 0) {
+        visemeId = realVisemeId;
+        genericTalkingTimer.current = 0;
+      } else if (mode === 'talking') {
+        genericTalkingTimer.current += delta;
+        const idx = Math.floor(genericTalkingTimer.current / GENERIC_TALKING_INTERVAL);
+        visemeId = GENERIC_TALKING_OFFSET + idx;
+      } else {
+        visemeId = -1;
+        genericTalkingTimer.current = 0;
       }
-    } else {
-      blinkWeight.current = 0;
-    }
 
-    if (currentBlink > 0) {
-      blinkWeight.current = Math.max(0, currentBlink - delta * 6);
-    }
-    const blink = Math.sin(Math.max(0, Math.min(1, blinkWeight.current)) * Math.PI);
+      if (visemeId !== prevVisemeId.current && visemeId >= 0) {
+        for (const k of Object.keys(targetVisemeShapes.current)) {
+          fadingVisemeKeys.current.add(k);
+        }
+        targetVisemeShapes.current = visemeId >= GENERIC_TALKING_OFFSET
+          ? GENERIC_TALKING_SHAPES[(visemeId - GENERIC_TALKING_OFFSET) % GENERIC_TALKING_SHAPES.length]
+          : (VISEME_SHAPES[visemeId] ?? {});
+        prevVisemeId.current = visemeId;
+      } else if (visemeId < 0 && prevVisemeId.current >= 0) {
+        for (const k of Object.keys(targetVisemeShapes.current)) {
+          fadingVisemeKeys.current.add(k);
+        }
+        targetVisemeShapes.current = {
+          mouthClose: 0.25,
+          mouthPressLeft: 0.05,
+          mouthPressRight: 0.05,
+        };
+        prevVisemeId.current = -1;
+      }
 
-    // ── 3. Apply blend shapes ──
-    for (const mesh of meshes) {
-      if (!mesh.morphTargetInfluences) continue;
-      const isEyelash = mesh.name === 'AvatarEyelashes';
-      const isHead = mesh.name === 'AvatarHead';
+      for (const k of fadingVisemeKeys.current) {
+        const cur = currentVisemeShapes.current[k as keyof VisemeShapeMap] ?? 0;
+        if (cur < 0.01) fadingVisemeKeys.current.delete(k);
+      }
 
-      if (isHead) {
+      const allShapeKeys = new Set([
+        ...Object.keys(targetVisemeShapes.current),
+        ...Object.keys(targetEmotionShapes),
+        ...fadingVisemeKeys.current,
+      ]);
+
+      // ── 2. Idle blink cycle ──
+      let currentBlink = blinkWeight.current;
+      if (mode === 'idle' || mode === 'listening') {
+        blinkTimer.current += delta;
+        if (blinkTimer.current >= nextBlink.current) {
+          blinkWeight.current = 1;
+          blinkTimer.current = 0;
+          nextBlink.current = 2 + Math.random() * 5;
+        }
+      } else {
+        blinkWeight.current = 0;
+      }
+
+      if (currentBlink > 0) {
+        blinkWeight.current = Math.max(0, currentBlink - delta * 6);
+      }
+      const blink = Math.sin(Math.max(0, Math.min(1, blinkWeight.current)) * Math.PI);
+
+      // ── 3. Apply blend shapes to ANY mesh with matching morph targets ──
+      for (const mesh of meshes) {
+        if (!mesh.morphTargetInfluences || !mesh.morphTargetDictionary) continue;
+        const dict = mesh.morphTargetDictionary;
+
+        // Apply viseme + emotion shapes to any mesh with matching morph targets
         for (const key of allShapeKeys) {
+          if (!(key in dict)) continue;
           const visemeTarget = targetVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
           const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
           const combined = Math.max(visemeTarget, emotionTarget);
-
           const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-          const smoothed = lerp(current, combined, delta * 10);
+          const smoothed = lerp(current, combined, Math.min(1, delta * 6));
           (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
-
           setShapeWeight(mesh, key, smoothed);
         }
-      }
 
-      if (isEyelash) {
-        // Eye blink: eyelash targets 7-10 have the largest displacement
-        // (empirically verified ~24 total displacement). Apply blink to both.
-        setEyelashWeight(mesh, 7, blink);
-        setEyelashWeight(mesh, 8, blink);
-
-        // Brow expressions from emotion
-        if (targetEmotionShapes.browInnerUp) {
-          setEyelashWeight(mesh, 2, targetEmotionShapes.browInnerUp);
+        // Apply blink/eyelid + brow shapes to any mesh that has them
+        if ('eyeBlinkLeft' in dict || 'eyeBlinkRight' in dict) {
+          const blinkIdx = dict['eyeBlinkLeft'] ?? -1;
+          const blinkIdx2 = dict['eyeBlinkRight'] ?? -1;
+          if (blinkIdx >= 0) setEyelashWeight(mesh, blinkIdx, blink);
+          if (blinkIdx2 >= 0) setEyelashWeight(mesh, blinkIdx2, blink);
         }
-        if (targetEmotionShapes.browDownLeft || targetEmotionShapes.browDownRight) {
-          const browDown = Math.max(
-            targetEmotionShapes.browDownLeft ?? 0,
-            targetEmotionShapes.browDownRight ?? 0,
-          );
-          setEyelashWeight(mesh, 0, browDown);
-          setEyelashWeight(mesh, 1, browDown);
+        if (targetEmotionShapes.browInnerUp && 'browInnerUp' in dict) {
+          setEyelashWeight(mesh, dict['browInnerUp'], targetEmotionShapes.browInnerUp);
+        }
+        if ('browDownLeft' in dict || 'browDownRight' in dict) {
+          const browDown = Math.max(targetEmotionShapes.browDownLeft ?? 0, targetEmotionShapes.browDownRight ?? 0);
+          if (browDown > 0) {
+            if ('browDownLeft' in dict) setEyelashWeight(mesh, dict['browDownLeft'], browDown);
+            if ('browDownRight' in dict) setEyelashWeight(mesh, dict['browDownRight'], browDown);
+          }
         }
       }
+    } catch (err) {
+      console.error('[MorphTargetController] frame error:', err);
     }
   });
 

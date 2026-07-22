@@ -146,7 +146,7 @@ export function getDevWarnings(): string[] {
    Always runs, independent of camera framing. Shifts the model down
    so its lowest point sits at y=0 (floor level).
    ──────────────────────────────────────────────────────────────────── */
-function GroundModel({ scene }: { scene: THREE.Group }) {
+function GroundModel({ scene, groundedRef }: { scene: THREE.Group; groundedRef?: React.MutableRefObject<boolean> }) {
   const grounded = useRef(false);
 
   useEffect(() => {
@@ -169,6 +169,7 @@ function GroundModel({ scene }: { scene: THREE.Group }) {
 
       scene.position.y -= box.min.y;
       grounded.current = true;
+      if (groundedRef) groundedRef.current = true;
     };
 
     // Wait a frame before the first measurement so RestPoseApplicator (which
@@ -456,18 +457,24 @@ function AnimationController({ scene, mode, emotion, gesture, freezeOnIdle }: {
 }
 
 /* ── PoseController — fallback for models with NO usable clips ── */
-function PoseController({ fbx, mode, emotion, gesture }: { fbx: THREE.Group } & AvatarAnimationProps) {
+function PoseController({ fbx, mode, emotion, gesture, groundedRef }: { fbx: THREE.Group; groundedRef?: React.MutableRefObject<boolean> } & AvatarAnimationProps) {
   const timeRef = useRef(0);
   const currentPose = useRef<[number, number, number, number]>([0, 0, 0, 0]);
-  // GroundModel sets fbx.position.y once, before this ever runs. Capture that
-  // baseline so we can offset from it instead of overwriting it outright —
-  // otherwise every frame here would erase the grounding and drop the model
-  // back down near y=0.
+  // GroundModel sets fbx.position.y once, asynchronously (it waits on a
+  // bounding-box measurement that can take several frames). If we capture
+  // our baseline on our own first frame, we race GroundModel and usually
+  // win — locking in the pre-grounded (floating) Y position forever, since
+  // every frame after that overwrites position.y with this stale baseline
+  // and permanently erases whatever GroundModel applies later. Instead we
+  // wait until groundedRef confirms GroundModel has actually run.
   const baselineY = useRef<number | null>(null);
 
   useFrame((_, delta) => {
     try {
-      if (baselineY.current === null) baselineY.current = fbx.position.y;
+      if (baselineY.current === null) {
+        if (groundedRef && !groundedRef.current) return; // GroundModel hasn't grounded yet — hold off
+        baselineY.current = fbx.position.y;
+      }
 
       timeRef.current += delta;
 
@@ -531,29 +538,46 @@ const ARKIT_INDEX: Record<string, number> = {
 type VisemeShapeMap = Partial<Record<keyof typeof ARKIT_INDEX, number>>;
 
 const VISEME_SHAPES: Record<number, VisemeShapeMap> = {
-  0:  { mouthClose: 1.0 },
-  1:  { jawOpen: 0.6, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
-  2:  { jawOpen: 0.7, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
-  3:  { mouthClose: 0.8, mouthPressLeft: 0.3, mouthPressRight: 0.3 },
-  4:  { jawOpen: 0.3, mouthPucker: 0.4, mouthFunnel: 0.3 },
-  5:  { jawOpen: 0.3, mouthPressLeft: 0.4, mouthPressRight: 0.4 },
-  6:  { jawOpen: 0.4, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
-  7:  { jawOpen: 0.3, mouthPucker: 0.2 },
-  8:  { mouthClose: 0.5, mouthPressLeft: 0.3, mouthPressRight: 0.3 },
-  9:  { jawOpen: 0.5 },
-  10: { jawOpen: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 },
-  11: { jawOpen: 0.3, mouthSmileLeft: 0.3, mouthSmileRight: 0.3 },
-  12: { jawOpen: 0.2, mouthLeft: 0.2, mouthRight: 0.2 },
-  13: { jawOpen: 0.5, mouthFunnel: 0.7 },
-  14: { mouthPucker: 0.5 },
-  15: { mouthClose: 0.3, mouthSmileLeft: 0.4, mouthSmileRight: 0.4 },
-  16: { jawOpen: 0.3, mouthPucker: 0.6, mouthFunnel: 0.5 },
-  17: { mouthPucker: 0.6, mouthFunnel: 0.5 },
-  18: { mouthClose: 0.8 },
-  19: {},
-  20: { jawOpen: 0.5, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
-  21: { mouthPucker: 0.5, mouthFunnel: 0.3 },
+  0:  { mouthClose: 0.9, mouthPressLeft: 0.2, mouthPressRight: 0.2 },
+  1:  { jawOpen: 0.55, mouthSmileLeft: 0.1, mouthSmileRight: 0.1, mouthFunnel: 0.15 },
+  2:  { jawOpen: 0.65, mouthSmileLeft: 0.1, mouthSmileRight: 0.1, mouthFunnel: 0.05 },
+  3:  { mouthClose: 0.75, mouthPressLeft: 0.35, mouthPressRight: 0.35, mouthRollUpper: 0.1 },
+  4:  { jawOpen: 0.3, mouthPucker: 0.45, mouthFunnel: 0.35, mouthRollUpper: 0.15 },
+  5:  { jawOpen: 0.3, mouthPressLeft: 0.4, mouthPressRight: 0.4, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
+  6:  { jawOpen: 0.4, mouthSmileLeft: 0.35, mouthSmileRight: 0.35, mouthShrugLower: 0.1 },
+  7:  { jawOpen: 0.3, mouthPucker: 0.2, mouthFunnel: 0.15, mouthShrugUpper: 0.1 },
+  8:  { mouthClose: 0.5, mouthPressLeft: 0.25, mouthPressRight: 0.25, mouthRollUpper: 0.1 },
+  9:  { jawOpen: 0.55, mouthFunnel: 0.1 },
+  10: { jawOpen: 0.35, mouthSmileLeft: 0.4, mouthSmileRight: 0.4, mouthShrugLower: 0.15 },
+  11: { jawOpen: 0.3, mouthSmileLeft: 0.35, mouthSmileRight: 0.35 },
+  12: { jawOpen: 0.2, mouthLeft: 0.25, mouthRight: 0.25, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
+  13: { jawOpen: 0.55, mouthFunnel: 0.65, mouthPucker: 0.2 },
+  14: { mouthPucker: 0.55, mouthFunnel: 0.15 },
+  15: { mouthClose: 0.25, mouthSmileLeft: 0.4, mouthSmileRight: 0.4, mouthPressLeft: 0.1, mouthPressRight: 0.1 },
+  16: { jawOpen: 0.3, mouthPucker: 0.55, mouthFunnel: 0.5 },
+  17: { mouthPucker: 0.6, mouthFunnel: 0.55, mouthRollUpper: 0.1 },
+  18: { mouthClose: 0.8, mouthPressLeft: 0.15, mouthPressRight: 0.15 },
+  19: { jawOpen: 0.05, mouthFunnel: 0.1 },
+  20: { jawOpen: 0.5, mouthSmileLeft: 0.15, mouthSmileRight: 0.15, mouthFunnel: 0.1 },
+  21: { mouthPucker: 0.5, mouthFunnel: 0.35, jawOpen: 0.1 },
 };
+
+/* ── Generic talking animation (used when avatar is in 'talking' mode but no Azure visemes) ── */
+const GENERIC_TALKING_OFFSET = 100;
+const GENERIC_TALKING_INTERVAL = 0.18;
+
+const GENERIC_TALKING_SHAPES: VisemeShapeMap[] = [
+  { jawOpen: 0.5, mouthSmileLeft: 0.05, mouthSmileRight: 0.05 },
+  { mouthClose: 0.25, mouthPressLeft: 0.1, mouthPressRight: 0.1 },
+  { jawOpen: 0.4 },
+  { jawOpen: 0.3, mouthSmileLeft: 0.2, mouthSmileRight: 0.2 },
+  { mouthClose: 0.3, mouthPressLeft: 0.05, mouthPressRight: 0.05 },
+  { jawOpen: 0.2, mouthPucker: 0.3, mouthFunnel: 0.25 },
+  { jawOpen: 0.55 },
+  { jawOpen: 0.3, mouthSmileLeft: 0.1, mouthSmileRight: 0.1 },
+  { mouthClose: 0.2 },
+  { jawOpen: 0.35, mouthFunnel: 0.1 },
+];
 
 const MISSING_SHAPE_WARNED = new Set<string>();
 
@@ -716,6 +740,59 @@ function RestPoseApplicator({ scene }: { scene: THREE.Group }) {
   return null;
 }
 
+/* ── JawBoneController — fallback when no morph targets exist ── */
+function JawBoneController({ scene, mode }: { scene: THREE.Group; mode: AvatarMode }) {
+  const jawRef = useRef<THREE.Bone | null>(null);
+  const jawOpen = useRef(0);
+  const genericTimer = useRef(0);
+
+  useEffect(() => {
+    scene.traverse((child) => {
+      if (child instanceof THREE.Bone) {
+        const n = child.name.toLowerCase();
+        if (n === 'jaw' || n.includes('jaw') || n === 'j_bip_l_jaw') {
+          jawRef.current = child;
+        }
+      }
+    });
+    if (!jawRef.current) {
+      const allBones: string[] = [];
+      scene.traverse((c) => { if (c instanceof THREE.Bone) allBones.push(c.name); });
+      console.log('[JawBoneController] no jaw bone found — bones:', allBones.slice(0, 15));
+    }
+  }, [scene]);
+
+  useFrame((_, delta) => {
+    const jaw = jawRef.current;
+    if (!jaw) return;
+
+    const realVisemeId = mode === 'talking' ? getCurrentViseme() : -1;
+    let targetOpen = 0;
+
+    if (realVisemeId >= 0) {
+      const shapes = VISEME_SHAPES[realVisemeId] ?? {};
+      targetOpen = (shapes.jawOpen ?? 0) * 0.35;
+      genericTimer.current = 0;
+    } else if (mode === 'talking') {
+      genericTimer.current += delta;
+      const idx = Math.floor(genericTimer.current / GENERIC_TALKING_INTERVAL);
+      const genericShape = GENERIC_TALKING_SHAPES[idx % GENERIC_TALKING_SHAPES.length];
+      targetOpen = (genericShape.jawOpen ?? 0) * 0.35;
+    } else {
+      genericTimer.current = 0;
+    }
+
+    jawOpen.current = lerp(jawOpen.current, targetOpen, Math.min(1, delta * 5));
+
+    const lowerJawNames = ['jaw', 'j_bip_l_jaw'];
+    if (lowerJawNames.includes(jaw.name.toLowerCase())) {
+      jaw.rotation.x = jawOpen.current;
+    }
+  });
+
+  return null;
+}
+
 /* ── MorphTargetController ── */
 function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & AvatarAnimationProps) {
   const meshes = useMemo(() => {
@@ -750,10 +827,19 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
   const blinkTimer = useRef(0);
   const nextBlink = useRef(2 + Math.random() * 4);
   const blinkWeight = useRef(0);
-  const targetVisemeShapes = useRef<VisemeShapeMap>({});
-  const currentVisemeShapes = useRef<VisemeShapeMap>({});
+  const targetVisemeShapes = useRef<VisemeShapeMap>({
+    mouthClose: 0.25,
+    mouthPressLeft: 0.05,
+    mouthPressRight: 0.05,
+  });
+  const currentVisemeShapes = useRef<VisemeShapeMap>({
+    mouthClose: 0.25,
+    mouthPressLeft: 0.05,
+    mouthPressRight: 0.05,
+  });
   const prevVisemeId = useRef(-1);
   const fadingVisemeKeys = useRef<Set<string>>(new Set());
+  const genericTalkingTimer = useRef(0);
 
   const targetEmotionShapes = useMemo<EmotionShapeMap>(() => {
     if (emotion && EMOTION_SHAPES[emotion]) return EMOTION_SHAPES[emotion];
@@ -764,18 +850,39 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
     try {
       timeRef.current += delta;
 
-      const visemeId = mode === 'talking' ? getCurrentViseme() : -1;
+      // Resolve viseme ID: real Azure viseme, generic talking cycle, or -1 (idle)
+      const realVisemeId = mode === 'talking' ? getCurrentViseme() : -1;
+      let visemeId: number;
+
+      if (realVisemeId >= 0) {
+        visemeId = realVisemeId;
+        genericTalkingTimer.current = 0;
+      } else if (mode === 'talking') {
+        genericTalkingTimer.current += delta;
+        const idx = Math.floor(genericTalkingTimer.current / GENERIC_TALKING_INTERVAL);
+        visemeId = GENERIC_TALKING_OFFSET + idx;
+      } else {
+        visemeId = -1;
+        genericTalkingTimer.current = 0;
+      }
+
       if (visemeId !== prevVisemeId.current && visemeId >= 0) {
         for (const k of Object.keys(targetVisemeShapes.current)) {
           fadingVisemeKeys.current.add(k);
         }
-        targetVisemeShapes.current = VISEME_SHAPES[visemeId] ?? {};
+        targetVisemeShapes.current = visemeId >= GENERIC_TALKING_OFFSET
+          ? GENERIC_TALKING_SHAPES[(visemeId - GENERIC_TALKING_OFFSET) % GENERIC_TALKING_SHAPES.length]
+          : (VISEME_SHAPES[visemeId] ?? {});
         prevVisemeId.current = visemeId;
       } else if (visemeId < 0 && prevVisemeId.current >= 0) {
         for (const k of Object.keys(targetVisemeShapes.current)) {
           fadingVisemeKeys.current.add(k);
         }
-        targetVisemeShapes.current = {};
+        targetVisemeShapes.current = {
+          mouthClose: 0.25,
+          mouthPressLeft: 0.05,
+          mouthPressRight: 0.05,
+        };
         prevVisemeId.current = -1;
       }
 
@@ -805,37 +912,36 @@ function MorphTargetController({ fbx, mode, emotion }: { fbx: THREE.Group } & Av
       const blink = Math.sin(Math.max(0, Math.min(1, blinkWeight.current)) * Math.PI);
 
       for (const mesh of meshes) {
-        if (!mesh.morphTargetInfluences) continue;
-        const isEyelash = mesh.name === 'AvatarEyelashes';
-        const isHead = mesh.name === 'AvatarHead';
+        if (!mesh.morphTargetInfluences || !mesh.morphTargetDictionary) continue;
+        const dict = mesh.morphTargetDictionary;
 
-        if (isHead) {
-          for (const key of allShapeKeys) {
-            const visemeTarget = targetVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-            const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
-            const combined = Math.max(visemeTarget, emotionTarget);
-            const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
-            const smoothed = lerp(current, combined, Math.min(1, delta * 16));
-            (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
-            setShapeWeight(mesh, key, smoothed);
-          }
+        // Apply viseme + emotion shapes to any mesh with matching morph targets
+        for (const key of allShapeKeys) {
+          if (!(key in dict)) continue;
+          const visemeTarget = targetVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
+          const emotionTarget = targetEmotionShapes[key as keyof EmotionShapeMap] ?? 0;
+          const combined = Math.max(visemeTarget, emotionTarget);
+          const current = currentVisemeShapes.current[key as keyof VisemeShapeMap] ?? 0;
+          const smoothed = lerp(current, combined, Math.min(1, delta * 6));
+          (currentVisemeShapes.current as Record<string, number>)[key] = smoothed;
+          setShapeWeight(mesh, key, smoothed);
         }
 
-        if (isEyelash) {
-          const blinkIdx = mesh.morphTargetDictionary?.['eyeBlinkLeft'] ?? 7;
-          const blinkIdx2 = mesh.morphTargetDictionary?.['eyeBlinkRight'] ?? 8;
-          setEyelashWeight(mesh, blinkIdx, blink);
-          setEyelashWeight(mesh, blinkIdx2, blink);
-          if (targetEmotionShapes.browInnerUp) {
-            const browUpIdx = mesh.morphTargetDictionary?.['browInnerUp'] ?? 2;
-            setEyelashWeight(mesh, browUpIdx, targetEmotionShapes.browInnerUp);
-          }
-          if (targetEmotionShapes.browDownLeft || targetEmotionShapes.browDownRight) {
-            const browDown = Math.max(targetEmotionShapes.browDownLeft ?? 0, targetEmotionShapes.browDownRight ?? 0);
-            const bdLeftIdx = mesh.morphTargetDictionary?.['browDownLeft'] ?? 0;
-            const bdRightIdx = mesh.morphTargetDictionary?.['browDownRight'] ?? 1;
-            setEyelashWeight(mesh, bdLeftIdx, browDown);
-            setEyelashWeight(mesh, bdRightIdx, browDown);
+        // Apply blink/eyelid + brow shapes to any mesh that has them
+        if ('eyeBlinkLeft' in dict || 'eyeBlinkRight' in dict) {
+          const blinkIdx = dict['eyeBlinkLeft'] ?? -1;
+          const blinkIdx2 = dict['eyeBlinkRight'] ?? -1;
+          if (blinkIdx >= 0) setEyelashWeight(mesh, blinkIdx, blink);
+          if (blinkIdx2 >= 0) setEyelashWeight(mesh, blinkIdx2, blink);
+        }
+        if (targetEmotionShapes.browInnerUp && 'browInnerUp' in dict) {
+          setEyelashWeight(mesh, dict['browInnerUp'], targetEmotionShapes.browInnerUp);
+        }
+        if ('browDownLeft' in dict || 'browDownRight' in dict) {
+          const browDown = Math.max(targetEmotionShapes.browDownLeft ?? 0, targetEmotionShapes.browDownRight ?? 0);
+          if (browDown > 0) {
+            if ('browDownLeft' in dict) setEyelashWeight(mesh, dict['browDownLeft'], browDown);
+            if ('browDownRight' in dict) setEyelashWeight(mesh, dict['browDownRight'], browDown);
           }
         }
       }
@@ -901,10 +1007,10 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
       const fovRad = (camera as THREE.PerspectiveCamera).fov * Math.PI / 360;
 
       const modeConfig: Record<CameraMode, { visibleFraction: number; focusYOffset: number; sideOffset: number; zOffset: number; lookAtOffsetY: number }> = {
-        'over-shoulder': { visibleFraction: 0.28, focusYOffset: 0.40, sideOffset: 0.35, zOffset: -1, lookAtOffsetY: -0.02 },
-        front:           { visibleFraction: 0.52, focusYOffset: 0.32, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
-        portrait:        { visibleFraction: 0.20, focusYOffset: 0.45, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
-        banner:          { visibleFraction: 0.40, focusYOffset: 0.35, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
+        'over-shoulder': { visibleFraction: 0.28, focusYOffset: 0.48, sideOffset: 0.35, zOffset: -1, lookAtOffsetY: -0.02 },
+        front:           { visibleFraction: 0.52, focusYOffset: 0.42, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
+        portrait:        { visibleFraction: 0.20, focusYOffset: 0.52, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
+        banner:          { visibleFraction: 0.40, focusYOffset: 0.44, sideOffset: 0.05, zOffset: 0.95, lookAtOffsetY: 0 },
       };
       const cfg = modeConfig[cameraMode] ?? modeConfig.front;
       const focusY = center.y + groundedHeight * cfg.focusYOffset;
@@ -976,22 +1082,24 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
   }, []);
 
   const computedYaw = yawFromIntent(cameraIntent);
+  const groundedRef = useRef(false);
 
   return (
     <group>
       <primitive object={scene} rotation={[0, computedYaw, 0]} />
-      <GroundModel scene={scene} />
+      <GroundModel scene={scene} groundedRef={groundedRef} />
       {!disableAutoCamera && (
         <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} />
       )}
       <RestPoseApplicator scene={scene} />
-      {clipsLoaded && (
+      {clipsLoaded ? (
         <AnimationController scene={scene} mode={mode} emotion={emotion} gesture={gesture} freezeOnIdle={freezeOnIdle} />
-      )}
-      {hasMorphs ? (
-        <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
       ) : (
-        <PoseController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
+        <PoseController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} groundedRef={groundedRef} />
+      )}
+      <JawBoneController scene={scene} mode={mode} />
+      {hasMorphs && (
+        <MorphTargetController fbx={scene} mode={mode} emotion={emotion} gesture={gesture} />
       )}
     </group>
   );

@@ -5,6 +5,22 @@ import {
   type LangSpan,
 } from './lang-detect';
 
+function cleanTextForTTS(text: string): string {
+  return text
+    .replace(/【[^】]*】/g, '')
+    .replace(/[？?]+\s*$/g, '?')
+    .replace(/[？]+/g, '?')
+    .replace(/[！]+/g, '!')
+    .replace(/[。]+/g, '.')
+    .replace(/[、]+/g, ',')
+    .replace(/\u3000/g, ' ')
+    .replace(/[「」『』]/g, '"')
+    .replace(/[（()]/g, '')
+    .replace(/[）]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 let currentVisemeId = -1;
 let isAzureSpeaking = false;
 let azureStopCallback: (() => void) | null = null;
@@ -16,6 +32,12 @@ let onSpeakingChange: SpeakingCallback | null = null;
 
 export function setOnSpeakingChange(cb: SpeakingCallback | null): void {
   onSpeakingChange = cb;
+}
+
+let currentVoiceGender: string = 'Female';
+
+export function setVoiceGender(gender: string): void {
+  currentVoiceGender = gender;
 }
 
 function notifySpeaking(speaking: boolean): void {
@@ -32,8 +54,10 @@ export function isSpeaking(): boolean {
 
 export function speak(text: string, lang: string = 'ja-JP'): Promise<void> {
   return new Promise((resolve) => {
+    const cleaned = cleanTextForTTS(text);
+    if (!cleaned) { notifySpeaking(false); resolve(); return; }
     notifySpeaking(true);
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(cleaned);
     utterance.lang = lang;
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
@@ -47,6 +71,8 @@ export async function speakWithVisemes(
   text: string,
   lang: string = 'ja-JP',
 ): Promise<void> {
+  const cleaned = cleanTextForTTS(text);
+  if (!cleaned) return;
   stop();
   const myGeneration = ++currentGeneration;
 
@@ -54,7 +80,7 @@ export async function speakWithVisemes(
     const response = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang }),
+      body: JSON.stringify({ text: cleaned, lang, gender: currentVoiceGender }),
     });
 
     if (!response.ok) throw new Error(`Azure TTS returned ${response.status}`);
@@ -144,7 +170,7 @@ export async function speakWithVisemes(
       isAzureSpeaking = false;
       notifySpeaking(false);
     }
-    return speak(text, lang);
+    return speak(cleaned, lang);
   }
 }
 
@@ -163,14 +189,153 @@ export function stop(): void {
 
 /* ── Span-based mixed-language speech ──────────────────── */
 
-function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string): string {
-  if (phase === 'unguided') return targetBcp47;
+const FEMALE_VOICES: Record<string, string> = {
+  'ja-JP': 'ja-JP-NanamiNeural',
+  'en-US': 'en-US-JennyNeural',
+  'ja': 'ja-JP-NanamiNeural',
+  'en': 'en-US-JennyNeural',
+};
+
+const MALE_VOICES: Record<string, string> = {
+  'ja-JP': 'ja-JP-KeitaNeural',
+  'en-US': 'en-US-GuyNeural',
+  'ja': 'ja-JP-KeitaNeural',
+  'en': 'en-US-GuyNeural',
+};
+
+function resolveTTSVoice(bcp47: string): string {
+  const map = currentVoiceGender === 'Male' ? MALE_VOICES : FEMALE_VOICES;
+  return map[bcp47] ?? map[bcp47?.split('-')[0]] ?? 'en-US-JennyNeural';
+}
+
+function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string, text?: string): string {
+  if (phase === 'unguided') {
+    if (text && !containsTargetScript(text, targetBcp47)) return nativeBcp47;
+    return targetBcp47;
+  }
   return lang === 'target' ? targetBcp47 : nativeBcp47;
+}
+
+function buildSSML(spans: { text: string; voice: string }[]): string {
+  const parts: string[] = [];
+  for (const span of spans) {
+    if (!span.text) continue;
+    const escaped = span.text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+    parts.push(`<voice name="${resolveTTSVoice(span.voice)}">${escaped}</voice>`);
+  }
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">${parts.join('')}</speak>`;
+}
+
+async function speakAzureSSML(ssml: string): Promise<void> {
+  stop();
+  const myGeneration = ++currentGeneration;
+
+  try {
+    const response = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ssml }),
+    });
+
+    if (!response.ok) throw new Error(`Azure TTS SSML returned ${response.status}`);
+
+    const data = await response.json();
+    const { audio: audioBase64, visemes } = data;
+
+    if (myGeneration !== currentGeneration) return;
+
+    const binaryStr = atob(audioBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    const audioCtx = new AudioContext();
+    const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
+
+    if (myGeneration !== currentGeneration) {
+      audioCtx.close();
+      return;
+    }
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+
+    isAzureSpeaking = true;
+    notifySpeaking(true);
+    currentVisemeId = -1;
+
+    const startTime = audioCtx.currentTime;
+    let visemeIndex = 0;
+
+    const cancelled = { value: false };
+    azureStopCallback = () => {
+      cancelled.value = true;
+      try { source.stop(); } catch {}
+      audioCtx.close();
+    };
+
+    return new Promise<void>((resolve) => {
+      const tick = () => {
+        if (cancelled.value || myGeneration !== currentGeneration) {
+          if (myGeneration === currentGeneration) {
+            currentVisemeId = -1;
+            isAzureSpeaking = false;
+            notifySpeaking(false);
+          }
+          resolve();
+          return;
+        }
+
+        const elapsed = (audioCtx.currentTime - startTime) * 1000;
+
+        while (visemeIndex < visemes.length && visemes[visemeIndex].offsetMs <= elapsed) {
+          currentVisemeId = visemes[visemeIndex].id;
+          visemeIndex++;
+        }
+
+        if (visemeIndex >= visemes.length) {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          notifySpeaking(false);
+          resolve();
+          return;
+        }
+
+        requestAnimationFrame(tick);
+      };
+
+      tick();
+
+      source.onended = () => {
+        if (!cancelled.value && myGeneration === currentGeneration) {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          notifySpeaking(false);
+          resolve();
+        }
+      };
+    });
+  } catch {
+    if (myGeneration === currentGeneration) {
+      currentVisemeId = -1;
+      isAzureSpeaking = false;
+      notifySpeaking(false);
+    }
+    throw new Error('SSML Azure TTS failed');
+  }
 }
 
 /**
  * Speak a text that may contain mixed ⟦target (romaji)⟧ and native-language spans.
- * Correctly voices each span with the right accent.
+ * Uses SSML for seamless voice switching in a single Azure call.
  */
 export async function speakMixedText(
   raw: string,
@@ -178,6 +343,18 @@ export async function speakMixedText(
   nativeBcp47: string,
   phase: string = 'guided',
 ): Promise<void> {
+  // Same language — no span splitting or SSML needed, use single voice
+  if (targetBcp47 === nativeBcp47) {
+    const cleaned = cleanTextForTTS(raw);
+    if (!cleaned) return;
+    try {
+      await speakWithVisemes(cleaned, targetBcp47);
+    } catch {
+      await speak(cleaned, targetBcp47);
+    }
+    return;
+  }
+
   const spans = splitIntoLangSpans(raw);
 
   if (spans.length === 0) {
@@ -190,12 +367,22 @@ export async function speakMixedText(
     return;
   }
 
-  for (const span of spans) {
-    const voiceLang = spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase);
-    try {
-      await speakWithVisemes(span.text, voiceLang);
-    } catch {
-      await speak(span.text, voiceLang);
+  const ssmlSpans = spans.map(span => ({
+    text: span.text,
+    voice: spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase, span.text),
+  }));
+
+  try {
+    const ssml = buildSSML(ssmlSpans);
+    await speakAzureSSML(ssml);
+  } catch {
+    for (const span of spans) {
+      const voiceLang = spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase, span.text);
+      try {
+        await speakWithVisemes(span.text, voiceLang);
+      } catch {
+        await speak(span.text, voiceLang);
+      }
     }
   }
 }
