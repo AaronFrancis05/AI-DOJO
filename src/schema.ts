@@ -120,6 +120,7 @@ export const sessions = pgTable('sessions', {
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
   totalTurns:      integer('total_turns').default(0).notNull(),
+  phaseTurnCount:  integer('phase_turn_count').default(0).notNull(),
   vocabularyScore: integer('vocabulary_score'),
   grammarScore:    integer('grammar_score'),
   fluencyScore:    integer('fluency_score'),

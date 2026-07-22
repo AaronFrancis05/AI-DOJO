@@ -32,7 +32,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
   return (
     <div className="h-full w-full">
       <Canvas
-        camera={{ position: [0, 1.15, 3.7], fov: 32, near: 0.1, far: 20 }}
+        camera={{ position: [0, 1.5, 4.0], fov: 32, near: 0.1, far: 20 }}
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
         shadows="soft"
         style={{ background: 'transparent' }}
@@ -41,7 +41,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
           // so without this the camera just faces -Z from its position and
           // never actually points at the grounded (y=0) models — that's
           // what reads as the avatars "floating".
-          camera.lookAt(0, 0.85, 0);
+          camera.lookAt(0, 1.2, 0);
           gl.domElement.addEventListener('webglcontextrestored', () => {
             console.warn('[SessionStage] WebGL context restored by R3F');
           });
@@ -71,7 +71,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
         <directionalLight position={[0, -1, 2.5]} intensity={0.15} />
         <Suspense fallback={<SceneLoadingFallback />}>
           {hasAiModel && (
-            <group position={[-1.1, 0, 0]}>
+            <group position={[-0.9, 0, 0]}>
               <AnimatedModel
                 url={ai.modelUrl!}
                 mode={ai.mode ?? 'idle'}
@@ -83,11 +83,11 @@ export function SessionStage({ ai, user }: SessionStageProps) {
               {/* Soft ambient-occlusion-style base shadow — subtler now
                   that the directional light above casts the real, pose-
                   accurate shadow. This just fills in the contact point. */}
-              <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={1.6} blur={1.4} far={1.2} resolution={512} />
+              <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={1.4} blur={1.2} far={1.2} resolution={512} />
             </group>
           )}
           {hasUserModel && (
-            <group position={[1.1, 0, 0]}>
+            <group position={[0.9, 0, 0]}>
               <AnimatedModel
                 url={user.modelUrl!}
                 mode={user.mode ?? 'idle'}
@@ -96,7 +96,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
                 cameraIntent={user.cameraIntent}
                 disableAutoCamera
               />
-              <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={1.6} blur={1.4} far={1.2} resolution={512} />
+              <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={1.4} blur={1.2} far={1.2} resolution={512} />
             </group>
           )}
           {/* Invisible shadow-catcher plane — renders only the real cast

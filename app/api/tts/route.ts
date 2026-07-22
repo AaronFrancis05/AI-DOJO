@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-const LANGUAGE_VOICE_MAP: Record<string, string> = {
+const FEMALE_VOICES: Record<string, string> = {
   'ja-JP': 'ja-JP-NanamiNeural',
   'en-US': 'en-US-JennyNeural',
   'en': 'en-US-JennyNeural',
@@ -27,16 +27,43 @@ const LANGUAGE_VOICE_MAP: Record<string, string> = {
   'hi': 'hi-IN-SwaraNeural',
 };
 
-function resolveVoice(lang: string): string {
-  return LANGUAGE_VOICE_MAP[lang] ?? LANGUAGE_VOICE_MAP[lang?.split('-')[0]] ?? 'en-US-JennyNeural';
+const MALE_VOICES: Record<string, string> = {
+  'ja-JP': 'ja-JP-KeitaNeural',
+  'en-US': 'en-US-GuyNeural',
+  'en': 'en-US-GuyNeural',
+  'ja': 'ja-JP-KeitaNeural',
+  'fr-FR': 'fr-FR-HenriNeural',
+  'fr': 'fr-FR-HenriNeural',
+  'es-ES': 'es-ES-AlvaroNeural',
+  'es': 'es-ES-AlvaroNeural',
+  'de-DE': 'de-DE-KillianNeural',
+  'de': 'de-DE-KillianNeural',
+  'zh-CN': 'zh-CN-YunxiNeural',
+  'zh': 'zh-CN-YunxiNeural',
+  'ko-KR': 'ko-KR-InJoonNeural',
+  'ko': 'ko-KR-InJoonNeural',
+  'pt-BR': 'pt-BR-AntonioNeural',
+  'pt': 'pt-BR-AntonioNeural',
+  'vi-VN': 'vi-VN-NamMinhNeural',
+  'vi': 'vi-VN-NamMinhNeural',
+  'th-TH': 'th-TH-NiwatNeural',
+  'th': 'th-TH-NiwatNeural',
+  'hi-IN': 'hi-IN-MadhurNeural',
+  'hi': 'hi-IN-MadhurNeural',
+};
+
+function resolveVoice(lang: string, gender: string = 'Female'): string {
+  const map = gender === 'Male' ? MALE_VOICES : FEMALE_VOICES;
+  return map[lang] ?? map[lang?.split('-')[0]] ?? 'en-US-JennyNeural';
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, lang } = await req.json();
+    const body = await req.json();
+    const { text, lang, ssml, gender } = body;
 
-    if (!text) {
-      return NextResponse.json({ error: 'text is required' }, { status: 400 });
+    if (!text && !ssml) {
+      return NextResponse.json({ error: 'text or ssml is required' }, { status: 400 });
     }
 
     const speechKey = process.env.AZURE_SPEECH_KEY;
@@ -49,8 +76,10 @@ export async function POST(req: NextRequest) {
     const sdk = await import('microsoft-cognitiveservices-speech-sdk');
 
     const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
-    const voice = resolveVoice(lang ?? 'en-US');
-    speechConfig.speechSynthesisVoiceName = voice;
+    if (!ssml) {
+      const voice = resolveVoice(lang ?? 'en-US', gender);
+      speechConfig.speechSynthesisVoiceName = voice;
+    }
     speechConfig.speechSynthesisOutputFormat =
       sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3;
 
@@ -66,27 +95,31 @@ export async function POST(req: NextRequest) {
     };
 
     return new Promise<NextResponse>((resolve) => {
-      synthesizer.speakTextAsync(
-        text,
-        (result) => {
-          synthesizer.close();
-          if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-            const audioBase64 = Buffer.from(result.audioData).toString('base64');
-            resolve(NextResponse.json({ audio: audioBase64, visemes }));
-          } else {
-            resolve(
-              NextResponse.json(
-                { error: `Synthesis failed: ${result.errorDetails}` },
-                { status: 500 },
-              ),
-            );
-          }
-        },
-        (error: string) => {
-          synthesizer.close();
-          resolve(NextResponse.json({ error }, { status: 500 }));
-        },
-      );
+      const synthesisHandler = (result: any) => {
+        synthesizer.close();
+        if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+          const audioBase64 = Buffer.from(result.audioData).toString('base64');
+          resolve(NextResponse.json({ audio: audioBase64, visemes }));
+        } else {
+          resolve(
+            NextResponse.json(
+              { error: `Synthesis failed: ${result.errorDetails}` },
+              { status: 500 },
+            ),
+          );
+        }
+      };
+
+      const errorHandler = (error: string) => {
+        synthesizer.close();
+        resolve(NextResponse.json({ error }, { status: 500 }));
+      };
+
+      if (ssml) {
+        synthesizer.speakSsmlAsync(ssml, synthesisHandler, errorHandler);
+      } else {
+        synthesizer.speakTextAsync(text, synthesisHandler, errorHandler);
+      }
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

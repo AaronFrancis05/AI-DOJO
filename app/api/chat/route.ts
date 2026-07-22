@@ -1,4 +1,5 @@
 import { db } from '../../../src/db';
+import { dbPool, withSessionLock } from '../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import type { ChatTurn } from '../../../lib/ai-providers';
@@ -119,45 +120,83 @@ export async function POST(req: Request) {
     const targetCfg = getTargetLangConfig(targetLanguage);
     const isJapanese = targetLanguage === 'ja';
 
-    const [userConversation] = await db.insert(conversations).values({
-      sessionId: numericSessionId,
-      turnNo: currentTurnNo,
-      speaker: 'user',
-      messageTarget: mlPipelineOutput.messageTarget,
-      messageNative: mlPipelineOutput.messageNative,
-      messageJp: isJapanese ? mlPipelineOutput.messageTarget : (mlPipelineOutput.messageTarget ?? userRawInput),
-      messageRomaji: mlPipelineOutput.messageRomaji,
-      messageEn: mlPipelineOutput.messageNative,
-      emotionTone: mlPipelineOutput.emotionTone ?? null,
-      gestureHint: mlPipelineOutput.gestureHint ?? null,
-      isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
-      isValidInContext: mlPipelineOutput.isValidInContext,
-    }).returning({ id: conversations.id });
-
-    // ── Guided phase: retry gate ──
-    let pendingRetryCorrectionId: number | null = null;
     const hasCorrections = mlPipelineOutput.corrections && mlPipelineOutput.corrections.length > 0 && mlPipelineOutput.corrections.some(c => c.correctedText);
 
-    if (currentPhase === 'guided' && hasCorrections) {
-      const prevPendingId = session.pendingRetryCorrectionId;
+    // ── Wrap all writes in a transaction with session lock ──
+    const writeResult = await withSessionLock(numericSessionId, async (tx) => {
+      const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
+      if (freshSession.status !== 'active') throw new Error('Session was completed by another request');
 
-      if (prevPendingId && isRetryOfPreviousMistake) {
-        // User got a second chance and still made the same type of error → mark
-        // the original correction as final attempt and proceed.
-        if (prevPendingId) {
-          await db.update(corrections).set({
-            isFinalAttempt: true,
-          }).where(eq(corrections.id, prevPendingId));
+      const existingTurn = await tx.select({ id: conversations.id })
+        .from(conversations)
+        .where(and(
+          eq(conversations.sessionId, numericSessionId),
+          eq(conversations.turnNo, currentTurnNo)
+        ))
+        .limit(1);
+      if (existingTurn.length > 0) throw new Error('Turn already processed by a concurrent request');
+
+      const [userConversation] = await tx.insert(conversations).values({
+        sessionId: numericSessionId,
+        turnNo: currentTurnNo,
+        speaker: 'user',
+        messageTarget: mlPipelineOutput.messageTarget,
+        messageNative: mlPipelineOutput.messageNative,
+        messageJp: isJapanese ? mlPipelineOutput.messageTarget : (mlPipelineOutput.messageTarget ?? userRawInput),
+        messageRomaji: mlPipelineOutput.messageRomaji,
+        messageEn: mlPipelineOutput.messageNative,
+        emotionTone: mlPipelineOutput.emotionTone ?? null,
+        gestureHint: mlPipelineOutput.gestureHint ?? null,
+        isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
+        isValidInContext: mlPipelineOutput.isValidInContext,
+      }).returning({ id: conversations.id });
+
+      // ── Guided phase: retry gate ──
+      if (currentPhase === 'guided' && hasCorrections) {
+        const prevPendingId = freshSession.pendingRetryCorrectionId;
+
+        if (prevPendingId && isRetryOfPreviousMistake) {
+          if (prevPendingId) {
+            await tx.update(corrections).set({
+              isFinalAttempt: true,
+            }).where(eq(corrections.id, prevPendingId));
+          }
+          await tx.update(sessions).set({
+            pendingRetryCorrectionId: null,
+          }).where(eq(sessions.id, numericSessionId));
+        } else if (!prevPendingId) {
+          const validCorrections = mlPipelineOutput.corrections.filter(c => c.correctedText);
+          if (validCorrections.length > 0) {
+            const inserted = await tx.insert(corrections).values(
+              validCorrections.map(c => ({
+                conversationId: userConversation.id,
+                correctionType: c.correctionType,
+                originalText: c.originalText,
+                originalRomaji: c.originalRomaji ?? null,
+                correctedText: c.correctedText,
+                correctedRomaji: c.correctedRomaji ?? null,
+                explanation: c.explanation,
+                severity: c.severity,
+              }))
+            ).returning({ id: corrections.id });
+
+            const pendingRetryCorrectionId = inserted[0]?.id ?? null;
+            if (pendingRetryCorrectionId) {
+              await tx.update(sessions).set({
+                pendingRetryCorrectionId,
+              }).where(eq(sessions.id, numericSessionId));
+            }
+          }
+
+          return { type: 'retry' as const, userConversationId: userConversation.id };
         }
-        // Clear the pending flag so future corrections create a fresh retry cycle
-        await db.update(sessions).set({
-          pendingRetryCorrectionId: null,
-        }).where(eq(sessions.id, numericSessionId));
-      } else if (!prevPendingId) {
-        // First mistake → insert corrections, set pending retry, DO NOT advance
+      }
+
+      // ── Insert corrections (non-guided or post-retry) ──
+      if (hasCorrections) {
         const validCorrections = mlPipelineOutput.corrections.filter(c => c.correctedText);
         if (validCorrections.length > 0) {
-          const inserted = await db.insert(corrections).values(
+          await tx.insert(corrections).values(
             validCorrections.map(c => ({
               conversationId: userConversation.id,
               correctionType: c.correctionType,
@@ -168,53 +207,202 @@ export async function POST(req: Request) {
               explanation: c.explanation,
               severity: c.severity,
             }))
-          ).returning({ id: corrections.id });
-
-          pendingRetryCorrectionId = inserted[0]?.id ?? null;
-          if (pendingRetryCorrectionId) {
-            await db.update(sessions).set({
-              pendingRetryCorrectionId,
-            }).where(eq(sessions.id, numericSessionId));
-          }
+          );
         }
-
-        return Response.json({
-          success: true,
-          phase: currentPhase,
-          retry: true,
-          analysis: {
-            messageTarget: mlPipelineOutput.messageTarget,
-            messageNative: mlPipelineOutput.messageNative,
-            messageRomaji: mlPipelineOutput.messageRomaji,
-            emotionTone: mlPipelineOutput.emotionTone,
-            gestureHint: mlPipelineOutput.gestureHint,
-            isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
-            isValidInContext: mlPipelineOutput.isValidInContext,
-            corrections: mlPipelineOutput.corrections.map(c => ({
-              ...c,
-              correctionType: c.correctionType,
-              originalText: c.originalText,
-              originalRomaji: c.originalRomaji ?? null,
-              correctedText: c.correctedText,
-              correctedRomaji: c.correctedRomaji ?? null,
-              explanation: c.explanation,
-              severity: c.severity,
-            })),
-            suggestedReplies: mlPipelineOutput.suggestedReplies ?? [],
-          },
-        });
-      } else {
-        // There's a pending retry but this wasn't flagged as a retry — just proceed
       }
-    }
 
-    // ── Insert corrections (non-guided or post-retry) ──
-    if (hasCorrections) {
-      const validCorrections = mlPipelineOutput.corrections.filter(c => c.correctedText);
-      if (validCorrections.length > 0) {
-        await db.insert(corrections).values(
-          validCorrections.map(c => ({
+      await tx.insert(conversations).values({
+        sessionId: numericSessionId,
+        turnNo: currentTurnNo,
+        speaker: 'ai',
+        messageTarget: mlPipelineOutput.nextAiReply.target,
+        messageNative: mlPipelineOutput.nextAiReply.native,
+        messageJp: isJapanese ? mlPipelineOutput.nextAiReply.target : (mlPipelineOutput.nextAiReply.target ?? ''),
+        messageRomaji: mlPipelineOutput.nextAiReply.romaji,
+        messageEn: mlPipelineOutput.nextAiReply.native,
+        emotionTone: mlPipelineOutput.nextAiReply.emotionTone ?? null,
+        gestureHint: mlPipelineOutput.nextAiReply.gestureHint ?? null,
+        isValidInContext: true,
+      });
+
+      if (mlPipelineOutput.goalsAddressedThisTurn?.length > 0) {
+        const goalsMap = new Map(goals.map(g => [g.sequenceOrder, g.id]));
+        const seen = new Set<number>();
+        const completionRows = mlPipelineOutput.goalsAddressedThisTurn
+          .filter(seqOrder => goalsMap.has(seqOrder))
+          .filter(seqOrder => !completedSequenceOrders.includes(seqOrder))
+          .filter(seqOrder => {
+            if (seen.has(seqOrder)) return false;
+            seen.add(seqOrder);
+            return true;
+          })
+          .map(seqOrder => ({
+            sessionId: numericSessionId,
             conversationId: userConversation.id,
+            scenarioGoalId: goalsMap.get(seqOrder)!,
+            achieved: true,
+            evidenceNote: `Addressed in turn ${currentTurnNo}: "${userRawInput.substring(0, 80)}"`
+          }));
+        if (completionRows.length > 0) {
+          await tx.insert(goalCompletions).values(completionRows);
+        }
+      }
+
+      let runningScore = freshSession.runningScore;
+      if (currentPhase === 'unguided' && hasCorrections) {
+        runningScore -= mlPipelineOutput.corrections.filter(c => c.correctedText).length * UNGUIDED_MISTAKE_PENALTY;
+        if (mlPipelineOutput.isEnglishWhenExpected) {
+          runningScore -= UNGUIDED_ENGLISH_PENALTY;
+        }
+        if (runningScore < 0) runningScore = 0;
+      }
+
+      const goalsCompleted = mlPipelineOutput.goalsAddressedThisTurn?.filter(
+        seqOrder => !completedSequenceOrders.includes(seqOrder)
+      ).length ?? 0;
+      const totalGoalsNow = completedSequenceOrders.length + goalsCompleted;
+      const allGoalsCovered = totalGoalsNow >= goals.length;
+
+      const newPhase = nextPhase(currentPhase, {
+        icebreakerDone: false,
+        allGoalsCovered,
+      });
+      const shouldComplete = mlPipelineOutput.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN;
+
+      const currentVocabScore = freshSession.vocabularyScore ?? 0;
+      const currentGrammarScore = freshSession.grammarScore ?? 0;
+      const currentFluencyScore = freshSession.fluencyScore ?? 0;
+      const currentCulturalScore = freshSession.culturalScore ?? 0;
+      const currentTaskScore = freshSession.taskScore ?? 0;
+
+      const scoredTurnsCount = Math.max(1, Math.floor((conversationRows.filter(c => c.speaker === 'user').length) + 1));
+
+      const blendedVocab = Math.round(((currentVocabScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.vocabulary) / scoredTurnsCount);
+      const blendedGrammar = Math.round(((currentGrammarScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.grammar) / scoredTurnsCount);
+      const blendedFluency = Math.round(((currentFluencyScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.fluency) / scoredTurnsCount);
+      const blendedCultural = Math.round(((currentCulturalScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.cultural) / scoredTurnsCount);
+      const blendedTask = Math.round(((currentTaskScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.task) / scoredTurnsCount);
+
+      const updateData: Record<string, any> = {
+        totalTurns: currentTurnNo,
+        runningScore,
+        phase: shouldComplete ? 'completed' : newPhase,
+        vocabularyScore: blendedVocab,
+        grammarScore: blendedGrammar,
+        fluencyScore: blendedFluency,
+        culturalScore: blendedCultural,
+        taskScore: blendedTask,
+      };
+
+      if (shouldComplete) {
+        updateData.status = 'completed';
+        updateData.completedAt = new Date();
+        updateData.feedback = mlPipelineOutput.feedback;
+      }
+
+      await tx.update(sessions).set(updateData).where(eq(sessions.id, numericSessionId));
+
+      if (shouldComplete) {
+        const [icebreakerStats] = await tx
+          .select({
+            total: sql<number>`count(*)::int`,
+            passed: sql<number>`count(*) filter (where used_correctly = true)::int`,
+          })
+          .from(vocabularyEncounters)
+          .where(and(
+            eq(vocabularyEncounters.sessionId, numericSessionId),
+            eq(vocabularyEncounters.phase, 'icebreaker'),
+          ));
+
+        const icebreakerPassRate = icebreakerStats && icebreakerStats.total > 0
+          ? Math.round((icebreakerStats.passed / icebreakerStats.total) * 100)
+          : 0;
+
+        const finalVocabScore = Math.round((blendedVocab + icebreakerPassRate) / 2);
+        const finalGrammarScore = blendedGrammar;
+        const finalFluencyScore = Math.round((blendedFluency + runningScore) / 2);
+        const finalCulturalScore = blendedCultural;
+        const finalTaskScore = Math.round((blendedTask + runningScore) / 2);
+
+        await tx.insert(evaluations).values({
+          sessionId: numericSessionId,
+          vocabularyScore: finalVocabScore,
+          grammarScore: finalGrammarScore,
+          fluencyScore: finalFluencyScore,
+          culturalScore: finalCulturalScore,
+          taskScore: finalTaskScore,
+          feedback: mlPipelineOutput.feedback,
+        });
+
+        const totalScore = finalVocabScore + finalGrammarScore + finalFluencyScore + finalCulturalScore + finalTaskScore;
+        const xpGained = Math.round(totalScore * 2.5 + 25);
+
+        const [userRow] = await tx.select({
+          xp: users.xp,
+          streak: users.streak,
+          lastActiveDate: users.lastActiveDate,
+        }).from(users).where(eq(users.id, user.id));
+
+        if (userRow) {
+          const today = new Date().toISOString().slice(0, 10);
+          const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          let newStreak = userRow.streak;
+          if (userRow.lastActiveDate === today) {
+            // same day, keep streak
+          } else if (userRow.lastActiveDate === yesterday) {
+            newStreak += 1;
+          } else {
+            newStreak = 1;
+          }
+
+          const newXp = userRow.xp + xpGained;
+          let newLevel: string;
+          let newXpToNext: number;
+          if (newXp >= 6000) {
+            newLevel = 'advanced';
+            newXpToNext = 10000;
+          } else if (newXp >= 2000) {
+            newLevel = 'intermediate';
+            newXpToNext = 6000;
+          } else {
+            newLevel = 'beginner';
+            newXpToNext = 2000;
+          }
+
+          await tx.update(users).set({
+            xp: newXp,
+            level: newLevel,
+            xpToNext: newXpToNext,
+            streak: newStreak,
+            lastActiveDate: today,
+          }).where(eq(users.id, user.id));
+        }
+      }
+
+      return {
+        type: 'normal' as const,
+        newPhase,
+        runningScore,
+        shouldComplete,
+        responseCorrections: currentPhase === 'unguided' ? [] : (mlPipelineOutput.corrections ?? []),
+      };
+    });
+
+    if (writeResult.type === 'retry') {
+      return Response.json({
+        success: true,
+        phase: currentPhase,
+        retry: true,
+        analysis: {
+          messageTarget: mlPipelineOutput.messageTarget,
+          messageNative: mlPipelineOutput.messageNative,
+          messageRomaji: mlPipelineOutput.messageRomaji,
+          emotionTone: mlPipelineOutput.emotionTone,
+          gestureHint: mlPipelineOutput.gestureHint,
+          isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
+          isValidInContext: mlPipelineOutput.isValidInContext,
+          corrections: mlPipelineOutput.corrections.map(c => ({
+            ...c,
             correctionType: c.correctionType,
             originalText: c.originalText,
             originalRomaji: c.originalRomaji ?? null,
@@ -222,205 +410,21 @@ export async function POST(req: Request) {
             correctedRomaji: c.correctedRomaji ?? null,
             explanation: c.explanation,
             severity: c.severity,
-          }))
-        );
-      }
-    }
-
-    await db.insert(conversations).values({
-      sessionId: numericSessionId,
-      turnNo: currentTurnNo,
-      speaker: 'ai',
-      messageTarget: mlPipelineOutput.nextAiReply.target,
-      messageNative: mlPipelineOutput.nextAiReply.native,
-      messageJp: isJapanese ? mlPipelineOutput.nextAiReply.target : (mlPipelineOutput.nextAiReply.target ?? ''),
-      messageRomaji: mlPipelineOutput.nextAiReply.romaji,
-      messageEn: mlPipelineOutput.nextAiReply.native,
-      emotionTone: mlPipelineOutput.nextAiReply.emotionTone ?? null,
-      gestureHint: mlPipelineOutput.nextAiReply.gestureHint ?? null,
-      isValidInContext: true,
-    });
-
-    if (mlPipelineOutput.goalsAddressedThisTurn?.length > 0) {
-      const goalsMap = new Map(goals.map(g => [g.sequenceOrder, g.id]));
-      const seen = new Set<number>();
-      const completionRows = mlPipelineOutput.goalsAddressedThisTurn
-        .filter(seqOrder => goalsMap.has(seqOrder))
-        .filter(seqOrder => !completedSequenceOrders.includes(seqOrder))
-        .filter(seqOrder => {
-          if (seen.has(seqOrder)) return false;
-          seen.add(seqOrder);
-          return true;
-        })
-        .map(seqOrder => ({
-          sessionId: numericSessionId,
-          conversationId: userConversation.id,
-          scenarioGoalId: goalsMap.get(seqOrder)!,
-          achieved: true,
-          evidenceNote: `Addressed in turn ${currentTurnNo}: "${userRawInput.substring(0, 80)}"`
-        }));
-      if (completionRows.length > 0) {
-        await db.insert(goalCompletions).values(completionRows);
-      }
-    }
-
-    // ── Unguided phase: deduct running score ──
-    let runningScore = session.runningScore;
-    if (currentPhase === 'unguided' && hasCorrections) {
-      runningScore -= mlPipelineOutput.corrections.filter(c => c.correctedText).length * UNGUIDED_MISTAKE_PENALTY;
-      if (mlPipelineOutput.isEnglishWhenExpected) {
-        runningScore -= UNGUIDED_ENGLISH_PENALTY;
-      }
-      if (runningScore < 0) runningScore = 0;
-    }
-
-    const goalsCompleted = mlPipelineOutput.goalsAddressedThisTurn?.filter(
-      seqOrder => !completedSequenceOrders.includes(seqOrder)
-    ).length ?? 0;
-    const totalGoalsNow = completedSequenceOrders.length + goalsCompleted;
-    const allGoalsCovered = totalGoalsNow >= goals.length;
-
-    // ── Phase transition ──
-    const newPhase = nextPhase(currentPhase, {
-      icebreakerDone: false,
-      allGoalsCovered,
-    });
-    const shouldComplete = mlPipelineOutput.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN;
-
-    // ── Score accumulation (fixes the pre-existing discarding bug) ──
-    // Instead of only writing the last turn's scores, accumulate a running average.
-    // We track scoredTurns in the DB or compute from existing data.
-    // For now, we accumulate into the session columns at the end.
-    const currentVocabScore = session.vocabularyScore ?? 0;
-    const currentGrammarScore = session.grammarScore ?? 0;
-    const currentFluencyScore = session.fluencyScore ?? 0;
-    const currentCulturalScore = session.culturalScore ?? 0;
-    const currentTaskScore = session.taskScore ?? 0;
-
-    // Count how many user turns have been scored (excluding AI turns)
-    const scoredTurnsCount = Math.max(1, Math.floor((conversationRows.filter(c => c.speaker === 'user').length) + 1));
-
-    // Blended score: ((existing * old_count) + new_score) / (old_count + 1)
-    const blendedVocab = Math.round(((currentVocabScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.vocabulary) / scoredTurnsCount);
-    const blendedGrammar = Math.round(((currentGrammarScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.grammar) / scoredTurnsCount);
-    const blendedFluency = Math.round(((currentFluencyScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.fluency) / scoredTurnsCount);
-    const blendedCultural = Math.round(((currentCulturalScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.cultural) / scoredTurnsCount);
-    const blendedTask = Math.round(((currentTaskScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.task) / scoredTurnsCount);
-
-    const updateData: Record<string, any> = {
-      totalTurns: currentTurnNo,
-      runningScore,
-      phase: shouldComplete ? 'completed' : newPhase,
-      vocabularyScore: blendedVocab,
-      grammarScore: blendedGrammar,
-      fluencyScore: blendedFluency,
-      culturalScore: blendedCultural,
-      taskScore: blendedTask,
-    };
-
-    if (shouldComplete) {
-      updateData.status = 'completed';
-      updateData.completedAt = new Date();
-      updateData.feedback = mlPipelineOutput.feedback;
-    }
-
-    await db.update(sessions).set(updateData).where(eq(sessions.id, numericSessionId));
-
-    // ── Unguided phase: strip corrections from response ──
-    const responseCorrections = currentPhase === 'unguided'
-      ? []
-      : (mlPipelineOutput.corrections ?? []);
-
-    // ── Evaluation + XP (only on completion) ──
-    if (shouldComplete) {
-      // Compute icebreaker pass rate
-      const [icebreakerStats] = await db
-        .select({
-          total: sql<number>`count(*)::int`,
-          passed: sql<number>`count(*) filter (where used_correctly = true)::int`,
-        })
-        .from(vocabularyEncounters)
-        .where(and(
-          eq(vocabularyEncounters.sessionId, numericSessionId),
-          eq(vocabularyEncounters.phase, 'icebreaker'),
-        ));
-
-      const icebreakerPassRate = icebreakerStats && icebreakerStats.total > 0
-        ? Math.round((icebreakerStats.passed / icebreakerStats.total) * 100)
-        : 0;
-
-      // Composite evaluation scores
-      const finalVocabScore = Math.round((blendedVocab + icebreakerPassRate) / 2);
-      const finalGrammarScore = blendedGrammar;
-      const finalFluencyScore = Math.round((blendedFluency + runningScore) / 2);
-      const finalCulturalScore = blendedCultural;
-      const finalTaskScore = Math.round((blendedTask + runningScore) / 2);
-
-      await db.insert(evaluations).values({
-        sessionId: numericSessionId,
-        vocabularyScore: finalVocabScore,
-        grammarScore: finalGrammarScore,
-        fluencyScore: finalFluencyScore,
-        culturalScore: finalCulturalScore,
-        taskScore: finalTaskScore,
-        feedback: mlPipelineOutput.feedback,
+          })),
+          suggestedReplies: mlPipelineOutput.suggestedReplies ?? [],
+        },
       });
-
-      // XP & streak update
-      const totalScore = finalVocabScore + finalGrammarScore + finalFluencyScore + finalCulturalScore + finalTaskScore;
-      const xpGained = Math.round(totalScore * 2.5 + 25);
-
-      const [userRow] = await db.select({
-        xp: users.xp,
-        streak: users.streak,
-        lastActiveDate: users.lastActiveDate,
-      }).from(users).where(eq(users.id, user.id));
-
-      if (userRow) {
-        const today = new Date().toISOString().slice(0, 10);
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-        let newStreak = userRow.streak;
-        if (userRow.lastActiveDate === today) {
-          // same day, keep streak
-        } else if (userRow.lastActiveDate === yesterday) {
-          newStreak += 1;
-        } else {
-          newStreak = 1;
-        }
-
-        const newXp = userRow.xp + xpGained;
-        let newLevel: string;
-        let newXpToNext: number;
-        if (newXp >= 6000) {
-          newLevel = 'advanced';
-          newXpToNext = 10000;
-        } else if (newXp >= 2000) {
-          newLevel = 'intermediate';
-          newXpToNext = 6000;
-        } else {
-          newLevel = 'beginner';
-          newXpToNext = 2000;
-        }
-
-        await db.update(users).set({
-          xp: newXp,
-          level: newLevel,
-          xpToNext: newXpToNext,
-          streak: newStreak,
-          lastActiveDate: today,
-        }).where(eq(users.id, user.id));
-      }
     }
 
     // ── Response ──
     const responsePayload: Record<string, any> = {
       success: true,
-      phase: newPhase,
-      runningScore,
+      phase: writeResult.newPhase,
+      runningScore: writeResult.runningScore,
       analysis: {
         ...mlPipelineOutput,
-        corrections: responseCorrections,
-        scenarioComplete: shouldComplete,
+        corrections: writeResult.responseCorrections,
+        scenarioComplete: writeResult.shouldComplete,
         scenarioUserRole: currentScenario.userCharacterRole,
         scenarioUserName: currentScenario.userCharacterName,
         aiCharacterName: currentScenario.aiCharacterName,
