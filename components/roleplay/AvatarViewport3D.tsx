@@ -10,7 +10,7 @@ import {
   CameraIntent,
   CameraMode,
   getDevWarnings,
-  clearDevWarnings,
+  subscribeWarnings,
 } from '@/components/roleplay/three/AnimatedModel';
 
 /* ── Error boundary around the Canvas ──────────────── */
@@ -42,10 +42,12 @@ class AvatarErrorBoundary extends React.Component<
 
 /* ── Dev warning overlay ──────────────────────────── */
 function DevOverlay() {
-  const [warnings, setWarnings] = useState<string[]>([]);
+  const [warnings, setWarnings] = useState<string[]>(() => getDevWarnings());
   useEffect(() => {
-    setWarnings(getDevWarnings());
-    return () => { clearDevWarnings(); };
+    const unsub = subscribeWarnings(() => {
+      setWarnings(getDevWarnings());
+    });
+    return unsub;
   }, []);
   if (warnings.length === 0) return null;
   return (
