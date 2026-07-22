@@ -89,12 +89,15 @@ export function SceneLoadingFallback() {
   );
 }
 
-/* ── Dev warnings ─────────────────────────────────────────────────── */
+/* ── Dev warnings (reactive) ──────────────────────────────────────── */
 let devWarnings: string[] = [];
+const warningSubs = new Set<() => void>();
+
 export function logDevWarning(msg: string) {
   if (!devWarnings.includes(msg)) {
     devWarnings.push(msg);
     console.warn('[AvatarViewport]', msg);
+    warningSubs.forEach(fn => fn());
   }
 }
 
@@ -104,6 +107,11 @@ export function clearDevWarnings() {
 
 export function getDevWarnings(): string[] {
   return [...devWarnings];
+}
+
+export function subscribeWarnings(fn: () => void): () => void {
+  warningSubs.add(fn);
+  return () => { warningSubs.delete(fn); };
 }
 
 /* ── RestPoseApplicator ──────────────────────────────────────────────
