@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-import { AvatarCreator, getStoredAvatarUrl } from '@/components/roleplay/AvatarCreator';
+import { AvatarViewport } from '@/components/roleplay/AvatarViewport';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
@@ -13,18 +12,7 @@ import { speakWithVisemes, speak as ttsSpeak, speakMixedText, feedStreamTts, res
 import { detectSpeechLang } from '@/lib/roleplay/lang-detect';
 import { startContinuousRecognition, stopContinuousRecognition, ensureRecognizer } from '@/lib/roleplay/pronunciation';
 import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
-import { useUser } from '@/lib/auth/user-context';
-import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, ArrowLeft, MessageSquare, Info } from 'lucide-react';
-
-const SessionStage = dynamic(() => import('@/components/roleplay/avatar-variants/SessionStage').then(m => ({ default: m.SessionStage })), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-lg">
-      <div className="h-16 w-16 rounded-full bg-dojo-border" />
-    </div>
-  ),
-});
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface CorrectionTip {
@@ -122,15 +110,11 @@ export default function RoleplaySessionPage() {
     completed: 'success',
   };
 
-  const user = useUser();
-  const currentAvatarModelUrl = useCurrentAvatarModel();
   const recognitionRef = useRef<any>(null);
   const continuousSilenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const targetLangRef = useRef(targetLanguage);
   const nativeLangRef = useRef(nativeLanguage);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const [avatarModelUrl, setAvatarModelUrl] = useState<string | undefined>(undefined);
-  const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
@@ -142,22 +126,6 @@ export default function RoleplaySessionPage() {
     });
     return () => setOnSpeakingChange(null);
   }, []);
-
-  useEffect(() => {
-    const stored = getStoredAvatarUrl();
-    if (stored) setAvatarModelUrl(stored);
-  }, []);
-
-  const resolvedModelUrl = character?.avatarModelUrl ?? avatarModelUrl ?? undefined;
-
-  useEffect(() => {
-    if (resolvedModelUrl) {
-      import('@react-three/drei').then(m => m.useGLTF.preload(resolvedModelUrl));
-    }
-    if (currentAvatarModelUrl ?? user?.avatarSrc) {
-      import('@react-three/drei').then(m => m.useGLTF.preload(currentAvatarModelUrl ?? user?.avatarSrc!));
-    }
-  }, [resolvedModelUrl, currentAvatarModelUrl, user?.avatarSrc]);
 
   // Play celebration sound effect
   useEffect(() => {
@@ -635,18 +603,17 @@ export default function RoleplaySessionPage() {
 
   /* ══════════════════════════════════════════════════════════════════════
      RENDER
-     Layout:
-       ┌───────────────────────────────────┬──────────────────────────────┐
-       │  SCENE AREA (w-[60%])             │  SIDEBAR (w-[40%])           │
-       │                                   │  min-w-[280px] max-w-[420px] │
-       │  ┌─────────────────────────┐      │                              │
-       │  │  SessionStage           │      │  [ Chat ] [ Session Info ]  │
-       │  │  (merged canvas)        │      │                              │
-       │  │                         │      │  ChatPanel or SessionInfo   │
-       │  └─────────────────────────┘      │                              │
-       │  ─── speech bubble ───            │                              │
-       │  ─── control bar ───             │                              │
-       └───────────────────────────────────┴──────────────────────────────┘
+      Layout:
+        ┌───────────────────────────────────┬──────────────────────────────┐
+        │  SCENE AREA (w-[60%])             │  SIDEBAR (w-[40%])           │
+        │                                   │  min-w-[280px] max-w-[420px] │
+        │  ┌─────────────────────────┐      │                              │
+        │  │  Akademia AvatarViewport│      │  [ Chat ] [ Session Info ]  │
+        │  │  (left half)            │      │                              │
+        │  │                         │      │  ChatPanel or SessionInfo   │
+        │  └─────────────────────────┘      │                              │
+        │  ─── control bar ───             │                              │
+        └───────────────────────────────────┴──────────────────────────────┘
      ═════════════════════════════════════════════════════════════════════ */
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -657,21 +624,27 @@ export default function RoleplaySessionPage() {
         {/* Environment photo backdrop fills column (absolute z-0) */}
         <EnvironmentBackdrop domainSlug={domainSlug} />
 
-        {/* ── Merged avatar canvas — single SessionStage z-10 ── */}
-        <div className="absolute inset-0 z-10 pointer-events-none">
-          <SessionStage
-            ai={{
-              modelUrl: resolvedModelUrl,
-              mode: avatarMode,
-              emotion: latestAi?.emotionTone,
-              gesture: latestAi?.gestureHint,
-              cameraIntent: 'face-partner-left',
-            }}
-            user={{
-              modelUrl: currentAvatarModelUrl ?? user?.avatarSrc ?? undefined,
-              mode: isListening ? 'talking' : 'idle',
-              cameraIntent: 'face-partner-right',
-            }}
+        {/* ── Akademia AI Avatar — left half, z-10 ── */}
+        <div className="absolute inset-0 w-1/2 z-10 pointer-events-none">
+          <AvatarViewport
+            name={charName}
+            accentColor={charColor}
+            mode={avatarMode}
+            emotion={latestAi?.emotionTone}
+            gesture={latestAi?.gestureHint}
+            cameraMode="front"
+            speechLang={getBCP47(targetLanguage, 'tts')}
+            textToSpeak={latestAi?.messageTarget || latestAi?.messageNative}
+          />
+        </div>
+
+        {/* ── User Avatar — right half, z-10 ── */}
+        <div className="absolute right-0 inset-y-0 w-1/2 z-10 pointer-events-none">
+          <AvatarViewport
+            name="You"
+            accentColor="#2D3BC5"
+            mode={isListening ? 'talking' : 'idle'}
+            cameraMode="front"
           />
         </div>
 
@@ -810,17 +783,6 @@ export default function RoleplaySessionPage() {
           )}
         </div>
       </aside>
-
-      {/* ═══════════ AVATURN CREATOR MODAL ═══════════ */}
-      {showAvatarCreator && (
-        <AvatarCreator
-          onExport={(result) => {
-            setAvatarModelUrl(result.url);
-            setShowAvatarCreator(false);
-          }}
-          onClose={() => setShowAvatarCreator(false)}
-        />
-      )}
 
       {/* ═══════════ MOBILE SLIDE-IN PANEL ═══════════ */}
       {showMobilePanel && (
