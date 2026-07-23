@@ -1,11 +1,11 @@
 import { db } from '../../../../src/db';
-import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters } from '../../../../src/schema';
+import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters, userPreferences } from '../../../../src/schema';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, and, count } from 'drizzle-orm';
 
 interface VocabInput {
-  japanese: string;
-  english: string;
+  targetText: string;
+  translation: string;
   romaji?: string;
 }
 
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     characterId,
     skillLevel,
     behaviorMode,
+    voiceGender: reqVoiceGender,
   } = body;
 
   if (!domainName || !situationTitle || !context || !learningGoals) {
@@ -104,14 +105,14 @@ export async function POST(req: Request) {
     }).returning();
 
     if (vocabItems && Array.isArray(vocabItems)) {
-      const valid: VocabInput[] = vocabItems.slice(0, 5).filter((v: VocabInput) => v.japanese && v.english);
+      const valid: VocabInput[] = vocabItems.slice(0, 5).filter((v: VocabInput) => v.targetText && v.translation);
       if (valid.length > 0) {
         await tx.insert(vocabulary).values(
           valid.map((v: VocabInput) => ({
             scenarioId: scenario.id,
-            japanese: v.japanese,
+            targetText: v.targetText,
             romaji: v.romaji ?? '',
-            english: v.english,
+            translation: v.translation,
             category: 'custom',
             formalityLevel: 'polite',
           })),
@@ -145,6 +146,15 @@ export async function POST(req: Request) {
 
     const sessionNumber = (result?.count ?? 0) + 1;
 
+    let voiceGender = reqVoiceGender ?? 'female';
+    if (!reqVoiceGender) {
+      const [prefs] = await tx
+        .select()
+        .from(userPreferences)
+        .where(eq(userPreferences.userId, user.id));
+      if (prefs?.voiceGender) voiceGender = prefs.voiceGender;
+    }
+
     const [session] = await tx.insert(sessions).values({
       userId: user.id,
       scenarioId: scenario.id,
@@ -153,6 +163,7 @@ export async function POST(req: Request) {
       behaviorMode: behaviorMode ?? 'standard',
       targetLanguage: targetLanguage ?? 'ja',
       nativeLanguage: nativeLanguage ?? 'en',
+      voiceGender,
       sessionNumber,
       status: 'active',
     }).returning();

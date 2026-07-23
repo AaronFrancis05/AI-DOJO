@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Card } from '@/components/ui/Card';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { SliderRow } from '@/components/ui/SliderRow';
 import { Toggle } from '@/components/ui/Toggle';
 import { Badge } from '@/components/ui/Badge';
-import { characters } from '@/lib/data/characters';
+import { GenderPicker } from '@/components/ui/GenderPicker';
+import { getCharacters } from '@/lib/data/characters';
+import type { CharacterFixture } from '@/lib/data/characters';
 import { useUser } from '@/lib/auth/user-context';
 import { useAvatar } from '@/lib/auth/avatar-context';
 import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
@@ -41,6 +43,31 @@ export default function AvatarSettingsPage() {
   const [showAvaturn, setShowAvaturn] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState(50);
   const [voicePitch, setVoicePitch] = useState(50);
+  const [characters, setCharacters] = useState<CharacterFixture[]>([]);
+  const [savingGender, setSavingGender] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    getCharacters().then(res => setCharacters(res.data));
+  }, []);
+
+  async function handleGenderChange(charId: number, gender: string) {
+    const prev = characters;
+    setCharacters(prev => prev.map(c => c.id === charId ? { ...c, gender } : c));
+    setSavingGender(g => ({ ...g, [charId]: true }));
+    try {
+      const res = await fetch(`/api/characters/${charId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gender }),
+      });
+      if (!res.ok) {
+        setCharacters(prev);
+      }
+    } catch {
+      setCharacters(prev);
+    }
+    setSavingGender(g => ({ ...g, [charId]: false }));
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -172,11 +199,16 @@ export default function AvatarSettingsPage() {
                             >
                               <Icon className="h-5 w-5" style={{ color: char.avatarColor }} />
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-dojo-text-primary">{char.name}</p>
-                              <p className="text-xs text-dojo-text-muted">{char.voiceType}</p>
+                              <p className="text-xs text-dojo-text-muted truncate">{char.voiceType}</p>
                             </div>
-                            <Badge variant="default" className="capitalize">
+                            <GenderPicker
+                              value={char.gender as 'female' | 'male'}
+                              onChange={(g) => handleGenderChange(char.id, g)}
+                              disabled={savingGender[char.id]}
+                            />
+                            <Badge variant="default" className="capitalize hidden sm:inline-flex">
                               {char.role.split('/')[0].trim()}
                             </Badge>
                           </div>

@@ -12,6 +12,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense } from 'react';
 import { Button } from '@/components/ui/Button';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { GenderPicker } from '@/components/ui/GenderPicker';
 import { AlertCircleIcon, RefreshCw } from 'lucide-react';
 
 const TIMEOUT_MS = 10_000;
@@ -23,6 +24,7 @@ function SessionCreator() {
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
+  const [voiceGender, setVoiceGender] = useState<'female' | 'male'>('female');
   const [showPicker, setShowPicker] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
@@ -43,6 +45,10 @@ function SessionCreator() {
     if (targetParam) setTargetLanguage(targetParam);
     if (nativeParam) setNativeLanguage(nativeParam);
     loadPrefs();
+    fetch('/api/user/preferences')
+      .then(r => r.json())
+      .then(d => { if (d.voiceGender) setVoiceGender(d.voiceGender); })
+      .catch(() => {});
   }, [searchParams]);
 
   const attemptCreation = useCallback(async () => {
@@ -79,6 +85,7 @@ function SessionCreator() {
             behaviorMode: mode,
             targetLanguage,
             nativeLanguage,
+            voiceGender,
           }),
         });
 
@@ -100,7 +107,7 @@ function SessionCreator() {
     }
 
     await createAndRedirect();
-  }, [searchParams, router, targetLanguage, nativeLanguage]);
+  }, [searchParams, router, targetLanguage, nativeLanguage, voiceGender]);
 
   if (showPicker) {
     return (
@@ -110,13 +117,17 @@ function SessionCreator() {
             <h1 className="text-xl font-bold text-dojo-text-primary mb-1">Prepare Your Roleplay</h1>
             <p className="text-sm text-dojo-text-muted">Set your language preferences before starting.</p>
           </div>
-          <div className="rounded-[--radius-lg] border border-dojo-border bg-dojo-surface p-5">
+          <div className="rounded-[--radius-lg] border border-dojo-border bg-dojo-surface p-5 space-y-5">
             <LanguagePicker
               targetLanguage={targetLanguage}
               nativeLanguage={nativeLanguage}
               onTargetChange={setTargetLanguage}
               onNativeChange={setNativeLanguage}
             />
+            <div className="border-t border-dojo-border pt-4">
+              <p className="text-xs font-medium text-dojo-text-muted mb-2">AI Voice</p>
+              <GenderPicker value={voiceGender} onChange={setVoiceGender} />
+            </div>
           </div>
           <Button
             variant="primary"

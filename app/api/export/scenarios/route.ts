@@ -24,7 +24,7 @@ export async function GET(req: Request) {
         sequenceOrder: scenarioGoals.sequenceOrder,
         goalText: scenarioGoals.goalText,
         goalType: scenarioGoals.goalType,
-        targetPhraseJp: scenarioGoals.targetPhraseJp,
+        targetPhrase: scenarioGoals.targetPhrase,
       })
       .from(scenarioGoals)
       .where(eq(scenarioGoals.scenarioId, scenario.id))

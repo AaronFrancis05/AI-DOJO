@@ -231,17 +231,32 @@ export async function PATCH(
   const body = await req.json();
   const { status } = body;
 
-  if (!status || !['active', 'paused', 'completed'].includes(status)) {
-    return Response.json({ error: 'Invalid status value' }, { status: 400 });
+  const updateData: Partial<typeof sessions.$inferInsert> = {};
+
+  if (body.avatarEnabled !== undefined) {
+    if (typeof body.avatarEnabled !== 'boolean') {
+      return Response.json({ error: 'avatarEnabled must be a boolean' }, { status: 400 });
+    }
+    updateData.avatarEnabled = body.avatarEnabled;
   }
 
-  const updateData: Record<string, any> = { status };
+  if (status) {
+    if (!['active', 'paused', 'completed'].includes(status)) {
+      return Response.json({ error: 'Invalid status value' }, { status: 400 });
+    }
+    updateData.status = status;
+    if (status === 'completed') {
+      updateData.completedAt = new Date();
+    } else if (status === 'active' || status === 'paused') {
+      updateData.completedAt = null;
+    }
+  }
 
-  if (status === 'completed') {
-    updateData.completedAt = new Date();
+  if (Object.keys(updateData).length === 0) {
+    return Response.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
   await db.update(sessions).set(updateData).where(eq(sessions.id, sessionId));
 
-  return Response.json({ success: true, message: `Session ${status}` });
+  return Response.json({ success: true });
 }

@@ -3,7 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { AvatarCreator, getStoredAvatarUrl } from '@/components/roleplay/AvatarCreator';
+import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
+
+const AvatarViewport3D = dynamic(() => import('@/components/roleplay/AvatarViewport3D').then(m => ({ default: m.AvatarViewport3D })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface/80 animate-pulse">
+      <div className="h-12 w-12 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { SessionInfoPanel } from '@/components/roleplay/SessionInfoPanel';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
@@ -13,18 +22,7 @@ import { speakWithVisemes, speak as ttsSpeak, speakMixedText, feedStreamTts, res
 import { detectSpeechLang } from '@/lib/roleplay/lang-detect';
 import { startContinuousRecognition, stopContinuousRecognition, ensureRecognizer } from '@/lib/roleplay/pronunciation';
 import { getBCP47, getTargetLangConfig, getNativeLangName, getNativeLangBcp47 } from '@/lib/language';
-import { useUser } from '@/lib/auth/user-context';
-import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { Volume2, VolumeX, Mic, Keyboard, Settings2, X, ArrowLeft, MessageSquare, Info } from 'lucide-react';
-
-const SessionStage = dynamic(() => import('@/components/roleplay/avatar-variants/SessionStage').then(m => ({ default: m.SessionStage })), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-lg">
-      <div className="h-16 w-16 rounded-full bg-dojo-border" />
-    </div>
-  ),
-});
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface CorrectionTip {
@@ -105,6 +103,7 @@ export default function RoleplaySessionPage() {
   const [isRetry,       setIsRetry]       = useState(false);
   const [celebration,   setCelebration]   = useState(false);
   const [phaseToast,    setPhaseToast]    = useState<string | null>(null);
+  const [avatarEnabled, setAvatarEnabled] = useState(false);
 
   const PHASE_LABELS: Record<string, string> = {
     icebreaker: 'Icebreaker',
@@ -122,15 +121,11 @@ export default function RoleplaySessionPage() {
     completed: 'success',
   };
 
-  const user = useUser();
-  const currentAvatarModelUrl = useCurrentAvatarModel();
   const recognitionRef = useRef<any>(null);
   const continuousSilenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const targetLangRef = useRef(targetLanguage);
   const nativeLangRef = useRef(nativeLanguage);
   const chatInputRef = useRef<HTMLInputElement>(null);
-  const [avatarModelUrl, setAvatarModelUrl] = useState<string | undefined>(undefined);
-  const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
@@ -142,22 +137,6 @@ export default function RoleplaySessionPage() {
     });
     return () => setOnSpeakingChange(null);
   }, []);
-
-  useEffect(() => {
-    const stored = getStoredAvatarUrl();
-    if (stored) setAvatarModelUrl(stored);
-  }, []);
-
-  const resolvedModelUrl = character?.avatarModelUrl ?? avatarModelUrl ?? undefined;
-
-  useEffect(() => {
-    if (resolvedModelUrl) {
-      import('@react-three/drei').then(m => m.useGLTF.preload(resolvedModelUrl));
-    }
-    if (currentAvatarModelUrl ?? user?.avatarSrc) {
-      import('@react-three/drei').then(m => m.useGLTF.preload(currentAvatarModelUrl ?? user?.avatarSrc!));
-    }
-  }, [resolvedModelUrl, currentAvatarModelUrl, user?.avatarSrc]);
 
   // Play celebration sound effect
   useEffect(() => {
@@ -187,6 +166,7 @@ export default function RoleplaySessionPage() {
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Session not found'); }
         const data = await res.json();
         setSession(data.session);
+        setAvatarEnabled(data.session?.avatarEnabled === true);
         setScenario(data.scenario);
         setSituation(data.situation);
         setDomain(data.domain);
@@ -635,18 +615,17 @@ export default function RoleplaySessionPage() {
 
   /* ══════════════════════════════════════════════════════════════════════
      RENDER
-     Layout:
-       ┌───────────────────────────────────┬──────────────────────────────┐
-       │  SCENE AREA (w-[60%])             │  SIDEBAR (w-[40%])           │
-       │                                   │  min-w-[280px] max-w-[420px] │
-       │  ┌─────────────────────────┐      │                              │
-       │  │  SessionStage           │      │  [ Chat ] [ Session Info ]  │
-       │  │  (merged canvas)        │      │                              │
-       │  │                         │      │  ChatPanel or SessionInfo   │
-       │  └─────────────────────────┘      │                              │
-       │  ─── speech bubble ───            │                              │
-       │  ─── control bar ───             │                              │
-       └───────────────────────────────────┴──────────────────────────────┘
+      Layout:
+        ┌───────────────────────────────────┬──────────────────────────────┐
+        │  SCENE AREA (w-[60%])             │  SIDEBAR (w-[40%])           │
+        │                                   │  min-w-[280px] max-w-[420px] │
+        │  ┌─────────────────────────┐      │                              │
+        │  │  Akademia AvatarViewport│      │  [ Chat ] [ Session Info ]  │
+        │  │  (left half)            │      │                              │
+        │  │                         │      │  ChatPanel or SessionInfo   │
+        │  └─────────────────────────┘      │                              │
+        │  ─── control bar ───             │                              │
+        └───────────────────────────────────┴──────────────────────────────┘
      ═════════════════════════════════════════════════════════════════════ */
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -657,22 +636,25 @@ export default function RoleplaySessionPage() {
         {/* Environment photo backdrop fills column (absolute z-0) */}
         <EnvironmentBackdrop domainSlug={domainSlug} />
 
-        {/* ── Merged avatar canvas — single SessionStage z-10 ── */}
+        {/* ── AI Character Visual — full width, z-10 ── */}
         <div className="absolute inset-0 z-10 pointer-events-none">
-          <SessionStage
-            ai={{
-              modelUrl: resolvedModelUrl,
-              mode: avatarMode,
-              emotion: latestAi?.emotionTone,
-              gesture: latestAi?.gestureHint,
-              cameraIntent: 'face-partner-left',
-            }}
-            user={{
-              modelUrl: currentAvatarModelUrl ?? user?.avatarSrc ?? undefined,
-              mode: isListening ? 'talking' : 'idle',
-              cameraIntent: 'face-partner-right',
-            }}
-          />
+          {avatarEnabled && character?.avatarModelUrl ? (
+            <AvatarViewport3D
+              name={charName}
+              accentColor={charColor}
+              modelUrl={character?.avatarModelUrl ?? undefined}
+              mode={avatarMode}
+              emotion={latestAi?.emotionTone}
+              gesture={latestAi?.gestureHint}
+              cameraMode="front"
+            />
+          ) : (
+            <VoiceOnlyStage
+              name={charName}
+              accentColor={charColor}
+              mode={avatarMode}
+            />
+          )}
         </div>
 
         {/* ── Celebration overlay ── */}
@@ -702,6 +684,28 @@ export default function RoleplaySessionPage() {
             <LiveBadge />
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const next = !avatarEnabled;
+                setAvatarEnabled(next);
+                fetch(`/api/sessions/${sessionId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ avatarEnabled: next }),
+                }).catch(() => setAvatarEnabled(!next));
+              }}
+              className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                avatarEnabled
+                  ? 'bg-dojo-accent/20 border-dojo-accent text-dojo-accent'
+                  : 'bg-dojo-surface-raised/80 border-dojo-border text-dojo-text-muted hover:border-dojo-text-muted'
+              }`}
+              title={avatarEnabled ? 'Disable avatar' : 'Enable avatar'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </button>
             <button
               className="lg:hidden flex h-8 w-8 items-center justify-center rounded-full bg-dojo-surface-raised/80 border border-dojo-border text-dojo-text-muted"
               onClick={() => { setMobileTab('chat'); setShowMobilePanel(true); }}
@@ -810,17 +814,6 @@ export default function RoleplaySessionPage() {
           )}
         </div>
       </aside>
-
-      {/* ═══════════ AVATURN CREATOR MODAL ═══════════ */}
-      {showAvatarCreator && (
-        <AvatarCreator
-          onExport={(result) => {
-            setAvatarModelUrl(result.url);
-            setShowAvatarCreator(false);
-          }}
-          onClose={() => setShowAvatarCreator(false)}
-        />
-      )}
 
       {/* ═══════════ MOBILE SLIDE-IN PANEL ═══════════ */}
       {showMobilePanel && (

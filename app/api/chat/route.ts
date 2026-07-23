@@ -99,7 +99,7 @@ export async function POST(req: Request) {
 
     const conversationHistory: ChatTurn[] = conversationRows.map(row => ({
       role: row.speaker === 'ai' ? 'assistant' as const : 'user' as const,
-      content: row.messageTarget ?? row.messageJp,
+      content: row.messageNative ?? row.messageTarget,
     }));
 
     const mlPipelineOutput = await analyzeAndGenerateTurn(
@@ -142,9 +142,7 @@ export async function POST(req: Request) {
         speaker: 'user',
         messageTarget: mlPipelineOutput.messageTarget,
         messageNative: mlPipelineOutput.messageNative,
-        messageJp: isJapanese ? mlPipelineOutput.messageTarget : (mlPipelineOutput.messageTarget ?? userRawInput),
         messageRomaji: mlPipelineOutput.messageRomaji,
-        messageEn: mlPipelineOutput.messageNative,
         emotionTone: mlPipelineOutput.emotionTone ?? null,
         gestureHint: mlPipelineOutput.gestureHint ?? null,
         isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
@@ -217,9 +215,7 @@ export async function POST(req: Request) {
         speaker: 'ai',
         messageTarget: mlPipelineOutput.nextAiReply.target,
         messageNative: mlPipelineOutput.nextAiReply.native,
-        messageJp: isJapanese ? mlPipelineOutput.nextAiReply.target : (mlPipelineOutput.nextAiReply.target ?? ''),
         messageRomaji: mlPipelineOutput.nextAiReply.romaji,
-        messageEn: mlPipelineOutput.nextAiReply.native,
         emotionTone: mlPipelineOutput.nextAiReply.emotionTone ?? null,
         gestureHint: mlPipelineOutput.nextAiReply.gestureHint ?? null,
         isValidInContext: true,

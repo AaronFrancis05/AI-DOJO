@@ -2,6 +2,7 @@ import { db } from '../../../../src/db';
 import { audioJobs, conversations } from '../../../../src/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveAzureVoice } from '../../../../lib/language';
 
 export const runtime = 'nodejs';
 
@@ -40,27 +41,6 @@ export async function POST(req: NextRequest) {
 
     const sdk = await import('microsoft-cognitiveservices-speech-sdk');
 
-    const LANGUAGE_VOICE_MAP: Record<string, string> = {
-      'ja-JP': 'ja-JP-NanamiNeural',
-      'en-US': 'en-US-JennyNeural',
-      'en': 'en-US-JennyNeural',
-      'ja': 'ja-JP-NanamiNeural',
-      'fr-FR': 'fr-FR-DeniseNeural',
-      'fr': 'fr-FR-DeniseNeural',
-      'es-ES': 'es-ES-ElviraNeural',
-      'es': 'es-ES-ElviraNeural',
-      'de-DE': 'de-DE-KatjaNeural',
-      'de': 'de-DE-KatjaNeural',
-      'zh-CN': 'zh-CN-XiaoxiaoNeural',
-      'zh': 'zh-CN-XiaoxiaoNeural',
-      'ko-KR': 'ko-KR-SunHiNeural',
-      'ko': 'ko-KR-SunHiNeural',
-    };
-
-    function resolveVoice(lang: string): string {
-      return LANGUAGE_VOICE_MAP[lang] ?? LANGUAGE_VOICE_MAP[lang?.split('-')[0]] ?? 'en-US-JennyNeural';
-    }
-
     const results: { jobId: number; status: string; error?: string }[] = [];
 
     for (const job of pending) {
@@ -70,7 +50,7 @@ export async function POST(req: NextRequest) {
         }).where(eq(audioJobs.id, job.id));
 
         const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
-        speechConfig.speechSynthesisVoiceName = resolveVoice(job.lang);
+        speechConfig.speechSynthesisVoiceName = resolveAzureVoice(job.lang, job.voiceGender ?? 'female');
         speechConfig.speechSynthesisOutputFormat =
           sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3;
 

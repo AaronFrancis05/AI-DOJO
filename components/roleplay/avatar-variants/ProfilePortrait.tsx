@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useRef, useState } from 'react';
 
-const AvatarViewport = dynamic(() => import('@/components/roleplay/AvatarViewport').then(m => ({ default: m.AvatarViewport })), {
+const AvatarViewport = dynamic(() => import('@/components/roleplay/AvatarViewport3D').then(m => ({ default: m.AvatarViewport3D })), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-full">
