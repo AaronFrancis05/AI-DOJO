@@ -87,7 +87,7 @@ export const vocabulary = pgTable('vocabulary', {
   id:             serial('id').primaryKey(),
   scenarioId:     integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
   targetText:     varchar('target_text', { length: 200 }).notNull(),
-  romaji:         varchar('romaji', { length: 200 }).notNull(),
+  romaji:         varchar('romaji', { length: 200 }),
   translation:    varchar('translation', { length: 300 }).notNull(),
   languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   category:       varchar('category', { length: 60 }).notNull(),

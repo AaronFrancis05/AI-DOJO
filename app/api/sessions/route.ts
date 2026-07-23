@@ -143,8 +143,10 @@ export async function POST(req: Request) {
 
   const sessionNumber = (result?.count ?? 0) + 1;
 
-  let voiceGender = reqVoiceGender ?? 'female';
-  if (!reqVoiceGender) {
+  let voiceGender = 'female';
+  if (reqVoiceGender && ['female', 'male'].includes(reqVoiceGender)) {
+    voiceGender = reqVoiceGender;
+  } else {
     const [prefs] = await db
       .select()
       .from(userPreferences)

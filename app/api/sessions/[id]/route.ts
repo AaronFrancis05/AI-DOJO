@@ -231,10 +231,13 @@ export async function PATCH(
   const body = await req.json();
   const { status } = body;
 
-  const updateData: Record<string, any> = {};
+  const updateData: Partial<typeof sessions.$inferInsert> = {};
 
   if (body.avatarEnabled !== undefined) {
-    updateData.avatarEnabled = body.avatarEnabled === true;
+    if (typeof body.avatarEnabled !== 'boolean') {
+      return Response.json({ error: 'avatarEnabled must be a boolean' }, { status: 400 });
+    }
+    updateData.avatarEnabled = body.avatarEnabled;
   }
 
   if (status) {
@@ -244,6 +247,8 @@ export async function PATCH(
     updateData.status = status;
     if (status === 'completed') {
       updateData.completedAt = new Date();
+    } else if (status === 'active' || status === 'paused') {
+      updateData.completedAt = null;
     }
   }
 

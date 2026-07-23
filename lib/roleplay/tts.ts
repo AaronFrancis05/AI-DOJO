@@ -64,7 +64,12 @@ export function speak(text: string, lang: string = 'ja-JP'): Promise<void> {
     utterance.pitch = 1.0;
     utterance.onend = () => { notifySpeaking(false); resolve(); };
     utterance.onerror = () => { notifySpeaking(false); resolve(); };
-    window.speechSynthesis.speak(utterance);
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      notifySpeaking(false);
+      resolve();
+    }
   });
 }
 
@@ -136,6 +141,13 @@ export async function speakWithVisemes(
           return;
         }
 
+        if (audioCtx.state === 'closed') {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          notifySpeaking(false);
+          resolve();
+          return;
+        }
         const elapsed = (audioCtx.currentTime - startTime) * 1000;
 
         while (visemeIndex < visemes.length && visemes[visemeIndex].offsetMs <= elapsed) {
@@ -191,7 +203,7 @@ export function stop(): void {
 /* ── Span-based mixed-language speech ──────────────────── */
 
 function resolveTTSVoice(bcp47: string): string {
-  return resolveAzureVoice(bcp47, currentVoiceGender);
+  return resolveAzureVoice(bcp47, currentVoiceGender.toLowerCase());
 }
 
 function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string, text?: string): string {
@@ -280,6 +292,13 @@ async function speakAzureSSML(ssml: string): Promise<void> {
           return;
         }
 
+        if (audioCtx.state === 'closed') {
+          currentVisemeId = -1;
+          isAzureSpeaking = false;
+          notifySpeaking(false);
+          resolve();
+          return;
+        }
         const elapsed = (audioCtx.currentTime - startTime) * 1000;
 
         while (visemeIndex < visemes.length && visemes[visemeIndex].offsetMs <= elapsed) {

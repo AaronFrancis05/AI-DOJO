@@ -186,7 +186,11 @@ export async function POST(req: Request) {
       ? `Key vocabulary for this lesson:\n${
           isSameLanguage
             ? vocabRows.map((v, i) => `  ${i + 1}. "${v.translation}"${v.usageTip ? ` — ${v.usageTip}` : ''}`).join('\n')
-            : vocabRows.map((v, i) => `  ${i + 1}. "${v.targetText}" (${v.romaji ?? ''}) = "${v.translation}"`).join('\n')
+            : vocabRows.map((v, i) => {
+                const hasRomaji = getTargetLangConfig(targetLanguage).hasRomaji;
+                const romajiPart = hasRomaji && v.romaji ? ` (${v.romaji})` : '';
+                return `  ${i + 1}. "${v.targetText}"${romajiPart} = "${v.translation}"`;
+              }).join('\n')
         }`
       : '';
 
@@ -378,7 +382,11 @@ RULES:
     const stream = new ReadableStream({
       async start(controller) {
         const send = (data: string) => {
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          try {
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          } catch {
+            /* client disconnected — ignore */
+          }
         };
 
         try {
@@ -458,17 +466,18 @@ RULES:
                 targetBcp47,
                 currentPhase,
                 'ai',
+                session.voiceGender ?? undefined,
               );
             }
 
-            send(JSON.stringify({
-              type: 'done',
-              fullText: fullAiText,
-              phase: sessionStartPhase,
-              analysis: { corrections: [], suggestedReplies: [] },
-            }));
-            controller.close();
-            return;
+              send(JSON.stringify({
+                type: 'done',
+                fullText: fullAiText,
+                phase: sessionStartPhase,
+                analysis: { corrections: [], suggestedReplies: [] },
+              }));
+              try { controller.close(); } catch {}
+              return;
           }
 
           const analysis = await analyzeUserTurn(
@@ -576,7 +585,7 @@ RULES:
                   suggestedReplies: analysis.suggestedReplies ?? [],
                 },
               }));
-              controller.close();
+              try { controller.close(); } catch {}
               return;
             }
           }
@@ -815,6 +824,7 @@ RULES:
               targetBcp47,
               currentPhase,
               'ai',
+              session.voiceGender ?? undefined,
             );
           }
 
@@ -865,7 +875,7 @@ RULES:
             },
           }));
 
-          controller.close();
+          try { controller.close(); } catch {}
         } catch (err) {
           // Clean up pendingRetryCorrectionId on error to prevent stuck sessions
           try {
@@ -887,7 +897,7 @@ RULES:
             const msg = err instanceof Error ? err.message : 'Internal server error';
             send(JSON.stringify({ type: 'error', code: 'internal', message: msg }));
           }
-          controller.close();
+          try { controller.close(); } catch {}
         }
       },
     });

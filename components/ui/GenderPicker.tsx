@@ -1,8 +1,8 @@
 'use client';
 
 interface GenderPickerProps {
-  value: string;
-  onChange: (gender: string) => void;
+  value: 'female' | 'male';
+  onChange: (gender: 'female' | 'male') => void;
   disabled?: boolean;
 }
 

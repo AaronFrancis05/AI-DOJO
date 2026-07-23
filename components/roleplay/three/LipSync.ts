@@ -21,6 +21,7 @@ export class LipSync {
 
   private _expressionEngine: { setTalkingState: (t: boolean) => void } | null = null;
   private _externalAnalyser: AnalyserNode | null = null;
+  private _cachedFaceMesh: THREE.SkinnedMesh | null = null;
 
   constructor(model: THREE.Group) {
     this.model = model;
@@ -149,6 +150,7 @@ export class LipSync {
   }
 
   private _findFaceMesh(): THREE.SkinnedMesh | null {
+    if (this._cachedFaceMesh) return this._cachedFaceMesh;
     let faceMesh: THREE.SkinnedMesh | null = null;
     this.model.traverse((obj) => {
       if (
@@ -161,6 +163,7 @@ export class LipSync {
         }
       }
     });
+    this._cachedFaceMesh = faceMesh;
     return faceMesh;
   }
 
@@ -224,20 +227,11 @@ export class LipSync {
       if (idx !== undefined) influences[idx] = 0;
     });
 
-    if (hasViseme) {
-      if (visemeAA !== undefined && visemeO !== undefined) {
-        influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
-        influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
-      } else if (jawFallback !== undefined) {
-        influences[jawFallback] = Math.min(1.0, this.currentMouthOpen);
-      }
-    } else {
-      if (visemeAA !== undefined && visemeO !== undefined) {
-        influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
-        influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
-      } else if (jawFallback !== undefined) {
-        influences[jawFallback] = Math.min(1.0, this.currentMouthOpen);
-      }
+    if (visemeAA !== undefined && visemeO !== undefined) {
+      influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
+      influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
+    } else if (jawFallback !== undefined) {
+      influences[jawFallback] = Math.min(1.0, this.currentMouthOpen);
     }
   }
 }

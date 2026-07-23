@@ -154,13 +154,15 @@ export default function CharacterSelectionPage() {
               </div>
               <h3 className="mt-3 text-sm font-semibold text-dojo-text-primary">{char.name}</h3>
               <p className="text-xs text-dojo-text-muted">{char.role}</p>
-              <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                char.gender === 'female'
-                  ? 'bg-pink-500/10 text-pink-400'
-                  : 'bg-sky-500/10 text-sky-400'
-              }`}>
-                {char.gender === 'female' ? '♀' : '♂'} {char.gender}
-              </span>
+              {char.gender && (
+                <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  char.gender === 'female'
+                    ? 'bg-pink-500/10 text-pink-400'
+                    : 'bg-sky-500/10 text-sky-400'
+                }`}>
+                  {char.gender === 'female' ? '♀' : '♂'} {char.gender}
+                </span>
+              )}
               <p className="mt-2 text-[11px] text-dojo-text-muted leading-relaxed line-clamp-2">{char.personality}</p>
               <Button
                 variant="primary"

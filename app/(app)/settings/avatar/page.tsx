@@ -51,15 +51,21 @@ export default function AvatarSettingsPage() {
   }, []);
 
   async function handleGenderChange(charId: number, gender: string) {
+    const prev = characters;
     setCharacters(prev => prev.map(c => c.id === charId ? { ...c, gender } : c));
     setSavingGender(g => ({ ...g, [charId]: true }));
     try {
-      await fetch(`/api/characters/${charId}`, {
+      const res = await fetch(`/api/characters/${charId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gender }),
       });
-    } catch {}
+      if (!res.ok) {
+        setCharacters(prev);
+      }
+    } catch {
+      setCharacters(prev);
+    }
     setSavingGender(g => ({ ...g, [charId]: false }));
   }
 
@@ -198,7 +204,7 @@ export default function AvatarSettingsPage() {
                               <p className="text-xs text-dojo-text-muted truncate">{char.voiceType}</p>
                             </div>
                             <GenderPicker
-                              value={char.gender}
+                              value={char.gender as 'female' | 'male'}
                               onChange={(g) => handleGenderChange(char.id, g)}
                               disabled={savingGender[char.id]}
                             />

@@ -115,7 +115,7 @@ const AZURE_VOICE_MAP: Record<string, { female: string; male: string }> = {
 };
 
 export function resolveAzureVoice(bcp47: string, gender: string = 'female'): string {
-  const key = gender === 'male' ? 'male' : 'female';
+  const key = gender.toLowerCase() === 'male' ? 'male' : 'female';
   return AZURE_VOICE_MAP[bcp47]?.[key]
     ?? AZURE_VOICE_MAP[bcp47?.split('-')[0]]?.[key]
     ?? 'en-US-JennyNeural';

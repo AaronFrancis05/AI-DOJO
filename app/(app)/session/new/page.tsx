@@ -12,6 +12,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense } from 'react';
 import { Button } from '@/components/ui/Button';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { GenderPicker } from '@/components/ui/GenderPicker';
 import { AlertCircleIcon, RefreshCw } from 'lucide-react';
 
 const TIMEOUT_MS = 10_000;
@@ -23,7 +24,7 @@ function SessionCreator() {
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
-  const [voiceGender, setVoiceGender] = useState<string>('female');
+  const [voiceGender, setVoiceGender] = useState<'female' | 'male'>('female');
   const [showPicker, setShowPicker] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
@@ -125,28 +126,7 @@ function SessionCreator() {
             />
             <div className="border-t border-dojo-border pt-4">
               <p className="text-xs font-medium text-dojo-text-muted mb-2">AI Voice</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setVoiceGender('female')}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                    voiceGender === 'female'
-                      ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-accent'
-                      : 'border-dojo-border text-dojo-text-muted hover:border-dojo-text-muted'
-                  }`}
-                >
-                  ♀ Feminine
-                </button>
-                <button
-                  onClick={() => setVoiceGender('male')}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                    voiceGender === 'male'
-                      ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-accent'
-                      : 'border-dojo-border text-dojo-text-muted hover:border-dojo-text-muted'
-                  }`}
-                >
-                  ♂ Masculine
-                </button>
-              </div>
+              <GenderPicker value={voiceGender} onChange={setVoiceGender} />
             </div>
           </div>
           <Button

@@ -12,6 +12,7 @@ import { SliderRow } from '@/components/ui/SliderRow';
 import { Button } from '@/components/ui/Button';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
+import { GenderPicker } from '@/components/ui/GenderPicker';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { type BehaviorMode } from '@/lib/design-tokens';
@@ -27,7 +28,7 @@ export default function SettingsPage() {
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
-  const [voiceGender, setVoiceGender] = useState<string | null>(null);
+  const [voiceGender, setVoiceGender] = useState<'female' | 'male' | null>(null);
   const [voiceGenderDirty, setVoiceGenderDirty] = useState(false);
   const [notifications, setNotifications] = useState({
     push: true,
@@ -132,30 +133,10 @@ export default function SettingsPage() {
                     <p className="text-xs text-dojo-text-muted mb-3">
                       Choose the voice gender for AI character speech in new sessions.
                     </p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => { setVoiceGender('female'); setVoiceGenderDirty(true); }}
-                        className={`flex-1 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-colors ${
-                          voiceGender === 'female'
-                            ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-accent'
-                            : 'border-dojo-border bg-dojo-surface text-dojo-text-muted hover:border-dojo-text-muted'
-                        }`}
-                      >
-                        <div className="text-lg mb-1">♀</div>
-                        Feminine
-                      </button>
-                      <button
-                        onClick={() => { setVoiceGender('male'); setVoiceGenderDirty(true); }}
-                        className={`flex-1 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-colors ${
-                          voiceGender === 'male'
-                            ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-accent'
-                            : 'border-dojo-border bg-dojo-surface text-dojo-text-muted hover:border-dojo-text-muted'
-                        }`}
-                      >
-                        <div className="text-lg mb-1">♂</div>
-                        Masculine
-                      </button>
-                    </div>
+                    <GenderPicker
+                      value={voiceGender ?? 'female'}
+                      onChange={(g) => { setVoiceGender(g); setVoiceGenderDirty(true); }}
+                    />
                     {voiceGenderDirty && (
                       <p className="mt-2 text-xs text-dojo-text-muted">Saving\u2026</p>
                     )}

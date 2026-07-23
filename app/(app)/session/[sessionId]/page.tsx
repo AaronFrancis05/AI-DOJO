@@ -638,7 +638,7 @@ export default function RoleplaySessionPage() {
 
         {/* ── AI Character Visual — full width, z-10 ── */}
         <div className="absolute inset-0 z-10 pointer-events-none">
-          {avatarEnabled ? (
+          {avatarEnabled && character?.avatarModelUrl ? (
             <AvatarViewport3D
               name={charName}
               accentColor={charColor}

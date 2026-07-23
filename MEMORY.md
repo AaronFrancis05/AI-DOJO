@@ -41,7 +41,7 @@ Last updated: 2026-07-23
 
 ## Current state
 
-All 9 workstreams (§1–§9) are complete. The multi-language pivot is fully wired at the schema, engine, TTS, and UI levels. TypeScript compiles cleanly (`npx tsc --noEmit` passes).
+All 9 workstreams (§1–§9) are complete. The multi-language pivot is code-complete at the schema, engine, TTS, and UI levels. TypeScript compiles cleanly (`npx tsc --noEmit` passes).
 
 **What works:**
 - Schema supports multi-language (en, ja, fr, lg) with gender on characters and gender-aware TTS
