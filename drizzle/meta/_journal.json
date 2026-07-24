@@ -71,6 +71,62 @@
       "when": 1784267438918,
       "tag": "0009_fearless_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784299548731,
+      "tag": "0010_warm_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784304294179,
+      "tag": "0011_ambiguous_thunderbolts",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784310664993,
+      "tag": "0012_aberrant_prodigy",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784518087819,
+      "tag": "0013_kind_gorilla_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784608329273,
+      "tag": "0014_gifted_randall_flagg",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784659838374,
+      "tag": "0015_numerous_black_bird",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0016_multi_language_pivot",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785900000000,
+      "tag": "0017_voice_gender",
+      "breakpoints": true
     }
   ]
 }

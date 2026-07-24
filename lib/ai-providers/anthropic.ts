@@ -51,5 +51,31 @@ export function createAnthropicProvider(): AIProvider {
         throw categorizeProviderError('anthropic', modelName, err);
       }
     },
+
+    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+      try {
+        const messages = history.map(t => ({
+          role: t.role as 'user' | 'assistant',
+          content: t.content,
+        }));
+
+        const stream = await client.messages.create({
+          model: modelName,
+          system: systemInstruction,
+          messages,
+          max_tokens: 4096,
+          stream: true,
+        }) as unknown as AsyncIterable<Anthropic.MessageStreamEvent>;
+
+        for await (const chunk of stream) {
+          if (chunk.type === 'content_block_delta' && chunk.delta && 'text' in chunk.delta) {
+            yield (chunk.delta as { text: string }).text;
+          }
+        }
+      } catch (err) {
+        if (err instanceof AIProviderError) throw err;
+        throw categorizeProviderError('anthropic', modelName, err);
+      }
+    },
   };
 }

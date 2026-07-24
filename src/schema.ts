@@ -14,6 +14,7 @@ export const users = pgTable('users', {
   preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('ja').notNull(),
   streak:                integer('streak').default(0).notNull(),
   lastActiveDate:        varchar('last_active_date', { length: 10 }),
+  avatarSrc:             text('avatar_src'),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
   googleId:              varchar('google_id', { length: 255 }),
@@ -58,6 +59,8 @@ export const characters = pgTable('characters', {
   avatarColor:   varchar('avatar_color', { length: 20 }).notNull(),
   avatarIcon:    varchar('avatar_icon', { length: 40 }).notNull(),
   voiceType:     varchar('voice_type', { length: 80 }).notNull(),
+  gender:        varchar('gender', { length: 10 }),
+  avatarModelUrl:text('avatar_model_url'),
   defaultForDomainId: integer('default_for_domain_id').references(() => domains.id, { onDelete: 'set null' }),
   displayOrder:  integer('display_order').default(0).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
@@ -83,9 +86,10 @@ export const scenarios = pgTable('scenarios', {
 export const vocabulary = pgTable('vocabulary', {
   id:             serial('id').primaryKey(),
   scenarioId:     integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
-  japanese:       varchar('japanese', { length: 200 }).notNull(),
-  romaji:         varchar('romaji', { length: 200 }).notNull(),
-  english:        varchar('english', { length: 300 }).notNull(),
+  targetText:     varchar('target_text', { length: 200 }).notNull(),
+  romaji:         varchar('romaji', { length: 200 }),
+  translation:    varchar('translation', { length: 300 }).notNull(),
+  languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   category:       varchar('category', { length: 60 }).notNull(),
   usageTip:       text('usage_tip'),
   formalityLevel: varchar('formality_level', { length: 20 }).default('polite').notNull(),
@@ -98,7 +102,8 @@ export const scenarioGoals = pgTable('scenario_goals', {
   sequenceOrder:  integer('sequence_order').notNull(),
   goalText:       text('goal_text').notNull(),
   goalType:       varchar('goal_type', { length: 30 }).notNull(),
-  targetPhraseJp: varchar('target_phrase_jp', { length: 200 }),
+  targetPhrase:   varchar('target_phrase', { length: 200 }),
+  languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -109,19 +114,32 @@ export const sessions = pgTable('sessions', {
   situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
+  phase:           varchar('phase', { length: 20 }).default('icebreaker').notNull(),
+  icebreakerIndex: integer('icebreaker_index').default(0).notNull(),
+  runningScore:    integer('running_score').default(100).notNull(),
+  pendingRetryCorrectionId: integer('pending_retry_correction_id'),
   targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
   totalTurns:      integer('total_turns').default(0).notNull(),
+  phaseTurnCount:  integer('phase_turn_count').default(0).notNull(),
   vocabularyScore: integer('vocabulary_score'),
   grammarScore:    integer('grammar_score'),
   fluencyScore:    integer('fluency_score'),
   culturalScore:   integer('cultural_score'),
   taskScore:       integer('task_score'),
   feedback:        text('feedback'),
+  avatarEnabled:   boolean('avatar_enabled').default(false).notNull(),
+  voiceGender:     varchar('voice_gender', { length: 10 }).default('female').notNull(),
   startedAt:       timestamp('started_at').defaultNow().notNull(),
   completedAt:     timestamp('completed_at'),
+});
+
+export const userPreferences = pgTable('user_preferences', {
+  userId:      text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  voiceGender: varchar('voice_gender', { length: 10 }).default('female').notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow(),
 });
 
 export const conversations = pgTable('conversations', {
@@ -130,16 +148,34 @@ export const conversations = pgTable('conversations', {
   userId:                text('user_id').references(() => users.id, { onDelete: 'cascade' }),
   turnNo:                integer('turn_no').notNull(),
   speaker:               varchar('speaker', { length: 20 }).notNull(),
-  messageTarget:         text('message_target'),
+  messageTarget:         text('message_target').notNull(),
   messageNative:         text('message_native'),
-  messageJp:             text('message_jp').notNull(),
   messageRomaji:         text('message_romaji'),
-  messageEn:             text('message_en').notNull(),
   emotionTone:           varchar('emotion_tone', { length: 40 }),
   gestureHint:           varchar('gesture_hint', { length: 120 }),
   isEnglishWhenExpected: boolean('is_english_when_expected').default(false).notNull(),
   isValidInContext:      boolean('is_valid_in_context').default(true).notNull(),
+  audioStatus:           varchar('audio_status', { length: 20 }).default('pending').notNull(),
+  audioUrl:              text('audio_url'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
+});
+
+export const audioJobs = pgTable('audio_jobs', {
+  id:             serial('id').primaryKey(),
+  conversationId: integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }).notNull(),
+  sessionId:      integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull(),
+  text:           text('text').notNull(),
+  lang:           varchar('lang', { length: 20 }).notNull(),
+  phase:          varchar('phase', { length: 20 }).notNull(),
+  speaker:        varchar('speaker', { length: 20 }).notNull(),
+  voiceGender:    varchar('voice_gender', { length: 10 }),
+  status:         varchar('status', { length: 20 }).default('pending').notNull(),
+  attempts:       integer('attempts').default(0).notNull(),
+  maxAttempts:    integer('max_attempts').default(3).notNull(),
+  error:          text('error'),
+  audioUrl:       text('audio_url'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  processedAt:    timestamp('processed_at'),
 });
 
 export const corrections = pgTable('corrections', {
@@ -152,6 +188,8 @@ export const corrections = pgTable('corrections', {
   correctedRomaji: text('corrected_romaji'),
   explanation:     text('explanation').notNull(),
   severity:        varchar('severity', { length: 20 }).default('minor').notNull(),
+  retryOfCorrectionId: integer('retry_of_correction_id'),
+  isFinalAttempt:      boolean('is_final_attempt').default(false).notNull(),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -185,6 +223,9 @@ export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   conversationId: integer('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
   vocabularyId:   integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'set null' }),
   usedCorrectly:  boolean('used_correctly').notNull(),
+  attemptNumber:  integer('attempt_number').default(1).notNull(),
+  accuracyScore:  integer('accuracy_score'),
+  phase:          varchar('phase', { length: 20 }).default('icebreaker').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -195,6 +236,16 @@ export const shareTokens = pgTable('share_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const userAvatars = pgTable('user_avatars', {
+  id:           serial('id').primaryKey(),
+  userId:       text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  avatarUrl:    text('avatar_url').notNull(),
+  thumbnailUrl: text('thumbnail_url'),
+  isSelected:   boolean('is_selected').default(false).notNull(),
+  source:       varchar('source', { length: 20 }).default('avaturn').notNull(),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
+});
+
 // ── Relations ────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -202,6 +253,11 @@ export const usersRelations = relations(users, ({ many }) => ({
   conversations:    many(conversations),
   evaluations:      many(evaluations),
   goalCompletions:  many(goalCompletions),
+  avatars:          many(userAvatars),
+}));
+
+export const userAvatarsRelations = relations(userAvatars, ({ one }) => ({
+  user: one(users, { fields: [userAvatars.userId], references: [users.id] }),
 }));
 
 export const domainsRelations = relations(domains, ({ many }) => ({
@@ -251,6 +307,12 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
   session:     one(sessions, { fields: [conversations.sessionId], references: [sessions.id] }),
   user:        one(users,    { fields: [conversations.userId],   references: [users.id] }),
   corrections: many(corrections),
+  audioJobs:   many(audioJobs),
+}));
+
+export const audioJobsRelations = relations(audioJobs, ({ one }) => ({
+  conversation: one(conversations, { fields: [audioJobs.conversationId], references: [conversations.id] }),
+  session:      one(sessions,      { fields: [audioJobs.sessionId],      references: [sessions.id] }),
 }));
 
 export const correctionsRelations = relations(corrections, ({ one }) => ({

@@ -242,21 +242,20 @@ export default function AuthPage() {
               priority
               sizes="(max-width: 1024px) 100vw, 480px"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-dojo-canvas via-dojo-canvas/40 to-transparent" />
-            <div className="absolute inset-0 bg-dojo-canvas/20" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
 
             <div className="absolute inset-0 z-10 flex flex-col justify-between p-10">
               {/* TOP — Japanese greeting */}
-              <div className="ml-auto max-w-xs rounded-2xl rounded-tr-none border border-dojo-border bg-dojo-surface-raised/90 p-4 shadow-xl backdrop-blur-md">
-                <div className="text-sm font-medium leading-relaxed text-dojo-text-primary">
+              <div className="ml-auto max-w-xs rounded-2xl rounded-tr-none border border-white/10 bg-black/50 p-4 shadow-xl backdrop-blur-xl">
+                <div className="text-sm font-medium leading-relaxed text-white">
                   おかえり！
                 </div>
-                <div className="mt-1 text-xs text-dojo-text-muted">Welcome back!</div>
-                <div className="my-2 h-px bg-dojo-border" />
-                <div className="text-sm font-medium text-dojo-text-primary">
+                <div className="mt-1 text-xs text-white/70">Welcome back!</div>
+                <div className="my-2 h-px bg-white/10" />
+                <div className="text-sm font-medium text-white">
                   今日も一緒に頑張りましょう！
                 </div>
-                <div className="mt-1 text-xs text-dojo-text-muted">Let&apos;s do our best today!</div>
+                <div className="mt-1 text-xs text-white/70">Let&apos;s do our best today!</div>
               </div>
 
               
@@ -272,12 +271,12 @@ export default function AuthPage() {
               priority
               sizes="(max-width: 1024px) 100vw, 50vw"
             />
-            <div className="absolute inset-0 bg-gradient-to-br from-dojo-canvas/95 via-dojo-canvas/40 to-dojo-canvas/80" />
+            <div className="absolute inset-0 bg-gradient-to-br from-black/80 via-black/30 to-black/50" />
 
             <div className="absolute inset-0 z-10 flex flex-col justify-center p-12">
               <div className="mb-8">
-                <h2 className="text-3xl font-bold leading-tight text-dojo-text-primary">Your Adventure Awaits</h2>
-                <p className="mt-3 text-base leading-relaxed text-dojo-text-muted">
+                <h2 className="text-3xl font-bold leading-tight text-white">Your Adventure Awaits</h2>
+                <p className="mt-3 text-base leading-relaxed text-white/80">
                   Practice speaking with AI characters in immersive real-world scenarios.
                 </p>
               </div>
@@ -293,24 +292,12 @@ export default function AuthPage() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-dojo-accent/30 bg-dojo-accent/20 text-dojo-accent">
                       {item.icon}
                     </div>
-                    <span className="text-sm font-medium text-dojo-text-primary">{item.text}</span>
+                    <span className="text-sm font-medium text-white">{item.text}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-2">
-                  {['S', 'J', 'M'].map((l) => (
-                    <div key={l} className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dojo-sidebar bg-dojo-accent/30 text-xs font-bold text-dojo-accent">
-                      {l}
-                    </div>
-                  ))}
-                </div>
-                <div className="ml-3">
-                  <div className="text-sm font-semibold text-dojo-text-primary">50,000+</div>
-                  <div className="text-xs text-dojo-text-muted">learners already joined</div>
-                </div>
-              </div>
+              
             </div>
           </>
         )}

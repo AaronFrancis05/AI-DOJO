@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { AvatarStage } from '@/components/roleplay/AvatarStage';
+import { CharacterPreviewCard } from '@/components/roleplay/avatar-variants/CharacterPreviewCard';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { getSituationById, type SituationFixture } from '@/lib/data/situations';
 import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
@@ -64,7 +64,11 @@ export default function CharacterSelectionPage() {
     load();
   }, [situationIdNum, domainSlug, searchParams]);
 
-  const startSession = async (characterId: number) => {
+  const startSession = useCallback(async (characterId: number, avatarModelUrl?: string | null) => {
+    if (avatarModelUrl) {
+      import('@react-three/drei').then(m => m.useGLTF.preload(avatarModelUrl));
+    }
+
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,7 +88,7 @@ export default function CharacterSelectionPage() {
     }
     const body = await res.json();
     router.push(`/session/${body.session.id}`);
-  };
+  }, [situationIdNum, behaviorMode, targetLanguage, nativeLanguage, router]);
 
   if (loading) {
     return (
@@ -140,22 +144,31 @@ export default function CharacterSelectionPage() {
           <Card key={char.id} hoverable className="group p-5">
             <div className="flex flex-col items-center text-center">
               <div className="h-40 w-full">
-                <AvatarStage
+                <CharacterPreviewCard
                   name={char.name}
                   role={char.role}
                   accentColor={char.avatarColor}
-                  compact
-                  mode="idle"
+                  modelUrl={char.avatarModelUrl ?? undefined}
+                  domainSlug={domainSlug}
                 />
               </div>
               <h3 className="mt-3 text-sm font-semibold text-dojo-text-primary">{char.name}</h3>
               <p className="text-xs text-dojo-text-muted">{char.role}</p>
+              {char.gender && (
+                <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  char.gender === 'female'
+                    ? 'bg-pink-500/10 text-pink-400'
+                    : 'bg-sky-500/10 text-sky-400'
+                }`}>
+                  {char.gender === 'female' ? '♀' : '♂'} {char.gender}
+                </span>
+              )}
               <p className="mt-2 text-[11px] text-dojo-text-muted leading-relaxed line-clamp-2">{char.personality}</p>
               <Button
                 variant="primary"
                 size="sm"
                 className="mt-4 w-full"
-                onClick={() => startSession(char.id)}
+                onClick={() => startSession(char.id, char.avatarModelUrl)}
               >
                 Start Practice
                 <ChevronRight className="ml-1 h-3.5 w-3.5" />

@@ -47,5 +47,28 @@ export function createAzureOpenAIProvider(): AIProvider {
         throw categorizeProviderError('azure-openai', deployment, err);
       }
     },
+
+    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+      try {
+        const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+          { role: 'system', content: systemInstruction },
+          ...history.map(t => ({ role: t.role as 'user' | 'assistant', content: t.content })),
+        ];
+
+        const stream = await client.chat.completions.create({
+          model: deployment,
+          messages,
+          stream: true,
+        });
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        }
+      } catch (err) {
+        if (err instanceof AIProviderError) throw err;
+        throw categorizeProviderError('azure-openai', deployment, err);
+      }
+    },
   };
 }

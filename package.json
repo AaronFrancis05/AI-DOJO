@@ -13,7 +13,9 @@
     "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.112.4",
+    "@anthropic-ai/sdk": "^0.112.1",
+    "@avaturn-live/web-sdk": "^0.5.0",
+    "@avaturn/sdk": "^1.1.4",
     "@gltf-transform/core": "^4.4.1",
     "@gltf-transform/extensions": "^4.4.1",
     "@gltf-transform/functions": "^4.4.1",
@@ -23,6 +25,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@upstash/redis": "^1.38.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",

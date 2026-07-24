@@ -12,6 +12,8 @@ export interface CharacterFixture {
   avatarColor: string;
   avatarIcon: string;
   voiceType: string;
+  gender: string;
+  avatarModelUrl?: string | null;
   defaultForDomain?: string;  // domain slug — resolved from defaultForDomainId
   displayOrder: number;
 }
@@ -25,6 +27,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#2D3BC5',
     avatarIcon: 'Smile',
     voiceType: 'Warm, Female — Mid Pitch',
+    gender: 'female',
+    avatarModelUrl: '/ai-avatars/Yuki-Tanaka.glb',
     defaultForDomain: 'restaurant',
     displayOrder: 1,
   },
@@ -36,6 +40,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#D14343',
     avatarIcon: 'UserCheck',
     voiceType: 'Calm, Male — Low Pitch',
+    gender: 'male',
+    avatarModelUrl: '/ai-avatars/KenjiSato.glb',
     defaultForDomain: 'hotel',
     displayOrder: 2,
   },
@@ -47,6 +53,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#2FAE66',
     avatarIcon: 'Smile',
     voiceType: 'Clear, Female — Mid-High Pitch',
+    gender: 'female',
+    avatarModelUrl: '/ai-avatars/Miyuki-Nakamura.glb',
     defaultForDomain: 'hospital',
     displayOrder: 3,
   },
@@ -58,6 +66,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#E3A939',
     avatarIcon: 'UserCheck',
     voiceType: 'Authoritative, Male — Mid Pitch',
+    gender: 'male',
+    avatarModelUrl: '/ai-avatars/Takeshi-Yamamoto.glb',
     defaultForDomain: 'travel',
     displayOrder: 4,
   },
@@ -69,6 +79,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#9333EA',
     avatarIcon: 'Star',
     voiceType: 'Warm, Female — Mid Pitch',
+    gender: 'female',
+    avatarModelUrl: '/ai-avatars/Hana-Kimura.glb',
     defaultForDomain: 'shopping',
     displayOrder: 5,
   },
@@ -80,6 +92,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#06B6D4',
     avatarIcon: 'Headphones',
     voiceType: 'Clear, Male — Mid Pitch',
+    gender: 'male',
+    avatarModelUrl: '/ai-avatars/Ryo-Aoki.glb',
     defaultForDomain: 'airport',
     displayOrder: 6,
   },
@@ -91,6 +105,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#2563EB',
     avatarIcon: 'UserCheck',
     voiceType: 'Calm, Male — Low Pitch',
+    gender: 'male',
+    avatarModelUrl: '/ai-avatars/Takashi-Mori.glb',
     defaultForDomain: 'business',
     displayOrder: 7,
   },
@@ -102,6 +118,8 @@ export const characters: CharacterFixture[] = [
     avatarColor: '#F59E0B',
     avatarIcon: 'Smile',
     voiceType: 'Warm, Female — Mid Pitch',
+    gender: 'female',
+    avatarModelUrl: '/ai-avatars/Sakura-Yamada.glb',
     defaultForDomain: 'daily_life',
     displayOrder: 8,
   },

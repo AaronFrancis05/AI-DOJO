@@ -48,7 +48,7 @@ export default function DomainDetailPage() {
   if (!domain) {
     return (
       <div className="mx-auto max-w-4xl p-6">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Domain not found</h1>
+        <h1 className="text-2xl font-bold text-dojo-text-primary">Scenario not found</h1>
         <Link href="/hub" className="text-dojo-accent mt-2 inline-block text-sm underline">
           Back to hub
         </Link>

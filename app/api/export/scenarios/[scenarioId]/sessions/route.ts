@@ -31,7 +31,7 @@ export async function GET(
       sequenceOrder: scenarioGoals.sequenceOrder,
       goalText: scenarioGoals.goalText,
       goalType: scenarioGoals.goalType,
-      targetPhraseJp: scenarioGoals.targetPhraseJp,
+      targetPhrase: scenarioGoals.targetPhrase,
     })
     .from(scenarioGoals)
     .where(eq(scenarioGoals.scenarioId, numericScenarioId))
@@ -74,9 +74,9 @@ export async function GET(
           const entry: any = {
             turnNo: conv.turnNo,
             speaker: conv.speaker,
-            messageJp: conv.messageJp,
+            messageTarget: conv.messageTarget,
+            messageNative: conv.messageNative,
             messageRomaji: conv.messageRomaji,
-            messageEn: conv.messageEn,
           };
 
           if (conv.emotionTone) entry.emotionTone = conv.emotionTone;

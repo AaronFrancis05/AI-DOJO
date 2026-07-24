@@ -14,6 +14,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Badge } from '@/components/ui/Badge';
 import { useUser } from '@/lib/auth/user-context';
+import { useCurrentAvatar } from '@/lib/auth/avatar-context';
 import {
   LayoutDashboard,
   Compass,
@@ -52,6 +53,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const user = useUser();
+  const currentAvatarUrl = useCurrentAvatar();
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
@@ -109,7 +111,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         <div className="flex items-center gap-3">
           <Avatar
             name={user?.name ?? 'Learner'}
-            src={user?.avatarSrc}
+            src={currentAvatarUrl ?? user?.avatarSrc}
             color={user?.avatarColor ?? '#2D3BC5'}
             size="md"
           />
