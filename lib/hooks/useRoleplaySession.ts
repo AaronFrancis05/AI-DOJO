@@ -53,7 +53,7 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onPhaseChange?: (phase: string) => void;
     onCelebration?: () => void;
   }) => Promise<void>;
-  sendGreeting: () => Promise<void>;
+  sendGreeting: (opts?: { onToken?: (t: string) => void }) => Promise<string>;
 }
 
 function cleanDisplay(text: string): string {
@@ -300,8 +300,12 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }
   }, [sessionId, phase, conversations.length]);
 
-  const sendGreeting = useCallback(async () => {
-    await submitTurnStream('__session_start__');
+  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void }) => {
+    let fullText = '';
+    await submitTurnStream('__session_start__', {
+      onToken: (t) => { if (t) fullText = t; opts?.onToken?.(t); },
+    });
+    return fullText;
   }, [submitTurnStream]);
 
   return {

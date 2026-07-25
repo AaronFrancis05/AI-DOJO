@@ -144,9 +144,9 @@ export default function ChatOnlyPage() {
           <button
             type="button"
             onClick={() => setInfoOpen(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
+            className="tap-target flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
           >
-            <Info className="h-3.5 w-3.5" />
+            <Info className="h-4 w-4" />
           </button>
           <SessionModeTabs sessionId={sessionId} active="chat" />
         </div>
@@ -156,7 +156,7 @@ export default function ChatOnlyPage() {
         <ChatPanel {...panelProps} />
       </div>
 
-      <div className="shrink-0 px-4 py-3 border-t border-dojo-border">
+      <div className="shrink-0 px-4 py-3 border-t border-dojo-border safe-bottom">
         <RoleplayInputBar
           onSend={handleSend}
           onPause={() => {

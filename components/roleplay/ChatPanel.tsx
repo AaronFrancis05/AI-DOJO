@@ -87,7 +87,7 @@ export function ChatPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto no-scrollbar px-4 py-3 space-y-3">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto no-scrollbar px-4 py-3 space-y-3 overscroll-contain">
         {conversations.map((turn) => {
           const isAi = turn.speaker === 'ai';
           const isLatestAi = isAi && turn.id === Math.max(...conversations.filter(c => c.speaker === 'ai').map(c => c.id), -1);

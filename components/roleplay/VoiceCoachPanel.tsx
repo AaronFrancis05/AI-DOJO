@@ -13,7 +13,7 @@ export function VoiceCoachPanel({
 }) {
   if (corrections.length === 0 && suggestedReplies.length === 0) return null;
   return (
-    <div className="absolute top-20 right-4 z-20 w-72 rounded-2xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md shadow-2xl p-4 space-y-3">
+    <div className="absolute top-20 right-4 left-4 sm:left-auto z-20 w-auto sm:w-72 rounded-2xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md shadow-2xl p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-dojo-text-primary">Coach tips</span>
         <button onClick={onDismiss}><X className="h-3.5 w-3.5 text-dojo-text-muted" /></button>
