@@ -4,10 +4,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { RoleplayInputBar } from '@/components/roleplay/RoleplayInputBar';
-import { useRoleplaySession } from '@/lib/hooks/useRoleplaySession';
+import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
+import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
+import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
+import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
+import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { getTargetLangConfig, getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
-import { ArrowLeft, MessageSquare, Volume2 } from 'lucide-react';
+import { ArrowLeft, Info, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 
 export default function ChatOnlyPage() {
@@ -18,8 +22,9 @@ export default function ChatOnlyPage() {
   const {
     session, scenario, character, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
+    domain, situation,
     submitTurnStream, sendGreeting,
-  } = useRoleplaySession(sessionId);
+  } = useRoleplaySessionContext();
 
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -28,7 +33,10 @@ export default function ChatOnlyPage() {
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
   const [muted, setMuted] = useState(false);
+  const [textMode, setTextMode] = useState(true);
+  const [infoOpen, setInfoOpen] = useState(false);
   const lastAiCompletedRef = useRef<number>(Date.now());
+  const { status: connectionStatus } = useLatencyMonitor();
 
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
@@ -62,7 +70,7 @@ export default function ChatOnlyPage() {
     try {
       await submitTurnStream(text, {
         responseTimeMs,
-        onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null),
+        onToken: (t) => setStreamingText(t ? t.replace(/【[^】]*】/g, '').trim() : null),
         onRetry: (analysis) => {
           setSuggestedReplies(analysis.suggestedReplies ?? []);
         },
@@ -89,8 +97,6 @@ export default function ChatOnlyPage() {
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const targetName = getTargetLangConfig(targetLanguage).name;
 
-  const latestAi = [...conversations].reverse().find(c => c.speaker === 'ai');
-
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -108,17 +114,11 @@ export default function ChatOnlyPage() {
     );
   }
 
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
-
-  const chatPanelProps = {
+  const panelProps = {
     conversations,
     charName,
     charColor,
     avatarMode: streamingText ? ('talking' as const) : ('idle' as const),
-    text: '',
-    setText: () => {},
     onSend: handleSend,
     onReplay: handleReplay,
     sending,
@@ -131,43 +131,55 @@ export default function ChatOnlyPage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-dojo-text-primary">{scenario?.title ?? 'Chat'}</span>
-          <Badge variant="outline">{phase}</Badge>
+          <PhaseIndicator phase={phase} />
+          <ConnectionLatencyIndicator status={connectionStatus} />
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => router.push(`/session/${sessionId}/voice`)}
-            className="text-xs text-dojo-text-muted hover:text-dojo-accent flex items-center gap-1"
+            type="button"
+            onClick={() => setInfoOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
           >
-            <Volume2 className="h-3 w-3" /> Voice
+            <Info className="h-3.5 w-3.5" />
           </button>
+          <SessionModeTabs sessionId={sessionId} active="chat" />
         </div>
       </div>
 
-      {/* Chat panel */}
-      <div className="flex-1 overflow-hidden">
-        <ChatPanel {...chatPanelProps} />
+      <div className="flex-1 overflow-hidden relative">
+        <ChatPanel {...panelProps} />
       </div>
 
-      {/* Input */}
       <div className="shrink-0 px-4 py-3 border-t border-dojo-border">
         <RoleplayInputBar
-          onSend={(t) => {
-            handleSend(t);
-          }}
+          onSend={handleSend}
           onPause={() => {
             fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }).catch(() => {});
           }}
           disabled={!isActive || sending}
-          showTextInput={true}
+          showTextInput={textMode}
+          onToggleTextInput={() => setTextMode(v => !v)}
         />
       </div>
+
+      <SessionInfoDrawer
+        open={infoOpen} onClose={() => setInfoOpen(false)}
+        domain={domain} situation={situation} scenario={scenario}
+        session={session} character={character}
+        charName={charName} charColor={charColor}
+        goals={goals} completedGoals={completedGoals}
+        isActive={isActive} isCompleted={isCompleted}
+        targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
+        correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
+        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
+        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+      />
     </div>
   );
 }

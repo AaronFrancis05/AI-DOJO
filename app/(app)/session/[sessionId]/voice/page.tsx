@@ -3,12 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
+import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
+import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
+import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
+import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
-import { useRoleplaySession } from '@/lib/hooks/useRoleplaySession';
+import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { ArrowLeft, MessageSquare, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Info, Volume2, VolumeX } from 'lucide-react';
 
 export default function VoiceOnlyPage() {
   const params = useParams();
@@ -17,9 +21,10 @@ export default function VoiceOnlyPage() {
 
   const {
     session, scenario, character, conversations, phase,
-    loading, error, isActive,
+    loading, error, isActive, isCompleted, goals, completedGoals,
+    domain, situation,
     submitTurnStream, sendGreeting,
-  } = useRoleplaySession(sessionId);
+  } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
@@ -28,6 +33,10 @@ export default function VoiceOnlyPage() {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [greetingSent, setGreetingSent] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [lastCorrections, setLastCorrections] = useState<any[]>([]);
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [coachOpen, setCoachOpen] = useState(false);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
 
@@ -36,6 +45,9 @@ export default function VoiceOnlyPage() {
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
+
+  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
+  const charColor = character?.avatarColor ?? '#2D3BC5';
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
@@ -62,55 +74,65 @@ export default function VoiceOnlyPage() {
     }
   }, [phase, greetingSent, loading, sending, conversations.length, sendGreeting]);
 
+  function cleanDisplay(text: string): string {
+    return text.replace(/【[^】]*】/g, '').trim();
+  }
+
+  const handleUserUtterance = useCallback(async (text: string) => {
+    if (sendingRef.current || !text.trim()) return;
+    sendingRef.current = true;
+    setSending(true);
+    const responseTimeMs = Date.now() - lastAiCompletedRef.current;
+    stopTts();
+    resetStreamingTts();
+
+    let fullText = '';
+
+    try {
+      await submitTurnStream(text.trim(), {
+        responseTimeMs,
+        onToken: (t) => {
+          if (t) fullText = t;
+          setStreamingText(t ? cleanDisplay(t) : null);
+        },
+        onRetry: (analysis) => {
+          setLastCorrections(analysis.corrections ?? []);
+          setSuggestedReplies(analysis.suggestedReplies ?? []);
+          setCoachOpen(true);
+        },
+        onCelebration: () => {},
+      });
+      setStreamingText(null);
+
+      const cleaned = cleanDisplay(fullText);
+      if (!mutedRef.current && cleaned) {
+        speakMixedText(
+          cleaned,
+          getBCP47(targetLangRef.current, 'tts'),
+          getNativeLangBcp47(nativeLangRef.current),
+          phaseRef.current,
+        ).catch(() => {});
+      }
+
+      const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
+      if (latestUser?.corrections?.length) {
+        setLastCorrections(latestUser.corrections);
+        setCoachOpen(true);
+      }
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }, [submitTurnStream, conversations]);
+
   const bcp47 = getBCP47(targetLanguage, 'stt');
 
   const voice = useVoiceInput({
     lang: bcp47,
-    onFinal: async (text: string) => {
-      if (sendingRef.current || !text.trim()) return;
-      sendingRef.current = true;
-      setSending(true);
-      const responseTimeMs = Date.now() - lastAiCompletedRef.current;
-      stopTts();
-      resetStreamingTts();
-
-      let fullText = '';
-
-      try {
-        await submitTurnStream(text.trim(), {
-          responseTimeMs,
-          onToken: (t) => {
-            if (t) fullText = t;
-            setStreamingText(t ? cleanDisplay(t) : null);
-          },
-          onCelebration: () => {},
-        });
-        setStreamingText(null);
-
-        const cleaned = cleanDisplay(fullText);
-        if (!mutedRef.current && cleaned) {
-          speakMixedText(
-            cleaned,
-            getBCP47(targetLangRef.current, 'tts'),
-            getNativeLangBcp47(nativeLangRef.current),
-            phaseRef.current,
-          ).catch(() => {});
-        }
-      } catch (e: any) {
-        console.error(e);
-      } finally {
-        sendingRef.current = false;
-        setSending(false);
-      }
-    },
+    onFinal: handleUserUtterance,
   });
-
-  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
-  const charColor = character?.avatarColor ?? '#2D3BC5';
-
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
 
   const handleMicStart = useCallback(async () => {
     if (avatarMode === 'talking') stopTts();
@@ -142,29 +164,36 @@ export default function VoiceOnlyPage() {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-dojo-text-primary">{scenario?.title ?? 'Voice'}</span>
-          <ConnectionLatencyIndicator status={connectionStatus} className="ml-2" />
+          <PhaseIndicator phase={phase} />
+          <ConnectionLatencyIndicator status={connectionStatus} />
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setMuted(v => !v)}
             className={`flex h-8 w-8 items-center justify-center rounded-full border ${muted ? 'border-dojo-danger text-dojo-danger' : 'border-white/10 text-dojo-text-muted'}`}
           >
             {muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
           </button>
           <button
-            onClick={() => router.push(`/session/${sessionId}/chat`)}
-            className="text-xs text-dojo-text-muted hover:text-dojo-accent flex items-center gap-1"
+            type="button"
+            onClick={() => setInfoOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
           >
-            <MessageSquare className="h-3 w-3" /> Chat
+            <Info className="h-3.5 w-3.5" />
           </button>
+          <SessionModeTabs sessionId={sessionId} active="voice" />
         </div>
       </div>
 
       <div className="flex-1 relative overflow-hidden">
-        <VoiceOnlyStage
-          name={charName}
-          accentColor={charColor}
-          mode={avatarMode}
+        <VoiceOnlyStage name={charName} accentColor={charColor} mode={avatarMode} />
+
+        <VoiceCoachPanel
+          corrections={coachOpen ? lastCorrections : []}
+          suggestedReplies={coachOpen ? suggestedReplies : []}
+          onDismiss={() => setCoachOpen(false)}
+          onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}
         />
 
         {voice.partialTranscript && (
@@ -207,6 +236,19 @@ export default function VoiceOnlyPage() {
           </div>
         </div>
       </div>
+
+      <SessionInfoDrawer
+        open={infoOpen} onClose={() => setInfoOpen(false)}
+        domain={domain} situation={situation} scenario={scenario}
+        session={session} character={character}
+        charName={charName} charColor={charColor}
+        goals={goals} completedGoals={completedGoals}
+        isActive={isActive} isCompleted={isCompleted}
+        targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
+        correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
+        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
+        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+      />
     </div>
   );
 }

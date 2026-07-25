@@ -3,13 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AvatarMicOverlay } from '@/components/roleplay/AvatarMicOverlay';
+import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
+import { AvatarViewport3D } from '@/components/roleplay/AvatarViewport3D';
+import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
+import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
+import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
+import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
-import { useRoleplaySession } from '@/lib/hooks/useRoleplaySession';
+import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { ArrowLeft, MessageSquare, Volume2, VolumeX } from 'lucide-react';
-import { AvatarViewport3D } from '@/components/roleplay/AvatarViewport3D';
-import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
+import { ArrowLeft, Info, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 
 export default function AvatarModePage() {
   const params = useParams();
@@ -18,9 +22,10 @@ export default function AvatarModePage() {
 
   const {
     session, scenario, character, conversations, phase,
-    loading, error, isActive,
+    loading, error, isActive, isCompleted, goals, completedGoals,
+    domain, situation,
     submitTurnStream, sendGreeting,
-  } = useRoleplaySession(sessionId);
+  } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
@@ -29,13 +34,19 @@ export default function AvatarModePage() {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [greetingSent, setGreetingSent] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [lastCorrections, setLastCorrections] = useState<any[]>([]);
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [mobileMsgOpen, setMobileMsgOpen] = useState(false);
+  const lastAiCompletedRef = useRef<number>(Date.now());
+  const { status: connectionStatus } = useLatencyMonitor();
+
   const mutedRef = useRef(false);
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
   const sendingRef = useRef(false);
-  const lastAiCompletedRef = useRef<number>(Date.now());
-  const { status: connectionStatus } = useLatencyMonitor();
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
@@ -47,7 +58,6 @@ export default function AvatarModePage() {
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
   }, [session]);
 
-  // Wire speaking state to avatar
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
       setAvatarMode(speaking ? 'talking' : 'idle');
@@ -56,13 +66,16 @@ export default function AvatarModePage() {
     return () => setOnSpeakingChange(null);
   }, []);
 
-  // Auto-greeting
   useEffect(() => {
     if (phase === 'icebreaker' && !greetingSent && !loading && !sending && conversations.length === 0) {
       setGreetingSent(true);
       sendGreeting().catch(() => {});
     }
   }, [phase, greetingSent, loading, sending, conversations.length, sendGreeting]);
+
+  function cleanDisplay(text: string): string {
+    return text.replace(/【[^】]*】/g, '').trim();
+  }
 
   const handleFinalTranscript = useCallback(async (text: string) => {
     if (sendingRef.current || !text.trim()) return;
@@ -81,6 +94,11 @@ export default function AvatarModePage() {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
         },
+        onRetry: (analysis) => {
+          setLastCorrections(analysis.corrections ?? []);
+          setSuggestedReplies(analysis.suggestedReplies ?? []);
+          setCoachOpen(true);
+        },
         onCelebration: () => {},
       });
       setStreamingText(null);
@@ -94,21 +112,30 @@ export default function AvatarModePage() {
           phaseRef.current,
         ).catch(() => {});
       }
+
+      const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
+      if (latestUser?.corrections?.length) {
+        setLastCorrections(latestUser.corrections);
+        setCoachOpen(true);
+      }
     } catch (e: any) {
       console.error(e);
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [submitTurnStream]);
+  }, [submitTurnStream, conversations]);
 
   const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const avatarModelUrl = character?.avatarModelUrl ?? scenario?.avatarModelUrl;
 
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
+  const latestConvo = conversations.length > 0 ? conversations[conversations.length - 1] : null;
+
+  // Auto-show mobile message sheet on new AI turns
+  useEffect(() => {
+    if (latestConvo?.speaker === 'ai') setMobileMsgOpen(true);
+  }, [latestConvo?.id]);
 
   if (loading) {
     return (
@@ -127,67 +154,91 @@ export default function AvatarModePage() {
     );
   }
 
-  const latestConvo = conversations.length > 0 ? conversations[conversations.length - 1] : null;
-
   return (
     <div className="flex h-full flex-col bg-gradient-to-b from-[#0a0a1a] via-[#0d0d24] to-[#111128]">
-      {/* Header */}
       <div className="relative z-20 flex items-center justify-between px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-dojo-text-primary">{scenario?.title ?? 'Avatar'}</span>
-          <ConnectionLatencyIndicator status={connectionStatus} className="ml-2" />
+          <PhaseIndicator phase={phase} />
+          <ConnectionLatencyIndicator status={connectionStatus} />
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setMuted(v => !v)}
             className={`flex h-8 w-8 items-center justify-center rounded-full border ${muted ? 'border-dojo-danger text-dojo-danger' : 'border-white/10 text-dojo-text-muted'}`}
           >
             {muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
           </button>
           <button
-            onClick={() => router.push(`/session/${sessionId}/chat`)}
-            className="text-xs text-dojo-text-muted hover:text-dojo-accent flex items-center gap-1"
+            type="button"
+            onClick={() => setInfoOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
           >
-            <MessageSquare className="h-3 w-3" /> Chat
+            <Info className="h-3.5 w-3.5" />
           </button>
+          <SessionModeTabs sessionId={sessionId} active="avatar" />
         </div>
       </div>
 
-      {/* Avatar + chat area */}
-      <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center">
-        <AvatarViewport3D
-          name={charName}
-          accentColor={charColor}
-          mode={avatarMode}
-          modelUrl={avatarModelUrl}
-          cameraMode="front"
-        />
+      <div className="flex-1 relative overflow-hidden flex items-stretch">
+        <div className="flex-1 flex items-center justify-center relative">
+          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" />
+        </div>
 
-        {/* Chat bubble above overlay */}
-        {latestConvo && latestConvo.speaker === 'ai' && (
-          <div className="absolute top-4 left-4 right-4 max-w-md mx-auto">
+        {/* Desktop side panel */}
+        <aside className="hidden md:flex w-80 shrink-0 flex-col gap-3 border-l border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
+          {latestConvo && latestConvo.speaker === 'ai' && (
             <ConversationBubble
-              speaker="ai"
-              name={charName}
-              accentColor={charColor}
+              speaker="ai" name={charName} accentColor={charColor}
               messageJp={streamingText ?? latestConvo.messageTarget ?? latestConvo.messageNative ?? ''}
-              messageRomaji={latestConvo.messageRomaji ?? undefined}
-              messageEn=""
+              messageRomaji={latestConvo.messageRomaji ?? undefined} messageEn=""
             />
-          </div>
-        )}
+          )}
+          <VoiceCoachPanel
+            corrections={coachOpen ? lastCorrections : []}
+            suggestedReplies={coachOpen ? suggestedReplies : []}
+            onDismiss={() => setCoachOpen(false)}
+            onPickSuggestion={(text) => { setCoachOpen(false); handleFinalTranscript(text); }}
+          />
+        </aside>
       </div>
 
-      {/* Mic overlay at the bottom */}
+      {/* Mobile bottom sheet for messages */}
+      {mobileMsgOpen && latestConvo && latestConvo.speaker === 'ai' && (
+        <div className="md:hidden absolute bottom-24 left-4 right-4 z-30 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
+            <ConversationBubble
+              speaker="ai" name={charName} accentColor={charColor}
+              messageJp={streamingText ?? latestConvo.messageTarget ?? latestConvo.messageNative ?? ''}
+              messageRomaji={latestConvo.messageRomaji ?? undefined} messageEn=""
+            />
+          </div>
+        </div>
+      )}
+
       <AvatarMicOverlay
         targetLanguage={targetLanguage}
         onFinalTranscript={handleFinalTranscript}
         isAiResponding={avatarMode === 'talking'}
         muted={muted}
         onMuteToggle={() => setMuted(v => !v)}
+      />
+
+      <SessionInfoDrawer
+        open={infoOpen} onClose={() => setInfoOpen(false)}
+        domain={domain} situation={situation} scenario={scenario}
+        session={session} character={character}
+        charName={charName} charColor={charColor}
+        goals={goals} completedGoals={completedGoals}
+        isActive={isActive} isCompleted={isCompleted}
+        targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
+        correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
+        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
+        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
       />
     </div>
   );

@@ -17,6 +17,7 @@ export interface TurnData {
   failed?: boolean;
   audioUrl?: string | null;
   audioStatus?: string | null;
+  receivedAt?: number;
 }
 
 export interface GoalData {
@@ -154,7 +155,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     let optimisticId: number | null = null;
     if (trimmed !== '__session_start__') {
       optimisticId = Date.now();
-      setConversations(prev => [...prev, { id: optimisticId!, turnNo: prev.length + 1, speaker: 'user', messageTarget: trimmed, messageNative: '', messageRomaji: null, pending: true }]);
+      setConversations(prev => [...prev, { id: optimisticId!, turnNo: prev.length + 1, speaker: 'user', messageTarget: trimmed, messageNative: '', messageRomaji: null, pending: true, receivedAt: Date.now() }]);
     }
 
     const rollback = () => {
@@ -246,6 +247,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         emotionTone: finalAnalysis.emotionTone,
         gestureHint: finalAnalysis.gestureHint,
         corrections: finalAnalysis.corrections ?? [],
+        receivedAt: Date.now(),
       };
       setConversations(prev => {
         const idx = prev.findIndex(t => t.pending);
@@ -261,6 +263,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       setConversations(prev => [...prev, {
         id: Date.now(), turnNo: 0, speaker: 'ai' as const,
         messageTarget: cleanDisplay(collectedAiText), messageNative: '', messageRomaji: null,
+        receivedAt: Date.now(),
       }]);
     } else {
       const userTurn: TurnData = {
@@ -271,10 +274,12 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         emotionTone: finalAnalysis?.emotionTone,
         gestureHint: finalAnalysis?.gestureHint,
         corrections: finalAnalysis?.corrections ?? [],
+        receivedAt: Date.now(),
       };
       const aiTurn: TurnData = {
         id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
         messageTarget: cleanDisplay(collectedAiText), messageNative: '', messageRomaji: null,
+        receivedAt: Date.now(),
       };
       setConversations(prev => {
         const idx = prev.findIndex(t => t.pending);
