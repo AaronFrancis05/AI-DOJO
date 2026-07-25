@@ -61,20 +61,22 @@ export function useLatencyMonitor(pingUrl: string = '/api/chat/stream'): {
 
   useEffect(() => {
     let cancelled = false;
-    let lastSent = 0;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
 
     async function check() {
       if (cancelled) return;
+      const lastSent = Date.now();
+      controller = new AbortController();
+      const timer = setTimeout(() => controller?.abort(), 5000);
       try {
-        lastSent = Date.now();
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
-        await fetch(pingUrl, {
+        const res = await fetch(pingUrl, {
           method: 'OPTIONS',
           signal: controller.signal,
         });
         clearTimeout(timer);
         if (cancelled) return;
+        if (!res.ok) throw new Error('Non-2xx');
         const elapsed = Date.now() - lastSent;
         setEstimatedLatency(elapsed);
         if (elapsed < 300) setStatus('good');
@@ -87,11 +89,15 @@ export function useLatencyMonitor(pingUrl: string = '/api/chat/stream'): {
         }
       }
 
-      if (!cancelled) setTimeout(check, 10000);
+      if (!cancelled) pollTimer = setTimeout(check, 10000);
     }
 
     check();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      if (controller) controller.abort();
+    };
   }, [pingUrl]);
 
   return { status, estimatedLatency };

@@ -29,8 +29,18 @@ export default function AvatarModePage() {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [greetingSent, setGreetingSent] = useState(false);
   const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const targetLangRef = useRef('ja');
+  const nativeLangRef = useRef('en');
+  const phaseRef = useRef('');
+  const sendingRef = useRef(false);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
+
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
+  useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
@@ -55,41 +65,42 @@ export default function AvatarModePage() {
   }, [phase, greetingSent, loading, sending, conversations.length, sendGreeting]);
 
   const handleFinalTranscript = useCallback(async (text: string) => {
-    if (sending || !text.trim()) return;
+    if (sendingRef.current || !text.trim()) return;
+    sendingRef.current = true;
     setSending(true);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     stopTts();
     resetStreamingTts();
 
+    let fullText = '';
+
     try {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
         onToken: (t) => {
+          if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
         },
         onCelebration: () => {},
       });
       setStreamingText(null);
 
-      // Speak the AI response
-      if (!muted) {
-        const latestAi = [...conversations].reverse().find(c => c.speaker === 'ai');
-        const aiText = latestAi?.messageTarget || streamingText || '';
-        if (aiText) {
-          speakMixedText(
-            cleanDisplay(aiText),
-            getBCP47(targetLanguage, 'tts'),
-            getNativeLangBcp47(nativeLanguage),
-            phase,
-          ).catch(() => {});
-        }
+      const cleaned = cleanDisplay(fullText);
+      if (!mutedRef.current && cleaned) {
+        speakMixedText(
+          cleaned,
+          getBCP47(targetLangRef.current, 'tts'),
+          getNativeLangBcp47(nativeLangRef.current),
+          phaseRef.current,
+        ).catch(() => {});
       }
     } catch (e: any) {
       console.error(e);
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
-  }, [sending, submitTurnStream, muted, targetLanguage, nativeLanguage, phase, conversations, streamingText]);
+  }, [submitTurnStream]);
 
   const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
@@ -173,12 +184,10 @@ export default function AvatarModePage() {
       {/* Mic overlay at the bottom */}
       <AvatarMicOverlay
         targetLanguage={targetLanguage}
-        nativeLanguage={nativeLanguage}
         onFinalTranscript={handleFinalTranscript}
         isAiResponding={avatarMode === 'talking'}
         muted={muted}
         onMuteToggle={() => setMuted(v => !v)}
-        partialTranscript={streamingText ?? undefined}
       />
     </div>
   );

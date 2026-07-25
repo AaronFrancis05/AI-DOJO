@@ -1,29 +1,25 @@
 'use client';
 
 import { useRef, useCallback, useEffect } from 'react';
-import { Mic, VolumeX } from 'lucide-react';
+import { Mic, Volume2, VolumeX } from 'lucide-react';
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
-import { speak as ttsSpeak, stop as stopTts } from '@/lib/roleplay/tts';
+import { stop as stopTts } from '@/lib/roleplay/tts';
 import { getBCP47 } from '@/lib/language';
 
 interface AvatarMicOverlayProps {
   targetLanguage: string;
-  nativeLanguage: string;
   onFinalTranscript: (text: string) => void;
   isAiResponding: boolean;
   muted?: boolean;
   onMuteToggle?: () => void;
-  partialTranscript?: string;
 }
 
 export function AvatarMicOverlay({
   targetLanguage,
-  nativeLanguage,
   onFinalTranscript,
   isAiResponding,
   muted = false,
   onMuteToggle,
-  partialTranscript: externalPartial,
 }: AvatarMicOverlayProps) {
   const bcp47 = getBCP47(targetLanguage, 'stt');
 
@@ -33,42 +29,49 @@ export function AvatarMicOverlay({
   });
 
   const isAiRespondingRef = useRef(isAiResponding);
-  isAiRespondingRef.current = isAiResponding;
+  const stopRef = useRef(voice.stop);
+  stopRef.current = voice.stop;
+  const bargeInRef = useRef(false);
 
-  // Barge-in: if user starts speaking while AI is responding, stop TTS immediately
+  useEffect(() => {
+    isAiRespondingRef.current = isAiResponding;
+  }, [isAiResponding]);
+
   const handleStartListening = useCallback(async () => {
     if (isAiRespondingRef.current) {
       stopTts();
+      bargeInRef.current = true;
     }
     await voice.start();
   }, [voice]);
 
-  const displayPartial = externalPartial ?? voice.partialTranscript;
-
-  // Auto-stop on AI response start
+  // Auto-stop on AI response start — skip if user just initiated a barge-in
   useEffect(() => {
-    if (isAiResponding && voice.isListening) {
-      voice.stop();
+    if (isAiResponding && voice.isListening && !bargeInRef.current) {
+      stopRef.current();
     }
-  }, [isAiResponding, voice]);
+    if (!isAiResponding) {
+      bargeInRef.current = false;
+    }
+  }, [isAiResponding, voice.isListening]);
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-3 pb-8">
-      {/* Live caption */}
-      {displayPartial && (
+      {voice.partialTranscript && (
         <div className="px-4 py-2 rounded-xl bg-dojo-surface/80 backdrop-blur-md border border-dojo-border border-dashed max-w-md">
-          <p className="text-sm text-dojo-text-primary/70 italic">{displayPartial}</p>
+          <p className="text-sm text-dojo-text-primary/70 italic">{voice.partialTranscript}</p>
         </div>
       )}
 
-      {/* Mic + mute controls */}
       <div className="flex items-center gap-4">
         {onMuteToggle && (
           <button
+            type="button"
             onClick={onMuteToggle}
+            aria-label={muted ? 'Unmute' : 'Mute'}
             className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 backdrop-blur-md text-white/70 hover:text-white transition-all"
           >
-            <VolumeX className="h-4 w-4" />
+            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
           </button>
         )}
 
@@ -80,11 +83,17 @@ export function AvatarMicOverlay({
             </>
           )}
           <button
+            type="button"
             onMouseDown={handleStartListening}
             onMouseUp={voice.stop}
             onMouseLeave={voice.stop}
             onTouchStart={(e) => { e.preventDefault(); handleStartListening(); }}
             onTouchEnd={voice.stop}
+            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleStartListening(); } }}
+            onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
+            onBlur={voice.stop}
+            aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
+            aria-pressed={voice.isListening}
             className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 ${
               voice.isListening
                 ? 'bg-dojo-warning scale-110 shadow-[0_0_30px_rgba(242,169,59,0.6)] ring-4 ring-dojo-warning/20'

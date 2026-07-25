@@ -23,6 +23,7 @@ interface DataRecord {
   conversations: any[];
   evaluation: any | null;
   goalCompletions: any[];
+  goals?: any[];
 }
 
 export default function SessionReportPage() {
@@ -51,6 +52,7 @@ export default function SessionReportPage() {
             conversations: [],
             evaluation: null,
             goalCompletions: [],
+            goals: [],
           } as any);
         }
       } finally {
@@ -88,17 +90,17 @@ export default function SessionReportPage() {
 
   if (!data) return null;
 
-  const { session, scenario, conversations, evaluation, goalCompletions } = data;
+  const { session, scenario, conversations, evaluation, goalCompletions, goals } = data;
 
-  const userTurns = conversations?.filter((c: any) => c.speaker === 'user') ?? [];
-  const responseTimes = userTurns.map((c: any) => c.responseTimeMs).filter((t: any) => typeof t === 'number' && t > 0);
+  const userTurns = (conversations ?? []).filter((c: { speaker: string }) => c.speaker === 'user');
+  const responseTimes = userTurns.map((c: { responseTimeMs?: number }) => c.responseTimeMs).filter((t: number | undefined): t is number => typeof t === 'number' && t > 0);
   const avgResponseTime = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a: number, b: number) => a + b, 0) / responseTimes.length) : null;
   const medianResponseTime = responseTimes.length > 0
     ? (() => { const sorted = [...responseTimes].sort((a: number, b: number) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2); })()
     : null;
 
-  const totalGoals = goalCompletions?.length ?? 0;
-  const achievedGoals = goalCompletions?.filter((gc: any) => gc.achieved ?? true).length ?? 0;
+  const totalGoals = goals?.length ?? goalCompletions?.length ?? 0;
+  const achievedGoals = (goalCompletions ?? []).filter((gc: { achieved?: boolean }) => gc.achieved ?? true).length;
   const taskCompletionRate = totalGoals > 0 ? Math.round((achievedGoals / totalGoals) * 100) : null;
 
   const expressionScore = evaluation?.expressionAppropriatenessScore ?? session.expressionAppropriatenessScore;
@@ -174,7 +176,7 @@ export default function SessionReportPage() {
                 <span className="text-xs text-dojo-text-muted">average</span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-lg font-semibold text-dojo-text-primary">{medianResponseTime < 1000 ? `${medianResponseTime}ms` : `${(medianResponseTime / 1000).toFixed(1)}s`}</span>
+                <span className="text-lg font-semibold text-dojo-text-primary">{medianResponseTime !== null ? (medianResponseTime < 1000 ? `${medianResponseTime}ms` : `${(medianResponseTime / 1000).toFixed(1)}s`) : '-'}</span>
                 <span className="text-xs text-dojo-text-muted">median</span>
               </div>
               <p className="text-xs text-dojo-text-muted">Across {responseTimes.length} user turns</p>

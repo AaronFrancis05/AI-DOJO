@@ -48,13 +48,13 @@ export function QuickExchangeDrill({
 
   const currentDrill = drills[drillIndex];
 
-  useEffect(() => {
-    setExchangeStep(0);
-    setPhase('intro');
-    setTranscript('');
-    setFeedback('');
-    setCorrect(false);
-  }, [drillIndex]);
+  if (drills.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <p className="text-dojo-text-muted text-sm">No drills available for this session.</p>
+      </div>
+    );
+  }
 
   const handlePlayPrompt = useCallback(async () => {
     setBusy(true);
@@ -76,12 +76,14 @@ export function QuickExchangeDrill({
 
   const handleResponse = useCallback(async () => {
     if (busy) return;
+    const input = transcript.trim();
+    if (!input) return;
     setBusy(true);
     const elapsed = Date.now() - exchangeStartRef.current;
     setResponseTime(elapsed);
 
     try {
-      const result = await onSubmitResponse(transcript || currentDrill.promptJa);
+      const result = await onSubmitResponse(input);
       setCorrect(result.correct);
       setFeedback(result.feedback);
       setPhase('result');

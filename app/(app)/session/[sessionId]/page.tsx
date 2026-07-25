@@ -12,19 +12,25 @@ export default function SessionChooserPage() {
   const sessionId = Number(params.sessionId);
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [session, setSession] = useState<any>(null);
   const [scenario, setScenario] = useState<any>(null);
 
   useEffect(() => {
+    if (!Number.isFinite(sessionId)) {
+      setLoadError('Invalid session');
+      setLoading(false);
+      return;
+    }
     async function load() {
       try {
         const res = await fetch(`/api/sessions/${sessionId}`);
-        if (!res.ok) throw new Error('Session not found');
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Session not found'); }
         const data = await res.json();
         setSession(data.session);
         setScenario(data.scenario);
-      } catch {
-        // handled by error state
+      } catch (e: any) {
+        setLoadError(e.message ?? 'Failed to load session');
       } finally {
         setLoading(false);
       }
@@ -36,6 +42,15 @@ export default function SessionChooserPage() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="animate-pulse text-dojo-text-muted text-sm">Loading session…</div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-6">
+        <p className="text-dojo-text-muted text-sm">{loadError}</p>
+        <button onClick={() => router.push('/home')} className="text-sm text-dojo-accent">Back to Home</button>
       </div>
     );
   }

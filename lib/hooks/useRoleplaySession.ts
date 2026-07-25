@@ -151,29 +151,41 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    setConversations(prev => trimmed !== '__session_start__'
-      ? [...prev, { id: Date.now(), turnNo: prev.length + 1, speaker: 'user', messageTarget: trimmed, messageNative: '', messageRomaji: null, pending: true }]
-      : prev,
-    );
+    let optimisticId: number | null = null;
+    if (trimmed !== '__session_start__') {
+      optimisticId = Date.now();
+      setConversations(prev => [...prev, { id: optimisticId!, turnNo: prev.length + 1, speaker: 'user', messageTarget: trimmed, messageNative: '', messageRomaji: null, pending: true }]);
+    }
 
-    const res = await fetch('/api/chat/stream', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        sessionId,
-        userRawInput: trimmed,
-        isRetryOfPreviousMistake: options?.isRetry ?? isRetryRef.current,
-        responseTimeMs: options?.responseTimeMs ?? 0,
-      }),
-    });
+    const rollback = () => {
+      if (optimisticId) setConversations(prev => prev.map(t => t.id === optimisticId ? { ...t, pending: false, failed: true } : t));
+    };
+
+    let res: Response;
+    try {
+      res = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          userRawInput: trimmed,
+          isRetryOfPreviousMistake: options?.isRetry ?? isRetryRef.current,
+          responseTimeMs: options?.responseTimeMs ?? 0,
+        }),
+      });
+    } catch (e) {
+      rollback();
+      throw e;
+    }
 
     if (!res.ok) {
+      rollback();
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || `Chat request failed (${res.status})`);
     }
 
     const reader = res.body?.getReader();
-    if (!reader) throw new Error('No response body');
+    if (!reader) { rollback(); throw new Error('No response body'); }
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -192,7 +204,8 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
-        const payload = JSON.parse(line.slice(6));
+        let payload: any;
+        try { payload = JSON.parse(line.slice(6)); } catch { continue; }
 
         switch (payload.type) {
           case 'token':
@@ -213,6 +226,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             if (payload.celebration) options?.onCelebration?.();
             break;
           case 'error':
+            rollback();
             throw new Error(payload.message || 'Stream error');
         }
       }

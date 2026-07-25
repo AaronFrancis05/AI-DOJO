@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, integer, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
@@ -260,7 +260,9 @@ export const quickDrills = pgTable('quick_drills', {
   languageCode:     varchar('language_code', { length: 10 }).default('ja').notNull(),
   displayOrder:     integer('display_order').default(0).notNull(),
   createdAt:        timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => ({
+  uniqueDrillKey: uniqueIndex('uq_quick_drills_key').on(table.languageCode, table.domainSlug, table.promptJa),
+}));
 
 // ── Relations ────────────────────────────────────────────
 

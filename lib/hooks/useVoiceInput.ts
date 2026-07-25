@@ -34,6 +34,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
 
   const start = useCallback(async () => {
     if (isListeningRef.current) return;
+    finalRef.current = '';
+    setFinalTranscript('');
+    setPartialTranscript('');
     isListeningRef.current = true;
     setError(null);
     setIsListening(true);
@@ -50,13 +53,15 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
           setPartialTranscript('');
           onFinal?.(text);
         },
-        onError: (err: string) => {
+        onError: async (err: string) => {
+          await stopContinuousRecognition();
           setError(err);
           isListeningRef.current = false;
           setIsListening(false);
         },
       });
     } catch (e: any) {
+      await stopContinuousRecognition();
       setError(e.message ?? 'Failed to start voice input');
       isListeningRef.current = false;
       setIsListening(false);

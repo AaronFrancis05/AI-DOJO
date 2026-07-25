@@ -31,12 +31,22 @@ export default function VoiceOnlyPage() {
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
 
+  const sendingRef = useRef(false);
+  const mutedRef = useRef(false);
+  const targetLangRef = useRef('ja');
+  const nativeLangRef = useRef('en');
+  const phaseRef = useRef('');
+
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
+  useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
   }, [session]);
 
-  // Wire speaking state
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
       setAvatarMode(speaking ? 'talking' : 'idle');
@@ -45,7 +55,6 @@ export default function VoiceOnlyPage() {
     return () => setOnSpeakingChange(null);
   }, []);
 
-  // Auto-greeting
   useEffect(() => {
     if (phase === 'icebreaker' && !greetingSent && !loading && !sending && conversations.length === 0) {
       setGreetingSent(true);
@@ -58,36 +67,39 @@ export default function VoiceOnlyPage() {
   const voice = useVoiceInput({
     lang: bcp47,
     onFinal: async (text: string) => {
-      if (sending || !text.trim()) return;
+      if (sendingRef.current || !text.trim()) return;
+      sendingRef.current = true;
       setSending(true);
       const responseTimeMs = Date.now() - lastAiCompletedRef.current;
       stopTts();
       resetStreamingTts();
 
+      let fullText = '';
+
       try {
         await submitTurnStream(text.trim(), {
           responseTimeMs,
-          onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null),
+          onToken: (t) => {
+            if (t) fullText = t;
+            setStreamingText(t ? cleanDisplay(t) : null);
+          },
           onCelebration: () => {},
         });
         setStreamingText(null);
 
-        // Speak the AI response
-        if (!muted) {
-          const latestAi = [...conversations].reverse().find(c => c.speaker === 'ai');
-          const aiText = latestAi?.messageTarget || streamingText || '';
-          if (aiText) {
-            speakMixedText(
-              cleanDisplay(aiText),
-              getBCP47(targetLanguage, 'tts'),
-              getNativeLangBcp47(nativeLanguage),
-              phase,
-            ).catch(() => {});
-          }
+        const cleaned = cleanDisplay(fullText);
+        if (!mutedRef.current && cleaned) {
+          speakMixedText(
+            cleaned,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          ).catch(() => {});
         }
       } catch (e: any) {
         console.error(e);
       } finally {
+        sendingRef.current = false;
         setSending(false);
       }
     },
@@ -99,6 +111,11 @@ export default function VoiceOnlyPage() {
   function cleanDisplay(text: string): string {
     return text.replace(/【[^】]*】/g, '').trim();
   }
+
+  const handleMicStart = useCallback(async () => {
+    if (avatarMode === 'talking') stopTts();
+    await voice.start();
+  }, [avatarMode, voice]);
 
   if (loading) {
     return (
@@ -119,7 +136,6 @@ export default function VoiceOnlyPage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
@@ -144,7 +160,6 @@ export default function VoiceOnlyPage() {
         </div>
       </div>
 
-      {/* Voice orb area */}
       <div className="flex-1 relative overflow-hidden">
         <VoiceOnlyStage
           name={charName}
@@ -152,7 +167,6 @@ export default function VoiceOnlyPage() {
           mode={avatarMode}
         />
 
-        {/* Live caption */}
         {voice.partialTranscript && (
           <div className="absolute bottom-32 left-0 right-0 flex justify-center">
             <div className="px-4 py-2 rounded-xl bg-dojo-surface/80 backdrop-blur-md border border-dojo-border border-dashed max-w-md">
@@ -161,7 +175,6 @@ export default function VoiceOnlyPage() {
           </div>
         )}
 
-        {/* Mic button */}
         <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-8">
           <div className="relative">
             {voice.isListening && (
@@ -171,12 +184,18 @@ export default function VoiceOnlyPage() {
               </>
             )}
             <button
-              onMouseDown={voice.start}
+              type="button"
+              onMouseDown={handleMicStart}
               onMouseUp={voice.stop}
               onMouseLeave={voice.stop}
-              onTouchStart={(e) => { e.preventDefault(); voice.start(); }}
+              onTouchStart={(e) => { e.preventDefault(); handleMicStart(); }}
               onTouchEnd={voice.stop}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleMicStart(); } }}
+              onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
+              onBlur={voice.stop}
               disabled={!isActive || sending}
+              aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
+              aria-pressed={voice.isListening}
               className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 ${
                 voice.isListening
                   ? 'bg-dojo-warning scale-110 shadow-[0_0_30px_rgba(242,169,59,0.6)] ring-4 ring-dojo-warning/20'
