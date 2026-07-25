@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, integer, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
@@ -132,6 +132,7 @@ export const sessions = pgTable('sessions', {
   feedback:        text('feedback'),
   avatarEnabled:   boolean('avatar_enabled').default(false).notNull(),
   voiceGender:     varchar('voice_gender', { length: 10 }).default('female').notNull(),
+  expressionAppropriatenessScore: integer('expression_appropriateness_score'),
   startedAt:       timestamp('started_at').defaultNow().notNull(),
   completedAt:     timestamp('completed_at'),
 });
@@ -157,6 +158,7 @@ export const conversations = pgTable('conversations', {
   isValidInContext:      boolean('is_valid_in_context').default(true).notNull(),
   audioStatus:           varchar('audio_status', { length: 20 }).default('pending').notNull(),
   audioUrl:              text('audio_url'),
+  responseTimeMs:        integer('response_time_ms'), // Added for P1
   createdAt:             timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -202,6 +204,7 @@ export const evaluations = pgTable('evaluations', {
   fluencyScore:    integer('fluency_score').default(0).notNull(),
   culturalScore:   integer('cultural_score').default(0).notNull(),
   taskScore:       integer('task_score').default(0).notNull(),
+  expressionAppropriatenessScore: integer('expression_appropriateness_score').default(0).notNull(),
   feedback:        text('feedback'),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
 });
@@ -245,6 +248,21 @@ export const userAvatars = pgTable('user_avatars', {
   source:       varchar('source', { length: 20 }).default('avaturn').notNull(),
   createdAt:    timestamp('created_at').defaultNow().notNull(),
 });
+
+export const quickDrills = pgTable('quick_drills', {
+  id:               serial('id').primaryKey(),
+  domainSlug:       varchar('domain_slug', { length: 40 }).notNull(),
+  promptJa:         text('prompt_ja').notNull(),
+  promptPhonetic:   text('prompt_phonetic'),
+  promptEn:         text('prompt_en').notNull(),
+  expectedGoal:     varchar('expected_goal', { length: 200 }),
+  difficulty:       varchar('difficulty', { length: 20 }).default('beginner'),
+  languageCode:     varchar('language_code', { length: 10 }).default('ja').notNull(),
+  displayOrder:     integer('display_order').default(0).notNull(),
+  createdAt:        timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueDrillKey: uniqueIndex('uq_quick_drills_key').on(table.languageCode, table.domainSlug, table.promptJa),
+}));
 
 // ── Relations ────────────────────────────────────────────
 

@@ -1,9 +1,8 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-import { Volume2 } from 'lucide-react';
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { Volume2, Copy, Check, ChevronDown } from 'lucide-react';
 
-/* ── Types (mirrors page.tsx) ──────────────────── */
 interface CorrectionTip {
   correctionType: string;
   originalText: string;
@@ -14,7 +13,7 @@ interface CorrectionTip {
   severity: string;
 }
 
-interface TurnData {
+export interface TurnData {
   id: number;
   turnNo: number;
   speaker: 'user' | 'ai';
@@ -28,6 +27,7 @@ interface TurnData {
   failed?: boolean;
   audioUrl?: string | null;
   audioStatus?: string | null;
+  receivedAt?: number;
 }
 
 interface ChatPanelProps {
@@ -35,8 +35,6 @@ interface ChatPanelProps {
   charName: string;
   charColor: string;
   avatarMode: 'idle' | 'listening' | 'talking';
-  text: string;
-  setText: (val: string) => void;
   onSend: (text: string) => void;
   onReplay: (turn: TurnData) => void;
   sending: boolean;
@@ -44,11 +42,9 @@ interface ChatPanelProps {
   targetName: string;
   suggestedReplies?: string[];
   phase?: string;
-  /** Text arriving progressively from the streaming AI reply */
   streamingText?: string;
 }
 
-/* ── Speaking wave dots ───────────────────────── */
 function SpeakingWave({ active }: { active: boolean }) {
   if (!active) return null;
   return (
@@ -67,29 +63,31 @@ function SpeakingWave({ active }: { active: boolean }) {
   );
 }
 
-/* ── ChatPanel ────────────────────────────────── */
 export function ChatPanel({
   conversations, charName, charColor, avatarMode,
-  text, setText, onSend, onReplay,
+  onSend, onReplay,
   sending, isActive, targetName, suggestedReplies, phase,
   streamingText,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrolledAway, setScrolledAway] = useState(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversations]);
+    if (!scrolledAway) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversations, scrolledAway]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      onSend(text);
-    }
-  };
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    if (atBottom && scrolledAway) setScrolledAway(false);
+    if (!atBottom && !scrolledAway) setScrolledAway(true);
+  }, [scrolledAway]);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-3 space-y-3">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto no-scrollbar px-4 py-3 space-y-3">
         {conversations.map((turn) => {
           const isAi = turn.speaker === 'ai';
           const isLatestAi = isAi && turn.id === Math.max(...conversations.filter(c => c.speaker === 'ai').map(c => c.id), -1);
@@ -105,7 +103,6 @@ export function ChatPanel({
                       : 'bg-dojo-accent/20 border border-dojo-accent/30'
                 }`}
               >
-                {/* Header */}
                 <div className="flex items-center gap-1.5 mb-1">
                   <span
                     className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white shrink-0"
@@ -122,36 +119,28 @@ export function ChatPanel({
                   {isAi && isLatestAi && (
                     <SpeakingWave active={avatarMode === 'talking'} />
                   )}
-                  {isAi && (
-                    <button
-                      onClick={() => onReplay(turn)}
-                      className="ml-auto"
-                    >
-                      <Volume2 className="h-3 w-3 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
-                    </button>
-                  )}
+                  <div className="ml-auto flex items-center gap-1">
+                    {isAi && (
+                      <CopyButton text={turn.messageTarget} />
+                    )}
+                    {isAi && (
+                      <button onClick={() => onReplay(turn)}>
+                        <Volume2 className="h-3 w-3 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Target language message */}
-                <p className="text-sm text-dojo-text-primary leading-relaxed">
-                  {turn.messageTarget}
-                </p>
+                <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
 
-                {/* Romaji — hidden while pending (analysis hasn't arrived) */}
                 {turn.messageRomaji && !turn.pending && (
-                  <p className="mt-0.5 text-[11px] text-dojo-text-muted italic">
-                    {turn.messageRomaji}
-                  </p>
+                  <p className="mt-0.5 text-[11px] text-dojo-text-muted italic">{turn.messageRomaji}</p>
                 )}
 
-                {/* Native translation */}
                 {turn.messageNative && (
-                  <p className="mt-0.5 text-[11px] text-dojo-text-muted">
-                    {turn.messageNative}
-                  </p>
+                  <p className="mt-0.5 text-[11px] text-dojo-text-muted">{turn.messageNative}</p>
                 )}
 
-                {/* Corrections — hidden while pending and during unguided phase */}
                 {turn.corrections && turn.corrections.length > 0 && !turn.pending && phase !== 'unguided' && (
                   <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
                     {turn.corrections.map((tip, i) => (
@@ -166,7 +155,7 @@ export function ChatPanel({
                           </span>
                           <div className="flex-1 min-w-0">
                             <span className="line-through text-dojo-text-muted">{tip.originalText}</span>
-                            {' '}→{' '}
+                            {' → '}
                             <span className="font-medium text-dojo-text-primary">{tip.correctedText}</span>
                             {tip.correctedRomaji && (
                               <span className="ml-1 italic text-dojo-text-muted">({tip.correctedRomaji})</span>
@@ -178,11 +167,17 @@ export function ChatPanel({
                     ))}
                   </div>
                 )}
+
+                {turn.receivedAt && (
+                  <p className="mt-1 text-[10px] text-dojo-text-muted/60">
+                    {new Date(turn.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
               </div>
             </div>
           );
         })}
-        {/* Streaming AI reply */}
+
         {streamingText && (
           <div className="flex justify-start">
             <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-dojo-surface-raised/90 border border-dojo-border">
@@ -203,6 +198,7 @@ export function ChatPanel({
             </div>
           </div>
         )}
+
         {suggestedReplies && suggestedReplies.length > 0 && !sending && conversations.length > 0 && (
           <div className="px-1">
             <p className="text-[11px] text-dojo-text-muted mb-2 font-medium">You can say:</p>
@@ -223,28 +219,37 @@ export function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
-      {/* Text input row anchored to bottom */}
-      <div className="shrink-0 border-t border-dojo-border px-4 py-3">
-        <div className="flex items-center gap-2 rounded-[--radius-lg] border border-dojo-border bg-dojo-surface/90 p-2">
-          <input
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`Type in ${targetName}…`}
-            disabled={sending || !isActive}
-            autoFocus
-            className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none disabled:opacity-50"
-          />
-          <button
-            onClick={() => onSend(text)}
-            disabled={!text.trim() || sending || !isActive}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[--radius-md] bg-dojo-accent text-white text-xs font-bold hover:opacity-90 disabled:opacity-40"
-          >
-            ↵
-          </button>
-        </div>
-      </div>
+      {scrolledAway && (
+        <button
+          type="button"
+          onClick={() => { setScrolledAway(false); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }}
+          className="absolute bottom-4 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg hover:opacity-90 transition-opacity"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      )}
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  }, [text]);
+
+  return (
+    <button onClick={handleCopy}>
+      {copied ? (
+        <Check className="h-3 w-3 text-dojo-success transition-colors" />
+      ) : (
+        <Copy className="h-3 w-3 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
+      )}
+    </button>
   );
 }

@@ -38,7 +38,7 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{
-          __html: `(function(){try{var t=localStorage.getItem('ai-dojo-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')}catch(e){}})()`
+          __html: `(function(){try{var t=localStorage.getItem('ai-dojo-theme');if(t==='dark')document.documentElement.classList.add('dark')}catch(e){}})()`
         }} />
       </head>
       <body className="min-h-full flex flex-col">

@@ -1,4 +1,5 @@
 import { getTargetLangConfig, getNativeLangName } from './language';
+import { getDifficultyTierDescription, getAppropriatenessRubric } from './language-packs';
 import { getAIProvider } from './ai-providers';
 import type { ChatTurn } from './ai-providers';
 
@@ -45,6 +46,7 @@ export interface UserTurnAnalysis {
     fluency: number;
     cultural: number;
     task: number;
+    expressionAppropriateness: number;
   };
   feedback: string;
   corrections: CorrectionItem[];
@@ -67,6 +69,7 @@ export interface AIResponseAnalysis {
     fluency: number;
     cultural: number;
     task: number;
+    expressionAppropriateness: number;
   };
   feedback: string;
   corrections: CorrectionItem[];
@@ -102,6 +105,7 @@ export async function analyzeAndGenerateTurn(
     aiCharacterRole: string;
     userCharacterName: string;
     userCharacterRole: string;
+    difficulty?: string;
   },
   goals: Array<{
     id: number;
@@ -134,6 +138,9 @@ export async function analyzeAndGenerateTurn(
 
   const effectiveContext = situationContext ?? scenario.context;
   const effectiveGoals = situationLearningGoals ?? scenario.learningGoals;
+  const difficulty = scenario.difficulty ?? 'beginner';
+  const difficultyDesc = getDifficultyTierDescription(difficulty, targetLanguage);
+  const appropriatenessRubric = getAppropriatenessRubric(targetLanguage);
 
   const modeInstruction = behaviorMode === 'trouble'
     ? `===== BEHAVIOR MODE: TROUBLE =====
@@ -177,6 +184,10 @@ ${isRetryOfPreviousMistake
 The user is re-attempting a corrected sentence from the previous turn. If they still get it wrong or make a similar mistake this time, respond IN-CHARACTER and move the scene forward naturally — do NOT ask for a third attempt, do not repeat the correction, do not block the conversation. Acknowledge their effort briefly and continue the roleplay.`
   : ''}
 
+===== DIFFICULTY LEVEL =====
+The learner's current difficulty level is: ${difficulty}. Follow these guidelines:
+${difficultyDesc}
+
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
 ===== LANGUAGE RULES =====
@@ -219,9 +230,12 @@ For the user's turn, optionally detect:
 - Hold a natural, flowing conversation as the AI character. Do NOT rush to close. Each turn, check which goals remain [PENDING], and steer your next reply toward naturally drawing out the next uncovered goal through realistic dialogue — not by listing it mechanically. Only move toward a warm closing statement once all goals show [COVERED].
 
 YOUR THREE JOBS:
-1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses and list their sequenceOrder numbers in goalsAddressedThisTurn. If any errors are detected, populate the corrections array with structured correction objects.
+1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges (vocabulary 0-25, grammar 0-20, fluency 0-20, cultural 0-10, task 0-10, expressionAppropriateness 0-15 = 100 total), translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses and list their sequenceOrder numbers in goalsAddressedThisTurn. If any errors are detected, populate the corrections array with structured correction objects.
 2. CORRECT: If the user made a grammar, vocabulary, particle, verb conjugation, politeness level, or spelling error (in their ${targetLangName} attempt), add a structured correction object. If no corrections needed, return an empty array [].
 3. RESPOND: Generate a dynamic context-aware response from the perspective of ${scenario.aiCharacterName}. Based on the goals, drive the conversation forward naturally.
+
+===== EXPRESSION APPROPRIATENESS RUBRIC =====
+${appropriatenessRubric}
 
 ===== SCENARIO COMPLETION RULE =====
 Set scenarioComplete to true ONLY when ALL goals in the list above show [COVERED]. If even one goal remains [PENDING], scenarioComplete must be false.
@@ -236,7 +250,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "emotionTone": "friendly",
   "gestureHint": "none",
   "suggestedReplies": ["2-3 short options in ${nativeLangName} the user might say next (can code-switch a ${targetLangName} phrase naturally)"],
-  "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
+  "scores": { "vocabulary": 0-25, "grammar": 0-20, "fluency": 0-20, "cultural": 0-10, "task": 0-10, "expressionAppropriateness": 0-15 },
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [
     {
@@ -299,6 +313,7 @@ export async function analyzeUserTurn(
     aiCharacterRole: string;
     userCharacterName: string;
     userCharacterRole: string;
+    difficulty?: string;
   },
   goals: Array<{
     id: number;
@@ -329,6 +344,9 @@ export async function analyzeUserTurn(
 
   const effectiveContext = situationContext ?? scenario.context;
   const effectiveGoals = situationLearningGoals ?? scenario.learningGoals;
+  const difficulty = scenario.difficulty ?? 'beginner';
+  const difficultyDesc = getDifficultyTierDescription(difficulty, targetLanguage);
+  const appropriatenessRubric = getAppropriatenessRubric(targetLanguage);
 
   const modeInstruction = behaviorMode === 'trouble'
     ? `===== BEHAVIOR MODE: TROUBLE =====
@@ -364,6 +382,10 @@ You are an advanced backend AI processor engine handling a multi-turn ${targetLa
 
 ${modeInstruction}
 
+===== DIFFICULTY LEVEL =====
+The learner's current difficulty level is: ${difficulty}. Follow these guidelines:
+${difficultyDesc}
+
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
 ===== LANGUAGE RULES =====
@@ -388,8 +410,11 @@ For the user's turn, optionally detect:
 - gestureHint: one of these exact values — "bow" | "wave" | "shake_hands" | "nod" | "none"
 
 YOUR JOBS:
-1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges, translate it, provide custom feedback. Set isValidInContext. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses.
+1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges (vocabulary 0-25, grammar 0-20, fluency 0-20, cultural 0-10, task 0-10, expressionAppropriateness 0-15 = 100 total), translate it, provide custom feedback. Set isValidInContext. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses.
 2. CORRECT: If the user made any errors, add structured correction objects. If no corrections needed, return an empty array [].
+
+===== EXPRESSION APPROPRIATENESS RUBRIC =====
+${appropriatenessRubric}
 
 ===== SCENARIO COMPLETION RULE =====
 Set scenarioComplete to true ONLY when ALL goals show [COVERED]. If even one goal remains [PENDING], scenarioComplete must be false.
@@ -404,7 +429,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "emotionTone": "friendly",
   "gestureHint": "none",
   "suggestedReplies": ["2-3 short options in ${nativeLangName} the user might say next (can code-switch a ${targetLangName} phrase naturally)"],
-  "scores": { "vocabulary": 0-30, "grammar": 0-25, "fluency": 0-20, "cultural": 0-15, "task": 0-10 },
+  "scores": { "vocabulary": 0-25, "grammar": 0-20, "fluency": 0-20, "cultural": 0-10, "task": 0-10, "expressionAppropriateness": 0-15 },
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [
     {

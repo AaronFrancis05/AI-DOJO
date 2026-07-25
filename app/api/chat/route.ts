@@ -20,6 +20,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const { sessionId, userRawInput, accuracyScore, isRetryOfPreviousMistake } = body;
+    const responseTimeMs = typeof body.responseTimeMs === 'number' ? body.responseTimeMs : null;
 
     if (!sessionId || !userRawInput) {
       return Response.json({ error: 'sessionId and userRawInput are required' }, { status: 400 });
@@ -147,6 +148,7 @@ export async function POST(req: Request) {
         gestureHint: mlPipelineOutput.gestureHint ?? null,
         isEnglishWhenExpected: mlPipelineOutput.isEnglishWhenExpected,
         isValidInContext: mlPipelineOutput.isValidInContext,
+        responseTimeMs,
       }).returning({ id: conversations.id });
 
       // ── Guided phase: retry gate ──
@@ -270,6 +272,7 @@ export async function POST(req: Request) {
       const currentFluencyScore = freshSession.fluencyScore ?? 0;
       const currentCulturalScore = freshSession.culturalScore ?? 0;
       const currentTaskScore = freshSession.taskScore ?? 0;
+      const currentExpressionScore = freshSession.expressionAppropriatenessScore ?? 0;
 
       const scoredTurnsCount = Math.max(1, Math.floor((conversationRows.filter(c => c.speaker === 'user').length) + 1));
 
@@ -278,6 +281,7 @@ export async function POST(req: Request) {
       const blendedFluency = Math.round(((currentFluencyScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.fluency) / scoredTurnsCount);
       const blendedCultural = Math.round(((currentCulturalScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.cultural) / scoredTurnsCount);
       const blendedTask = Math.round(((currentTaskScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.task) / scoredTurnsCount);
+      const blendedExpression = Math.round(((currentExpressionScore * (scoredTurnsCount - 1)) + (mlPipelineOutput.scores as any).expressionAppropriateness) / scoredTurnsCount);
 
       const updateData: Record<string, any> = {
         totalTurns: currentTurnNo,
@@ -288,6 +292,7 @@ export async function POST(req: Request) {
         fluencyScore: blendedFluency,
         culturalScore: blendedCultural,
         taskScore: blendedTask,
+        expressionAppropriatenessScore: blendedExpression,
       };
 
       if (shouldComplete) {
@@ -319,6 +324,7 @@ export async function POST(req: Request) {
         const finalFluencyScore = Math.round((blendedFluency + runningScore) / 2);
         const finalCulturalScore = blendedCultural;
         const finalTaskScore = Math.round((blendedTask + runningScore) / 2);
+        const finalExpressionScore = blendedExpression;
 
         await tx.insert(evaluations).values({
           sessionId: numericSessionId,
@@ -327,10 +333,11 @@ export async function POST(req: Request) {
           fluencyScore: finalFluencyScore,
           culturalScore: finalCulturalScore,
           taskScore: finalTaskScore,
+          expressionAppropriatenessScore: finalExpressionScore,
           feedback: mlPipelineOutput.feedback,
         });
 
-        const totalScore = finalVocabScore + finalGrammarScore + finalFluencyScore + finalCulturalScore + finalTaskScore;
+        const totalScore = finalVocabScore + finalGrammarScore + finalFluencyScore + finalCulturalScore + finalTaskScore + finalExpressionScore;
         const xpGained = Math.round(totalScore * 2.5 + 25);
 
         const [userRow] = await tx.select({

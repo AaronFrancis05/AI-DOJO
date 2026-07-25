@@ -80,3 +80,81 @@
 - All charts (Bar, Line, Radar) are SVG/Recharts-based — no images
 - The color scheme is dark-only; no light mode is planned
 - Tailwind v4 uses CSS variables via `@theme inline` — custom classes: `bg-dojo-*`, `text-dojo-*`, `border-dojo-*`
+
+### AvatarMicOverlay
+
+File: `components/roleplay/AvatarMicOverlay.tsx`
+Last updated: 2026-07-25
+
+| Property            | Class / Value                                   |
+| ------------------- | ----------------------------------------------- |
+| Container position  | `absolute bottom-0 left-0 right-0 z-30`         |
+| Container layout    | `flex flex-col items-center gap-3 pb-8`         |
+| Caption background  | `bg-dojo-surface/80 backdrop-blur-md`           |
+| Caption border      | `border border-dojo-border border-dashed`       |
+| Caption radius      | `rounded-xl`                                    |
+| Caption text        | `text-sm text-dojo-text-primary/70 italic`      |
+| Mute button bg      | `bg-white/5 backdrop-blur-md`                   |
+| Mute button border  | `border border-white/10`                        |
+| Mute button radius  | `rounded-full`                                  |
+| Mic button size     | `h-16 w-16`                                     |
+| Mic button radius   | `rounded-full`                                  |
+| Mic idle bg         | `bg-dojo-accent`                                |
+| Mic listening bg    | `bg-dojo-warning`                               |
+| Mic listening glow  | `shadow-[0_0_30px_rgba(242,169,59,0.6)] ring-4 ring-dojo-warning/20` |
+| Mic idle shadow     | `shadow-[0_10px_25px_rgba(45,59,197,0.5)]`     |
+| Error text          | `text-xs text-dojo-danger`                      |
+| Error container     | `bg-dojo-surface/80 px-3 py-1 rounded-lg`       |
+
+**Pattern notes:**
+- Mic button uses push-to-talk (onMouseDown/onMouseUp + touch equivalents), not toggle
+- Barge-in: pressing mic while AI speaking calls `stopTts()` before starting recognition
+- Caption bubble uses dashed border to distinguish from chat bubble
+- Live caption falls back from external partial to voice.partialTranscript
+
+### ConnectionLatencyIndicator
+
+File: `components/roleplay/ConnectionLatencyIndicator.tsx`
+Last updated: 2026-07-25
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Container        | `flex items-center gap-2 px-3 py-1.5 rounded-full border` |
+| Good bg          | `bg-dojo-surface bg-opacity-80`                 |
+| Good border      | `#3FB27F` (inline style)                        |
+| Good dot         | `bg-[#3FB27F]`                                  |
+| Good text        | `text-[#8FE2B5]`                                |
+| Degraded bg      | `bg-[#2A2210]`                                  |
+| Degraded dot     | `bg-[#F2A93B] animate-pulse`                    |
+| Offline bg       | `bg-[#2A1416]`                                  |
+| Offline dot      | `bg-[#E5484D]`                                  |
+| Label text       | `text-[11px] font-semibold`                     |
+| Latency text     | `text-[10px] text-white/40 font-mono`           |
+
+**Pattern notes:**
+- Hardcoded hex values used for dot/label colors because these are status-specific, not design tokens
+- `useLatencyMonitor` hook exported from same file — polls via `fetch OPTIONS` every 10s
+- Thresholds: <300ms good, <2000ms degraded, else offline
+
+### Session Mode Chooser (session page)
+
+File: `app/(app)/session/[sessionId]/page.tsx`
+Last updated: 2026-07-25
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Container        | `flex h-full flex-col`                          |
+| Card grid        | `grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full` |
+| Card bg          | `bg-dojo-surface/60 backdrop-blur-sm`           |
+| Card border      | `border-2`                                      |
+| Card radius      | `rounded-2xl`                                   |
+| Card icon box    | `h-14 w-14 rounded-full border-2 border-current` |
+| Card title text  | `text-base font-bold text-dojo-text-primary`    |
+| Card desc text   | `text-xs text-dojo-text-muted`                  |
+| Hover state      | `hover:scale-110` on icon, `hover:bg-*/10` on card |
+| Transition       | `transition-all duration-200`                   |
+
+**Pattern notes:**
+- Each mode card has a distinct accent color: Chat=accent, Voice=#3FB27F, Avatar=#8B5CF6
+- Cards are links via `router.push` — no `<a>` tags
+- Footer shows "View Report" link when session.status === 'completed'
