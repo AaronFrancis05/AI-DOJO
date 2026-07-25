@@ -90,12 +90,26 @@ export default function SessionReportPage() {
 
   const { session, scenario, conversations, evaluation, goalCompletions } = data;
 
+  const userTurns = conversations?.filter((c: any) => c.speaker === 'user') ?? [];
+  const responseTimes = userTurns.map((c: any) => c.responseTimeMs).filter((t: any) => typeof t === 'number' && t > 0);
+  const avgResponseTime = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a: number, b: number) => a + b, 0) / responseTimes.length) : null;
+  const medianResponseTime = responseTimes.length > 0
+    ? (() => { const sorted = [...responseTimes].sort((a: number, b: number) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2); })()
+    : null;
+
+  const totalGoals = goalCompletions?.length ?? 0;
+  const achievedGoals = goalCompletions?.filter((gc: any) => gc.achieved ?? true).length ?? 0;
+  const taskCompletionRate = totalGoals > 0 ? Math.round((achievedGoals / totalGoals) * 100) : null;
+
+  const expressionScore = evaluation?.expressionAppropriatenessScore ?? session.expressionAppropriatenessScore;
+
   const scoreFields = [
-    { label: 'Vocabulary', value: evaluation?.vocabularyScore ?? session.vocabularyScore, max: 30, color: 'accent' as const },
-    { label: 'Grammar',    value: evaluation?.grammarScore ?? session.grammarScore,    max: 25, color: 'success' as const },
+    { label: 'Vocabulary', value: evaluation?.vocabularyScore ?? session.vocabularyScore, max: 25, color: 'accent' as const },
+    { label: 'Grammar',    value: evaluation?.grammarScore ?? session.grammarScore,    max: 20, color: 'success' as const },
     { label: 'Fluency',    value: evaluation?.fluencyScore ?? session.fluencyScore,    max: 20, color: 'warning' as const },
-    { label: 'Cultural',   value: evaluation?.culturalScore ?? session.culturalScore,  max: 15, color: 'accent' as const },
+    { label: 'Cultural',   value: evaluation?.culturalScore ?? session.culturalScore,  max: 10, color: 'accent' as const },
     { label: 'Task',       value: evaluation?.taskScore ?? session.taskScore,          max: 10, color: 'success' as const },
+    { label: 'Expression', value: expressionScore,                                       max: 15, color: 'accent' as const },
   ];
 
   const totalScore = scoreFields.reduce((s, x) => s + (x.value ?? 0), 0);
@@ -148,6 +162,42 @@ export default function SessionReportPage() {
           ))}
         </div>
       </Card>
+
+      {/* Response Time & Task Completion */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card>
+          <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">Response Time</h3>
+          {avgResponseTime !== null ? (
+            <div className="space-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-dojo-text-primary">{avgResponseTime < 1000 ? `${avgResponseTime}ms` : `${(avgResponseTime / 1000).toFixed(1)}s`}</span>
+                <span className="text-xs text-dojo-text-muted">average</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-lg font-semibold text-dojo-text-primary">{medianResponseTime < 1000 ? `${medianResponseTime}ms` : `${(medianResponseTime / 1000).toFixed(1)}s`}</span>
+                <span className="text-xs text-dojo-text-muted">median</span>
+              </div>
+              <p className="text-xs text-dojo-text-muted">Across {responseTimes.length} user turns</p>
+            </div>
+          ) : (
+            <p className="text-sm text-dojo-text-muted">No response time data available</p>
+          )}
+        </Card>
+        <Card>
+          <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">Task Completion</h3>
+          {taskCompletionRate !== null ? (
+            <div className="space-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-dojo-text-primary">{taskCompletionRate}%</span>
+                <span className="text-xs text-dojo-text-muted">of goals achieved</span>
+              </div>
+              <p className="text-xs text-dojo-text-muted">{achievedGoals}/{totalGoals} goals completed</p>
+            </div>
+          ) : (
+            <p className="text-sm text-dojo-text-muted">No goal data available</p>
+          )}
+        </Card>
+      </div>
 
       {/* Feedback */}
       {feedbackText && (
@@ -205,9 +255,9 @@ export default function SessionReportPage() {
                           ? 'rounded-br-none bg-dojo-accent'
                           : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
                       }`}>
-                        {msg.messageJp && (
+                        {(msg.messageTarget || msg.messageJp) && (
                           <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                            {msg.messageJp}
+                            {msg.messageTarget ?? msg.messageJp}
                           </p>
                         )}
                         {msg.messageRomaji && (
@@ -215,9 +265,9 @@ export default function SessionReportPage() {
                             {msg.messageRomaji}
                           </p>
                         )}
-                        {msg.messageEn && (
+                        {(msg.messageNative || msg.messageEn) && (
                           <p className={`text-xs ${isUser ? 'text-white/60' : 'text-dojo-text-muted'}`}>
-                            {msg.messageEn}
+                            {msg.messageNative ?? msg.messageEn}
                           </p>
                         )}
                       </div>

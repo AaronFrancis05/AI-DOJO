@@ -61,6 +61,7 @@ export async function POST(req: Request) {
     const rawSessionId = body.sessionId;
     const rawUserInput = body.userRawInput;
     const isRetryOfPreviousMistake = body.isRetryOfPreviousMistake === true;
+    const responseTimeMs = typeof body.responseTimeMs === 'number' ? body.responseTimeMs : null;
 
     if (!rawSessionId || !rawUserInput) {
       return Response.json({ error: 'sessionId and userRawInput are required' }, { status: 400 });
@@ -541,6 +542,7 @@ RULES:
                     messageRomaji: analysis.messageRomaji,
                     emotionTone: analysis.emotionTone ?? null,
                     gestureHint: analysis.gestureHint ?? null,
+                    responseTimeMs,
                   }).returning({ id: conversations.id });
 
                   const inserted = await tx.insert(corrections).values(
@@ -615,6 +617,7 @@ RULES:
               messageRomaji: analysis.messageRomaji,
               emotionTone: analysis.emotionTone ?? null,
               gestureHint: analysis.gestureHint ?? null,
+              responseTimeMs,
             }).returning({ id: conversations.id });
 
             if (hasCorrections) {
@@ -708,6 +711,7 @@ RULES:
             const currentFluencyScore = freshSession.fluencyScore ?? 0;
             const currentCulturalScore = freshSession.culturalScore ?? 0;
             const currentTaskScore = freshSession.taskScore ?? 0;
+            const currentExpressionScore = freshSession.expressionAppropriatenessScore ?? 0;
 
             const scoredTurnsCount = Math.max(1, Math.floor((conversationRows.filter(c => c.speaker === 'user').length) + 1));
 
@@ -716,6 +720,7 @@ RULES:
             const blendedFluency = Math.round(((currentFluencyScore * (scoredTurnsCount - 1)) + analysis.scores.fluency) / scoredTurnsCount);
             const blendedCultural = Math.round(((currentCulturalScore * (scoredTurnsCount - 1)) + analysis.scores.cultural) / scoredTurnsCount);
             const blendedTask = Math.round(((currentTaskScore * (scoredTurnsCount - 1)) + analysis.scores.task) / scoredTurnsCount);
+            const blendedExpression = Math.round(((currentExpressionScore * (scoredTurnsCount - 1)) + (analysis.scores as any).expressionAppropriateness) / scoredTurnsCount);
 
             const updateData: Record<string, unknown> = {
               totalTurns: currentTurnNo,
@@ -727,6 +732,7 @@ RULES:
               fluencyScore: blendedFluency,
               culturalScore: blendedCultural,
               taskScore: blendedTask,
+              expressionAppropriatenessScore: blendedExpression,
             };
 
             if (shouldCompleteInner) {
@@ -764,10 +770,11 @@ RULES:
                 fluencyScore: finalFluencyScore,
                 culturalScore: blendedCultural,
                 taskScore: finalTaskScore,
+                expressionAppropriatenessScore: blendedExpression,
                 feedback: analysis.feedback,
               });
 
-              const totalScore = finalVocabScore + blendedGrammar + finalFluencyScore + blendedCultural + finalTaskScore;
+              const totalScore = finalVocabScore + blendedGrammar + finalFluencyScore + blendedCultural + finalTaskScore + blendedExpression;
               const xpGained = Math.round(totalScore * 2.5 + 25);
 
               const [userRow] = await tx.select({

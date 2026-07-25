@@ -27,11 +27,12 @@ import {
 } from 'lucide-react';
 
 const radarData: RadarDataPoint[] = [
-  { label: 'Grammar',   value: 90 },
+  { label: 'Grammar',    value: 90 },
   { label: 'Vocabulary', value: 88 },
-  { label: 'Fluency',   value: 76 },
-  { label: 'Culture',   value: 72 },
-  { label: 'Task',      value: 85 },
+  { label: 'Fluency',    value: 76 },
+  { label: 'Culture',    value: 72 },
+  { label: 'Task',       value: 85 },
+  { label: 'Expression', value: 78 },
 ];
 
 const tabs: Tab[] = [
@@ -192,6 +193,7 @@ function SkillsTab() {
     { label: 'Fluency', score: 76, change: '+8', desc: 'Response speed and natural flow' },
     { label: 'Culture', score: 72, change: '+2', desc: 'Politeness levels and customs' },
     { label: 'Task', score: 85, change: '+6', desc: 'Goal completion rate' },
+    { label: 'Expression', score: 78, change: '+4', desc: 'Social and situational appropriateness' },
   ];
 
   return (

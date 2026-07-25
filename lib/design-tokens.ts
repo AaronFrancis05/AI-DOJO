@@ -19,6 +19,12 @@ export const colors = {
   streak:        '#F0A93B',
   textPrimary:   '#F4F4F8',
   textMuted:     '#8A93A8',
+  /* Voice interface tokens — one accent per active party */
+  listening:     '#F2A93B',
+  aiSpeaking:    '#4FD1C5',
+  idle:          '#4A5178',
+  error:         '#E5484D',
+  connectionGood:'#3FB27F',
 } as const;
 
 export const radius = {
