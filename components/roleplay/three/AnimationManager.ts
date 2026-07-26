@@ -79,9 +79,9 @@ export class AnimationManager {
       const boneName = t.name.split('.')[0];
       if (!boneName) return true;
       if (!boneNames.has(boneName)) return false;
+      if (t.name.includes('.position')) return false;
       if (isGestureClip) return true;
       if (/head|neck/i.test(boneName)) return false;
-      if (t.name.includes('.position')) return false;
       return true;
     });
     if (bodyTracks.length === clip.tracks.length) return clip;
