@@ -13,11 +13,9 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { TrendValue } from '@/components/ui/TrendValue';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { HexBadge } from '@/components/ui/HexBadge';
 import { Button } from '@/components/ui/Button';
-import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
@@ -89,27 +87,62 @@ const iconMap: Record<string, LucideIcon> = {
   Globe,
 };
 
-// xp, tier, streak are now stored in the `users` table.
-// Words learned / speaking time are still placeholders.
+const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const weeklyActivity = [
-  { day: 'Mon', minutes: 15 },
-  { day: 'Tue', minutes: 22 },
-  { day: 'Wed', minutes: 28 },
-  { day: 'Thu', minutes: 10 },
-  { day: 'Fri', minutes: 35 },
-  { day: 'Sat', minutes: 42 },
-  { day: 'Sun', minutes: 8 },
-];
+const DEFAULT_WEEKLY_ACTIVITY = dayNames.map(day => ({ day, minutes: 0 }));
 
-const recentAchievements = [
-  { id: '1', icon: 'Footprints', label: 'First Steps', unlocked: true },
-  { id: '2', icon: 'MessageSquare', label: '10 Conversations', unlocked: true },
-  { id: '3', icon: 'BookOpen', label: '50 Words', unlocked: true },
-  { id: '4', icon: 'Flame', label: '7-Day Streak', unlocked: false },
-  { id: '5', icon: 'PenTool', label: 'Perfect Grammar', unlocked: false },
-  { id: '6', icon: 'Globe', label: 'All Domains', unlocked: false },
-];
+type WeeklyActivityItem = { day: string; minutes: number };
+
+function computeWeeklyActivity(sessions: SessionRecord[]): WeeklyActivityItem[] {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const counts: Record<string, number> = {};
+  for (const s of sessions) {
+    if (s.startedAt && s.status === 'completed') {
+      const d = new Date(s.startedAt);
+      const startOfDay = new Date(d);
+      startOfDay.setHours(0, 0, 0, 0);
+      if (startOfDay >= sevenDaysAgo && startOfDay <= now) {
+        counts[dayNames[d.getDay()]] = (counts[dayNames[d.getDay()]] ?? 0) + 1;
+      }
+    }
+  }
+  return dayNames.map(day => ({ day, minutes: (counts[day] ?? 0) * 5 }));
+}
+
+function hasSevenDayStreak(sessions: SessionRecord[]): boolean {
+  const completedDates = new Set(
+    sessions
+      .filter(s => s.status === 'completed' && s.startedAt)
+      .map(s => new Date(s.startedAt).toDateString())
+  );
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if (!completedDates.has(d.toDateString())) return false;
+  }
+  return true;
+}
+
+function computeAchievements(sessions: SessionRecord[]) {
+  const completed = sessions.filter(s => s.status === 'completed');
+  const totalSessions = completed.length;
+  const uniqueDomains = new Set(completed.map(s => s.domainId).filter(Boolean)).size;
+  const hasStreak = hasSevenDayStreak(sessions);
+  const hasPerfectGrammar = completed.some(s => (s.grammarScore ?? 0) >= 90);
+
+  return [
+    { id: '1', icon: 'Footprints', label: 'First Steps', unlocked: totalSessions >= 1 },
+    { id: '2', icon: 'MessageSquare', label: '10 Conversations', unlocked: totalSessions >= 10 },
+    { id: '3', icon: 'BookOpen', label: '50 Words', unlocked: totalSessions >= 3 },
+    { id: '4', icon: 'Flame', label: '7-Day Streak', unlocked: hasStreak },
+    { id: '5', icon: 'PenTool', label: 'Perfect Grammar', unlocked: hasPerfectGrammar },
+    { id: '6', icon: 'Globe', label: 'All Domains', unlocked: uniqueDomains >= 3 },
+  ];
+}
 
 // ── Home Page ─────────────────────────────────────────
 
@@ -122,6 +155,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityItem[]>(DEFAULT_WEEKLY_ACTIVITY);
 
   // Load sessions from DB via API
   useEffect(() => {
@@ -129,21 +163,12 @@ export default function HomePage() {
       try {
         const res = await fetch('/api/sessions');
         const data = await res.json();
-        if (data.success && data.sessions.length > 0) {
+        if (data.success && Array.isArray(data.sessions)) {
           setSessions(data.sessions);
-        } else {
-          // Fallback: use mock data if DB not seeded
-          setSessions(mockSessions.map(s => ({
-            ...s,
-            scenarioTitle: s.scenarioTitle,
-          })) as unknown as SessionRecord[]);
+          setWeeklyActivity(computeWeeklyActivity(data.sessions));
         }
       } catch (e) {
         console.error('Failed to load sessions:', e);
-        setSessions(mockSessions.map(s => ({
-          ...s,
-          scenarioTitle: s.scenarioTitle,
-        })) as unknown as SessionRecord[]);
       } finally {
         setLoading(false);
       }
@@ -178,7 +203,11 @@ export default function HomePage() {
       const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        setSessions(prev => prev.filter(s => s.id !== sessionId));
+        setSessions(prev => {
+          const next = prev.filter(s => s.id !== sessionId);
+          setWeeklyActivity(computeWeeklyActivity(next));
+          return next;
+        });
       }
     } catch (e) {
       console.error('Delete failed:', e);
@@ -194,6 +223,8 @@ export default function HomePage() {
     return sum + (pct ?? 0);
   }, 0);
   const avgScore = completedSessions.length > 0 ? Math.round(totalScore / completedSessions.length) : null;
+  const today = dayNames[new Date().getDay()];
+  const todayMinutes = weeklyActivity.find(d => d.day === today)?.minutes ?? 0;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-10">
@@ -203,21 +234,23 @@ export default function HomePage() {
         <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-dojo-accent/10 blur-[80px]" />
         <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
         
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+        <div className="relative z-10 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-8">
           <div className="flex items-center gap-6">
             <div className="relative shrink-0">
               <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
-              <div className="relative h-28 w-72 overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
+              <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
                 {currentAvatarModelUrl ? (
                   <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={user?.name} />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-xl font-bold text-dojo-text-primary">
-                    {user?.name?.[0] ?? '?'}
+                  <div className="flex h-full w-full items-center justify-center">
+                    <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
+                      {user?.name?.[0] ?? '?'}
+                    </div>
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
-                <Trophy className="h-4 w-4" />
+              <div className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
+                <Trophy className="h-5 w-5" />
               </div>
             </div>
             <div>
@@ -279,10 +312,10 @@ export default function HomePage() {
             </div>
             <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest mb-4">Daily Goal</h3>
             <div className="flex items-end justify-between mb-2">
-              <p className="text-2xl font-black text-dojo-text-primary">{completedSessions.length > 0 ? `${completedSessions.length * 5} / 30` : '0 / 30'} <span className="text-sm font-medium text-dojo-text-muted">mins</span></p>
-              <span className="text-xs font-bold text-dojo-success">{completedSessions.length > 0 ? `${Math.min(completedSessions.length * 5 * 100 / 30, 100)}%` : '0%'}</span>
+              <p className="text-2xl font-black text-dojo-text-primary">{todayMinutes} / {user?.dailyGoalMinutes ?? 30} <span className="text-sm font-medium text-dojo-text-muted">mins</span></p>
+              <span className="text-xs font-bold text-dojo-success">{Math.min(todayMinutes * 100 / (user?.dailyGoalMinutes ?? 30), 100)}%</span>
             </div>
-            <ProgressBar value={completedSessions.length > 0 ? Math.min(completedSessions.length * 5 * 100 / 30, 100) : 0} color="success" size="lg" className="mb-4" />
+            <ProgressBar value={Math.min(todayMinutes * 100 / (user?.dailyGoalMinutes ?? 30), 100)} color="success" size="lg" className="mb-4" />
             <p className="text-xs text-dojo-text-muted leading-relaxed">{completedSessions.length > 0 ? 'Great progress! Keep practicing to reach your daily goal.' : 'Start a roleplay session to build your daily practice streak.'}</p>
             <Button variant="primary" className="w-full mt-6 shadow-lg shadow-dojo-accent/20" onClick={() => router.push('/hub')}>
               <Play className="h-4 w-4 fill-current" /> Continue Practice
@@ -293,12 +326,12 @@ export default function HomePage() {
           <div className="grid grid-cols-2 gap-4">
             <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer" onClick={() => router.push('/leaderboard')}>
               <TrendingUp className="mx-auto h-5 w-5 text-dojo-success mb-2" />
-              <p className="text-lg font-bold text-dojo-text-primary">{completedSessions.length > 0 ? '#14' : '--'}</p>
+              <p className="text-lg font-bold text-dojo-text-primary">--</p>
               <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Global Rank</p>
             </Card>
             <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer">
               <Calendar className="mx-auto h-5 w-5 text-dojo-accent mb-2" />
-              <p className="text-lg font-bold text-dojo-text-primary">{completedSessions.length > 0 ? 'Jul 15' : '--'}</p>
+              <p className="text-lg font-bold text-dojo-text-primary">--</p>
               <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Next Milestone</p>
             </Card>
           </div>
@@ -343,7 +376,7 @@ export default function HomePage() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Weekly Activity</h3>
-                  <p className="text-lg font-bold text-dojo-text-primary mt-1">{completedSessions.length > 0 ? `${completedSessions.length * 5} Total Minutes` : 'No activity yet'} {completedSessions.length > 0 && <span className="text-xs font-normal text-dojo-success ml-2">+12% vs last week</span>}</p>
+                  <p className="text-lg font-bold text-dojo-text-primary mt-1">{completedSessions.length > 0 ? `${weeklyActivity.reduce((sum, d) => sum + d.minutes, 0)} Total Minutes` : 'No activity yet'}</p>
                 </div>
                 <div className="flex gap-2">
                   <Badge variant="outline" className="text-[10px]">Last 7 Days</Badge>
@@ -425,28 +458,35 @@ export default function HomePage() {
 
         {/* Recent Achievements */}
         <Card>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Achievements</h3>
-            <span className="text-xs font-bold text-dojo-text-muted">{completedSessions.length > 0 ? recentAchievements.filter(a => a.unlocked).length : 0}/{recentAchievements.length}</span>
-          </div>
-          <div className="grid grid-cols-3 gap-y-6">
-            {recentAchievements.map((a) => {
-              const Icon = iconMap[a.icon] ?? Sparkles;
-              return (
-                <div key={a.id} className="flex flex-col items-center group cursor-pointer">
-                  <HexBadge
-                    icon={Icon}
-                    label={a.label}
-                    unlocked={completedSessions.length > 0 ? a.unlocked : false}
-                    size={48}
-                  />
-                  <span className={`mt-2 text-[9px] font-bold uppercase tracking-tight text-center px-1 transition-colors ${completedSessions.length > 0 && a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted group-hover:text-dojo-text-primary'}`}>
-                    {a.label}
-                  </span>
+          {(() => {
+            const achievements = computeAchievements(sessions);
+            return (
+              <>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Achievements</h3>
+                  <span className="text-xs font-bold text-dojo-text-muted">{achievements.filter(a => a.unlocked).length}/{achievements.length}</span>
                 </div>
-              );
-            })}
-          </div>
+                <div className="grid grid-cols-3 gap-y-6">
+                  {achievements.map((a) => {
+                    const Icon = iconMap[a.icon] ?? Sparkles;
+                    return (
+                      <div key={a.id} className="flex flex-col items-center group cursor-pointer">
+                        <HexBadge
+                          icon={Icon}
+                          label={a.label}
+                          unlocked={a.unlocked}
+                          size={48}
+                        />
+                        <span className={`mt-2 text-[9px] font-bold uppercase tracking-tight text-center px-1 transition-colors ${a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted group-hover:text-dojo-text-primary'}`}>
+                          {a.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
           <Button variant="ghost" size="sm" className="w-full mt-6 text-[10px] font-bold border border-dojo-border/50">
             View All Badges
           </Button>
@@ -472,7 +512,21 @@ export default function HomePage() {
           </div>
         </div>
 
-        {!loading && sessions.length === 0 ? (
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} className="!p-5 animate-pulse">
+                <div className="h-4 w-16 bg-dojo-border rounded mb-4" />
+                <div className="h-5 w-3/4 bg-dojo-border rounded mb-2" />
+                <div className="h-3 w-1/2 bg-dojo-border rounded mb-6" />
+                <div className="border-t border-dojo-border/50 pt-4 flex justify-between">
+                  <div className="h-3 w-12 bg-dojo-border rounded" />
+                  <div className="h-6 w-20 bg-dojo-border rounded" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : sessions.length === 0 ? (
           <Card className="text-center py-12 border-dashed border-dojo-border/60">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-dojo-surface-raised mx-auto mb-4">
               <Play className="h-8 w-8 text-dojo-border fill-current" />
@@ -485,8 +539,8 @@ export default function HomePage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(loading ? mockSessions.slice(0, 3) : sessions.slice(0, 3)).map((session) => {
-              const pct = computeTotalPct(session as SessionRecord);
+            {sessions.slice(0, 3).map((session) => {
+              const pct = computeTotalPct(session);
 
               return (
                 <Card key={session.id} hoverable className={`group !p-5 relative transition-all hover:translate-y-[-2px] ${deleting === session.id ? 'opacity-50' : ''}`}>

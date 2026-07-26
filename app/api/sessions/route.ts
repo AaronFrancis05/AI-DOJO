@@ -23,15 +23,18 @@ export async function GET(req: Request) {
     .select({
       session: sessions,
       scenarioTitle: scenarios.title,
+      domainId: situations.domainId,
     })
     .from(sessions)
     .leftJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
+    .leftJoin(situations, eq(sessions.situationId, situations.id))
     .where(and(...conditions))
     .orderBy(desc(sessions.startedAt));
 
   const list = rows.map(r => ({
     ...r.session,
     scenarioTitle: r.scenarioTitle ?? 'Practice Session',
+    domainId: r.domainId ?? null,
   }));
 
   return Response.json({ success: true, sessions: list });

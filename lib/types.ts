@@ -18,6 +18,7 @@ export interface SessionRecord {
   startedAt: string;
   completedAt: string | null;
   scenarioTitle?: string;
+  domainId: number | null;
   targetLanguage: string;
   nativeLanguage: string;
 }

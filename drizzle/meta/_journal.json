@@ -134,6 +134,20 @@
       "when": 1788200000000,
       "tag": "0018_expression_appropriateness",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785089080819,
+      "tag": "0019_careless_outlaw_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785095406538,
+      "tag": "0020_happy_barracuda",
+      "breakpoints": true
     }
   ]
 }

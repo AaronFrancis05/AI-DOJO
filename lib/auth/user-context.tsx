@@ -13,6 +13,7 @@ export interface UserContextValue {
   streak: number;
   avatarSrc?: string | null;
   avatarColor?: string;
+  dailyGoalMinutes?: number;
 }
 
 interface UserContextType {

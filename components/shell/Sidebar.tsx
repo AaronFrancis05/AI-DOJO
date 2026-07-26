@@ -60,8 +60,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 
   async function handleSignOut() {
     await authClient.signOut();
-    router.push('/auth');
-    router.refresh();
+    window.location.href = '/auth?signed_out=1';
   }
 
   const handleClick = (href: string) => {

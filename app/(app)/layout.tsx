@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { getAuthUserReadOnly } from '@/lib/auth/server';
 import { UserProvider } from '@/lib/auth/user-context';
@@ -26,10 +27,17 @@ export default async function AppLayout({
         tier: users.tier,
         streak: users.streak,
         avatarSrc: users.avatarSrc,
+        dailyGoalMinutes: users.dailyGoalMinutes,
+        onboardingCompletedAt: users.onboardingCompletedAt,
       })
       .from(users)
       .where(eq(users.id, u.id))
       .limit(1);
+
+    // Redirect to onboarding if the user hasn't completed it yet
+    if (dbUser && !dbUser.onboardingCompletedAt) {
+      redirect('/onboarding/level');
+    }
 
     user = {
       id: u.id,
@@ -42,6 +50,7 @@ export default async function AppLayout({
       streak: dbUser?.streak ?? 0,
       avatarSrc: dbUser?.avatarSrc ?? null,
       avatarColor: '#2D3BC5',
+      dailyGoalMinutes: dbUser?.dailyGoalMinutes ?? 30,
     };
   }
 

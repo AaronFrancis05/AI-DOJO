@@ -48,10 +48,19 @@ async function checkSessionAndRedirect(request: NextRequest) {
 }
 
 export default async function middleware(request: NextRequest) {
-  if (PUBLIC_REFRESH_PATHS.has(request.nextUrl.pathname)) {
+  const { pathname } = request.nextUrl;
+
+  // Allow unauthenticated access to onboarding
+  if (pathname.startsWith('/onboarding')) {
+    return NextResponse.next();
+  }
+
+  // Public routes — redirect authenticated users to /home
+  if (PUBLIC_REFRESH_PATHS.has(pathname)) {
     return checkSessionAndRedirect(request);
   }
 
+  // Everything else requires auth
   return protectedMiddleware(request);
 }
 
