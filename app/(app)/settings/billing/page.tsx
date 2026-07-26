@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Clock } from 'lucide-react';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
 export default function BillingPage() {
+  usePageTitle('Pricing & Plans');
   return (
     <div className="mx-auto max-w-lg p-6 text-center">
       <Link

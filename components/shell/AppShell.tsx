@@ -30,9 +30,9 @@ function MobileTopBar({ onToggle, sidebarOpen }: { onToggle: () => void; sidebar
       >
         {sidebarOpen ? <X className="h-5 w-5 text-dojo-text-primary" /> : <Menu className="h-5 w-5 text-dojo-text-primary" />}
       </button>
-      <span className="flex-1 text-center text-base font-semibold text-dojo-text-primary truncate px-2">
+      <h1 className="flex-1 text-center text-base font-semibold text-dojo-text-primary truncate px-2">
         {title}
-      </span>
+      </h1>
       <div className="h-9 w-9 shrink-0" aria-hidden="true" />
     </div>
   );
