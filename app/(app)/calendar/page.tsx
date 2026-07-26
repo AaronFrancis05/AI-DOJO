@@ -151,6 +151,7 @@ export default function CalendarPage() {
               weekday: 'long',
               month: 'long',
               day: 'numeric',
+              timeZone: 'UTC',
             })}
           </h3>
           {loading ? (

@@ -2,7 +2,10 @@ import { createNeonAuth } from '@neondatabase/auth/next/server';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
+import { eq } from 'drizzle-orm';
 import { syncUser } from './sync-user';
+import { db } from '@/src/db';
+import { users } from '@/src/schema';
 
 function getConfig() {
   const baseUrl = process.env.NEON_AUTH_BASE_URL;
@@ -37,6 +40,16 @@ export async function getAuthUser() {
   return user;
 }
 
+async function resolveDbId(user: { id: string; email?: string } | null) {
+  if (!user?.email) return user;
+  const [dbUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, user.email))
+    .limit(1);
+  return dbUser ? { ...user, id: dbUser.id } : user;
+}
+
 /** Read-only session check safe for Server Components.
  *  Tries the cached session_data JWT first; falls back to calling the
  *  auth handler with the session_token cookie (no cookie rotation). */
@@ -50,7 +63,7 @@ export async function getAuthUserReadOnly() {
       const config = getConfig();
       const secret = new TextEncoder().encode(config.cookies.secret);
       const { payload } = await jwtVerify(sessionDataValue, secret, { algorithms: ['HS256'] });
-      return (payload as Record<string, unknown>)?.user ?? null;
+      return resolveDbId((payload as Record<string, unknown>)?.user as { id: string; email?: string } | null ?? null);
     } catch (err) {
       console.error('[getAuthUserReadOnly] JWT verify failed:', err instanceof Error ? err.message : String(err));
     }
@@ -71,7 +84,7 @@ export async function getAuthUserReadOnly() {
       params: Promise.resolve({ path: ['get-session'] }),
     });
     const data = await response.clone().json();
-    return data?.user ?? null;
+    return resolveDbId((data?.user as { id: string; email?: string } | null) ?? null);
   } catch (err) {
     console.error('[getAuthUserReadOnly] Fallback failed:', err instanceof Error ? err.message : String(err));
     return null;

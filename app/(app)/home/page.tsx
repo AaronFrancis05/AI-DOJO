@@ -94,21 +94,44 @@ const DEFAULT_WEEKLY_ACTIVITY = dayNames.map(day => ({ day, minutes: 0 }));
 type WeeklyActivityItem = { day: string; minutes: number };
 
 function computeWeeklyActivity(sessions: SessionRecord[]): WeeklyActivityItem[] {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
   const counts: Record<string, number> = {};
   for (const s of sessions) {
     if (s.startedAt && s.status === 'completed') {
       const d = new Date(s.startedAt);
-      counts[dayNames[d.getDay()]] = (counts[dayNames[d.getDay()]] ?? 0) + 1;
+      const startOfDay = new Date(d);
+      startOfDay.setHours(0, 0, 0, 0);
+      if (startOfDay >= sevenDaysAgo && startOfDay <= now) {
+        counts[dayNames[d.getDay()]] = (counts[dayNames[d.getDay()]] ?? 0) + 1;
+      }
     }
   }
   return dayNames.map(day => ({ day, minutes: (counts[day] ?? 0) * 5 }));
 }
 
+function hasSevenDayStreak(sessions: SessionRecord[]): boolean {
+  const completedDates = new Set(
+    sessions
+      .filter(s => s.status === 'completed' && s.startedAt)
+      .map(s => new Date(s.startedAt).toDateString())
+  );
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if (!completedDates.has(d.toDateString())) return false;
+  }
+  return true;
+}
+
 function computeAchievements(sessions: SessionRecord[]) {
   const completed = sessions.filter(s => s.status === 'completed');
   const totalSessions = completed.length;
-  const uniqueDomains = new Set(completed.map(s => s.scenarioId)).size;
-  const hasStreak = sessions.length > 0 && new Set(sessions.filter(s => s.startedAt).map(s => new Date(s.startedAt).toDateString())).size >= 7;
+  const uniqueDomains = new Set(completed.map(s => s.domainId).filter(Boolean)).size;
+  const hasStreak = hasSevenDayStreak(sessions);
   const hasPerfectGrammar = completed.some(s => (s.grammarScore ?? 0) >= 90);
 
   return [
@@ -180,7 +203,11 @@ export default function HomePage() {
       const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        setSessions(prev => prev.filter(s => s.id !== sessionId));
+        setSessions(prev => {
+          const next = prev.filter(s => s.id !== sessionId);
+          setWeeklyActivity(computeWeeklyActivity(next));
+          return next;
+        });
       }
     } catch (e) {
       console.error('Delete failed:', e);
