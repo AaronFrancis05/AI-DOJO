@@ -11,7 +11,7 @@ import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { ArrowLeft, Info, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 
@@ -65,13 +65,6 @@ export default function AvatarModePage() {
     });
     return () => setOnSpeakingChange(null);
   }, []);
-
-  useEffect(() => {
-    if (phase === 'icebreaker' && !greetingSent && !loading && !sending && conversations.length === 0) {
-      setGreetingSent(true);
-      sendGreeting().catch(() => {});
-    }
-  }, [phase, greetingSent, loading, sending, conversations.length, sendGreeting]);
 
   function cleanDisplay(text: string): string {
     return text.replace(/【[^】]*】/g, '').trim();
@@ -169,22 +162,61 @@ export default function AvatarModePage() {
           <button
             type="button"
             onClick={() => setMuted(v => !v)}
-            className={`flex h-8 w-8 items-center justify-center rounded-full border ${muted ? 'border-dojo-danger text-dojo-danger' : 'border-white/10 text-dojo-text-muted'}`}
+            className={`tap-target flex h-10 w-10 items-center justify-center rounded-full border ${muted ? 'border-dojo-danger text-dojo-danger' : 'border-white/10 text-dojo-text-muted'}`}
           >
-            {muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
           </button>
           <button
             type="button"
             onClick={() => setInfoOpen(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
+            className="tap-target flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary"
           >
-            <Info className="h-3.5 w-3.5" />
+            <Info className="h-4 w-4" />
           </button>
           <SessionModeTabs sessionId={sessionId} active="avatar" />
         </div>
       </div>
 
       <div className="flex-1 relative overflow-hidden flex items-stretch">
+        {conversations.length === 0 && phase === 'icebreaker' && !greetingSent && (
+          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">
+            <div className="text-center max-w-xs">
+              <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center">
+                <Volume2 className="h-8 w-8 text-dojo-accent" />
+              </div>
+              <h2 className="text-lg font-bold text-white mb-2">Start conversation with {charName}</h2>
+              <p className="text-sm text-dojo-text-muted mb-6">
+                You&apos;ll practice {targetLanguage === 'ja' ? 'Japanese' : targetLanguage} through realistic role-play scenarios.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  unlockAudio();
+                  setGreetingSent(true);
+                  sendGreeting({ onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null) })
+                    .then((fullText) => {
+                      setStreamingText(null);
+                      const cleaned = cleanDisplay(fullText);
+                      if (!mutedRef.current && cleaned) {
+                        speakMixedText(
+                          cleaned,
+                          getBCP47(targetLangRef.current, 'tts'),
+                          getNativeLangBcp47(nativeLangRef.current),
+                          phaseRef.current,
+                        ).catch(() => {});
+                      }
+                    })
+                    .catch(() => { setStreamingText(null); setGreetingSent(false); });
+                }}
+                className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 transition-all active:scale-95"
+              >
+                <Volume2 className="h-5 w-5" />
+                Start conversation
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 flex items-center justify-center relative">
           <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" />
         </div>

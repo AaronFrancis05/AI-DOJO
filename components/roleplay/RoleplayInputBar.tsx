@@ -127,25 +127,25 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
       {/* ── Toolbar Area ── */}
       <div className="flex items-center justify-between w-full px-2">
          <div className="flex items-center gap-1.5">
-           <button
-             onClick={toggleMute}
-             className={cn(
-               "flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 shadow-sm",
-               muted
-                 ? "bg-dojo-danger text-white border-dojo-danger"
-                 : "bg-white/5 border-white/10 text-dojo-text-muted hover:text-dojo-text-primary hover:bg-white/10"
-             )}
-             title={muted ? 'Unmute' : 'Mute AI'}
-           >
-             <VolumeX className="h-4 w-4" />
-           </button>
-           <button
-             onClick={onPause}
-             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary hover:bg-white/10 transition-all duration-200 shadow-sm"
-             title="Settings & Pause"
-           >
-             <Settings2 className="h-4 w-4" />
-           </button>
+            <button
+              onClick={toggleMute}
+              className={cn(
+                "tap-target flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 shadow-sm",
+                muted
+                  ? "bg-dojo-danger text-white border-dojo-danger"
+                  : "bg-white/5 border-white/10 text-dojo-text-muted hover:text-dojo-text-primary hover:bg-white/10"
+              )}
+              title={muted ? 'Unmute' : 'Mute AI'}
+            >
+              <VolumeX className="h-4 w-4" />
+            </button>
+            <button
+              onClick={onPause}
+              className="tap-target flex h-9 w-9 items-center justify-center rounded-full bg-white/5 border border-white/10 text-dojo-text-muted hover:text-dojo-text-primary hover:bg-white/10 transition-all duration-200 shadow-sm"
+              title="Settings & Pause"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
          </div>
 
          <button
@@ -158,7 +158,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
            )}
          >
            {showTextInput ? <Mic className="h-3 w-3" /> : <Keyboard className="h-3 w-3" />}
-           {showTextInput ? "Voice Mode" : "Keyboard"}
+           <span className="hidden xs:inline">{showTextInput ? "Voice Mode" : "Keyboard"}</span>
          </button>
       </div>
 
@@ -174,7 +174,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
               onKeyDown={handleKeyDown}
               placeholder="Type your response in Japanese..."
               disabled={disabled}
-              className="flex-1 bg-transparent border-none px-4 py-3 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+              className="flex-1 bg-transparent border-none px-4 py-3 text-base text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
             />
             <button
               onClick={handleSend}

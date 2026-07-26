@@ -1,6 +1,8 @@
 import { db } from '../../../src/db';
-import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences } from '../../../src/schema';
+import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences, vocabulary } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
+import { getAIProvider } from '../../../lib/ai-providers';
+import { getTargetLangConfig } from '../../../lib/language';
 import { eq, and, count, desc } from 'drizzle-orm';
 
 export async function GET(req: Request) {
@@ -107,20 +109,90 @@ export async function POST(req: Request) {
         }
       }
 
-      const [newScenario] = await db.insert(scenarios).values({
-        title: situation.title,
-        context: situation.context,
-        businessType: domain?.name ?? 'General',
-        difficulty: situation.skillLevel,
-        domain: domain?.slug ?? 'daily_life',
-        aiCharacterName: charName,
-        aiCharacterRole: charRole,
-        userCharacterName: 'Learner',
-        userCharacterRole: 'Student',
-        learningGoals: situation.learningGoals,
-        situationId: numericSituationId,
-        displayOrder: situation.displayOrder,
-      }).returning();
+      const lang = targetLanguage ?? 'ja';
+      const langName = getTargetLangConfig(lang).name;
+
+      let vocabRows: Array<{ targetText: string; romaji: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+
+      const focusPills = situation.focusPills?.split('|||').map((s: string) => s.trim()).filter(Boolean) ?? [];
+
+      try {
+        const provider = await getAIProvider();
+        const vocabSystemPrompt = `You are a vocabulary generator for a ${langName} language learning app. Generate 5-8 essential vocabulary items for the following scenario.
+
+Scenario context: ${situation.context}
+Learning goals: ${situation.learningGoals}
+${focusPills.length > 0 ? `Focus areas: ${focusPills.join(', ')}` : ''}
+
+Each item must be a single ${langName} word or short phrase that is directly relevant to the scenario. Return strictly a JSON array of objects matching this schema:
+{
+  "targetText": "The ${langName} word or phrase",
+  "romaji": "Romaji pronunciation (only for Japanese, else empty string)",
+  "translation": "English translation",
+  "category": "Category like greeting, ordering, question, polite_phrase, direction, etc.",
+  "usageTip": "Brief tip on when/how to use this word (in English)",
+  "formalityLevel": "casual, polite, or formal"
+}`;
+        const raw = await provider.generateJSON(vocabSystemPrompt, []);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          vocabRows = parsed.slice(0, 8).map((v: any) => ({
+            targetText: String(v.targetText ?? ''),
+            romaji: String(v.romaji ?? ''),
+            translation: String(v.translation ?? ''),
+            category: String(v.category ?? 'general'),
+            usageTip: String(v.usageTip ?? ''),
+            formalityLevel: ['casual', 'polite', 'formal'].includes(v.formalityLevel) ? v.formalityLevel : 'polite',
+          })).filter((v: any) => v.targetText && v.translation);
+        }
+      } catch {
+        // AI call failed — fall through to fallback below
+      }
+
+      if (vocabRows.length === 0 && focusPills.length > 0) {
+        vocabRows = focusPills.slice(0, 8).map((pill: string) => ({
+          targetText: pill,
+          romaji: '',
+          translation: pill,
+          category: 'general',
+          usageTip: '',
+          formalityLevel: 'polite',
+        }));
+      }
+
+      const newScenario = await db.transaction(async (tx) => {
+        const [sc] = await tx.insert(scenarios).values({
+          title: situation.title,
+          context: situation.context,
+          businessType: domain?.name ?? 'General',
+          difficulty: situation.skillLevel,
+          domain: domain?.slug ?? 'daily_life',
+          aiCharacterName: charName,
+          aiCharacterRole: charRole,
+          userCharacterName: 'Learner',
+          userCharacterRole: 'Student',
+          learningGoals: situation.learningGoals,
+          situationId: numericSituationId,
+          displayOrder: situation.displayOrder,
+        }).returning();
+
+        if (vocabRows.length > 0) {
+          await tx.insert(vocabulary).values(
+            vocabRows.map(v => ({
+              scenarioId: sc.id,
+              targetText: v.targetText,
+              romaji: v.romaji,
+              translation: v.translation,
+              languageCode: lang,
+              category: v.category,
+              usageTip: v.usageTip || null,
+              formalityLevel: v.formalityLevel,
+            })),
+          );
+        }
+
+        return sc;
+      });
 
       resolvedScenarioId = newScenario.id;
     }

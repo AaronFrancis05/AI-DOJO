@@ -214,6 +214,9 @@ Learning goals: ${situationLearningGoals}
 =====================`;
 
     // ── Phase-specific prompts ──
+    const icebreakerGreetingRule = isSessionStart
+      ? `- This is the FIRST message of the session: begin by greeting the student in ${nativeLangName} and explaining what the scenario is about, using the title and setting above.`
+      : `- Do NOT greet the student again — you already greeted them at the start of this session. Continue directly with teaching/practicing the current vocabulary word. Do not restate the scenario setting either; that was already covered.`;
     const icebreakerRules = `
 ROLE: You are a LANGUAGE TEACHER, not just a roleplay character. Your primary job is TEACHING vocabulary through conversation.
 
@@ -226,7 +229,7 @@ ${vocabBlock}
 Rules for icebreaker phase:
 - STRICT VOCAB LIMIT: You have EXACTLY ${vocabRows.length} vocabulary word(s) listed above. Teach ONLY these words and in this exact order. Do NOT create, invent, or add any words beyond this list. If the student says something unrelated, acknowledge it briefly and return to the current word.
 - BREVITY: Keep your entire response to 2-3 sentences max. Do not give long explanations.
-- ALWAYS begin by greeting the student in ${nativeLangName} and explaining what the scenario is about, using the title and setting above.
+${icebreakerGreetingRule}
 - For each word: say the ${targetLangName} word (with romaji in parentheses), then clearly say its ${nativeLangName} meaning.
 - After introducing a word, ask the student to repeat it back to you.
 - Keep your tone encouraging and supportive — the student is a beginner.
@@ -234,8 +237,9 @@ Rules for icebreaker phase:
 - Do NOT cover multiple words at once. One word per turn.
 - After the student attempts a word, give very brief feedback (5 words max) in ${nativeLangName} on their attempt, then introduce the next word.
 - Mark the vocabulary word you are currently teaching by saying "【VOCAB N】" at the start of your teaching turn, where N is the word number (1-based).
-- If the student's input is empty (session start), give a warm greeting and start teaching word 1.
+- If this is the session-start turn (see rule above), start teaching word 1 right after your one-time greeting. On every later turn, skip straight to introducing/reviewing the current word — no greeting.
 - CRITICAL: Never teach vocabulary unrelated to this scenario. Stay on-topic. Use ONLY the listed scenario vocabulary.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span — the word/phrase itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
@@ -257,14 +261,16 @@ ${goalsBlock}
 RULES FOR GUIDED PHASE:
 - TURN LIMIT: You have a maximum of 8 turns (responses) for this guided phase. You MUST drive the conversation efficiently toward completing ALL remaining learning goals within these 8 turns. Do not waste turns on repetition.
 - Stay in character as ${currentScenario.aiCharacterName} at ALL times. Every response must feel like it belongs to this specific scenario.
+- Do NOT greet the student at every turn — you already greeted them at the start of the session. Jump straight into the roleplay dialogue.
 - LANGUAGE SEPARATION: Every response has TWO strictly separated parts:
-  1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it.
-  2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario.
+   1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it.
+   2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario.
 - Switch between the two cleanly — don't mix languages in the same sentence.
 - Always include romaji in parentheses after any ${targetLangName} text.
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the scenario setting above. Do not generate generic phrases that ignore the situation.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span — the roleplay line itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
@@ -287,12 +293,14 @@ RULES FOR UNGUIDED PHASE:
 - TURN LIMIT: You have a maximum of 8 turns (responses) for this unguided phase. Drive the conversation efficiently to cover all remaining goals within these 8 turns.
 - FULL IMMERSION: Reply entirely in ${targetLangName}. Do NOT use ${nativeLangName} for any reason.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
+- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Always include romaji in parentheses after every ${targetLangName} sentence.
 - Keep responses natural, conversational, and in-character — driven entirely by the scenario setting above.
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
 - Keep responses to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the specific scenario setting. Never resort to generic greetings or phrases that ignore the situation.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is 100% ${targetLangName}, virtually all text should be inside ⟦ ⟧. Include romaji inside the delimiters: ⟦${targetLangName} text (romaji)⟧.
@@ -300,6 +308,9 @@ Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is
 Example: ⟦こんにちは (konnichiwa)⟧ ⟦お元気ですか (ogenki desu ka)⟧？`;
 
     // ── Same-language prompt variants (no dual-language, no delimiters) ──
+    const sameLangIcebreakerGreetingRule = isSessionStart
+      ? `- This is the FIRST message of the session: greet the student and briefly explain what the scenario is about.`
+      : `- Do NOT greet the student again — that already happened at the start of this session. Go straight into teaching/practicing the current word.`;
     const sameLangIcebreakerRules = `
 ROLE: You are a TEACHER. Your primary job is TEACHING vocabulary through conversation.
 
@@ -312,7 +323,7 @@ ${vocabBlock}
 Rules:
 - You have EXACTLY ${vocabRows.length} vocabulary word(s) listed above. Teach ONLY these words and in this exact order.
 - BREVITY: Keep your entire response to 2-3 sentences max.
-- Greet the student and explain what the scenario is about.
+${sameLangIcebreakerGreetingRule}
 - For each word: present the word, clearly explain its meaning, and ask the student to repeat it.
 - Keep your tone encouraging and supportive.
 - Do NOT cover multiple words at once. One word per turn.
@@ -334,11 +345,13 @@ ${goalsBlock}
 
 RULES:
 - Stay in character as ${currentScenario.aiCharacterName} at all times. Every response must feel like it belongs to this specific scenario.
+- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - Drive the conversation forward naturally toward completing the remaining goals.
-- CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.`;
+- CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     const sameLangUnguidedRules = `
 ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
@@ -352,11 +365,13 @@ ${goalsBlock}
 
 RULES:
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
+- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
 - Keep responses to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
-- CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.`;
+- CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     // ── Pre-generation phase check: enforce icebreaker vocab cap ──
     // The greeting (turn 1) teaches VOCAB 1. Each subsequent user response
@@ -366,12 +381,13 @@ RULES:
       && !isSessionStart
       && currentTurnNo > totalIcebreakerTurns;
 
+    const hasNoVocab = vocabRows.length === 0;
     const streamSystemPrompt = isSameLanguage
       ? (currentPhase === 'icebreaker'
-          ? (isIcebreakerExhausted ? sameLangGuidedRules : sameLangIcebreakerRules)
+          ? (isIcebreakerExhausted || hasNoVocab ? sameLangGuidedRules : sameLangIcebreakerRules)
           : (currentPhase === 'guided' ? sameLangGuidedRules : sameLangUnguidedRules))
       : (currentPhase === 'icebreaker'
-          ? (isIcebreakerExhausted ? guidedRules : icebreakerRules)
+          ? (isIcebreakerExhausted || hasNoVocab ? guidedRules : icebreakerRules)
           : (currentPhase === 'guided' ? guidedRules : unguidedRules));
 
     const streamUserMsg = isSessionStart
@@ -446,8 +462,8 @@ RULES:
 
               aiConversationId = aiConversation?.id ?? null;
 
-              const icebreakerDoneInner = currentPhase === 'icebreaker' && vocabRows.length > 0
-                ? currentTurnNo >= vocabRows.length
+              const icebreakerDoneInner = currentPhase === 'icebreaker'
+                ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
                 : false;
               const newPhaseInner = nextPhase(currentPhase, { icebreakerDone: icebreakerDoneInner, allGoalsCovered: false });
 
@@ -688,14 +704,14 @@ RULES:
               && freshPhaseTurnCount >= 8;
             const allGoalsCoveredInner = maxPhaseTurnsReached || totalGoalsNow >= goals.length;
 
-            const icebreakerDoneInner = currentPhase === 'icebreaker' && vocabRows.length > 0
-              ? currentTurnNo >= vocabRows.length
+            const icebreakerDoneInner = currentPhase === 'icebreaker'
+              ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
               : false;
             const newPhaseInner = nextPhase(currentPhase, {
               icebreakerDone: icebreakerDoneInner,
               allGoalsCovered: allGoalsCoveredInner,
             });
-            const shouldCompleteInner = analysis.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN;
+            const shouldCompleteInner = currentPhase !== 'icebreaker' && (analysis.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN);
 
             let newPhaseTurnCount = freshPhaseTurnCount;
             if (newPhaseInner !== currentPhase) {

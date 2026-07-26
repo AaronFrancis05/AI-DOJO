@@ -1,6 +1,8 @@
 import { db } from '../../../../src/db';
 import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters, userPreferences } from '../../../../src/schema';
 import { getAuthUser } from '../../../../lib/auth/server';
+import { getAIProvider } from '../../../../lib/ai-providers';
+import { getTargetLangConfig } from '../../../../lib/language';
 import { eq, and, count } from 'drizzle-orm';
 
 interface VocabInput {
@@ -104,20 +106,73 @@ export async function POST(req: Request) {
       displayOrder: 1,
     }).returning();
 
+    const lang = targetLanguage ?? 'ja';
+    const langName = getTargetLangConfig(lang).name;
+
+    let vocabRows: Array<{ targetText: string; romaji: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+
     if (vocabItems && Array.isArray(vocabItems)) {
-      const valid: VocabInput[] = vocabItems.slice(0, 5).filter((v: VocabInput) => v.targetText && v.translation);
+      const valid = vocabItems.slice(0, 8).filter((v: VocabInput) => v.targetText && v.translation);
       if (valid.length > 0) {
-        await tx.insert(vocabulary).values(
-          valid.map((v: VocabInput) => ({
-            scenarioId: scenario.id,
-            targetText: v.targetText,
-            romaji: v.romaji ?? '',
-            translation: v.translation,
-            category: 'custom',
-            formalityLevel: 'polite',
-          })),
-        );
+        vocabRows = valid.map((v: VocabInput) => ({
+          targetText: v.targetText,
+          romaji: v.romaji ?? '',
+          translation: v.translation,
+          category: 'custom',
+          usageTip: '',
+          formalityLevel: 'polite',
+        }));
       }
+    }
+
+    if (vocabRows.length === 0) {
+      try {
+        const provider = await getAIProvider();
+        const vocabSystemPrompt = `You are a vocabulary generator for a ${langName} language learning app. Generate 5-8 essential vocabulary items for the following custom scenario.
+
+Scenario context: ${context}
+Learning goals: ${learningGoals}
+
+Each item must be a single ${langName} word or short phrase directly relevant to the scenario. Return strictly a JSON array of objects matching this schema:
+{
+  "targetText": "The ${langName} word or phrase",
+  "romaji": "Romaji pronunciation (only for Japanese, else empty string)",
+  "translation": "English translation",
+  "category": "Category like greeting, ordering, question, polite_phrase, direction, etc.",
+  "usageTip": "Brief tip on when/how to use this word (in English)",
+  "formalityLevel": "casual, polite, or formal"
+}`;
+        const raw = await provider.generateJSON(vocabSystemPrompt, []);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          vocabRows = parsed.slice(0, 8).map((v: any) => ({
+            targetText: String(v.targetText ?? ''),
+            romaji: String(v.romaji ?? ''),
+            translation: String(v.translation ?? ''),
+            category: String(v.category ?? 'general'),
+            usageTip: String(v.usageTip ?? ''),
+            formalityLevel: ['casual', 'polite', 'formal'].includes(v.formalityLevel) ? v.formalityLevel : 'polite',
+          })).filter((v: any) => v.targetText && v.translation);
+        }
+      } catch {
+        // AI call failed — leave vocabRows empty; the defensive fix in the
+        // stream route handles zero-vocab scenarios via icebreakerDoneInner.
+      }
+    }
+
+    if (vocabRows.length > 0) {
+      await tx.insert(vocabulary).values(
+        vocabRows.map((v: any) => ({
+          scenarioId: scenario.id,
+          targetText: v.targetText,
+          romaji: v.romaji ?? '',
+          translation: v.translation,
+          languageCode: lang,
+          category: v.category ?? 'custom',
+          usageTip: v.usageTip || null,
+          formalityLevel: v.formalityLevel ?? 'polite',
+        })),
+      );
     }
 
     const goalLines = learningGoals.split('\n').filter((l: string) => l.trim().length > 0);

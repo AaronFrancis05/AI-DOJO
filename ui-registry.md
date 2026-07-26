@@ -158,3 +158,123 @@ Last updated: 2026-07-25
 - Each mode card has a distinct accent color: Chat=accent, Voice=#3FB27F, Avatar=#8B5CF6
 - Cards are links via `router.push` — no `<a>` tags
 - Footer shows "View Report" link when session.status === 'completed'
+
+### PhaseIndicator
+
+File: `components/roleplay/PhaseIndicator.tsx`
+Last updated: 2026-07-25
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Container        | `inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold` |
+| Phase bg pattern | `bg-dojo-{color}/20 text-dojo-{color} border-dojo-{color}/30` |
+| Dot              | `h-1.5 w-1.5 rounded-full` (inline style for color) |
+| Dot animation    | `animate-pulse` (all phases except `completed`) |
+| Icebreaker       | bg `#2D3BC5` dot / `bg-dojo-accent/20 text-dojo-accent border-dojo-accent/30` |
+| Guided           | bg `#16A34A` dot / `bg-dojo-success/20 text-dojo-success border-dojo-success/30` |
+| Unguided         | bg `#D97706` dot / `bg-dojo-warning/20 text-dojo-warning border-dojo-warning/30` |
+| Evaluation       | bg `#8B5CF6` dot / `bg-[#8B5CF6]/20 text-[#8B5CF6] border-[#8B5CF6]/30` |
+| Completed        | bg `#64748B` dot / `bg-dojo-text-muted/10 text-dojo-text-muted border-dojo-border` |
+| Fallback         | `bg-dojo-surface border-dojo-border text-dojo-text-muted` |
+
+**Pattern notes:**
+- Phase dot color is driven by inline `style` (not a Tailwind class) because the phase is dynamic
+- All phases follow the same pattern: `bg-{color}/20 text-{color} border-{color}/30` except evaluation (uses hardcoded hex `#8B5CF6` — purple not defined as a token) and completed (muted)
+- The `animate-pulse` dot is suppressed for `completed` phase
+
+### SessionModeTabs
+
+File: `components/roleplay/SessionModeTabs.tsx`
+Last updated: 2026-07-25
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Container        | `flex items-center gap-0.5 rounded-lg border border-dojo-border bg-dojo-surface/80 p-0.5` |
+| Tab button       | `flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all` |
+| Active tab       | `bg-dojo-accent text-white shadow-sm`            |
+| Inactive tab     | `text-dojo-text-muted hover:text-dojo-text-primary` |
+| Icon             | `h-3 w-3`                                       |
+
+**Pattern notes:**
+- Active tab uses solid accent fill (`bg-dojo-accent text-white`), same as primary Button variant
+- Inactive tabs use muted text with hover-to-primary, matching secondary/ghost button patterns
+- Container mimics a segmented control: `border-dojo-border bg-dojo-surface/80 p-0.5`
+
+### SessionInfoDrawer
+
+File: `components/roleplay/SessionInfoDrawer.tsx`
+Last updated: 2026-07-25
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Overlay wrapper  | `fixed inset-0 z-40 flex justify-end`           |
+| Backdrop         | `absolute inset-0 bg-black/40`                  |
+| Panel container  | `relative w-full max-w-xs h-full bg-dojo-surface border-l border-dojo-border shadow-2xl animate-in slide-in-from-right` |
+| Close button     | `absolute top-3 right-3 text-dojo-text-muted hover:text-dojo-text-primary` |
+| Close icon       | `h-4 w-4`                                       |
+
+**Pattern notes:**
+- Backdrop uses `bg-black/40` (standard overlay opacity across the app)
+- Panel slides in from right using `animate-in slide-in-from-right` (shadcn animation utility classes)
+- Close button follows the same `text-dojo-text-muted hover:text-dojo-text-primary` pattern as other dismiss buttons (VoiceCoachPanel, etc.)
+
+### VoiceCoachPanel
+
+File: `components/roleplay/VoiceCoachPanel.tsx`
+Last updated: 2026-07-25
+
+| Property            | Class / Value                                   |
+| ------------------- | ----------------------------------------------- |
+| Container           | `absolute top-20 right-4 left-4 sm:left-auto z-20 w-auto sm:w-72 rounded-2xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md shadow-2xl p-4 space-y-3` |
+| Header title        | `text-xs font-semibold text-dojo-text-primary`  |
+| Dismiss button      | `text-dojo-text-muted` + `X` icon `h-3.5 w-3.5` |
+| Correction icon     | `AlertCircle h-3.5 w-3.5 text-dojo-warning shrink-0` |
+| Original text       | `line-through text-dojo-text-muted`             |
+| Corrected text      | `font-medium text-dojo-text-primary`            |
+| Explanation         | `text-dojo-text-muted/80 mt-0.5`               |
+| Bulb icon           | `Lightbulb h-3.5 w-3.5 text-dojo-warning`       |
+| Section label       | `text-[11px] font-medium text-dojo-text-muted`   |
+| Suggestion pill     | `rounded-full border border-dojo-border px-2.5 py-1 text-[11px] text-dojo-text-primary hover:border-dojo-accent` |
+| Suggestion wrapper  | `flex flex-wrap gap-1.5`                         |
+
+**Pattern notes:**
+- Uses `rounded-2xl` (the largest radius variant, matching mode chooser cards)
+- `backdrop-blur-md` for glass effect, same as AvatarMicOverlay caption and mode chooser cards
+- Suggestion pills follow the same shape as ChatPanel's suggested replies but use `text-[11px]` (smaller) vs `text-xs`
+
+### ChatPanel
+
+File: `components/roleplay/ChatPanel.tsx`
+Last updated: 2026-07-25
+
+| Property              | Class / Value                                   |
+| --------------------- | ----------------------------------------------- |
+| AI bubble             | `bg-dojo-surface-raised/90 border border-dojo-border` |
+| User bubble           | `bg-dojo-accent/20 border border-dojo-accent/30` |
+| Failed bubble         | `bg-dojo-danger/10 border border-dojo-danger/30` |
+| Bubble radius         | `rounded-xl`                                    |
+| Bubble padding        | `px-3.5 py-2.5`                                 |
+| Bubble max width      | `max-w-[85%]`                                   |
+| Speaker badge         | `h-4 w-4 rounded-full text-[8px] font-bold text-white` (inline `backgroundColor`) |
+| Speaker name          | `text-[11px] font-semibold text-dojo-text-primary` |
+| Message text          | `text-sm text-dojo-text-primary leading-relaxed` |
+| Romaji text           | `text-[11px] text-dojo-text-muted italic`       |
+| Native text           | `text-[11px] text-dojo-text-muted`              |
+| Correction strikethrough | `line-through text-dojo-text-muted`          |
+| Correction corrected  | `font-medium text-dojo-text-primary`            |
+| Correction explanation | `text-dojo-text-muted/80 mt-0.5`              |
+| Correction severity major | `bg-dojo-danger/20 text-dojo-danger`         |
+| Correction severity moderate | `bg-dojo-warning/20 text-dojo-warning`     |
+| Correction severity minor | `bg-dojo-accent/20 text-dojo-accent`        |
+| Severity badge        | `h-3.5 w-3.5 rounded-full text-[8px] font-bold text-center` |
+| Timestamp text        | `text-[10px] text-dojo-text-muted/60`          |
+| Suggested reply pill  | `rounded-full border border-dojo-border bg-dojo-surface-raised/80 px-3 py-1.5 text-xs text-dojo-text-primary hover:border-dojo-accent` |
+| Streaming cursor      | `w-0.5 h-4 bg-dojo-accent animate-pulse`       |
+| Scroll-to-bottom btn  | `h-8 w-8 rounded-full bg-dojo-accent text-white shadow-lg hover:opacity-90` |
+| Speaking wave bar     | `w-[3px] rounded-full bg-dojo-accent`          |
+
+**Pattern notes:**
+- Bubbles use `rounded-xl` (12px) consistently — not `rounded-2xl` (16px, used by modals/popups)
+- Pending turns get `opacity-60`; failed turns get a red-tinted bubble + "Failed to send" label
+- Copy button pattern: Copy icon → Check icon on success (same pattern as any copy action)
+- Speaking wave is a CSS animation (`typing-bounce`) on 3 bars, same animation name used across the app for AI typing indicators

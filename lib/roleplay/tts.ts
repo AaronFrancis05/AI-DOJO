@@ -425,6 +425,20 @@ export function feedStreamTts(chunk: string, targetBcp47: string, nativeBcp47: s
   processStreamTtsQueue(targetBcp47, nativeBcp47, phase);
 }
 
+export function unlockAudio(): void {
+  try {
+    const ctx = new AudioContext();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    src.stop(0);
+    src.disconnect();
+    ctx.close();
+  } catch {}
+}
+
 export function stopStreamingTts(): void {
   streamTtsStopped = true;
   streamTtsBuffer = '';
