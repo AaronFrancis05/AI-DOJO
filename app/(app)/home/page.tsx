@@ -203,21 +203,21 @@ export default function HomePage() {
         <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-dojo-accent/10 blur-[80px]" />
         <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
         
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+        <div className="relative z-10 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-8">
           <div className="flex items-center gap-6">
             <div className="relative shrink-0">
               <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
-              <div className="relative h-28 w-72 overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
+              <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
                 {currentAvatarModelUrl ? (
                   <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={user?.name} />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-xl font-bold text-dojo-text-primary">
+                  <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
                     {user?.name?.[0] ?? '?'}
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
-                <Trophy className="h-4 w-4" />
+              <div className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
+                <Trophy className="h-5 w-5" />
               </div>
             </div>
             <div>
