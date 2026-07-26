@@ -1,6 +1,7 @@
 import { createNeonAuth } from '@neondatabase/auth/next/server';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { NextRequest } from 'next/server';
 import { syncUser } from './sync-user';
 
 function getConfig() {
@@ -21,33 +22,58 @@ export async function getAuthUser() {
   const { data: session } = await auth.getSession();
   const user = session?.user ?? null;
   if (user) {
-    await syncUser({ id: user.id, email: user.email!, name: user.name! }).catch(
-      (err) => console.error('[sync-user] failed', err),
-    );
+    const dbUserId = await syncUser({
+      id: user.id,
+      email: user.email!,
+      name: user.name!,
+    }).catch((err) => {
+      console.error('[sync-user] failed', err);
+      return user.id;
+    });
+    // Use the DB's user id so FK constraints (sessions.user_id, etc.) work.
+    // The auth provider's id may differ from the DB row after a provider rotation.
+    return { ...user, id: dbUserId };
   }
   return user;
 }
 
 /** Read-only session check safe for Server Components.
- *  Reads the cached session_data cookie (signed JWT, HS256) directly,
- *  so it never falls through to the upstream `/get-session` call that
- *  would attempt `cookieStore.set()` — which Next.js forbids outside
- *  Server Actions and Route Handlers.
- *
- *  Returns the user or null — no cookie rotation, no upstream call.
- *  Used only for non-sensitive gating (landing page redirect). */
+ *  Tries the cached session_data JWT first; falls back to calling the
+ *  auth handler with the session_token cookie (no cookie rotation). */
 export async function getAuthUserReadOnly() {
   const cookieStore = await cookies();
+
+  // Fast path: try the cached session_data JWT (HTTPS only)
   const sessionDataValue = cookieStore.get('__Secure-neon-auth.local.session_data')?.value;
-  if (!sessionDataValue) return null;
+  if (sessionDataValue) {
+    try {
+      const config = getConfig();
+      const secret = new TextEncoder().encode(config.cookies.secret);
+      const { payload } = await jwtVerify(sessionDataValue, secret, { algorithms: ['HS256'] });
+      return (payload as Record<string, unknown>)?.user ?? null;
+    } catch (err) {
+      console.error('[getAuthUserReadOnly] JWT verify failed:', err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // Fallback: call auth handler directly with session_token cookie
+  const sessionToken = cookieStore.get('neon-auth.session_token')?.value;
+  if (!sessionToken) return null;
 
   try {
-    const config = getConfig();
-    const secret = new TextEncoder().encode(config.cookies.secret);
-    const { payload } = await jwtVerify(sessionDataValue, secret, { algorithms: ['HS256'] });
-    return (payload as Record<string, unknown>)?.user ?? null;
+    const allCookies = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
+    const baseUrl = process.env.NEON_AUTH_BASE_URL || 'http://localhost:3000';
+    const request = new NextRequest(new URL('/api/auth/get-session', baseUrl), {
+      headers: { cookie: allCookies },
+    });
+    const handler = auth.handler();
+    const response = await handler.GET!(request, {
+      params: Promise.resolve({ path: ['get-session'] }),
+    });
+    const data = await response.clone().json();
+    return data?.user ?? null;
   } catch (err) {
-    console.error('[getAuthUserReadOnly] Unexpected error:', err instanceof Error ? err.message : String(err));
+    console.error('[getAuthUserReadOnly] Fallback failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }

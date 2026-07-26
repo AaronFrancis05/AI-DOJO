@@ -27,6 +27,7 @@ export default function OnboardingStepPage() {
   const [error, setError] = useState('');
   const [dbDomains, setDbDomains] = useState<{ id: number; name: string; icon: string; description: string }[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(step === 'account');
   const autoAdvanceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -69,13 +70,17 @@ export default function OnboardingStepPage() {
           if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
           if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
 
+          setSaving(true);
           fetch('/api/user/onboarding', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(onboardingPayload),
           }).then(() => {
+            setAccountCreated(true);
             router.push('/home');
           });
+        } else {
+          setCheckingAuth(false);
         }
       });
     }
@@ -378,6 +383,11 @@ export default function OnboardingStepPage() {
             <CheckCircle2 className="h-12 w-12 text-dojo-success" />
             <p className="text-lg font-semibold text-dojo-text-primary">Account created!</p>
             <p className="text-sm text-dojo-text-muted">Redirecting to your dashboard...</p>
+          </div>
+        ) : checkingAuth ? (
+          <div className="flex flex-col items-center gap-4 py-8">
+            <LoaderIcon className="h-8 w-8 animate-spin text-dojo-accent" />
+            <p className="text-sm text-dojo-text-muted">Checking your session...</p>
           </div>
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); handleEmailSignup(); }} className="flex flex-col gap-4">

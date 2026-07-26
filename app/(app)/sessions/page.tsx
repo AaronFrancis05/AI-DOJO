@@ -13,7 +13,6 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { LiveBadge } from '@/components/ui/LiveBadge';
-import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
 import {
@@ -46,14 +45,11 @@ export default function SessionsPage() {
       try {
         const res = await fetch('/api/sessions');
         const data = await res.json();
-        if (data.success && data.sessions.length > 0) {
+        if (data.success && Array.isArray(data.sessions)) {
           setSessions(data.sessions);
-        } else {
-          setSessions(mockSessions.map(s => ({ ...s, scenarioTitle: s.scenarioTitle })) as unknown as SessionRecord[]);
         }
       } catch (e) {
         console.error('Failed to load sessions:', e);
-        setSessions(mockSessions.map(s => ({ ...s, scenarioTitle: s.scenarioTitle })) as unknown as SessionRecord[]);
       } finally {
         setLoading(false);
       }

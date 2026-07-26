@@ -23,6 +23,7 @@ export const users = pgTable('users', {
   preferredMode:         varchar('preferred_mode', { length: 10 }),
   ageRange:              varchar('age_range', { length: 10 }),
   dailyGoalMinutes:      integer('daily_goal_minutes').default(30).notNull(),
+  onboardingCompletedAt: timestamp('onboarding_completed_at'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
 });
 

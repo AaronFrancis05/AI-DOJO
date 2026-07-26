@@ -147,7 +147,7 @@ export default function CalendarPage() {
 
         <Card>
           <h3 className="text-sm font-semibold text-dojo-text-primary mb-4">
-            {new Date(selectedDate).toLocaleDateString(undefined, {
+            {new Date(selectedDate).toLocaleDateString('en-US', {
               weekday: 'long',
               month: 'long',
               day: 'numeric',

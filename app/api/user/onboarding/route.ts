@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
-  await db.update(users).set(updateData).where(eq(users.id, authUser.id));
+  await db.update(users).set({
+    ...updateData,
+    onboardingCompletedAt: new Date(),
+  }).where(eq(users.id, authUser.id));
 
   return NextResponse.json({ success: true });
 }

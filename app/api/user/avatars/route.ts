@@ -13,15 +13,20 @@ export async function GET() {
   const cached = await cacheGet<(typeof userAvatars.$inferSelect)[]>(cacheKey);
   if (cached) return Response.json({ success: true, avatars: cached });
 
-  const avatars = await db
-    .select()
-    .from(userAvatars)
-    .where(eq(userAvatars.userId, user.id))
-    .orderBy(desc(userAvatars.createdAt));
+  try {
+    const avatars = await db
+      .select()
+      .from(userAvatars)
+      .where(eq(userAvatars.userId, user.id))
+      .orderBy(desc(userAvatars.createdAt));
 
-  await cacheSet(cacheKey, avatars, TTL.AVATARS);
+    await cacheSet(cacheKey, avatars, TTL.AVATARS);
 
-  return Response.json({ success: true, avatars });
+    return Response.json({ success: true, avatars });
+  } catch (err) {
+    console.error('[avatars] DB query failed:', err);
+    return Response.json({ success: true, avatars: [] });
+  }
 }
 
 export async function POST(req: Request) {
