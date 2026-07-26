@@ -186,7 +186,7 @@ export default function AvatarModePage() {
               </div>
               <h2 className="text-lg font-bold text-white mb-2">Start conversation with {charName}</h2>
               <p className="text-sm text-dojo-text-muted mb-6">
-                You'll practice {targetLanguage === 'ja' ? 'Japanese' : targetLanguage} through realistic role-play scenarios.
+                You&apos;ll practice {targetLanguage === 'ja' ? 'Japanese' : targetLanguage} through realistic role-play scenarios.
               </p>
               <button
                 type="button"
@@ -206,7 +206,7 @@ export default function AvatarModePage() {
                         ).catch(() => {});
                       }
                     })
-                    .catch(() => {});
+                    .catch(() => { setStreamingText(null); setGreetingSent(false); });
                 }}
                 className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 transition-all active:scale-95"
               >

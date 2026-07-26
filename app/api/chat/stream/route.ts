@@ -347,7 +347,8 @@ RULES:
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - Drive the conversation forward naturally toward completing the remaining goals.
-- CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.`;
+- CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     const sameLangUnguidedRules = `
 ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
@@ -365,7 +366,8 @@ RULES:
 - Keep responses to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
-- CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.`;
+- CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.
+- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     // ── Pre-generation phase check: enforce icebreaker vocab cap ──
     // The greeting (turn 1) teaches VOCAB 1. Each subsequent user response

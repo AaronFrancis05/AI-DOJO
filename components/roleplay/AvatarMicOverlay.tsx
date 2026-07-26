@@ -87,6 +87,7 @@ export function AvatarMicOverlay({
             onPointerDown={handleStartListening}
             onPointerUp={voice.stop}
             onPointerLeave={voice.stop}
+            onPointerCancel={voice.stop}
             onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleStartListening(); } }}
             onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
             onBlur={voice.stop}

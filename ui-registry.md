@@ -225,7 +225,7 @@ Last updated: 2026-07-25
 
 | Property            | Class / Value                                   |
 | ------------------- | ----------------------------------------------- |
-| Container           | `absolute top-20 right-4 z-20 w-72 rounded-2xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md shadow-2xl p-4 space-y-3` |
+| Container           | `absolute top-20 right-4 left-4 sm:left-auto z-20 w-auto sm:w-72 rounded-2xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md shadow-2xl p-4 space-y-3` |
 | Header title        | `text-xs font-semibold text-dojo-text-primary`  |
 | Dismiss button      | `text-dojo-text-muted` + `X` icon `h-3.5 w-3.5` |
 | Correction icon     | `AlertCircle h-3.5 w-3.5 text-dojo-warning shrink-0` |

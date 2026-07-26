@@ -164,7 +164,7 @@ export default async function LandingPage() {
                   src="/restaurant.png"
                   alt=""
                   fill
-                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  sizes="(max-width: 63.99rem) 100vw, 50vw"
                   className="object-cover"
                   priority
                 />
@@ -203,7 +203,7 @@ export default async function LandingPage() {
                       src="/avatar.png"
                       alt="Yuki Tanaka"
                       fill
-                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      sizes="(max-width: 63.99rem) 100vw, 50vw"
                       className="object-contain object-bottom drop-shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
                       priority
                     />

@@ -127,9 +127,11 @@ body {
   inset: -8px;
 }
 
-/* ── Safe-area bottom padding for notched/home-indicator devices ── */
+/* ── Safe-area bottom spacing for notched/home-indicator devices ── */
+/* Uses transparent border so it adds to (rather than replaces) the element's padding. */
 .safe-bottom {
-  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  border-bottom: solid transparent;
+  border-bottom-width: max(env(safe-area-inset-bottom, 0px), 0px);
 }
 
 /* ── Prevent pull-to-refresh and overscroll bounce on chat containers ── */

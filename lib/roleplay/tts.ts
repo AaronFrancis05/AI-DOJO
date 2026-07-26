@@ -434,6 +434,8 @@ export function unlockAudio(): void {
     src.connect(ctx.destination);
     src.start(0);
     src.stop(0);
+    src.disconnect();
+    ctx.close();
   } catch {}
 }
 
