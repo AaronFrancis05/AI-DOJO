@@ -8,8 +8,6 @@
 import { cn, colors } from '@/lib/design-tokens';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { Badge } from '@/components/ui/Badge';
-import { Crown } from 'lucide-react';
 
 interface UserCardProps {
   name: string;
@@ -37,15 +35,7 @@ export function UserCard({
       <div className="flex items-center gap-3">
         <Avatar name={name} src={avatarSrc} color={avatarColor} size="md" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold text-dojo-text-primary truncate">{name}</p>
-            {tier === 'premium' && (
-              <Crown className="h-3.5 w-3.5 text-dojo-warning shrink-0" />
-            )}
-          </div>
-          <Badge variant={tier === 'premium' ? 'accent' : 'default'} className="mt-0.5">
-            {tier === 'premium' ? 'Premium' : 'Free'}
-          </Badge>
+          <p className="text-sm font-semibold text-dojo-text-primary truncate">{name}</p>
         </div>
       </div>
 

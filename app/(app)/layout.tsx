@@ -36,7 +36,7 @@ export default async function AppLayout({
       name: dbUser?.name ?? u.name ?? 'Learner',
       email: dbUser?.email ?? u.email ?? '',
       level: dbUser?.level ?? 'beginner',
-      tier: (dbUser?.tier ?? 'premium') as 'free' | 'premium',
+      tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,
       xpToNext: dbUser?.xpToNext ?? 1000,
       streak: dbUser?.streak ?? 0,

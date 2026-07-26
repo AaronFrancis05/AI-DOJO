@@ -12,7 +12,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { Badge } from '@/components/ui/Badge';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
 import {
@@ -25,7 +24,6 @@ import {
   Settings,
   LogOut,
   History,
-  Crown,
 } from 'lucide-react';
 
 interface NavItem {
@@ -73,7 +71,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   return (
     <aside className="flex h-full w-60 flex-col bg-dojo-sidebar border-r border-dojo-border shrink-0">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2.5 border-b border-dojo-border px-5">
+      <div className="flex h-16 items-center gap-2.5 border-b border-dojo-border pl-14 pr-14 md:pl-5 md:pr-5 justify-center md:justify-start">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-dojo-accent text-sm font-bold text-white">
           A
         </div>
@@ -116,17 +114,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             size="md"
           />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-dojo-text-primary truncate">
-                {user?.name ?? 'Learner'}
-              </p>
-              {user?.tier === 'premium' && (
-                <Crown className="h-3.5 w-3.5 text-dojo-warning shrink-0" />
-              )}
-            </div>
-            <Badge variant={user?.tier === 'premium' ? 'accent' : 'default'} className="mt-0.5">
-              {user?.tier === 'premium' ? 'Premium' : 'Free'}
-            </Badge>
+            <p className="text-sm font-semibold text-dojo-text-primary truncate">
+              {user?.name ?? 'Learner'}
+            </p>
           </div>
         </div>
         <div className="mt-3 space-y-1">
