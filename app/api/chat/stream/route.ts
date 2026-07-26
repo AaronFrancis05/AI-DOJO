@@ -381,12 +381,13 @@ RULES:
       && !isSessionStart
       && currentTurnNo > totalIcebreakerTurns;
 
+    const hasNoVocab = vocabRows.length === 0;
     const streamSystemPrompt = isSameLanguage
       ? (currentPhase === 'icebreaker'
-          ? (isIcebreakerExhausted ? sameLangGuidedRules : sameLangIcebreakerRules)
+          ? (isIcebreakerExhausted || hasNoVocab ? sameLangGuidedRules : sameLangIcebreakerRules)
           : (currentPhase === 'guided' ? sameLangGuidedRules : sameLangUnguidedRules))
       : (currentPhase === 'icebreaker'
-          ? (isIcebreakerExhausted ? guidedRules : icebreakerRules)
+          ? (isIcebreakerExhausted || hasNoVocab ? guidedRules : icebreakerRules)
           : (currentPhase === 'guided' ? guidedRules : unguidedRules));
 
     const streamUserMsg = isSessionStart
@@ -461,8 +462,8 @@ RULES:
 
               aiConversationId = aiConversation?.id ?? null;
 
-              const icebreakerDoneInner = currentPhase === 'icebreaker' && vocabRows.length > 0
-                ? currentTurnNo >= vocabRows.length
+              const icebreakerDoneInner = currentPhase === 'icebreaker'
+                ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
                 : false;
               const newPhaseInner = nextPhase(currentPhase, { icebreakerDone: icebreakerDoneInner, allGoalsCovered: false });
 
@@ -703,8 +704,8 @@ RULES:
               && freshPhaseTurnCount >= 8;
             const allGoalsCoveredInner = maxPhaseTurnsReached || totalGoalsNow >= goals.length;
 
-            const icebreakerDoneInner = currentPhase === 'icebreaker' && vocabRows.length > 0
-              ? currentTurnNo >= vocabRows.length
+            const icebreakerDoneInner = currentPhase === 'icebreaker'
+              ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
               : false;
             const newPhaseInner = nextPhase(currentPhase, {
               icebreakerDone: icebreakerDoneInner,
