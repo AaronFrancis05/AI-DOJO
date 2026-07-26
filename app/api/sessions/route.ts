@@ -160,7 +160,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
         }));
       }
 
-      const [newScenario] = await db.transaction(async (tx) => {
+      const newScenario = await db.transaction(async (tx) => {
         const [sc] = await tx.insert(scenarios).values({
           title: situation.title,
           context: situation.context,
