@@ -1,21 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { UserIcon, ListIcon, LogOutIcon, LoaderIcon } from './Icons';
 import { useState } from 'react';
 
 export default function NavBar() {
-  const router = useRouter();
   const pathname = usePathname();
   const [loggingOut, setLoggingOut] = useState(false);
 
   async function handleLogout() {
     setLoggingOut(true);
     await authClient.signOut();
-    router.push('/auth');
-    router.refresh();
+    window.location.href = '/auth?signed_out=1';
   }
 
   const linkClass = (path: string) =>

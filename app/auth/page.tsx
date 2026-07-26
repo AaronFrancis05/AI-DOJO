@@ -14,6 +14,7 @@ export default function AuthPage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (window.location.search.includes('signed_out')) return;
     authClient.getSession().then(({ data }) => {
       if (data?.user) router.push('/home');
     });
