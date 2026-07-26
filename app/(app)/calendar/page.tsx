@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ChevronLeft, ChevronRight, Plus, Clock } from 'lucide-react';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -19,6 +20,7 @@ interface CalendarEvent {
 }
 
 export default function CalendarPage() {
+  usePageTitle('Calendar');
   const now = new Date();
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
@@ -81,7 +83,7 @@ export default function CalendarPage() {
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Calendar</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Calendar</h1>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
 import {
   ArrowLeft,
@@ -33,6 +34,7 @@ function computeTotalPct(s: SessionRecord): number | null {
 }
 
 export default function SessionsPage() {
+  usePageTitle('All Sessions');
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +96,7 @@ export default function SessionsPage() {
         </Link>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-dojo-text-primary">All Sessions</h1>
+            <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">All Sessions</h1>
             <p className="text-sm text-dojo-text-muted mt-1">
               {loading ? 'Loading...' : `${sessions.length} total · ${activeSessions.length} in progress`}
             </p>

@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, voiceGender: reqVoiceGender } = body;
+  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage } = body;
 
   let resolvedScenarioId = scenarioId ? Number(scenarioId) : null;
 
@@ -216,14 +216,14 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   const sessionNumber = (result?.count ?? 0) + 1;
 
   let voiceGender = 'female';
-  if (reqVoiceGender && ['female', 'male'].includes(reqVoiceGender)) {
-    voiceGender = reqVoiceGender;
-  } else {
-    const [prefs] = await db
-      .select()
-      .from(userPreferences)
-      .where(eq(userPreferences.userId, user.id));
-    if (prefs?.voiceGender) voiceGender = prefs.voiceGender;
+  if (characterId) {
+    const [char] = await db
+      .select({ gender: characters.gender })
+      .from(characters)
+      .where(eq(characters.id, Number(characterId)));
+    if (char?.gender && ['female', 'male'].includes(char.gender)) {
+      voiceGender = char.gender;
+    }
   }
 
   const [session] = await db.insert(sessions).values({

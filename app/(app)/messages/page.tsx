@@ -4,12 +4,14 @@
 
 import { Card } from '@/components/ui/Card';
 import { MessageSquare } from 'lucide-react';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
 export default function MessagesPage() {
+  usePageTitle('Messages');
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Messages</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Messages</h1>
         <p className="text-sm text-dojo-text-muted mt-1">Talk with other learners and AI assistants</p>
       </div>
 

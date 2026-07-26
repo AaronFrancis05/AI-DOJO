@@ -15,6 +15,7 @@ import { useAvatar } from '@/lib/auth/avatar-context';
 import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
 import Link from 'next/link';
 import { ArrowLeft, Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
 const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
   ssr: false,
@@ -38,6 +39,7 @@ const avatarIconMap: Record<string, React.ComponentType<{ className?: string; st
 };
 
 export default function AvatarSettingsPage() {
+  usePageTitle('Avatar & Character');
   const user = useUser();
   const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar } = useAvatar();
   const [showAvaturn, setShowAvaturn] = useState(false);

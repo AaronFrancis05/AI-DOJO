@@ -12,11 +12,11 @@ import { SliderRow } from '@/components/ui/SliderRow';
 import { Button } from '@/components/ui/Button';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
-import { GenderPicker } from '@/components/ui/GenderPicker';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { type BehaviorMode } from '@/lib/design-tokens';
 import { ChevronRight, User, CreditCard } from 'lucide-react';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
 const tabs: Tab[] = [
   { id: 'preferences', label: 'Preferences' },
@@ -25,11 +25,10 @@ const tabs: Tab[] = [
 ];
 
 export default function SettingsPage() {
+  usePageTitle('Settings');
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
-  const [voiceGender, setVoiceGender] = useState<'female' | 'male' | null>(null);
-  const [voiceGenderDirty, setVoiceGenderDirty] = useState(false);
   const [notifications, setNotifications] = useState({
     push: true,
     email: false,
@@ -38,30 +37,10 @@ export default function SettingsPage() {
     weeklyDigest: false,
   });
 
-  useEffect(() => {
-    fetch('/api/user/preferences')
-      .then(r => r.json())
-      .then(data => setVoiceGender(data.voiceGender ?? 'female'))
-      .catch(() => setVoiceGender('female'));
-  }, []);
-
-  useEffect(() => {
-    if (!voiceGenderDirty || !voiceGender) return;
-    const timer = setTimeout(() => {
-      fetch('/api/user/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceGender }),
-      }).catch(() => {});
-      setVoiceGenderDirty(false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [voiceGender, voiceGenderDirty]);
-
   return (
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Settings</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Settings</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           Manage your preferences, account, and subscription
         </p>
@@ -128,19 +107,7 @@ export default function SettingsPage() {
                     onChange={setResponseSpeed}
                     showValue
                   />
-                  <div className="border-t border-dojo-border pt-6">
-                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">AI Voice Gender</h4>
-                    <p className="text-xs text-dojo-text-muted mb-3">
-                      Choose the voice gender for AI character speech in new sessions.
-                    </p>
-                    <GenderPicker
-                      value={voiceGender ?? 'female'}
-                      onChange={(g) => { setVoiceGender(g); setVoiceGenderDirty(true); }}
-                    />
-                    {voiceGenderDirty && (
-                      <p className="mt-2 text-xs text-dojo-text-muted">Saving\u2026</p>
-                    )}
-                  </div>
+
                 </div>
               );
             case 'notifications':

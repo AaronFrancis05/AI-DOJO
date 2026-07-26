@@ -33,7 +33,6 @@ export async function POST(req: Request) {
     characterId,
     skillLevel,
     behaviorMode,
-    voiceGender: reqVoiceGender,
   } = body;
 
   if (!domainName || !situationTitle || !context || !learningGoals) {
@@ -201,13 +200,15 @@ Each item must be a single ${langName} word or short phrase directly relevant to
 
     const sessionNumber = (result?.count ?? 0) + 1;
 
-    let voiceGender = reqVoiceGender ?? 'female';
-    if (!reqVoiceGender) {
-      const [prefs] = await tx
-        .select()
-        .from(userPreferences)
-        .where(eq(userPreferences.userId, user.id));
-      if (prefs?.voiceGender) voiceGender = prefs.voiceGender;
+    let voiceGender = 'female';
+    if (numericCharacterId) {
+      const [char] = await tx
+        .select({ gender: characters.gender })
+        .from(characters)
+        .where(eq(characters.id, numericCharacterId));
+      if (char?.gender && ['female', 'male'].includes(char.gender)) {
+        voiceGender = char.gender;
+      }
     }
 
     const [session] = await tx.insert(sessions).values({
