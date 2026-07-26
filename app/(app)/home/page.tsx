@@ -211,8 +211,10 @@ export default function HomePage() {
                 {currentAvatarModelUrl ? (
                   <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={user?.name} />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
-                    {user?.name?.[0] ?? '?'}
+                  <div className="flex h-full w-full items-center justify-center">
+                    <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
+                      {user?.name?.[0] ?? '?'}
+                    </div>
                   </div>
                 )}
               </div>
