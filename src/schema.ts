@@ -18,6 +18,11 @@ export const users = pgTable('users', {
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
   googleId:              varchar('google_id', { length: 255 }),
+  learningGoal:          varchar('learning_goal', { length: 30 }),
+  preferredDomainId:     integer('preferred_domain_id').references(() => domains.id),
+  preferredMode:         varchar('preferred_mode', { length: 10 }),
+  ageRange:              varchar('age_range', { length: 10 }),
+  dailyGoalMinutes:      integer('daily_goal_minutes').default(30).notNull(),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
 });
 

@@ -1,5 +1,5 @@
-import { db } from '../../../src/db';
-import { domains } from '../../../src/schema';
+import { db } from '@/src/db';
+import { domains } from '@/src/schema';
 import { asc } from 'drizzle-orm';
 
 export async function GET() {

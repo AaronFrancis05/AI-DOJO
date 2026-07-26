@@ -26,6 +26,7 @@ export default async function AppLayout({
         tier: users.tier,
         streak: users.streak,
         avatarSrc: users.avatarSrc,
+        dailyGoalMinutes: users.dailyGoalMinutes,
       })
       .from(users)
       .where(eq(users.id, u.id))
@@ -42,6 +43,7 @@ export default async function AppLayout({
       streak: dbUser?.streak ?? 0,
       avatarSrc: dbUser?.avatarSrc ?? null,
       avatarColor: '#2D3BC5',
+      dailyGoalMinutes: dbUser?.dailyGoalMinutes ?? 30,
     };
   }
 

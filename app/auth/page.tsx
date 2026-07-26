@@ -52,7 +52,7 @@ export default function AuthPage() {
       if (isLogin) {
         router.push('/home');
       } else {
-        router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`);
+        router.push('/onboarding');
       }
       router.refresh();
     } catch {

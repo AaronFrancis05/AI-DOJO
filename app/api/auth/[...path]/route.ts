@@ -239,7 +239,7 @@ async function handleOAuthExchange(request: NextRequest) {
     responseHeaders.append('Set-Cookie', cookie);
   }
 
-  responseHeaders.set('Location', '/home');
+  responseHeaders.set('Location', '/onboarding');
 
   return new Response(null, { status: 302, headers: responseHeaders });
 }

@@ -281,10 +281,10 @@ export default function HomePage() {
             </div>
             <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest mb-4">Daily Goal</h3>
             <div className="flex items-end justify-between mb-2">
-              <p className="text-2xl font-black text-dojo-text-primary">{completedSessions.length > 0 ? `${completedSessions.length * 5} / 30` : '0 / 30'} <span className="text-sm font-medium text-dojo-text-muted">mins</span></p>
-              <span className="text-xs font-bold text-dojo-success">{completedSessions.length > 0 ? `${Math.min(completedSessions.length * 5 * 100 / 30, 100)}%` : '0%'}</span>
+              <p className="text-2xl font-black text-dojo-text-primary">{completedSessions.length > 0 ? `${completedSessions.length * 5} / ${user?.dailyGoalMinutes ?? 30}` : `0 / ${user?.dailyGoalMinutes ?? 30}`} <span className="text-sm font-medium text-dojo-text-muted">mins</span></p>
+              <span className="text-xs font-bold text-dojo-success">{completedSessions.length > 0 ? `${Math.min(completedSessions.length * 5 * 100 / (user?.dailyGoalMinutes ?? 30), 100)}%` : '0%'}</span>
             </div>
-            <ProgressBar value={completedSessions.length > 0 ? Math.min(completedSessions.length * 5 * 100 / 30, 100) : 0} color="success" size="lg" className="mb-4" />
+            <ProgressBar value={completedSessions.length > 0 ? Math.min(completedSessions.length * 5 * 100 / (user?.dailyGoalMinutes ?? 30), 100) : 0} color="success" size="lg" className="mb-4" />
             <p className="text-xs text-dojo-text-muted leading-relaxed">{completedSessions.length > 0 ? 'Great progress! Keep practicing to reach your daily goal.' : 'Start a roleplay session to build your daily practice streak.'}</p>
             <Button variant="primary" className="w-full mt-6 shadow-lg shadow-dojo-accent/20" onClick={() => router.push('/hub')}>
               <Play className="h-4 w-4 fill-current" /> Continue Practice
