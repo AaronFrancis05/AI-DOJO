@@ -261,9 +261,10 @@ ${goalsBlock}
 RULES FOR GUIDED PHASE:
 - TURN LIMIT: You have a maximum of 8 turns (responses) for this guided phase. You MUST drive the conversation efficiently toward completing ALL remaining learning goals within these 8 turns. Do not waste turns on repetition.
 - Stay in character as ${currentScenario.aiCharacterName} at ALL times. Every response must feel like it belongs to this specific scenario.
+- Do NOT greet the student at every turn — you already greeted them at the start of the session. Jump straight into the roleplay dialogue.
 - LANGUAGE SEPARATION: Every response has TWO strictly separated parts:
-  1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it.
-  2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario.
+   1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it.
+   2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario.
 - Switch between the two cleanly — don't mix languages in the same sentence.
 - Always include romaji in parentheses after any ${targetLangName} text.
 - Keep the overall response to 1–3 sentences typically.
@@ -292,6 +293,7 @@ RULES FOR UNGUIDED PHASE:
 - TURN LIMIT: You have a maximum of 8 turns (responses) for this unguided phase. Drive the conversation efficiently to cover all remaining goals within these 8 turns.
 - FULL IMMERSION: Reply entirely in ${targetLangName}. Do NOT use ${nativeLangName} for any reason.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
+- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Always include romaji in parentheses after every ${targetLangName} sentence.
 - Keep responses natural, conversational, and in-character — driven entirely by the scenario setting above.
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
@@ -343,6 +345,7 @@ ${goalsBlock}
 
 RULES:
 - Stay in character as ${currentScenario.aiCharacterName} at all times. Every response must feel like it belongs to this specific scenario.
+- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
@@ -362,6 +365,7 @@ ${goalsBlock}
 
 RULES:
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
+- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
 - Keep responses to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
@@ -706,7 +710,7 @@ RULES:
               icebreakerDone: icebreakerDoneInner,
               allGoalsCovered: allGoalsCoveredInner,
             });
-            const shouldCompleteInner = analysis.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN;
+            const shouldCompleteInner = currentPhase !== 'icebreaker' && (analysis.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN);
 
             let newPhaseTurnCount = freshPhaseTurnCount;
             if (newPhaseInner !== currentPhase) {
