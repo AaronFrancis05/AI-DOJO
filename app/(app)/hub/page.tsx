@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { getDomains } from '@/lib/data/domains';
 import Link from 'next/link';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import {
   UtensilsCrossed,
   Building2,
@@ -36,6 +37,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 export default function HubPage() {
+  usePageTitle('Choose a Scenario');
   const [domains, setDomains] = useState<DomainFixture[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -50,7 +52,7 @@ export default function HubPage() {
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Choose a Scenario</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Choose a Scenario</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           Select a real-world setting for your roleplay practice
         </p>

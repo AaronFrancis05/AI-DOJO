@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { getLeaderboardGlobal } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
 import { Trophy, Medal, Flame } from 'lucide-react';
 
@@ -29,6 +30,7 @@ const tabs: Tab[] = [
 ];
 
 export default function LeaderboardPage() {
+  usePageTitle('Leaderboard');
   const user = useUser();
   const [globalData, setGlobalData] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +52,7 @@ export default function LeaderboardPage() {
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Leaderboard</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Leaderboard</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           See where you stand among learners
         </p>

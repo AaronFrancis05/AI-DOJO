@@ -16,6 +16,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { type BehaviorMode } from '@/lib/design-tokens';
 import { ChevronRight, User, CreditCard } from 'lucide-react';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
 const tabs: Tab[] = [
   { id: 'preferences', label: 'Preferences' },
@@ -24,6 +25,7 @@ const tabs: Tab[] = [
 ];
 
 export default function SettingsPage() {
+  usePageTitle('Settings');
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
@@ -38,7 +40,7 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Settings</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Settings</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           Manage your preferences, account, and subscription
         </p>

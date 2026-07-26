@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { sessionHistory as mockSessions } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
 
 const WelcomeBanner = dynamic(() => import('@/components/roleplay/avatar-variants/WelcomeBanner').then(m => ({ default: m.WelcomeBanner })), {
@@ -116,6 +117,7 @@ export default function HomePage() {
   const router = useRouter();
   const user = useUser();
   const currentAvatarModelUrl = useCurrentAvatarModel();
+  usePageTitle(`Okaeri, ${user?.name ?? 'Learner'}!`);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -220,7 +222,7 @@ export default function HomePage() {
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-dojo-text-primary tracking-tight">Okaeri, {user?.name ?? 'Learner'}!</h1>
+                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight">Okaeri, {user?.name ?? 'Learner'}!</h1>
               </div>
               <p className="mt-1 text-dojo-text-muted">{completedSessions.length > 0 ? `Master of ${completedSessions.length} real-world scenarios. Keep up the great work!` : 'Start your first conversation to begin tracking your progress.'}</p>
               

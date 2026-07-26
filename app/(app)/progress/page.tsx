@@ -7,6 +7,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { RadarChart, type RadarDataPoint } from '@/components/ui/RadarChart';
 import { getUserStats, getWeeklyActivity, type WeeklyActivity } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
+import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import {
   BarChart,
   Bar,
@@ -52,6 +53,7 @@ const monthlyData = [
 ];
 
 export default function ProgressPage() {
+  usePageTitle('Progress');
   const user = useUser();
   const [stats, setStats] = useState<any>(null);
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
@@ -78,7 +80,7 @@ export default function ProgressPage() {
   return (
     <div className="mx-auto max-w-6xl p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-dojo-text-primary">Progress</h1>
+        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Progress</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           Track your learning journey across all domains
         </p>
