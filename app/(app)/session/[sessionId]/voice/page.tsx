@@ -256,7 +256,7 @@ export default function VoiceOnlyPage() {
         />
 
         {latestAi && transcriptOpen && !voice.isListening && (
-          <div className="absolute bottom-36 left-4 right-4 z-30 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 w-72 animate-in slide-in-from-right-2 duration-200">
             <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted">Last message</span>
@@ -295,7 +295,7 @@ export default function VoiceOnlyPage() {
         )}
 
         {!transcriptOpen && latestAi && (
-          <div className="absolute bottom-36 left-4 right-4 z-30 flex justify-center">
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30">
             <button
               type="button"
               onClick={() => setTranscriptOpen(true)}
