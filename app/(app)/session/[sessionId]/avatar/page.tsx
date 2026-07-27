@@ -15,7 +15,7 @@ import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { ArrowLeft, Info, MessageSquare, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Flag, Info, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 
 export default function AvatarModePage() {
   const params = useParams();
@@ -137,11 +137,23 @@ export default function AvatarModePage() {
   const avatarModelUrl = character?.avatarModelUrl ?? scenario?.avatarModelUrl;
 
   const latestConvo = conversations.length > 0 ? conversations[conversations.length - 1] : null;
+  const latestAiConvo = [...conversations].reverse().find(c => c.speaker === 'ai') ?? null;
 
   // Auto-show mobile message sheet on new AI turns
   useEffect(() => {
     if (latestConvo?.speaker === 'ai') setMobileMsgOpen(true);
   }, [latestConvo?.id]);
+
+  const handleReplay = useCallback((turn: any) => {
+    if (muted) return;
+    unlockAudio();
+    const t = turn.messageTarget || turn.messageNative;
+    if (!t) return;
+    const bcp47 = getBCP47(targetLanguage, 'tts');
+    speakMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
+  }, [muted, targetLanguage, nativeLanguage, phase]);
+
+  const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
   if (loading) {
     return (
@@ -236,12 +248,31 @@ export default function AvatarModePage() {
 
         {/* Desktop side panel */}
         <aside className="hidden md:flex w-80 shrink-0 flex-col gap-3 border-l border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
-          {latestConvo && latestConvo.speaker === 'ai' && (
-            <ConversationBubble
-              speaker="ai" name={charName} accentColor={charColor}
-              messageJp={streamingText ?? latestConvo.messageTarget ?? latestConvo.messageNative ?? ''}
-              messageRomaji={latestConvo.messageRomaji ?? undefined} messageEn=""
-            />
+          {latestAiConvo && (
+            <div className="space-y-2">
+              <ConversationBubble
+                speaker="ai" name={charName} accentColor={charColor}
+                messageJp={streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
+                messageRomaji={latestAiConvo.messageRomaji ?? undefined}
+                messageEn={latestAiConvo.messageNative ?? undefined}
+              />
+              <div className="flex items-center gap-2 px-1">
+                <button
+                  type="button"
+                  onClick={() => handleReplay(latestAiConvo)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-dojo-surface/50 text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                  aria-label="Replay"
+                >
+                  <Volume2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {primaryGoal && (
+                <div className="flex items-start gap-2 px-1 pt-2 border-t border-dojo-border/40">
+                  <Flag className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
+                </div>
+              )}
+            </div>
           )}
           <VoiceCoachPanel
             corrections={coachOpen ? lastCorrections : []}
@@ -253,13 +284,14 @@ export default function AvatarModePage() {
       </div>
 
       {/* Mobile bottom sheet for messages */}
-      {mobileMsgOpen && latestConvo && latestConvo.speaker === 'ai' && (
+      {mobileMsgOpen && latestAiConvo && (
         <div className="md:hidden absolute bottom-24 left-4 right-4 z-30 animate-in slide-in-from-bottom-2 duration-200">
           <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
             <ConversationBubble
               speaker="ai" name={charName} accentColor={charColor}
-              messageJp={streamingText ?? latestConvo.messageTarget ?? latestConvo.messageNative ?? ''}
-              messageRomaji={latestConvo.messageRomaji ?? undefined} messageEn=""
+              messageJp={streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
+              messageRomaji={latestAiConvo.messageRomaji ?? undefined}
+              messageEn={latestAiConvo.messageNative ?? undefined}
             />
           </div>
         </div>

@@ -7,6 +7,7 @@ import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
+import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
@@ -14,7 +15,7 @@ import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { ArrowLeft, Info, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Flag, Info, Volume2, VolumeX } from 'lucide-react';
 
 export default function VoiceOnlyPage() {
   const params = useParams();
@@ -39,6 +40,7 @@ export default function VoiceOnlyPage() {
   const [lastCorrections, setLastCorrections] = useState<any[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
@@ -51,6 +53,18 @@ export default function VoiceOnlyPage() {
 
   const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
+  const latestAi = [...conversations].reverse().find(c => c.speaker === 'ai') ?? null;
+
+  const handleReplay = useCallback((turn: any) => {
+    if (muted) return;
+    unlockAudio();
+    const t = turn.messageTarget || turn.messageNative;
+    if (!t) return;
+    const bcp47 = getBCP47(targetLanguage, 'tts');
+    speakMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
+  }, [muted, targetLanguage, nativeLanguage, phase]);
+
+  const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
@@ -240,6 +254,58 @@ export default function VoiceOnlyPage() {
           onDismiss={() => setCoachOpen(false)}
           onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}
         />
+
+        {latestAi && transcriptOpen && (
+          <div className="absolute bottom-36 left-4 right-4 z-30 animate-in slide-in-from-bottom-2 duration-200">
+            <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted">Last message</span>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptOpen(false)}
+                  className="text-dojo-text-muted hover:text-dojo-text-primary"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+              <ConversationBubble
+                speaker="ai" name={charName} accentColor={charColor}
+                messageJp={latestAi.messageTarget ?? latestAi.messageNative ?? ''}
+                messageRomaji={latestAi.messageRomaji ?? undefined}
+                messageEn={latestAi.messageNative ?? undefined}
+              />
+              <div className="flex items-center gap-2 px-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => handleReplay(latestAi)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-dojo-surface/50 text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                  aria-label="Replay"
+                >
+                  <Volume2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {primaryGoal && (
+                <div className="flex items-start gap-2 px-1 pt-2 mt-2 border-t border-dojo-border/40">
+                  <Flag className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!transcriptOpen && latestAi && (
+          <div className="absolute bottom-36 left-4 right-4 z-30 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setTranscriptOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-dojo-surface/80 backdrop-blur-md border border-dojo-border/60 px-3 py-1.5 text-[11px] text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+              Show last message
+            </button>
+          </div>
+        )}
 
         {voice.partialTranscript && (
           <div className="absolute bottom-32 left-0 right-0 flex justify-center">

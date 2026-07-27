@@ -31,7 +31,7 @@ export default function NavBar() {
             href="/home"
             className="mr-4 whitespace-nowrap flex-shrink-0 text-lg font-semibold tracking-tight text-neutral-900"
           >
-            🥋 AI DOJO
+            <img src="/logo.png" alt="AI DOJO" className="h-6 w-6 inline-block mr-1.5" />AI DOJO
           </Link>
           <Link href="/sessions" className={linkClass('/sessions')}>
             <ListIcon className="h-4 w-4" />
