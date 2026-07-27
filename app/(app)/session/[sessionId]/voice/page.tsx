@@ -61,7 +61,7 @@ export default function VoiceOnlyPage() {
 
   useEffect(() => {
     if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {}).catch(() => {});
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
     }
   }, []);
 

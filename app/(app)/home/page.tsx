@@ -235,7 +235,7 @@ export default function HomePage() {
         <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-8">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-6 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-6 w-full md:w-auto">
             <div className="relative shrink-0">
               <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
               <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
