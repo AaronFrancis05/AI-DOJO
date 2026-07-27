@@ -144,7 +144,7 @@ export default function AvatarModePage() {
     if (latestConvo?.speaker === 'ai') setMobileMsgOpen(true);
   }, [latestConvo?.id]);
 
-  const handleReplay = useCallback((turn: any) => {
+  const handleReplay = useCallback((turn: NonNullable<typeof latestAiConvo>) => {
     if (muted) return;
     unlockAudio();
     const t = turn.messageTarget || turn.messageNative;
@@ -293,6 +293,16 @@ export default function AvatarModePage() {
               messageRomaji={latestAiConvo.messageRomaji ?? undefined}
               messageEn={latestAiConvo.messageNative ?? undefined}
             />
+            <div className="flex items-center gap-2 px-1 mt-1">
+              <button
+                type="button"
+                onClick={() => handleReplay(latestAiConvo)}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-dojo-surface/50 text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                aria-label="Replay"
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

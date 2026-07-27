@@ -51,7 +51,7 @@ async function resolveDbId(user: { id: string; email?: string } | null) {
     return dbUser ? { ...user, id: dbUser.id } : user;
   } catch (err) {
     console.error('[resolveDbId] DB query failed:', err instanceof Error ? err.message : String(err));
-    return user;
+    return null;
   }
 }
 

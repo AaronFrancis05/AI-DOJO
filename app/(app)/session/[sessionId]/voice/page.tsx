@@ -55,7 +55,7 @@ export default function VoiceOnlyPage() {
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const latestAi = [...conversations].reverse().find(c => c.speaker === 'ai') ?? null;
 
-  const handleReplay = useCallback((turn: any) => {
+  const handleReplay = useCallback((turn: NonNullable<typeof latestAi>) => {
     if (muted) return;
     unlockAudio();
     const t = turn.messageTarget || turn.messageNative;
@@ -255,7 +255,7 @@ export default function VoiceOnlyPage() {
           onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}
         />
 
-        {latestAi && transcriptOpen && (
+        {latestAi && transcriptOpen && !voice.isListening && (
           <div className="absolute bottom-36 left-4 right-4 z-30 animate-in slide-in-from-bottom-2 duration-200">
             <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
               <div className="flex items-center justify-between mb-1">
