@@ -235,7 +235,7 @@ export default function HomePage() {
         <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
         
         <div className="relative z-10 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-8">
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-6 w-full md:w-auto">
             <div className="relative shrink-0">
               <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
               <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
@@ -259,7 +259,7 @@ export default function HomePage() {
               </div>
               <p className="mt-1 text-dojo-text-muted">{completedSessions.length > 0 ? `Master of ${completedSessions.length} real-world scenarios. Keep up the great work!` : 'Start your first conversation to begin tracking your progress.'}</p>
               
-              <div className="flex items-center gap-4 mt-4">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-4">
                 <div className="flex flex-col">
                   <span className="text-[10px] uppercase tracking-wider text-dojo-text-muted font-bold">Level</span>
                   <div className="flex items-center gap-2">
@@ -269,8 +269,8 @@ export default function HomePage() {
                     </Badge>
                   </div>
                 </div>
-                <div className="h-10 w-px bg-dojo-border mx-2" />
-                <div className="flex flex-col flex-1 min-w-[120px]">
+                <div className="hidden sm:block h-10 w-px bg-dojo-border mx-2" />
+                <div className="flex flex-col flex-1 min-w-[160px] sm:min-w-[120px] basis-full sm:basis-auto">
                   <div className="flex justify-between text-[10px] uppercase tracking-wider text-dojo-text-muted font-bold mb-1">
                     <span>Progress to Level 5</span>
                     <span>{user?.xp ?? 0}/{user?.xpToNext ?? 100} XP</span>

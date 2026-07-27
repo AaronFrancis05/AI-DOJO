@@ -59,6 +59,12 @@ export default function AvatarModePage() {
   }, [session]);
 
   useEffect(() => {
+    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
     setOnSpeakingChange((speaking) => {
       setAvatarMode(speaking ? 'talking' : 'idle');
       if (!speaking) lastAiCompletedRef.current = Date.now();
