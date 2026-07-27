@@ -12,6 +12,8 @@ import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
+import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { ArrowLeft, Info, MessageSquare, Volume2, VolumeX } from 'lucide-react';
 
@@ -39,6 +41,7 @@ export default function AvatarModePage() {
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [coachOpen, setCoachOpen] = useState(false);
   const [mobileMsgOpen, setMobileMsgOpen] = useState(false);
+  const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
 
@@ -98,7 +101,11 @@ export default function AvatarModePage() {
           setSuggestedReplies(analysis.suggestedReplies ?? []);
           setCoachOpen(true);
         },
-        onCelebration: () => {},
+        onCelebration: () => setCelebration({
+          variant: 'scenario-mastery',
+          title: 'Scenario Mastered!',
+          subtitle: `You've completed every goal in "${situation?.title ?? scenario?.title ?? 'this scenario'}".`,
+        }),
       });
       setStreamingText(null);
 
@@ -278,6 +285,13 @@ export default function AvatarModePage() {
         onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
         onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
       />
+
+      {celebration && (
+        <CelebrationOverlay
+          {...celebration}
+          onDismiss={() => setCelebration(null)}
+        />
+      )}
     </div>
   );
 }
