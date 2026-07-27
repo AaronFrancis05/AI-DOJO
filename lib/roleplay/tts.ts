@@ -27,6 +27,7 @@ let isAzureSpeaking = false;
 let azureStopCallback: (() => void) | null = null;
 
 let currentGeneration = 0;
+let sharedAudioCtx: AudioContext | null = null;
 
 export type SpeakingCallback = (speaking: boolean) => void;
 let onSpeakingChange: SpeakingCallback | null = null;
@@ -43,6 +44,13 @@ export function setVoiceGender(gender: string): void {
 
 function notifySpeaking(speaking: boolean): void {
   if (onSpeakingChange) onSpeakingChange(speaking);
+}
+
+function getAudioContext(): AudioContext {
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new AudioContext();
+  }
+  return sharedAudioCtx;
 }
 
 export function getCurrentViseme(): number {
@@ -102,13 +110,11 @@ export async function speakWithVisemes(
       bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    const audioCtx = new AudioContext();
+    const audioCtx = getAudioContext();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
 
-    if (myGeneration !== currentGeneration) {
-      audioCtx.close();
-      return;
-    }
+    if (myGeneration !== currentGeneration) return;
 
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
@@ -126,7 +132,6 @@ export async function speakWithVisemes(
     azureStopCallback = () => {
       cancelled.value = true;
       try { source.stop(); } catch {}
-      audioCtx.close();
     };
 
     return new Promise((resolve) => {
@@ -253,13 +258,11 @@ async function speakAzureSSML(ssml: string): Promise<void> {
       bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    const audioCtx = new AudioContext();
+    const audioCtx = getAudioContext();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
 
-    if (myGeneration !== currentGeneration) {
-      audioCtx.close();
-      return;
-    }
+    if (myGeneration !== currentGeneration) return;
 
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
@@ -277,7 +280,6 @@ async function speakAzureSSML(ssml: string): Promise<void> {
     azureStopCallback = () => {
       cancelled.value = true;
       try { source.stop(); } catch {}
-      audioCtx.close();
     };
 
     return new Promise<void>((resolve) => {
@@ -427,15 +429,10 @@ export function feedStreamTts(chunk: string, targetBcp47: string, nativeBcp47: s
 
 export function unlockAudio(): void {
   try {
-    const ctx = new AudioContext();
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-    src.stop(0);
-    src.disconnect();
-    ctx.close();
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
   } catch {}
 }
 

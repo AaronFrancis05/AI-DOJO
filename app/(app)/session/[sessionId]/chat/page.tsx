@@ -10,7 +10,9 @@ import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { getTargetLangConfig, getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
+import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { ArrowLeft, Info, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 
@@ -35,6 +37,7 @@ export default function ChatOnlyPage() {
   const [muted, setMuted] = useState(false);
   const [textMode, setTextMode] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
 
@@ -59,6 +62,7 @@ export default function ChatOnlyPage() {
 
   const handleSend = useCallback(async (text: string) => {
     if (sending || !text.trim()) return;
+    unlockAudio();
     setSending(true);
     setStreamingText('');
     setSuggestedReplies([]);
@@ -75,7 +79,11 @@ export default function ChatOnlyPage() {
           setSuggestedReplies(analysis.suggestedReplies ?? []);
         },
         onPhaseChange: () => {},
-        onCelebration: () => {},
+        onCelebration: () => setCelebration({
+          variant: 'scenario-mastery',
+          title: 'Scenario Mastered!',
+          subtitle: `You've completed every goal in "${situation?.title ?? scenario?.title ?? 'this scenario'}".`,
+        }),
       });
       setStreamingText(null);
     } catch (e: any) {
@@ -87,6 +95,7 @@ export default function ChatOnlyPage() {
 
   const handleReplay = useCallback((turn: any) => {
     if (muted) return;
+    unlockAudio();
     const t = turn.messageTarget || turn.messageNative;
     if (!t) return;
     const bcp47 = getBCP47(targetLanguage, 'tts');
@@ -180,6 +189,13 @@ export default function ChatOnlyPage() {
         onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
         onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
       />
+
+      {celebration && (
+        <CelebrationOverlay
+          {...celebration}
+          onDismiss={() => setCelebration(null)}
+        />
+      )}
     </div>
   );
 }

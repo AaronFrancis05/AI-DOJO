@@ -47,7 +47,10 @@ function OnboardingShellInner({ children, stepIndex, totalSteps, currentStep, na
         </div>
 
         <div className="py-6 text-center">
-          <p className="text-xs text-dojo-text-muted">AI DOJO</p>
+          <div className="flex items-center justify-center gap-1.5">
+            <img src="/logo.png" alt="" className="h-4 w-4" />
+            <p className="text-xs text-dojo-text-muted">AI DOJO</p>
+          </div>
         </div>
       </div>
     </div>

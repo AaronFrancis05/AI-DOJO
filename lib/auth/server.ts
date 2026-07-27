@@ -42,12 +42,17 @@ export async function getAuthUser() {
 
 async function resolveDbId(user: { id: string; email?: string } | null) {
   if (!user?.email) return user;
-  const [dbUser] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, user.email))
-    .limit(1);
-  return dbUser ? { ...user, id: dbUser.id } : user;
+  try {
+    const [dbUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, user.email))
+      .limit(1);
+    return dbUser ? { ...user, id: dbUser.id } : user;
+  } catch (err) {
+    console.error('[resolveDbId] DB query failed:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
 }
 
 /** Read-only session check safe for Server Components.
