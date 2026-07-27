@@ -10,7 +10,7 @@ import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { getTargetLangConfig, getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
 import { ArrowLeft, Info, Volume2 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 
@@ -59,6 +59,7 @@ export default function ChatOnlyPage() {
 
   const handleSend = useCallback(async (text: string) => {
     if (sending || !text.trim()) return;
+    unlockAudio();
     setSending(true);
     setStreamingText('');
     setSuggestedReplies([]);
@@ -87,6 +88,7 @@ export default function ChatOnlyPage() {
 
   const handleReplay = useCallback((turn: any) => {
     if (muted) return;
+    unlockAudio();
     const t = turn.messageTarget || turn.messageNative;
     if (!t) return;
     const bcp47 = getBCP47(targetLanguage, 'tts');
