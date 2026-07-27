@@ -15,7 +15,7 @@ import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { ArrowLeft, ChevronDown, ChevronUp, Flag, Info, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Flag, Info, Volume2, VolumeX } from 'lucide-react';
 
 export default function VoiceOnlyPage() {
   const params = useParams();
@@ -40,7 +40,7 @@ export default function VoiceOnlyPage() {
   const [lastCorrections, setLastCorrections] = useState<any[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [coachOpen, setCoachOpen] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(true);
+
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
@@ -206,75 +206,101 @@ export default function VoiceOnlyPage() {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden">
-        {conversations.length === 0 && phase === 'icebreaker' && !greetingSent && (
-          <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">
-            <div className="text-center max-w-xs">
-              <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center">
-                <Volume2 className="h-8 w-8 text-dojo-accent" />
+      <div className="flex-1 relative overflow-hidden flex items-stretch">
+        <div className="flex-1 relative">
+          {conversations.length === 0 && phase === 'icebreaker' && !greetingSent && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">
+              <div className="text-center max-w-xs">
+                <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center">
+                  <Volume2 className="h-8 w-8 text-dojo-accent" />
+                </div>
+                <h2 className="text-lg font-bold text-white mb-2">Start conversation with {charName}</h2>
+                <p className="text-sm text-dojo-text-muted mb-6">
+                  You&apos;ll practice {targetLanguage === 'ja' ? 'Japanese' : targetLanguage} through realistic role-play scenarios.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    unlockAudio();
+                    setGreetingSent(true);
+                    sendGreeting({ onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null) })
+                      .then((fullText) => {
+                        setStreamingText(null);
+                        const cleaned = cleanDisplay(fullText);
+                        if (!mutedRef.current && cleaned) {
+                          speakMixedText(
+                            cleaned,
+                            getBCP47(targetLangRef.current, 'tts'),
+                            getNativeLangBcp47(nativeLangRef.current),
+                            phaseRef.current,
+                          ).catch(() => {});
+                        }
+                      })
+                      .catch(() => { setStreamingText(null); setGreetingSent(false); });
+                  }}
+                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 transition-all active:scale-95"
+                >
+                  <Volume2 className="h-5 w-5" />
+                  Start conversation
+                </button>
               </div>
-              <h2 className="text-lg font-bold text-white mb-2">Start conversation with {charName}</h2>
-              <p className="text-sm text-dojo-text-muted mb-6">
-                You&apos;ll practice {targetLanguage === 'ja' ? 'Japanese' : targetLanguage} through realistic role-play scenarios.
-              </p>
+            </div>
+          )}
+
+          <VoiceOnlyStage name={charName} accentColor={charColor} mode={avatarMode} />
+
+          {voice.partialTranscript && (
+            <div className="absolute bottom-32 left-0 right-0 flex justify-center">
+              <div className="px-4 py-2 rounded-xl bg-dojo-surface/80 backdrop-blur-md border border-dojo-border border-dashed max-w-md">
+                <p className="text-sm text-dojo-text-primary/70 italic">{voice.partialTranscript}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-8 safe-bottom">
+            <div className="relative">
+              {voice.isListening && (
+                <>
+                  <span className="absolute inset-0 rounded-full bg-dojo-warning/30 animate-ping" />
+                  <span className="absolute inset-0 rounded-full bg-dojo-warning/20 animate-pulse" />
+                </>
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  unlockAudio();
-                  setGreetingSent(true);
-                  sendGreeting({ onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null) })
-                    .then((fullText) => {
-                      setStreamingText(null);
-                      const cleaned = cleanDisplay(fullText);
-                      if (!mutedRef.current && cleaned) {
-                        speakMixedText(
-                          cleaned,
-                          getBCP47(targetLangRef.current, 'tts'),
-                          getNativeLangBcp47(nativeLangRef.current),
-                          phaseRef.current,
-                        ).catch(() => {});
-                      }
-                    })
-                    .catch(() => { setStreamingText(null); setGreetingSent(false); });
-                }}
-                className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 transition-all active:scale-95"
+                onPointerDown={handleMicStart}
+                onPointerUp={voice.stop}
+                onPointerLeave={voice.stop}
+                onPointerCancel={voice.stop}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleMicStart(); } }}
+                onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
+                onBlur={voice.stop}
+                disabled={!isActive || sending}
+                aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
+                aria-pressed={voice.isListening}
+                className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 select-none ${
+                  voice.isListening
+                    ? 'bg-dojo-warning scale-110 shadow-[0_0_30px_rgba(242,169,59,0.6)] ring-4 ring-dojo-warning/20'
+                    : 'bg-dojo-accent hover:scale-105 shadow-[0_10px_25px_rgba(45,59,197,0.5)]'
+                } disabled:opacity-40`}
+                style={{ touchAction: 'none' }}
               >
-                <Volume2 className="h-5 w-5" />
-                Start conversation
+                <Volume2 className="h-7 w-7 text-white" />
               </button>
             </div>
           </div>
-        )}
+        </div>
 
-        <VoiceOnlyStage name={charName} accentColor={charColor} mode={avatarMode} />
-
-        <VoiceCoachPanel
-          corrections={coachOpen ? lastCorrections : []}
-          suggestedReplies={coachOpen ? suggestedReplies : []}
-          onDismiss={() => setCoachOpen(false)}
-          onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}
-        />
-
-        {latestAi && transcriptOpen && !voice.isListening && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 w-64 animate-in slide-in-from-right-2 duration-200">
-            <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted">Last message</span>
-                <button
-                  type="button"
-                  onClick={() => setTranscriptOpen(false)}
-                  className="text-dojo-text-muted hover:text-dojo-text-primary"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
+        {/* Desktop side panel */}
+        <aside className="hidden md:flex w-80 shrink-0 flex-col gap-3 border-l border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
+          {latestAi && (
+            <div className="space-y-2">
               <ConversationBubble
                 speaker="ai" name={charName} accentColor={charColor}
-                messageJp={latestAi.messageTarget ?? latestAi.messageNative ?? ''}
+                messageJp={streamingText ?? latestAi.messageTarget ?? latestAi.messageNative ?? ''}
                 messageRomaji={latestAi.messageRomaji ?? undefined}
                 messageEn={latestAi.messageNative ?? undefined}
               />
-              <div className="flex items-center gap-2 px-1 mt-1">
+              <div className="flex items-center gap-2 px-1">
                 <button
                   type="button"
                   onClick={() => handleReplay(latestAi)}
@@ -285,67 +311,20 @@ export default function VoiceOnlyPage() {
                 </button>
               </div>
               {primaryGoal && (
-                <div className="flex items-start gap-2 px-1 pt-2 mt-2 border-t border-dojo-border/40">
+                <div className="flex items-start gap-2 px-1 pt-2 border-t border-dojo-border/40">
                   <Flag className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
                   <p className="text-[11px] text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {!transcriptOpen && latestAi && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30">
-            <button
-              type="button"
-              onClick={() => setTranscriptOpen(true)}
-              className="flex items-center gap-1.5 rounded-full bg-dojo-surface/80 backdrop-blur-md border border-dojo-border/60 px-3 py-1.5 text-[11px] text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-              Show last message
-            </button>
-          </div>
-        )}
-
-        {voice.partialTranscript && (
-          <div className="absolute bottom-32 left-0 right-0 flex justify-center">
-            <div className="px-4 py-2 rounded-xl bg-dojo-surface/80 backdrop-blur-md border border-dojo-border border-dashed max-w-md">
-              <p className="text-sm text-dojo-text-primary/70 italic">{voice.partialTranscript}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-8 safe-bottom">
-          <div className="relative">
-            {voice.isListening && (
-              <>
-                <span className="absolute inset-0 rounded-full bg-dojo-warning/30 animate-ping" />
-                <span className="absolute inset-0 rounded-full bg-dojo-warning/20 animate-pulse" />
-              </>
-            )}
-            <button
-              type="button"
-              onPointerDown={handleMicStart}
-              onPointerUp={voice.stop}
-              onPointerLeave={voice.stop}
-              onPointerCancel={voice.stop}
-              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleMicStart(); } }}
-              onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
-              onBlur={voice.stop}
-              disabled={!isActive || sending}
-              aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
-              aria-pressed={voice.isListening}
-              className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 select-none ${
-                voice.isListening
-                  ? 'bg-dojo-warning scale-110 shadow-[0_0_30px_rgba(242,169,59,0.6)] ring-4 ring-dojo-warning/20'
-                  : 'bg-dojo-accent hover:scale-105 shadow-[0_10px_25px_rgba(45,59,197,0.5)]'
-              } disabled:opacity-40`}
-              style={{ touchAction: 'none' }}
-            >
-              <Volume2 className="h-7 w-7 text-white" />
-            </button>
-          </div>
-        </div>
+          )}
+          <VoiceCoachPanel
+            corrections={coachOpen ? lastCorrections : []}
+            suggestedReplies={coachOpen ? suggestedReplies : []}
+            onDismiss={() => setCoachOpen(false)}
+            onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}
+          />
+        </aside>
       </div>
 
       <SessionInfoDrawer
