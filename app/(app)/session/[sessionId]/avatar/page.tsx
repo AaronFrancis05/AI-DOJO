@@ -73,6 +73,11 @@ export default function AvatarModePage() {
     setOnSpeakingChange((speaking) => {
       setAvatarMode(speaking ? 'talking' : 'idle');
       if (!speaking) lastAiCompletedRef.current = Date.now();
+      if (speaking) {
+        emotionSystemRef.current?.startTalking?.();
+      } else {
+        emotionSystemRef.current?.stopTalking?.();
+      }
     });
     return () => setOnSpeakingChange(null);
   }, []);

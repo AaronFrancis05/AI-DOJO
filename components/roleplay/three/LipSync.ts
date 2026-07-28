@@ -6,6 +6,11 @@ const LERP_SPEED = 24;
 
 const VISEME_TARGETS = ['viseme_aa', 'viseme_I', 'viseme_O', 'viseme_U', 'jawOpen', 'mouthOpen'];
 
+export interface VisemeFrame {
+  id: number;
+  offsetMs: number;
+}
+
 export class LipSync {
   model: THREE.Group;
   audio: HTMLAudioElement | null = null;
@@ -22,6 +27,8 @@ export class LipSync {
   private _expressionEngine: { setTalkingState: (t: boolean) => void } | null = null;
   private _externalAnalyser: AnalyserNode | null = null;
   private _cachedFaceMesh: THREE.SkinnedMesh | null = null;
+  private _visemeTimeline: VisemeFrame[] | null = null;
+  private _visemeIndex = 0;
 
   constructor(model: THREE.Group) {
     this.model = model;
@@ -51,13 +58,18 @@ export class LipSync {
 
   async play(
     audioUrl?: string,
-    _visemes?: unknown[],
+    visemes?: VisemeFrame[],
     onComplete?: (() => void) | null,
   ): Promise<HTMLAudioElement | undefined> {
     this.stop();
     if (!audioUrl) {
       onComplete?.();
       return;
+    }
+
+    if (visemes && visemes.length > 0) {
+      this._visemeTimeline = visemes;
+      this._visemeIndex = 0;
     }
 
     this.audio = new Audio(audioUrl);
@@ -110,6 +122,8 @@ export class LipSync {
     this.playing = false;
     this.targetMouthOpen = 0;
     this.currentMouthOpen = 0;
+    this._visemeTimeline = null;
+    this._visemeIndex = 0;
 
     if (this._expressionEngine) {
       this._expressionEngine.setTalkingState(false);
@@ -209,7 +223,17 @@ export class LipSync {
     const influences = faceMesh.morphTargetInfluences;
     if (!dict || !influences) return;
 
-    const realVisemeId = getCurrentViseme();
+    let realVisemeId = -1;
+    if (this._visemeTimeline && this.audio) {
+      const elapsedMs = this.audio.currentTime * 1000;
+      while (this._visemeIndex < this._visemeTimeline.length && this._visemeTimeline[this._visemeIndex].offsetMs <= elapsedMs) {
+        realVisemeId = this._visemeTimeline[this._visemeIndex].id;
+        this._visemeIndex++;
+      }
+    }
+    if (realVisemeId < 0) {
+      realVisemeId = getCurrentViseme();
+    }
     const hasViseme = realVisemeId >= 0;
 
     if (hasViseme) {
