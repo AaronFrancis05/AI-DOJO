@@ -4,7 +4,20 @@ import { getCurrentViseme } from '@/lib/roleplay/tts';
 const MOUTH_SHAPES = ['aa', 'ih', 'oh'];
 const LERP_SPEED = 24;
 
-const VISEME_TARGETS = ['viseme_aa', 'viseme_I', 'viseme_O', 'viseme_U', 'jawOpen', 'mouthOpen'];
+const VISEME_TARGETS = [
+  'viseme_aa', 'aa', 'v_aa', 'blendShape.aa', 'blendShape.AA',
+  'viseme_I', 'ih', 'v_I', 'blendShape.ih', 'blendShape.IH',
+  'viseme_O', 'oh', 'v_O', 'blendShape.oh', 'blendShape.OH',
+  'viseme_U', 'uh', 'v_U', 'blendShape.ou', 'blendShape.U',
+  'viseme_E', 'eh', 'v_E', 'blendShape.e', 'blendShape.E',
+  'jawOpen', 'jaw_open', 'jawOpenLeft', 'jaw_drop', 'blendShape.jawOpen',
+  'mouthOpen', 'mouthClose', 'mouth_drop',
+];
+
+export interface VisemeFrame {
+  id: number;
+  offsetMs: number;
+}
 
 export class LipSync {
   model: THREE.Group;
@@ -14,7 +27,7 @@ export class LipSync {
   private _audioCtx: AudioContext | null = null;
   private _source: MediaElementAudioSourceNode | null = null;
   private _analyser: AnalyserNode | null = null;
-  private _audioData: Uint8Array | null = null;
+  private _audioData: Uint8Array<ArrayBuffer> | null = null;
 
   currentMouthOpen = 0;
   targetMouthOpen = 0;
@@ -22,6 +35,8 @@ export class LipSync {
   private _expressionEngine: { setTalkingState: (t: boolean) => void } | null = null;
   private _externalAnalyser: AnalyserNode | null = null;
   private _cachedFaceMesh: THREE.SkinnedMesh | null = null;
+  private _visemeTimeline: VisemeFrame[] | null = null;
+  private _visemeIndex = 0;
 
   constructor(model: THREE.Group) {
     this.model = model;
@@ -51,13 +66,18 @@ export class LipSync {
 
   async play(
     audioUrl?: string,
-    _visemes?: unknown[],
+    visemes?: VisemeFrame[],
     onComplete?: (() => void) | null,
   ): Promise<HTMLAudioElement | undefined> {
     this.stop();
     if (!audioUrl) {
       onComplete?.();
       return;
+    }
+
+    if (visemes && visemes.length > 0) {
+      this._visemeTimeline = visemes;
+      this._visemeIndex = 0;
     }
 
     this.audio = new Audio(audioUrl);
@@ -89,7 +109,7 @@ export class LipSync {
         this._analyser.smoothingTimeConstant = 0.4;
         this._source.connect(this._analyser);
         this._analyser.connect(this._audioCtx.destination);
-        this._audioData = new Uint8Array(this._analyser.fftSize);
+        this._audioData = new Uint8Array(this._analyser.fftSize) as unknown as Uint8Array<ArrayBuffer>;
         this.playing = true;
         if (this._expressionEngine) this._expressionEngine.setTalkingState(true);
       } catch {
@@ -110,6 +130,8 @@ export class LipSync {
     this.playing = false;
     this.targetMouthOpen = 0;
     this.currentMouthOpen = 0;
+    this._visemeTimeline = null;
+    this._visemeIndex = 0;
 
     if (this._expressionEngine) {
       this._expressionEngine.setTalkingState(false);
@@ -151,29 +173,58 @@ export class LipSync {
 
   private _findFaceMesh(): THREE.SkinnedMesh | null {
     if (this._cachedFaceMesh) return this._cachedFaceMesh;
-    let faceMesh: THREE.SkinnedMesh | null = null;
+    let best: THREE.SkinnedMesh | null = null;
+    let bestScore = -1;
+
     this.model.traverse((obj) => {
       if (
         obj instanceof THREE.SkinnedMesh &&
         obj.morphTargetDictionary &&
         obj.morphTargetInfluences
       ) {
-        if (obj.name.toLowerCase().includes('head') || !faceMesh) {
-          faceMesh = obj;
+        const dict = obj.morphTargetDictionary;
+        const nameHint = (obj.name?.toLowerCase().includes('head') ?? false) ? 1 : 0;
+        const hasVisemeOrJaw =
+          'viseme_aa' in dict || 'viseme_O' in dict || 'jawOpen' in dict
+            ? 2
+            : 0;
+        const score = hasVisemeOrJaw + nameHint;
+        if (score > bestScore) {
+          bestScore = score;
+          best = obj;
         }
       }
     });
-    this._cachedFaceMesh = faceMesh;
-    return faceMesh;
+
+    this._cachedFaceMesh = best;
+    return best;
+  }
+
+  private _resolveVisemeId(): number {
+    if (this._visemeTimeline && this.audio) {
+      const elapsedMs = this.audio.currentTime * 1000;
+      while (this._visemeIndex < this._visemeTimeline.length && this._visemeTimeline[this._visemeIndex].offsetMs <= elapsedMs) {
+        this._visemeIndex++;
+      }
+      if (this._visemeIndex > 0) {
+        return this._visemeTimeline[this._visemeIndex - 1].id;
+      }
+    }
+    return getCurrentViseme();
   }
 
   update(delta: number): void {
     const dt = delta || 0.016;
-
     const analyser = this._externalAnalyser || this._analyser;
 
-    if (this.playing && analyser && this._audioData) {
-      analyser.getByteTimeDomainData(this._audioData as Uint8Array<ArrayBuffer>);
+    const realVisemeId = this._resolveVisemeId();
+    const hasViseme = realVisemeId >= 0;
+
+    if (hasViseme) {
+      this.playing = true;
+      this.targetMouthOpen = 0.35;
+    } else if (this.playing && analyser && this._audioData) {
+      analyser.getByteTimeDomainData(this._audioData);
       let sum = 0;
       for (let i = 0; i < this._audioData.length; i++) {
         const v = (this._audioData[i] - 128) / 128;
@@ -209,25 +260,41 @@ export class LipSync {
     const influences = faceMesh.morphTargetInfluences;
     if (!dict || !influences) return;
 
-    const realVisemeId = getCurrentViseme();
-    const hasViseme = realVisemeId >= 0;
-
-    if (hasViseme) {
-      this.playing = true;
-      this.targetMouthOpen = 0.35;
+    function resolveMorph(d: Record<string, number>, name: string, ...aliases: string[]): number | undefined {
+      for (const a of [name, ...aliases]) {
+        const idx = d[a];
+        if (idx !== undefined) return idx;
+      }
+      return undefined;
     }
 
-    const visemeAA = dict['viseme_aa'];
-    const visemeO = dict['viseme_O'];
+    const visemeAA = resolveMorph(dict, 'viseme_aa', 'aa', 'v_aa', 'blendShape.aa', 'blendShape.AA');
+    const visemeO = resolveMorph(dict, 'viseme_O', 'oh', 'v_O', 'blendShape.oh', 'blendShape.OH');
+    const visemeI = resolveMorph(dict, 'viseme_I', 'ih', 'v_I', 'blendShape.ih', 'blendShape.IH');
+    const visemeU = resolveMorph(dict, 'viseme_U', 'uh', 'v_U', 'blendShape.ou', 'blendShape.U');
+    const visemeE = resolveMorph(dict, 'viseme_E', 'eh', 'v_E', 'blendShape.e', 'blendShape.E');
     const jawFallback =
-      dict['jawOpen'] ?? dict['mouthOpen'] ?? dict['mouthClose'];
+      resolveMorph(dict, 'jawOpen', 'jaw_open', 'jawOpenLeft', 'jaw_drop', 'blendShape.jawOpen') ??
+      resolveMorph(dict, 'mouthOpen', 'mouth_drop');
 
     VISEME_TARGETS.forEach((v) => {
       const idx = dict[v];
       if (idx !== undefined) influences[idx] = 0;
     });
 
-    if (visemeAA !== undefined && visemeO !== undefined) {
+    if (realVisemeId === 2 && visemeAA !== undefined) {
+      influences[visemeAA] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 3 && visemeO !== undefined) {
+      influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 4 && visemeE !== undefined) {
+      influences[visemeE] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 6 && visemeI !== undefined) {
+      influences[visemeI] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 7 && visemeU !== undefined) {
+      influences[visemeU] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 8 && visemeO !== undefined) {
+      influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
+    } else if (visemeAA !== undefined && visemeO !== undefined) {
       influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
       influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
     } else if (jawFallback !== undefined) {

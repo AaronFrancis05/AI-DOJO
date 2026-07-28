@@ -14,6 +14,7 @@ import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
+import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { ArrowLeft, Flag, Info, Volume2, VolumeX } from 'lucide-react';
 
@@ -177,8 +178,9 @@ export default function VoiceOnlyPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border shrink-0">
+    <div className="relative flex h-full flex-col">
+      <EnvironmentBackdrop domainSlug={domain?.slug} />
+      <div className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-dojo-border shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" />
@@ -206,7 +208,7 @@ export default function VoiceOnlyPage() {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden flex items-stretch">
+      <div className="flex-1 relative z-10 overflow-hidden flex items-stretch">
         <div className="flex-1 relative">
           {conversations.length === 0 && phase === 'icebreaker' && !greetingSent && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">

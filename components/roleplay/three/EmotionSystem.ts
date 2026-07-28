@@ -1,6 +1,7 @@
 import { ExpressionEngine } from './ExpressionEngine';
 import { AnimationManager, ANIMATION_ALIASES } from './AnimationManager';
 import { LipSync } from './LipSync';
+import type { VisemeFrame } from './LipSync';
 
 export interface EmotionSystemDeps {
   expression: ExpressionEngine;
@@ -13,7 +14,7 @@ export interface BehaviorData {
   gestureHint?: string;
   animation?: string;
   audioUrl?: string;
-  visemes?: unknown[];
+  visemes?: VisemeFrame[];
 }
 
 export class EmotionSystem {
@@ -43,6 +44,14 @@ export class EmotionSystem {
     }
   }
 
+  startTalking(): void {
+    this.lipSync.simulateTalking(true);
+  }
+
+  stopTalking(): void {
+    this.lipSync.simulateTalking(false);
+  }
+
   startListening(): void {
     this.lipSync.stop();
     this.expression.setExpression('neutral');
@@ -63,7 +72,7 @@ export class EmotionSystem {
     data: BehaviorData,
     backendUrl = '',
     onComplete?: (() => void) | null,
-  ): { url?: string; visemes?: unknown[] } | null {
+  ): { url?: string; visemes?: VisemeFrame[] } | null {
     const emotion = data.emotionTone || 'neutral';
     const rawKey = String(data.animation || data.gestureHint || 'talk').trim().toLowerCase();
     const bodyKey = ANIMATION_ALIASES[rawKey] ?? rawKey;
@@ -116,7 +125,7 @@ export class EmotionSystem {
           ? backendUrl + data.audioUrl
           : backendUrl + '/' + data.audioUrl;
 
-      this.lipSync.play(resolvedUrl, data.visemes || [], () => {
+      this.lipSync.play(resolvedUrl, data.visemes, () => {
         if (this.animation) {
           this.animation.isTalking = false;
           this.animation.play('idle', { loop: true, fade: 0.7 });
@@ -125,7 +134,7 @@ export class EmotionSystem {
         onComplete?.();
       });
 
-      return { url: resolvedUrl, visemes: data.visemes || [] };
+      return { url: resolvedUrl, visemes: data.visemes };
     }
 
     onComplete?.();
@@ -139,7 +148,7 @@ export class EmotionSystem {
   }
 
   replayExplain(
-    lastAudio: { url: string; visemes: unknown[] } | null,
+    lastAudio: { url: string; visemes?: VisemeFrame[] } | null,
   ): void {
     if (!lastAudio) return;
     this.animation.play('talk', { loop: true, fade: 0.7 });

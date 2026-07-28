@@ -15,8 +15,9 @@ import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
+import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { ArrowLeft, Flag, Info, MessageSquare, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Flag, Info, MessageSquare, Volume2, VolumeX, X } from 'lucide-react';
 
 export default function AvatarModePage() {
   const params = useParams();
@@ -47,6 +48,7 @@ export default function AvatarModePage() {
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
 
+  const speakingRef = useRef(false);
   const mutedRef = useRef(false);
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
@@ -71,8 +73,14 @@ export default function AvatarModePage() {
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
+      speakingRef.current = speaking;
       setAvatarMode(speaking ? 'talking' : 'idle');
       if (!speaking) lastAiCompletedRef.current = Date.now();
+      if (speaking) {
+        emotionSystemRef.current?.startTalking?.();
+      } else {
+        emotionSystemRef.current?.stopTalking?.();
+      }
     });
     return () => setOnSpeakingChange(null);
   }, []);
@@ -149,9 +157,13 @@ export default function AvatarModePage() {
   const latestConvo = conversations.length > 0 ? conversations[conversations.length - 1] : null;
   const latestAiConvo = [...conversations].reverse().find(c => c.speaker === 'ai') ?? null;
 
-  // Auto-show mobile message sheet on new AI turns
+  // Auto-show mobile message sheet on new AI turns; auto-dismiss after 6s
   useEffect(() => {
-    if (latestConvo?.speaker === 'ai') setMobileMsgOpen(true);
+    if (latestConvo?.speaker === 'ai') {
+      setMobileMsgOpen(true);
+      const timer = setTimeout(() => setMobileMsgOpen(false), 6000);
+      return () => clearTimeout(timer);
+    }
   }, [latestConvo?.id]);
 
   const handleReplay = useCallback((turn: NonNullable<typeof latestAiConvo>) => {
@@ -183,7 +195,8 @@ export default function AvatarModePage() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-[#0a0a1a] via-[#0d0d24] to-[#111128]">
+    <div className="relative flex h-full flex-col bg-gradient-to-b from-[#0a0a1a] via-[#0d0d24] to-[#111128]">
+      <EnvironmentBackdrop domainSlug={domain?.slug} />
       <div className="relative z-20 flex items-center justify-between px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
@@ -212,7 +225,7 @@ export default function AvatarModePage() {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden flex items-stretch">
+      <div className="flex-1 relative z-10 overflow-hidden flex items-stretch">
         {conversations.length === 0 && phase === 'icebreaker' && !greetingSent && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">
             <div className="text-center max-w-xs">
@@ -253,7 +266,7 @@ export default function AvatarModePage() {
         )}
 
         <div className="flex-1 flex items-center justify-center relative">
-          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; }} />
+          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; if (speakingRef.current) sys.startTalking?.(); }} />
         </div>
 
         {/* Desktop side panel */}
@@ -293,26 +306,34 @@ export default function AvatarModePage() {
         </aside>
       </div>
 
-      {/* Mobile bottom sheet for messages */}
+      {/* Mobile message banner — compact, dismissible, semi-transparent */}
       {mobileMsgOpen && latestAiConvo && (
-        <div className="md:hidden absolute bottom-24 left-4 right-4 z-30 animate-in slide-in-from-bottom-2 duration-200">
-          <div className="rounded-xl border border-dojo-border bg-dojo-surface/95 backdrop-blur-md p-3 shadow-2xl">
-            <ConversationBubble
-              speaker="ai" name={charName} accentColor={charColor}
-              messageJp={streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
-              messageRomaji={latestAiConvo.messageRomaji ?? undefined}
-              messageEn={latestAiConvo.messageNative ?? undefined}
-            />
-            <div className="flex items-center gap-2 px-1 mt-1">
-              <button
-                type="button"
-                onClick={() => handleReplay(latestAiConvo)}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-dojo-surface/50 text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
-                aria-label="Replay"
-              >
-                <Volume2 className="h-3.5 w-3.5" />
-              </button>
+        <div className="md:hidden absolute bottom-20 left-3 right-3 z-30">
+          <div className="rounded-xl border border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-xl p-3 shadow-2xl flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium leading-snug text-dojo-text-primary line-clamp-2">
+                {streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
+              </p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleReplay(latestAiConvo)}
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface/50 text-dojo-text-muted hover:text-dojo-accent transition-colors"
+                  aria-label="Replay"
+                >
+                  <Volume2 className="h-3 w-3" />
+                </button>
+                <span className="text-[10px] text-dojo-text-muted/60">{charName}</span>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setMobileMsgOpen(false)}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-text-primary hover:bg-dojo-surface/50 transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       )}
