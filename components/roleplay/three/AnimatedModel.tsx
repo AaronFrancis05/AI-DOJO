@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useMemo, Suspense, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, ContactShadows, useProgress, Html } from '@react-three/drei';
+import { useGLTF, useProgress, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { AvatarScale, AVATAR_SCALE_DEFAULTS } from './AvatarScale';
 import { AnimationManager } from './AnimationManager';
 import { ExpressionEngine } from './ExpressionEngine';
@@ -212,8 +211,7 @@ function RestPoseApplicator({ scene, onApplied }: { scene: THREE.Group; onApplie
 /* ── AutoCamera ──────────────────────────────────────────────────────
    Frames the camera after the model is grounded.
    ──────────────────────────────────────────────────────────────────── */
-const CAMERA_MODES = ['front', 'over-shoulder', 'portrait', 'banner'] as const;
-export type CameraMode = (typeof CAMERA_MODES)[number];
+export type CameraMode = 'front' | 'over-shoulder' | 'portrait' | 'banner';
 
 export function AutoCamera({ scene, cameraMode, onFramed, groundedVersion }: {
   scene: THREE.Group;
@@ -312,19 +310,11 @@ function AnimationSystemHost({
   freezeOnIdle,
   onSystemReady,
   onGrounded,
-  idleAnims,
-  talkingAnims,
-  bowAnims,
-  shakeAnims,
 }: {
   scene: THREE.Group;
   freezeOnIdle?: boolean;
   onSystemReady?: (system: EmotionSystem) => void;
   onGrounded?: () => void;
-  idleAnims: THREE.AnimationClip[];
-  talkingAnims: THREE.AnimationClip[];
-  bowAnims: THREE.AnimationClip[];
-  shakeAnims: THREE.AnimationClip[];
 } & AvatarAnimationProps) {
   const [initialized, setInitialized] = useState(false);
   const animManagerRef = useRef<AnimationManager | null>(null);
@@ -341,16 +331,10 @@ function AnimationSystemHost({
     return names;
   }, [scene]);
 
-  const initAnimSystem = useCallback(() => {
-    const clips = new Map<string, THREE.AnimationClip>();
-    if (idleAnims[0]) clips.set('idle', idleAnims[0]);
-    if (talkingAnims[0]) clips.set('talking', talkingAnims[0]);
-    if (bowAnims[0]) clips.set('bow', bowAnims[0]);
-    if (shakeAnims[0]) clips.set('shake_hands', shakeAnims[0]);
-
+  const initAnimSystem = useCallback(async () => {
     const mixer = new THREE.AnimationMixer(scene);
     const anim = new AnimationManager();
-    const ok = anim.init(scene, mixer, clips, sceneBoneNames);
+    const ok = await anim.init(scene, mixer, null, sceneBoneNames);
     if (!ok) console.warn('[AnimationSystemHost] No usable animation clips found');
 
     const expr = new ExpressionEngine(scene);
@@ -365,14 +349,14 @@ function AnimationSystemHost({
     emotionSystemRef.current = emo;
 
     return emo;
-  }, [scene, idleAnims, talkingAnims, bowAnims, shakeAnims, sceneBoneNames]);
+  }, [scene, sceneBoneNames]);
 
-  const handleRestPoseApplied = useCallback(() => {
+  const handleRestPoseApplied = useCallback(async () => {
     if (initialized) return;
 
     AvatarScale.apply(scene);
 
-    const emo = initAnimSystem();
+    const emo = await initAnimSystem();
     setInitialized(true);
     onSystemReady?.(emo);
     onGrounded?.();
@@ -387,7 +371,7 @@ function AnimationSystemHost({
 
     if (mode === 'talking') {
       if (prevModeRef.current !== 'talking') {
-        emo.animation.play('talking', { loop: true, fade: 0.7 });
+        emo.animation.play('talk', { loop: true, fade: 0.7 });
       }
     } else if (mode === 'listening') {
       if (emo.animation.hasClip('listening')) {
@@ -410,10 +394,10 @@ function AnimationSystemHost({
     if (normalizedGesture !== 'none' && normalizedGesture !== prevGestureRef.current) {
       let targetClip = '';
       switch (normalizedGesture) {
-        case 'bow':         targetClip = 'bow'; break;
-        case 'shake_hands': targetClip = 'shake_hands'; break;
-        case 'wave':        targetClip = 'shake_hands'; break;
-        case 'nod':         targetClip = 'bow'; break;
+        case 'bow':         targetClip = 'greeting'; break;
+        case 'shake_hands': targetClip = 'thankful'; break;
+        case 'wave':        targetClip = 'greeting'; break;
+        case 'nod':         targetClip = 'nod'; break;
       }
       if (targetClip && emo.animation.hasClip(targetClip)) {
         emo.animation.play(targetClip, { loop: false, fade: 0.3 });
@@ -438,15 +422,13 @@ function AnimationSystemHost({
       animManagerRef.current?.dispose();
     } else if (prevFreezeRef.current) {
       const mixer = new THREE.AnimationMixer(scene);
-      const clips = new Map<string, THREE.AnimationClip>();
-      if (idleAnims[0]) clips.set('idle', idleAnims[0]);
-      if (talkingAnims[0]) clips.set('talking', talkingAnims[0]);
-      if (bowAnims[0]) clips.set('bow', bowAnims[0]);
-      if (shakeAnims[0]) clips.set('shake_hands', shakeAnims[0]);
-      animManagerRef.current?.init(scene, mixer, clips, sceneBoneNames);
+      const anim = animManagerRef.current;
+      if (anim) {
+        anim.init(scene, mixer, null, sceneBoneNames).catch(() => {});
+      }
     }
     prevFreezeRef.current = !!freezeOnIdle;
-  }, [freezeOnIdle, initialized, scene, idleAnims, talkingAnims, bowAnims, shakeAnims, sceneBoneNames]);
+  }, [freezeOnIdle, initialized, scene, sceneBoneNames]);
 
   useFrame((_, delta) => {
     if (!initialized) return;
@@ -458,56 +440,23 @@ function AnimationSystemHost({
   return <RestPoseApplicator scene={scene} onApplied={handleRestPoseApplied} />;
 }
 
-/* ── Shared animation clip cache ─────────────────────────────────────
-   Loads the four animation GLBs once at module level so multiple
-   AnimatedModel mounts share the same network fetch and parse.
-   ──────────────────────────────────────────────────────────────────── */
-let sharedClipPromise: Promise<{
-  idle: THREE.AnimationClip[];
-  talking: THREE.AnimationClip[];
-  bow: THREE.AnimationClip[];
-  shake: THREE.AnimationClip[];
-}> | null = null;
-
-function getAnimClips() {
-  if (!sharedClipPromise) {
-    const loader = new GLTFLoader();
-    sharedClipPromise = Promise.all([
-      loader.loadAsync('/anim_standing Idle.glb'),
-      loader.loadAsync('/anim_Talking.glb'),
-      loader.loadAsync('/anim_bow.glb'),
-      loader.loadAsync('/anim_shaking hands.glb'),
-    ]).then(([idle, talking, bow, shake]) => ({
-      idle: idle.animations,
-      talking: talking.animations,
-      bow: bow.animations,
-      shake: shake.animations,
-    }));
-  }
-  return sharedClipPromise;
-}
-
 /* ── AnimatedModel ───────────────────────────────────────────────────
    Loads the GLB, applies rest-pose bone correction, deterministic
    grounding, single-action animation manager, expression engine,
-   and lip sync.
+   and lip sync. Animation clips load asynchronously from the FBX
+   manifest in AnimationManager during init().
    ──────────────────────────────────────────────────────────────────── */
-export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, disableAutoCamera, freezeOnIdle }: {
+export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, disableAutoCamera, freezeOnIdle, onSystemReady }: {
   url: string;
   cameraMode?: CameraMode;
   cameraIntent: CameraIntent;
   onFramed?: () => void;
   disableAutoCamera?: boolean;
   freezeOnIdle?: boolean;
+  onSystemReady?: (system: EmotionSystem) => void;
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
-  const [animClips, setAnimClips] = useState<{
-    idle: THREE.AnimationClip[];
-    talking: THREE.AnimationClip[];
-    bow: THREE.AnimationClip[];
-    shake: THREE.AnimationClip[];
-  } | null>(null);
   const [groundedVersion, setGroundedVersion] = useState(0);
 
   useEffect(() => {
@@ -519,18 +468,6 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
       }
     });
   }, [scene]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getAnimClips().then(clips => {
-      if (cancelled) return;
-      setAnimClips(clips);
-    }).catch(err => {
-      console.error('[AnimatedModel] Failed to load animation clips:', err);
-      if (!cancelled) setAnimClips({ idle: [], talking: [], bow: [], shake: [] });
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   const handleGrounded = useCallback(() => {
     setGroundedVersion(v => v + 1);
@@ -544,43 +481,17 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
       {!disableAutoCamera && (
         <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} groundedVersion={groundedVersion} />
       )}
-      {animClips ? (
-        <AnimationSystemHost
-          scene={scene}
-          mode={mode}
-          emotion={emotion}
-          gesture={gesture}
-          freezeOnIdle={freezeOnIdle}
-          onGrounded={handleGrounded}
-          idleAnims={animClips.idle}
-          talkingAnims={animClips.talking}
-          bowAnims={animClips.bow}
-          shakeAnims={animClips.shake}
-        />
-      ) : (
-        <PoseControllerFallback scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
-      )}
+      <AnimationSystemHost
+        scene={scene}
+        mode={mode}
+        emotion={emotion}
+        gesture={gesture}
+        freezeOnIdle={freezeOnIdle}
+        onGrounded={handleGrounded}
+        onSystemReady={onSystemReady}
+      />
     </group>
   );
 }
 
-/* ── PoseControllerFallback ──────────────────────────────────────────
-   Rendered while animation clips are still loading. Provides subtle
-   breathing motion so the avatar isn't frozen stiff. Does NOT apply
-   rest pose — that happens in AnimationSystemHost after clips arrive.
-   ──────────────────────────────────────────────────────────────────── */
-function PoseControllerFallback({ scene }: { scene: THREE.Group } & AvatarAnimationProps) {
-  const timeRef = useRef(0);
-  const baselineY = useRef<number | null>(null);
 
-  useFrame((_, delta) => {
-    timeRef.current += delta;
-    if (baselineY.current === null) {
-      baselineY.current = scene.position.y;
-    }
-    const sway = Math.sin(timeRef.current * 2) * 0.003;
-    scene.position.y = baselineY.current + sway;
-  });
-
-  return null;
-}

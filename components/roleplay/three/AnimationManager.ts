@@ -1,4 +1,28 @@
 import * as THREE from 'three';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+
+const CLIP_BASE = '/ai-avatars/animations/';
+
+const ANIMATION_ALIASES: Record<string, string> = {
+  talking: 'talk',
+  thinking: 'think',
+  bow: 'greeting',
+  shake_hands: 'thankful',
+  wave: 'greeting',
+};
+
+export { ANIMATION_ALIASES, CLIP_BASE };
+
+const ANIMATION_MANIFEST: Record<string, string> = {
+  idle: 'Idle.fbx',
+  talk: 'Talking.fbx',
+  think: 'Thinking.fbx',
+  listening: 'Listening.fbx',
+  thankful: 'Thankful.fbx',
+  nod: 'Nod.fbx',
+  greeting: 'Greeting.fbx',
+  offline: 'Offline.fbx',
+};
 
 const isFaceTrack = (name: string): boolean => {
   const lower = name.toLowerCase();
@@ -23,42 +47,80 @@ export class AnimationManager {
   ready = false;
   private _activeListener: ((e: THREE.Event) => void) | null = null;
   isTalking = false;
+  private fbxLoader = new FBXLoader();
 
-  init(
+  async init(
     model: THREE.Group,
     mixer: THREE.AnimationMixer,
-    clips: Map<string, THREE.AnimationClip>,
+    clips?: Map<string, THREE.AnimationClip> | null,
     boneNames?: Set<string>,
-  ): boolean {
+  ): Promise<boolean> {
     this.dispose();
     this.model = model;
     this.mixer = mixer;
     this.actions = {};
     this.current = null;
 
-    let loaded = 0;
+    if (clips) {
+      return this._initWithClips(clips, boneNames);
+    }
 
+    return this._initFromManifest(boneNames);
+  }
+
+  private _initWithClips(
+    clips: Map<string, THREE.AnimationClip>,
+    boneNames?: Set<string>,
+  ): boolean {
+    let loaded = 0;
     for (const [name, clip] of clips.entries()) {
       if (!clip) continue;
+      const key = ANIMATION_ALIASES[name] ?? name;
       const filtered = this._filterFaceTracks(clip);
-      filtered.name = name;
+      filtered.name = key;
       let cleanClip = filtered;
       if (boneNames) {
-        cleanClip = this._filterBoneTracks(filtered, boneNames, name);
+        cleanClip = this._filterBoneTracks(filtered, boneNames, key);
       }
-      const action = mixer.clipAction(cleanClip);
+      const action = this.mixer!.clipAction(cleanClip);
       action.setEffectiveTimeScale(1);
       if (!this._actionHasBindings(action)) continue;
-      this.actions[name] = action;
+      this.actions[key] = action;
       loaded += 1;
     }
+    this.ready = loaded > 0;
+    if (this.ready) this.play('idle', { loop: true, fade: 0 });
+    return this.ready;
+  }
+
+  private async _initFromManifest(boneNames?: Set<string>): Promise<boolean> {
+    const entries = Object.entries(ANIMATION_MANIFEST);
+    let loaded = 0;
+
+    await Promise.all(entries.map(async ([name, file]) => {
+      try {
+        const fbx = await this.fbxLoader.loadAsync(CLIP_BASE + file);
+        if (!fbx?.animations?.length) return;
+        const clip = fbx.animations[0];
+        const key = ANIMATION_ALIASES[name] ?? name;
+        const filtered = this._filterFaceTracks(clip);
+        filtered.name = key;
+        let cleanClip = filtered;
+        if (boneNames) {
+          cleanClip = this._filterBoneTracks(filtered, boneNames, key);
+        }
+        const action = this.mixer!.clipAction(cleanClip);
+        action.setEffectiveTimeScale(1);
+        if (!this._actionHasBindings(action)) return;
+        this.actions[key] = action;
+        loaded += 1;
+      } catch (err) {
+        console.warn(`[AnimationManager] Failed to load clip "${name}" from "${file}":`, err);
+      }
+    }));
 
     this.ready = loaded > 0;
-
-    if (this.ready) {
-      this.play('idle', { loop: true, fade: 0 });
-    }
-
+    if (this.ready) this.play('idle', { loop: true, fade: 0 });
     return this.ready;
   }
 
@@ -74,7 +136,7 @@ export class AnimationManager {
     boneNames: Set<string>,
     clipName: string,
   ): THREE.AnimationClip {
-    const isGestureClip = clipName === 'bow' || clipName === 'shake_hands' || clipName === 'nod';
+    const isGestureClip = clipName === 'greeting' || clipName === 'thankful' || clipName === 'nod';
     const bodyTracks = clip.tracks.filter((t) => {
       const boneName = t.name.split('.')[0];
       if (!boneName) return true;
@@ -98,7 +160,9 @@ export class AnimationManager {
   }
 
   hasClip(name: string): boolean {
-    return Boolean(this.actions[name]);
+    const normalized = String(name).trim().toLowerCase();
+    const key = ANIMATION_ALIASES[normalized] ?? normalized;
+    return Boolean(this.actions[key]);
   }
 
   setTalkingState(talking: boolean): void {
@@ -107,14 +171,14 @@ export class AnimationManager {
     if (this.current && this.current === this.actions['offline']) return;
     if (
       this.current &&
-      (this.current === this.actions['bow'] ||
-        this.current === this.actions['shake_hands'] ||
+      (this.current === this.actions['greeting'] ||
+        this.current === this.actions['thankful'] ||
         this.current === this.actions['nod'])
     ) {
       return;
     }
 
-    const fallbackState = this.isTalking ? 'talking' : 'idle';
+    const fallbackState = this.isTalking ? 'talk' : 'idle';
     this.play(fallbackState, { loop: true, fade: 0.7 });
   }
 
@@ -124,12 +188,15 @@ export class AnimationManager {
   ): boolean {
     if (!this.ready || !this.mixer || !name) return false;
 
-    if (!this.actions[name]) return false;
+    const normalized = String(name).trim().toLowerCase();
+    const key = ANIMATION_ALIASES[normalized] ?? normalized;
 
-    const isOneShot = name === 'bow' || name === 'shake_hands' || name === 'nod';
+    if (!key || !this.actions[key]) return false;
+
+    const isOneShot = key === 'greeting' || key === 'thankful' || key === 'nod';
     const targetLoop = isOneShot ? false : loop;
 
-    this._playAction(name, { loop: targetLoop, fade });
+    this._playAction(key, { loop: targetLoop, fade });
     return true;
   }
 
@@ -158,7 +225,7 @@ export class AnimationManager {
       next.play();
     }
 
-    const isOneShot = key === 'bow' || key === 'shake_hands' || key === 'nod';
+    const isOneShot = key === 'greeting' || key === 'thankful' || key === 'nod';
 
     if (isOneShot) {
       const onFinished = (e: THREE.Event) => {
@@ -170,7 +237,7 @@ export class AnimationManager {
           this._activeListener = null;
         }
 
-        const fallbackClip = this.isTalking ? 'talking' : 'idle';
+        const fallbackClip = this.isTalking ? 'talk' : 'idle';
         this.play(fallbackClip, { loop: true, fade: 0.7 });
       };
 

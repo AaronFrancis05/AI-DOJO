@@ -1,6 +1,7 @@
 import { db } from '../src/db';
 import { domains, situations, characters } from '../src/schema';
 import { eq, inArray, sql } from 'drizzle-orm';
+import { cacheDel, cacheKeys } from '../lib/cache';
 
 const domainFixtures = [
   { slug: 'restaurant', name: 'Restaurant', description: 'Order food, make reservations, handle special requests', icon: 'UtensilsCrossed', heroGradientFrom: '#D14343', heroGradientTo: '#7A1F1F', situationCount: 8, displayOrder: 1 },
@@ -14,14 +15,14 @@ const domainFixtures = [
 ];
 
 const characterFixtures = [
-  { name: 'Yuki Tanaka', role: 'Friendly Shopkeeper / Waitress', personality: 'Patient and encouraging', avatarColor: '#2D3BC5', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/Yuki-Tanaka.glb', displayOrder: 1 },
-  { name: 'Kenji Sato', role: 'Business Executive / Hotel Manager', personality: 'Professional yet warm', avatarColor: '#D14343', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/KenjiSato.glb', displayOrder: 2 },
-  { name: 'Miyuki Nakamura', role: 'Customer Service / Nurse', personality: 'Efficient and friendly', avatarColor: '#2FAE66', avatarIcon: 'Smile', voiceType: 'Clear, Female — Mid-High Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/Miyuki-Nakamura.glb', displayOrder: 3 },
-  { name: 'Takeshi Yamamoto', role: 'Train Conductor / Police Officer', personality: 'Serious but approachable', avatarColor: '#E3A939', avatarIcon: 'UserCheck', voiceType: 'Authoritative, Male — Mid Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/Takeshi-Yamamoto.glb', displayOrder: 4 },
-  { name: 'Hana Kimura', role: 'Fashion Assistant / Tour Guide', personality: 'Friendly and cheerful', avatarColor: '#9333EA', avatarIcon: 'Star', voiceType: 'Warm, Female — Mid Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/Hana-Kimura.glb', displayOrder: 5 },
-  { name: 'Ryo Aoki', role: 'Airline Staff / Hotel Concierge', personality: 'Efficient and professional', avatarColor: '#06B6D4', avatarIcon: 'Headphones', voiceType: 'Clear, Male — Mid Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/Ryo-Aoki.glb', displayOrder: 6 },
-  { name: 'Takashi Mori', role: 'Business Executive / Corporate Professional', personality: 'Punctual and professional', avatarColor: '#2563EB', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/Takashi-Mori.glb', displayOrder: 7 },
-  { name: 'Sakura Yamada', role: 'Friendly Neighbour / Local Guide', personality: 'Warm and approachable', avatarColor: '#F59E0B', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/Sakura-Yamada.glb', displayOrder: 8 },
+  { name: 'Yuki Tanaka', role: 'Friendly Shopkeeper / Waitress', personality: 'Patient and encouraging', avatarColor: '#2D3BC5', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/models/female_jp.glb', displayOrder: 1 },
+  { name: 'Kenji Sato', role: 'Business Executive / Hotel Manager', personality: 'Professional yet warm', avatarColor: '#D14343', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/models/male_jp.glb', displayOrder: 2 },
+  { name: 'Miyuki Nakamura', role: 'Customer Service / Nurse', personality: 'Efficient and friendly', avatarColor: '#2FAE66', avatarIcon: 'Smile', voiceType: 'Clear, Female — Mid-High Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/models/female_jp.glb', displayOrder: 3 },
+  { name: 'Takeshi Yamamoto', role: 'Train Conductor / Police Officer', personality: 'Serious but approachable', avatarColor: '#E3A939', avatarIcon: 'UserCheck', voiceType: 'Authoritative, Male — Mid Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/models/male_jp.glb', displayOrder: 4 },
+  { name: 'Hana Kimura', role: 'Fashion Assistant / Tour Guide', personality: 'Friendly and cheerful', avatarColor: '#9333EA', avatarIcon: 'Star', voiceType: 'Warm, Female — Mid Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/models/female_ug.glb', displayOrder: 5 },
+  { name: 'Ryo Aoki', role: 'Airline Staff / Hotel Concierge', personality: 'Efficient and professional', avatarColor: '#06B6D4', avatarIcon: 'Headphones', voiceType: 'Clear, Male — Mid Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/models/male_ug.glb', displayOrder: 6 },
+  { name: 'Takashi Mori', role: 'Business Executive / Corporate Professional', personality: 'Punctual and professional', avatarColor: '#2563EB', avatarIcon: 'UserCheck', voiceType: 'Calm, Male — Low Pitch', gender: 'male', avatarModelUrl: '/ai-avatars/models/male_ug.glb', displayOrder: 7 },
+  { name: 'Sakura Yamada', role: 'Friendly Neighbour / Local Guide', personality: 'Warm and approachable', avatarColor: '#F59E0B', avatarIcon: 'Smile', voiceType: 'Warm, Female — Mid Pitch', gender: 'female', avatarModelUrl: '/ai-avatars/models/female_ug.glb', displayOrder: 8 },
 ];
 
 const situationFixtures = [
@@ -128,6 +129,26 @@ async function seedDomainData() {
     await db.insert(situations).values(toInsert);
   }
   console.log(`  Inserted ${toInsert.length} new situations, ${allFixtureTitles.length - toInsert.length} already exist.\n`);
+
+  // Idempotent character model URL update — migrate any character still
+  // pointing at old /ai-avatars/<Name>.glb URLs to new /ai-avatars/models/<model>.glb
+  const allCharIds: number[] = [];
+  for (const c of characterFixtures) {
+    const result = await db.update(characters)
+      .set({ avatarModelUrl: c.avatarModelUrl })
+      .where(sql`${characters.name} = ${c.name} AND ${characters.avatarModelUrl} IS DISTINCT FROM ${c.avatarModelUrl}`)
+      .returning({ id: characters.id });
+    if (result.length > 0) {
+      console.log(`  Updated ${c.name}: ${c.avatarModelUrl}`);
+      allCharIds.push(...result.map(r => r.id));
+    }
+  }
+  if (allCharIds.length > 0) {
+    for (const id of allCharIds) {
+      await cacheDel(cacheKeys.character(id));
+    }
+    console.log(`  Cache deleted for ${allCharIds.length} character(s)`);
+  }
 
   // Update situationCount on each domain to match actual count
   for (const [slug, id] of domainMap) {
