@@ -5,7 +5,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF, ContactShadows, useProgress, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { AvatarScale } from './AvatarScale';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { AvatarScale, AVATAR_SCALE_DEFAULTS } from './AvatarScale';
 import { AnimationManager } from './AnimationManager';
 import { ExpressionEngine } from './ExpressionEngine';
 import { LipSync } from './LipSync';
@@ -214,20 +215,31 @@ function RestPoseApplicator({ scene, onApplied }: { scene: THREE.Group; onApplie
 const CAMERA_MODES = ['front', 'over-shoulder', 'portrait', 'banner'] as const;
 export type CameraMode = (typeof CAMERA_MODES)[number];
 
-export function AutoCamera({ scene, cameraMode, onFramed }: {
+export function AutoCamera({ scene, cameraMode, onFramed, groundedVersion }: {
   scene: THREE.Group;
   cameraMode: CameraMode;
   onFramed?: () => void;
+  groundedVersion?: number;
 }) {
   const { camera } = useThree();
   const framed = useRef(false);
+  const lastSeenGrounding = useRef(0);
 
   useEffect(() => {
+    if (groundedVersion !== undefined && groundedVersion > 0 && lastSeenGrounding.current === 0) {
+      lastSeenGrounding.current = groundedVersion;
+    }
+
+    if (framed.current && groundedVersion !== undefined && groundedVersion > lastSeenGrounding.current) {
+      lastSeenGrounding.current = groundedVersion;
+      framed.current = false;
+    }
+
     if (!scene || framed.current) return;
 
     let rafId: number;
     let attempts = 0;
-    const MAX_ATTEMPTS = 60;
+    const MAX_ATTEMPTS = 120;
 
     const tryFrame = () => {
       attempts += 1;
@@ -239,7 +251,11 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
       const boxValid = isFinite3(box.min) && isFinite3(box.max) && isFinite3(boxSize)
         && boxSize.y >= 0.1 && boxSize.y <= 100;
 
-      if (!boxValid) {
+      const groundedViaVersion = (groundedVersion ?? 0) > 0;
+      const groundedViaUserData = !!(scene.userData as Record<string, unknown>).avatarScale;
+      const isGrounded = groundedViaVersion || groundedViaUserData;
+
+      if (!boxValid || !isGrounded) {
         if (attempts >= MAX_ATTEMPTS) return;
         rafId = requestAnimationFrame(tryFrame);
         return;
@@ -265,6 +281,7 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
       }
 
       framed.current = true;
+      lastSeenGrounding.current = groundedVersion || 1;
       onFramed?.();
     };
 
@@ -274,7 +291,7 @@ export function AutoCamera({ scene, cameraMode, onFramed }: {
       clearTimeout(initialDelay);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [scene, camera, cameraMode, onFramed]);
+  }, [scene, camera, cameraMode, onFramed, groundedVersion]);
 
   return null;
 }
@@ -294,6 +311,7 @@ function AnimationSystemHost({
   gesture,
   freezeOnIdle,
   onSystemReady,
+  onGrounded,
   idleAnims,
   talkingAnims,
   bowAnims,
@@ -302,6 +320,7 @@ function AnimationSystemHost({
   scene: THREE.Group;
   freezeOnIdle?: boolean;
   onSystemReady?: (system: EmotionSystem) => void;
+  onGrounded?: () => void;
   idleAnims: THREE.AnimationClip[];
   talkingAnims: THREE.AnimationClip[];
   bowAnims: THREE.AnimationClip[];
@@ -312,9 +331,9 @@ function AnimationSystemHost({
   const expressionRef = useRef<ExpressionEngine | null>(null);
   const lipSyncRef = useRef<LipSync | null>(null);
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
-  const groundedOffset = useRef(0);
   const prevModeRef = useRef<AvatarMode>('idle');
   const prevGestureRef = useRef<string>('none');
+  const prevFreezeRef = useRef(false);
 
   const sceneBoneNames = useMemo(() => {
     const names = new Set<string>();
@@ -322,16 +341,7 @@ function AnimationSystemHost({
     return names;
   }, [scene]);
 
-  // Step 1: Once RestPoseApplicator signals, measure height ONCE, apply
-  // fixed grounding offset, create mixer + AnimationManager, wire
-  // ExpressionEngine + LipSync, then start the idle animation.
-  const handleRestPoseApplied = useCallback(() => {
-    if (initialized) return;
-
-      AvatarScale.apply(scene);
-
-    groundedOffset.current = scene.position.y;
-
+  const initAnimSystem = useCallback(() => {
     const clips = new Map<string, THREE.AnimationClip>();
     if (idleAnims[0]) clips.set('idle', idleAnims[0]);
     if (talkingAnims[0]) clips.set('talking', talkingAnims[0]);
@@ -354,11 +364,20 @@ function AnimationSystemHost({
     lipSyncRef.current = lip;
     emotionSystemRef.current = emo;
 
+    return emo;
+  }, [scene, idleAnims, talkingAnims, bowAnims, shakeAnims, sceneBoneNames]);
+
+  const handleRestPoseApplied = useCallback(() => {
+    if (initialized) return;
+
+    AvatarScale.apply(scene);
+
+    const emo = initAnimSystem();
     setInitialized(true);
     onSystemReady?.(emo);
-  }, [scene, initialized, idleAnims, talkingAnims, bowAnims, shakeAnims, sceneBoneNames, onSystemReady]);
+    onGrounded?.();
+  }, [scene, initialized, onSystemReady, onGrounded, initAnimSystem]);
 
-  // Step 2: React to mode/emotion/gesture changes after init
   useEffect(() => {
     if (!initialized) return;
     const emo = emotionSystemRef.current;
@@ -405,19 +424,29 @@ function AnimationSystemHost({
     prevGestureRef.current = normalizedGesture;
   }, [initialized, mode, emotion, gesture]);
 
-  // Step 3: Re-apply fixed grounding offset after every transition
   useEffect(() => {
     if (!initialized) return;
-    scene.position.y = groundedOffset.current;
+    const meta = (scene.userData as Record<string, unknown>).avatarScale as Record<string, number> | undefined;
+    // eslint-disable-next-line react-hooks/immutability -- scene is an imperative THREE.Object3D, not React state
+    scene.position.y = meta?.verticalOffset ?? AVATAR_SCALE_DEFAULTS.verticalOffset;
     scene.updateMatrixWorld(true);
-  }, [initialized, mode, gesture]);
+  }, [initialized, mode, gesture, scene]);
 
-  // Freeze on demand
   useEffect(() => {
-    if (freezeOnIdle && initialized) {
+    if (!initialized) return;
+    if (freezeOnIdle) {
       animManagerRef.current?.dispose();
+    } else if (prevFreezeRef.current) {
+      const mixer = new THREE.AnimationMixer(scene);
+      const clips = new Map<string, THREE.AnimationClip>();
+      if (idleAnims[0]) clips.set('idle', idleAnims[0]);
+      if (talkingAnims[0]) clips.set('talking', talkingAnims[0]);
+      if (bowAnims[0]) clips.set('bow', bowAnims[0]);
+      if (shakeAnims[0]) clips.set('shake_hands', shakeAnims[0]);
+      animManagerRef.current?.init(scene, mixer, clips, sceneBoneNames);
     }
-  }, [freezeOnIdle, initialized]);
+    prevFreezeRef.current = !!freezeOnIdle;
+  }, [freezeOnIdle, initialized, scene, idleAnims, talkingAnims, bowAnims, shakeAnims, sceneBoneNames]);
 
   useFrame((_, delta) => {
     if (!initialized) return;
@@ -427,6 +456,35 @@ function AnimationSystemHost({
   });
 
   return <RestPoseApplicator scene={scene} onApplied={handleRestPoseApplied} />;
+}
+
+/* ── Shared animation clip cache ─────────────────────────────────────
+   Loads the four animation GLBs once at module level so multiple
+   AnimatedModel mounts share the same network fetch and parse.
+   ──────────────────────────────────────────────────────────────────── */
+let sharedClipPromise: Promise<{
+  idle: THREE.AnimationClip[];
+  talking: THREE.AnimationClip[];
+  bow: THREE.AnimationClip[];
+  shake: THREE.AnimationClip[];
+}> | null = null;
+
+function getAnimClips() {
+  if (!sharedClipPromise) {
+    const loader = new GLTFLoader();
+    sharedClipPromise = Promise.all([
+      loader.loadAsync('/anim_standing Idle.glb'),
+      loader.loadAsync('/anim_Talking.glb'),
+      loader.loadAsync('/anim_bow.glb'),
+      loader.loadAsync('/anim_shaking hands.glb'),
+    ]).then(([idle, talking, bow, shake]) => ({
+      idle: idle.animations,
+      talking: talking.animations,
+      bow: bow.animations,
+      shake: shake.animations,
+    }));
+  }
+  return sharedClipPromise;
 }
 
 /* ── AnimatedModel ───────────────────────────────────────────────────
@@ -444,7 +502,13 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
-  const [clipsLoaded, setClipsLoaded] = useState(false);
+  const [animClips, setAnimClips] = useState<{
+    idle: THREE.AnimationClip[];
+    talking: THREE.AnimationClip[];
+    bow: THREE.AnimationClip[];
+    shake: THREE.AnimationClip[];
+  } | null>(null);
+  const [groundedVersion, setGroundedVersion] = useState(0);
 
   useEffect(() => {
     if (!scene) return;
@@ -457,11 +521,19 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
   }, [scene]);
 
   useEffect(() => {
-    useGLTF.preload('/anim_standing Idle.glb');
-    useGLTF.preload('/anim_Talking.glb');
-    useGLTF.preload('/anim_bow.glb');
-    useGLTF.preload('/anim_shaking hands.glb');
-    setClipsLoaded(true);
+    let cancelled = false;
+    getAnimClips().then(clips => {
+      if (cancelled) return;
+      setAnimClips(clips);
+    }).catch(err => {
+      console.error('[AnimatedModel] Failed to load animation clips:', err);
+      if (!cancelled) setAnimClips({ idle: [], talking: [], bow: [], shake: [] });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleGrounded = useCallback(() => {
+    setGroundedVersion(v => v + 1);
   }, []);
 
   const computedYaw = yawFromIntent(cameraIntent);
@@ -470,55 +542,25 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
     <group>
       <primitive object={scene} rotation={[0, computedYaw, 0]} />
       {!disableAutoCamera && (
-        <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} />
+        <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} groundedVersion={groundedVersion} />
       )}
-      {clipsLoaded ? (
-        <AnimationSystemHostInner
+      {animClips ? (
+        <AnimationSystemHost
           scene={scene}
           mode={mode}
           emotion={emotion}
           gesture={gesture}
           freezeOnIdle={freezeOnIdle}
+          onGrounded={handleGrounded}
+          idleAnims={animClips.idle}
+          talkingAnims={animClips.talking}
+          bowAnims={animClips.bow}
+          shakeAnims={animClips.shake}
         />
       ) : (
         <PoseControllerFallback scene={scene} mode={mode} emotion={emotion} gesture={gesture} />
       )}
     </group>
-  );
-}
-
-/* ── AnimationSystemHostInner ───────────────────────────────────────
-   Separate component so useGLTF() for animation clips is not called
-   during AnimatedModel's render (prevents useProgress update conflict
-   with ModelLoader sibling). Only rendered after preload completes.
-   ──────────────────────────────────────────────────────────────────── */
-function AnimationSystemHostInner({
-  scene,
-  mode,
-  emotion,
-  gesture,
-  freezeOnIdle,
-}: {
-  scene: THREE.Group;
-  freezeOnIdle?: boolean;
-} & AvatarAnimationProps) {
-  const { animations: idleAnims } = useGLTF('/anim_standing Idle.glb');
-  const { animations: talkingAnims } = useGLTF('/anim_Talking.glb');
-  const { animations: bowAnims } = useGLTF('/anim_bow.glb');
-  const { animations: shakeAnims } = useGLTF('/anim_shaking hands.glb');
-
-  return (
-    <AnimationSystemHost
-      scene={scene}
-      mode={mode}
-      emotion={emotion}
-      gesture={gesture}
-      freezeOnIdle={freezeOnIdle}
-      idleAnims={idleAnims}
-      talkingAnims={talkingAnims}
-      bowAnims={bowAnims}
-      shakeAnims={shakeAnims}
-    />
   );
 }
 
