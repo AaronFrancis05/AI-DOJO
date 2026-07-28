@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Environment, ContactShadows } from '@react-three/drei';
+import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import {
   AnimatedModel,
   EmotionLight,
@@ -60,12 +61,13 @@ function DevOverlay() {
 /* ── ThreeScene ─────────────────────────────────── */
 type AvatarMode = 'idle' | 'listening' | 'talking';
 
-function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, freezeOnIdle }: {
+function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, freezeOnIdle, onSystemReady }: {
   modelUrl: string;
   cameraMode?: CameraMode;
   cameraIntent: CameraIntent;
   onFramed?: () => void;
   freezeOnIdle?: boolean;
+  onSystemReady?: (system: EmotionSystem) => void;
   mode?: AvatarMode;
   emotion?: string;
   gesture?: string;
@@ -98,6 +100,7 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent
             cameraIntent={cameraIntent}
             onFramed={onFramed}
             freezeOnIdle={freezeOnIdle}
+            onSystemReady={onSystemReady}
           />
           {cameraMode !== 'over-shoulder' && (
             <ContactShadows position={[0, -1.5, 0]} opacity={0.4} scale={3} blur={2} far={4} />
@@ -120,7 +123,7 @@ function detectWebGLSupport(): boolean {
 
 /* ── Exported component ──────────────────────────── */
 export function AvatarViewport3D({
-  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed, freezeOnIdle,
+  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed, freezeOnIdle, onSystemReady,
 }: {
   name: string;
   accentColor: string;
@@ -133,6 +136,7 @@ export function AvatarViewport3D({
   cameraIntent?: CameraIntent;
   onFramed?: () => void;
   freezeOnIdle?: boolean;
+  onSystemReady?: (system: EmotionSystem) => void;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
@@ -175,6 +179,7 @@ export function AvatarViewport3D({
             cameraMode={cameraMode}
             cameraIntent={cameraIntent}
             freezeOnIdle={freezeOnIdle}
+            onSystemReady={onSystemReady}
             onFramed={() => {
               setFramed(true);
               onFramed?.();

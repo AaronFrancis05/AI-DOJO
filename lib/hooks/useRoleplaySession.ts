@@ -52,6 +52,7 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
     onCelebration?: () => void;
+    onComplete?: (analysis: any) => void;
   }) => Promise<void>;
   sendGreeting: (opts?: { onToken?: (t: string) => void }) => Promise<string>;
 }
@@ -147,6 +148,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
       onCelebration?: () => void;
+      onComplete?: (analysis: any) => void;
     },
   ) => {
     const trimmed = input.trim();
@@ -225,6 +227,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             finalPhase = payload.phase;
             finalAnalysis = payload.analysis;
             if (payload.celebration) options?.onCelebration?.();
+            options?.onComplete?.(payload.analysis);
             break;
           case 'error':
             rollback();

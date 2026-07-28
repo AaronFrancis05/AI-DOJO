@@ -9,18 +9,11 @@ export interface EmotionSystemDeps {
 }
 
 export interface BehaviorData {
-  reply?: string;
-  text_en?: string;
-  expression?: string;
-  emotion?: string;
+  emotionTone?: string;
+  gestureHint?: string;
   animation?: string;
-  audio_url?: string;
-  audio_url_en?: string;
-  audio_url_ja?: string;
-  visemes_en?: unknown[];
-  visemes_ja?: unknown[];
+  audioUrl?: string;
   visemes?: unknown[];
-  primary?: string;
 }
 
 export class EmotionSystem {
@@ -71,12 +64,11 @@ export class EmotionSystem {
     backendUrl = '',
     onComplete?: (() => void) | null,
   ): { url?: string; visemes?: unknown[] } | null {
-    const emotion = data.expression || data.emotion || 'neutral';
-    const bodyKey = String(data.animation || 'talk').trim().toLowerCase();
+    const emotion = data.emotionTone || 'neutral';
+    const bodyKey = String(data.animation || data.gestureHint || 'talk').trim().toLowerCase();
     const isDefaultIdle = bodyKey === 'idle' || bodyKey === 'talk';
     const isOneShotGesture =
-      bodyKey === 'thankful' || bodyKey === 'greeting' || bodyKey === 'nod' ||
-      bodyKey === 'bow' || bodyKey === 'shake_hands';
+      bodyKey === 'thankful' || bodyKey === 'greeting' || bodyKey === 'nod';
     const isThinkingStance = bodyKey === 'think';
     const isStandaloneClip =
       !isThinkingStance &&
@@ -84,9 +76,7 @@ export class EmotionSystem {
       bodyKey !== 'talk' &&
       bodyKey !== 'idle' &&
       this.animation.hasClip(bodyKey);
-    const hasAudio = !!(
-      data.audio_url || data.audio_url_en || data.audio_url_ja
-    );
+    const hasAudio = !!data.audioUrl;
     const shouldLoop = isOneShotGesture
       ? false
       : isStandaloneClip
@@ -101,10 +91,10 @@ export class EmotionSystem {
         : isOneShotGesture || isStandaloneClip
           ? bodyKey
           : hasAudio
-            ? 'talking'
+            ? 'talk'
             : 'idle';
 
-      if (hasAudio && (isOneShotGesture || trackToPlay === 'talking')) {
+      if (hasAudio && (isOneShotGesture || trackToPlay === 'talk')) {
         this.animation.isTalking = true;
       }
       if (isStandaloneClip) {
@@ -118,19 +108,12 @@ export class EmotionSystem {
       }
     }
 
-    const primary = data.primary || 'en';
-    const audioUrl =
-      primary === 'ja'
-        ? data.audio_url_ja || data.audio_url
-        : data.audio_url_en || data.audio_url;
+    if (this.lipSync && data.audioUrl) {
+      const url = data.audioUrl.startsWith('http') || data.audioUrl.startsWith('/')
+        ? backendUrl + data.audioUrl
+        : backendUrl + '/' + data.audioUrl;
 
-    if (this.lipSync && audioUrl) {
-      const full =
-        audioUrl.startsWith('http') || audioUrl.startsWith('/')
-          ? backendUrl + audioUrl
-          : backendUrl + '/' + audioUrl;
-
-      this.lipSync.play(full, data.visemes || [], () => {
+      this.lipSync.play(url, data.visemes || [], () => {
         if (this.animation) {
           this.animation.isTalking = false;
           this.animation.play('idle', { loop: true, fade: 0.7 });
@@ -139,7 +122,7 @@ export class EmotionSystem {
         onComplete?.();
       });
 
-      return { url: audioUrl, visemes: data.visemes || [] };
+      return { url: data.audioUrl, visemes: data.visemes || [] };
     }
 
     onComplete?.();
@@ -157,7 +140,7 @@ export class EmotionSystem {
     backendUrl: string,
   ): void {
     if (!lastAudio) return;
-    this.animation.play('talking', { loop: true, fade: 0.7 });
+    this.animation.play('talk', { loop: true, fade: 0.7 });
     if (this.lipSync) {
       this.lipSync.play(backendUrl + lastAudio.url, lastAudio.visemes, () => {
         this.animation.play('idle', { loop: true, fade: 0.7 });

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { AvatarMicOverlay } from '@/components/roleplay/AvatarMicOverlay';
 import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { AvatarViewport3D } from '@/components/roleplay/AvatarViewport3D';
+import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
@@ -43,6 +44,7 @@ export default function AvatarModePage() {
   const [mobileMsgOpen, setMobileMsgOpen] = useState(false);
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
+  const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
 
   const mutedRef = useRef(false);
@@ -84,6 +86,7 @@ export default function AvatarModePage() {
     sendingRef.current = true;
     setSending(true);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
+    emotionSystemRef.current?.startThinking();
     stopTts();
     resetStreamingTts();
 
@@ -106,6 +109,12 @@ export default function AvatarModePage() {
           title: 'Scenario Mastered!',
           subtitle: `You've completed every goal in "${situation?.title ?? scenario?.title ?? 'this scenario'}".`,
         }),
+        onComplete: (analysis) => {
+          const emo = emotionSystemRef.current;
+          if (emo && analysis) {
+            emo.apply({ emotionTone: analysis.emotionTone, gestureHint: analysis.gestureHint });
+          }
+        },
       });
       setStreamingText(null);
 
@@ -243,7 +252,7 @@ export default function AvatarModePage() {
         )}
 
         <div className="flex-1 flex items-center justify-center relative">
-          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" />
+          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; }} />
         </div>
 
         {/* Desktop side panel */}
