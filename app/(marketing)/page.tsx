@@ -79,7 +79,7 @@ const featureIconMap: Record<string, React.FC<{ className?: string }>> = {
   Chart: ChartIcon,
 };
 
-const navLinks = ['Features', 'Scenarios', 'How it Works'];
+const navLinks = ['Scenarios', 'Partners', 'Get Started'];
 
 export default async function LandingPage() {
   const user = await getAuthUserReadOnly();
@@ -99,15 +99,18 @@ export default async function LandingPage() {
           </Link>
 
           <div className="hidden items-center gap-8 md:flex">
-            {navLinks.map((link) => (
-              <Link
-                key={link}
-                href="#"
-                className="text-sm font-medium text-dojo-text-muted transition-colors hover:text-dojo-text-primary"
-              >
-                {link}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              const href = link === 'Scenarios' ? '#scenarios' : link === 'Partners' ? '#partners' : '#cta';
+              return (
+                <Link
+                  key={link}
+                  href={href}
+                  className="text-sm font-medium text-dojo-text-muted transition-colors hover:text-dojo-text-primary"
+                >
+                  {link}
+                </Link>
+              );
+            })}
           </div>
 
           <NavActions />
@@ -156,9 +159,9 @@ export default async function LandingPage() {
           </div>
 
           {/* RIGHT COLUMN — Live session demo card */}
-          <div className="order-1 lg:order-2">
+          <div className="order-1 lg:order-2 w-full">
             <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0E1425] shadow-[0_30px_80px_rgba(93,91,255,0.18)] sm:rounded-3xl">
-              <div className="relative aspect-[4/3] overflow-hidden sm:aspect-[16/11]">
+              <div className="relative aspect-[16/10] overflow-hidden sm:aspect-[16/11]">
                 {/* Restaurant backdrop photo */}
                 <Image
                   src="/restaurant.png"
@@ -276,7 +279,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── DOMAINS SECTION ── */}
-      <section className="border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
+      <section id="scenarios" className="border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <h2 className="text-center text-2xl font-bold text-dojo-text-primary sm:text-3xl">Practice in Real-World Scenarios</h2>
           <p className="mt-2 text-center text-sm text-dojo-text-muted sm:text-base">
@@ -332,7 +335,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── STATS ROW ── */}
-      <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
+      <section id="stats" className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
         <div className="grid grid-cols-2 gap-y-8 gap-x-4 sm:grid-cols-3 lg:grid-cols-6">
           {stats.map((stat) => {
             const Icon = statIconMap[stat.icon];
@@ -349,6 +352,39 @@ export default async function LandingPage() {
         </div>
       </section>
 
+
+      {/* ── PARTNERS SECTION ── */}
+      <section id="partners" className="border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20 overflow-hidden">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <h2 className="text-center text-2xl font-bold text-dojo-text-primary sm:text-3xl">Our Partners</h2>
+          <p className="mt-2 text-center text-sm text-dojo-text-muted sm:text-base">
+            Trusted by leading institutions and innovators
+          </p>
+
+          <div className="mt-10 relative">
+            <div className="flex overflow-hidden">
+              <div className="flex animate-marquee gap-16 sm:gap-24 items-center">
+                {['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
+                  <div key={name} className="flex shrink-0 items-center gap-3">
+                    <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
+                      <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
+                    </div>
+                    <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
+                  </div>
+                ))}
+                {['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
+                  <div key={`${name}-dup`} className="flex shrink-0 items-center gap-3">
+                    <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
+                      <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
+                    </div>
+                    <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ── BOTTOM CTA BANNER ── */}
       <section className="mx-4 mb-36 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-6 py-12 sm:mx-6 sm:px-10 sm:py-14 lg:mx-auto">
@@ -372,8 +408,67 @@ export default async function LandingPage() {
       
 
       {/* ── FOOTER ── */}
-      <footer className="border-t border-dojo-border py-8 text-center text-xs text-dojo-text-muted sm:text-sm">
-        &copy; 2026 AI DOJO &mdash; Immersive Language Role-Play Training
+      <footer className="border-t border-dojo-border bg-dojo-surface/60">
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Brand */}
+            <div className="sm:col-span-2 lg:col-span-1">
+              <Link href="/" className="inline-flex items-center gap-2.5 text-lg font-bold text-dojo-text-primary">
+                <span>🥋 AI DOJO</span>
+              </Link>
+              <p className="mt-3 text-sm leading-relaxed text-dojo-text-muted max-w-xs">
+                Immersive language role-play training powered by AI. Practice real-world conversations and improve faster.
+              </p>
+            </div>
+
+            {/* Product */}
+            <div>
+              <h3 className="text-sm font-semibold text-dojo-text-primary">Product</h3>
+              <ul className="mt-4 space-y-3">
+                <li><Link href="#scenarios" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Scenarios</Link></li>
+                <li><Link href="#partners" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Partners</Link></li>
+                <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Get Started</Link></li>
+              </ul>
+            </div>
+
+            {/* Company */}
+            <div>
+              <h3 className="text-sm font-semibold text-dojo-text-primary">Company</h3>
+              <ul className="mt-4 space-y-3">
+                <li>
+                  <a
+                    href="https://www.akademia.co.jp/en"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent"
+                  >
+                    AKADEMIA LTD
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                </li>
+                <li><a href="https://iuea.ac.ug" target="_blank" rel="noopener noreferrer" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">IUEA</a></li>
+                <li><a href="https://www.mak.ac.ug" target="_blank" rel="noopener noreferrer" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Makerere University</a></li>
+              </ul>
+            </div>
+
+            {/* Legal */}
+            <div>
+              <h3 className="text-sm font-semibold text-dojo-text-primary">Legal</h3>
+              <ul className="mt-4 space-y-3">
+                <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Privacy Policy</Link></li>
+                <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Terms of Service</Link></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-10 border-t border-dojo-border pt-6 text-center text-xs text-dojo-text-muted sm:text-sm">
+            &copy; {new Date().getFullYear()} AI DOJO &mdash; Immersive Language Role-Play Training. All rights reserved.
+          </div>
+        </div>
       </footer>
     </div>
   );
