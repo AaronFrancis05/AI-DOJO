@@ -275,19 +275,14 @@ export class LipSync {
     const visemeE = resolveMorph(dict, 'viseme_E', 'eh', 'v_E', 'blendShape.e', 'blendShape.E');
     const jawFallback =
       resolveMorph(dict, 'jawOpen', 'jaw_open', 'jawOpenLeft', 'jaw_drop', 'blendShape.jawOpen') ??
-      resolveMorph(dict, 'mouthOpen', 'mouthClose', 'mouth_drop');
+      resolveMorph(dict, 'mouthOpen', 'mouth_drop');
 
     VISEME_TARGETS.forEach((v) => {
       const idx = dict[v];
       if (idx !== undefined) influences[idx] = 0;
     });
 
-    if (realVisemeId === 0) {
-      if (visemeU !== undefined) {
-        influences[visemeU] = Math.min(1.0, this.currentMouthOpen * 0.85);
-        if (visemeAA !== undefined) influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.15);
-      }
-    } else if (realVisemeId === 2 && visemeAA !== undefined) {
+    if (realVisemeId === 2 && visemeAA !== undefined) {
       influences[visemeAA] = Math.min(1.0, this.currentMouthOpen);
     } else if (realVisemeId === 3 && visemeO !== undefined) {
       influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
