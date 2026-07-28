@@ -427,6 +427,7 @@ function AnimationSystemHost({
   useEffect(() => {
     if (!initialized) return;
     const meta = (scene.userData as Record<string, unknown>).avatarScale as Record<string, number> | undefined;
+    // eslint-disable-next-line react-hooks/immutability -- scene is an imperative THREE.Object3D, not React state
     scene.position.y = meta?.verticalOffset ?? AVATAR_SCALE_DEFAULTS.verticalOffset;
     scene.updateMatrixWorld(true);
   }, [initialized, mode, gesture, scene]);
@@ -437,7 +438,6 @@ function AnimationSystemHost({
       animManagerRef.current?.dispose();
     } else if (prevFreezeRef.current) {
       const mixer = new THREE.AnimationMixer(scene);
-      animManagerRef.current?.init(scene, mixer, new Map(), sceneBoneNames);
       const clips = new Map<string, THREE.AnimationClip>();
       if (idleAnims[0]) clips.set('idle', idleAnims[0]);
       if (talkingAnims[0]) clips.set('talking', talkingAnims[0]);
@@ -456,6 +456,35 @@ function AnimationSystemHost({
   });
 
   return <RestPoseApplicator scene={scene} onApplied={handleRestPoseApplied} />;
+}
+
+/* ── Shared animation clip cache ─────────────────────────────────────
+   Loads the four animation GLBs once at module level so multiple
+   AnimatedModel mounts share the same network fetch and parse.
+   ──────────────────────────────────────────────────────────────────── */
+let sharedClipPromise: Promise<{
+  idle: THREE.AnimationClip[];
+  talking: THREE.AnimationClip[];
+  bow: THREE.AnimationClip[];
+  shake: THREE.AnimationClip[];
+}> | null = null;
+
+function getAnimClips() {
+  if (!sharedClipPromise) {
+    const loader = new GLTFLoader();
+    sharedClipPromise = Promise.all([
+      loader.loadAsync('/anim_standing Idle.glb'),
+      loader.loadAsync('/anim_Talking.glb'),
+      loader.loadAsync('/anim_bow.glb'),
+      loader.loadAsync('/anim_shaking hands.glb'),
+    ]).then(([idle, talking, bow, shake]) => ({
+      idle: idle.animations,
+      talking: talking.animations,
+      bow: bow.animations,
+      shake: shake.animations,
+    }));
+  }
+  return sharedClipPromise;
 }
 
 /* ── AnimatedModel ───────────────────────────────────────────────────
@@ -493,20 +522,9 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
 
   useEffect(() => {
     let cancelled = false;
-    const loader = new GLTFLoader();
-    Promise.all([
-      loader.loadAsync('/anim_standing Idle.glb'),
-      loader.loadAsync('/anim_Talking.glb'),
-      loader.loadAsync('/anim_bow.glb'),
-      loader.loadAsync('/anim_shaking hands.glb'),
-    ]).then(([idle, talking, bow, shake]) => {
+    getAnimClips().then(clips => {
       if (cancelled) return;
-      setAnimClips({
-        idle: idle.animations,
-        talking: talking.animations,
-        bow: bow.animations,
-        shake: shake.animations,
-      });
+      setAnimClips(clips);
     }).catch(err => {
       console.error('[AnimatedModel] Failed to load animation clips:', err);
       if (!cancelled) setAnimClips({ idle: [], talking: [], bow: [], shake: [] });
