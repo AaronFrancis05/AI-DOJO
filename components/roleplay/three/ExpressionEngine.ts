@@ -163,20 +163,29 @@ export class ExpressionEngine {
   }
 
   private _findFaceMesh(): void {
-    let found: MorphMesh | null = null;
+    let best: MorphMesh | null = null;
+    let bestScore = -1;
     const root = this.model;
     root.traverse((obj) => {
       const morph = asMorphMesh(obj);
       if (morph) {
-        if (obj.name.toLowerCase().includes('head') || !found) {
-          found = morph;
+        const dict = morph.morphTargetDictionary;
+        const nameHint = (obj.name?.toLowerCase().includes('head') ?? false) ? 1 : 0;
+        const hasVisemeOrJaw =
+          'viseme_aa' in dict || 'viseme_O' in dict || 'jawOpen' in dict
+            ? 2
+            : 0;
+        const score = hasVisemeOrJaw + nameHint;
+        if (score > bestScore) {
+          bestScore = score;
+          best = morph;
         }
       }
     });
-    this.faceMesh = found;
+    this.faceMesh = best;
 
-    if (found) {
-      const dict = (found as unknown as Record<string, unknown>).morphTargetDictionary as Record<string, number>;
+    if (best) {
+      const dict = (best as unknown as Record<string, unknown>).morphTargetDictionary as Record<string, number>;
       if (dict) {
         Object.keys(dict).forEach((key) => {
           this.targetWeights[key] = 0;

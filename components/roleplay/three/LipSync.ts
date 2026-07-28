@@ -173,20 +173,31 @@ export class LipSync {
 
   private _findFaceMesh(): THREE.SkinnedMesh | null {
     if (this._cachedFaceMesh) return this._cachedFaceMesh;
-    let faceMesh: THREE.SkinnedMesh | null = null;
+    let best: THREE.SkinnedMesh | null = null;
+    let bestScore = -1;
+
     this.model.traverse((obj) => {
       if (
         obj instanceof THREE.SkinnedMesh &&
         obj.morphTargetDictionary &&
         obj.morphTargetInfluences
       ) {
-        if (obj.name.toLowerCase().includes('head') || !faceMesh) {
-          faceMesh = obj;
+        const dict = obj.morphTargetDictionary;
+        const nameHint = (obj.name?.toLowerCase().includes('head') ?? false) ? 1 : 0;
+        const hasVisemeOrJaw =
+          'viseme_aa' in dict || 'viseme_O' in dict || 'jawOpen' in dict
+            ? 2
+            : 0;
+        const score = hasVisemeOrJaw + nameHint;
+        if (score > bestScore) {
+          bestScore = score;
+          best = obj;
         }
       }
     });
-    this._cachedFaceMesh = faceMesh;
-    return faceMesh;
+
+    this._cachedFaceMesh = best;
+    return best;
   }
 
   private _resolveVisemeId(): number {
