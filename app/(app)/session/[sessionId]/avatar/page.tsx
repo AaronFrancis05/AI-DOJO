@@ -47,6 +47,7 @@ export default function AvatarModePage() {
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
 
+  const speakingRef = useRef(false);
   const mutedRef = useRef(false);
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
@@ -71,6 +72,7 @@ export default function AvatarModePage() {
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
+      speakingRef.current = speaking;
       setAvatarMode(speaking ? 'talking' : 'idle');
       if (!speaking) lastAiCompletedRef.current = Date.now();
       if (speaking) {
@@ -258,7 +260,7 @@ export default function AvatarModePage() {
         )}
 
         <div className="flex-1 flex items-center justify-center relative">
-          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; }} />
+          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; if (speakingRef.current) sys.startTalking?.(); }} />
         </div>
 
         {/* Desktop side panel */}

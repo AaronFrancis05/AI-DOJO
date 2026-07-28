@@ -1,6 +1,7 @@
 import { ExpressionEngine } from './ExpressionEngine';
 import { AnimationManager, ANIMATION_ALIASES } from './AnimationManager';
-import { LipSync, VisemeFrame } from './LipSync';
+import { LipSync } from './LipSync';
+import type { VisemeFrame } from './LipSync';
 
 export interface EmotionSystemDeps {
   expression: ExpressionEngine;

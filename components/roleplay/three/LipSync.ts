@@ -227,8 +227,10 @@ export class LipSync {
     if (this._visemeTimeline && this.audio) {
       const elapsedMs = this.audio.currentTime * 1000;
       while (this._visemeIndex < this._visemeTimeline.length && this._visemeTimeline[this._visemeIndex].offsetMs <= elapsedMs) {
-        realVisemeId = this._visemeTimeline[this._visemeIndex].id;
         this._visemeIndex++;
+      }
+      if (this._visemeIndex > 0) {
+        realVisemeId = this._visemeTimeline[this._visemeIndex - 1].id;
       }
     }
     if (realVisemeId < 0) {
