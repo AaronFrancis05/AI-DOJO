@@ -136,7 +136,7 @@ async function seedDomainData() {
   for (const c of characterFixtures) {
     const result = await db.update(characters)
       .set({ avatarModelUrl: c.avatarModelUrl })
-      .where(sql`${characters.name} = ${c.name} AND ${characters.avatarModelUrl} != ${c.avatarModelUrl}`)
+      .where(sql`${characters.name} = ${c.name} AND ${characters.avatarModelUrl} IS DISTINCT FROM ${c.avatarModelUrl}`)
       .returning({ id: characters.id });
     if (result.length > 0) {
       console.log(`  Updated ${c.name}: ${c.avatarModelUrl}`);

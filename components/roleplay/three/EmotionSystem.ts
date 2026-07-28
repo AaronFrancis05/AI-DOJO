@@ -1,5 +1,5 @@
 import { ExpressionEngine } from './ExpressionEngine';
-import { AnimationManager } from './AnimationManager';
+import { AnimationManager, ANIMATION_ALIASES } from './AnimationManager';
 import { LipSync } from './LipSync';
 
 export interface EmotionSystemDeps {
@@ -65,7 +65,8 @@ export class EmotionSystem {
     onComplete?: (() => void) | null,
   ): { url?: string; visemes?: unknown[] } | null {
     const emotion = data.emotionTone || 'neutral';
-    const bodyKey = String(data.animation || data.gestureHint || 'talk').trim().toLowerCase();
+    const rawKey = String(data.animation || data.gestureHint || 'talk').trim().toLowerCase();
+    const bodyKey = ANIMATION_ALIASES[rawKey] ?? rawKey;
     const isDefaultIdle = bodyKey === 'idle' || bodyKey === 'talk';
     const isOneShotGesture =
       bodyKey === 'thankful' || bodyKey === 'greeting' || bodyKey === 'nod';
@@ -109,11 +110,13 @@ export class EmotionSystem {
     }
 
     if (this.lipSync && data.audioUrl) {
-      const url = data.audioUrl.startsWith('http') || data.audioUrl.startsWith('/')
-        ? backendUrl + data.audioUrl
-        : backendUrl + '/' + data.audioUrl;
+      const resolvedUrl = data.audioUrl.startsWith('http')
+        ? data.audioUrl
+        : data.audioUrl.startsWith('/')
+          ? backendUrl + data.audioUrl
+          : backendUrl + '/' + data.audioUrl;
 
-      this.lipSync.play(url, data.visemes || [], () => {
+      this.lipSync.play(resolvedUrl, data.visemes || [], () => {
         if (this.animation) {
           this.animation.isTalking = false;
           this.animation.play('idle', { loop: true, fade: 0.7 });
@@ -122,7 +125,7 @@ export class EmotionSystem {
         onComplete?.();
       });
 
-      return { url: data.audioUrl, visemes: data.visemes || [] };
+      return { url: resolvedUrl, visemes: data.visemes || [] };
     }
 
     onComplete?.();
@@ -137,12 +140,11 @@ export class EmotionSystem {
 
   replayExplain(
     lastAudio: { url: string; visemes: unknown[] } | null,
-    backendUrl: string,
   ): void {
     if (!lastAudio) return;
     this.animation.play('talk', { loop: true, fade: 0.7 });
     if (this.lipSync) {
-      this.lipSync.play(backendUrl + lastAudio.url, lastAudio.visemes, () => {
+      this.lipSync.play(lastAudio.url, lastAudio.visemes, () => {
         this.animation.play('idle', { loop: true, fade: 0.7 });
         this.expression.setTalkingState(false);
       });

@@ -135,6 +135,7 @@ export default function AvatarModePage() {
       }
     } catch (e: any) {
       console.error(e);
+      emotionSystemRef.current?.stopThinking();
     } finally {
       sendingRef.current = false;
       setSending(false);
