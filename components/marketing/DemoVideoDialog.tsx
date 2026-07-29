@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Play, Pause, Maximize, Minimize } from 'lucide-react';
 
-const DEMO_VIDEO_PATH = '/demo-video.MP4';
+const DEMO_VIDEO_PATH = '/demo-video.mp4';
 
 export function DemoVideoDialog() {
   const [open, setOpen] = useState(false);
@@ -38,6 +38,12 @@ export function DemoVideoDialog() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [open, close, fullscreen]);
+
+  useEffect(() => {
+    if (open && videoRef.current) {
+      videoRef.current.play().then(() => setPlaying(true)).catch(() => {});
+    }
+  }, [open]);
 
   const togglePlay = () => {
     if (!videoRef.current) return;

@@ -100,6 +100,19 @@ body {
   100% { transform: translateX(120%) scaleX(0.4); }
 }
 
+@keyframes marquee-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee-scroll 30s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
 /* Utility classes — used by Skeleton.tsx for animations.
    These class-name selectors are the stable contract that the reduced-motion
    override targets, avoiding fragile [style*="..."] substring matching. */
