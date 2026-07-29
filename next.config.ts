@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/demo-video.mp4",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
         source: "/ai-avatars/:path(.*)",
         headers: [
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
