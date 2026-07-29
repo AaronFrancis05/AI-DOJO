@@ -212,9 +212,11 @@ export default async function LandingPage() {
                     />
                   </div>
                 </div>
+                  <div className="absolute  bottom-3 sm:bottom-2 flex gap-3 sm:gap-4 w-full items-center justify-evenly">
+
 
                 {/* ── PROGRESS BAR (bottom) ── */}
-                <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 sm:px-5 sm:pb-4">
+                <div className="pb-3 sm:left-5 sm:right-5 sm:pb-4">
                   <div className="rounded-2xl border border-white/10 bg-black/60 px-3.5 py-3 backdrop-blur-xl sm:px-4 sm:py-3.5">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-[10px] text-white/50 sm:text-xs">Conversation Progress</span>
@@ -230,7 +232,7 @@ export default async function LandingPage() {
                 </div>
 
                 {/* ── MIC + VOICE WAVE (center-left, under the conversation bubble) ── */}
-                <div className="absolute left-3 top-[13.5rem] sm:left-6 sm:top-64">
+                <div className=" sm:bottom-[18%] sm:left-6">
                   <div className="flex items-center gap-3 sm:gap-4">
                     {/* Mic button */}
                     <button className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-indigo-600 shadow-[0_0_30px_rgba(99,102,241,0.6)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(99,102,241,0.8)] sm:h-14 sm:w-14">
@@ -257,6 +259,8 @@ export default async function LandingPage() {
                   </p>
                 </div>
 
+                  </div>
+
                 {/* ── SESSION XP + STREAK (grouped, right side) ── */}
                 <div className="absolute right-3 top-16 flex flex-col gap-2 sm:right-5 sm:top-20 sm:gap-2.5">
                   <div className="rounded-xl border border-white/10 bg-black/50 px-3 py-2 backdrop-blur-xl sm:rounded-2xl sm:px-4 sm:py-2.5">
@@ -279,7 +283,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── DOMAINS SECTION ── */}
-      <section id="scenarios" className="border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
+      <section id="scenarios" className="scroll-mt-16 border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <h2 className="text-center text-2xl font-bold text-dojo-text-primary sm:text-3xl">Practice in Real-World Scenarios</h2>
           <p className="mt-2 text-center text-sm text-dojo-text-muted sm:text-base">
@@ -335,7 +339,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── STATS ROW ── */}
-      <section id="stats" className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
+      <section id="stats" className="scroll-mt-16 mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
         <div className="grid grid-cols-2 gap-y-8 gap-x-4 sm:grid-cols-3 lg:grid-cols-6">
           {stats.map((stat) => {
             const Icon = statIconMap[stat.icon];
@@ -354,7 +358,7 @@ export default async function LandingPage() {
 
 
       {/* ── PARTNERS SECTION ── */}
-      <section id="partners" className="border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20 overflow-hidden">
+      <section id="partners" className="scroll-mt-16 border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20 overflow-hidden">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <h2 className="text-center text-2xl font-bold text-dojo-text-primary sm:text-3xl">Our Partners</h2>
           <p className="mt-2 text-center text-sm text-dojo-text-muted sm:text-base">
@@ -372,14 +376,14 @@ export default async function LandingPage() {
                     <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
                   </div>
                 ))}
-                {['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
+                <div aria-hidden="true" className="flex">{['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
                   <div key={`${name}-dup`} className="flex shrink-0 items-center gap-3">
                     <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
                       <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
                     </div>
                     <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
                   </div>
-                ))}
+                ))}</div>
               </div>
             </div>
           </div>
@@ -387,7 +391,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── BOTTOM CTA BANNER ── */}
-      <section className="mx-4 mb-36 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-6 py-12 sm:mx-6 sm:px-10 sm:py-14 lg:mx-auto">
+      <section id="cta" className="mx-4 mb-36 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-6 py-12 sm:mx-6 sm:px-10 sm:py-14 lg:mx-auto">
         <div className="flex flex-col items-center justify-between gap-6 text-center sm:flex-row sm:text-left">
           <div>
             <h2 className="text-xl font-bold text-dojo-text-primary sm:text-2xl">Ready to Start Your Journey?</h2>
@@ -459,8 +463,8 @@ export default async function LandingPage() {
             <div>
               <h3 className="text-sm font-semibold text-dojo-text-primary">Legal</h3>
               <ul className="mt-4 space-y-3">
-                <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Privacy Policy</Link></li>
-                <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Terms of Service</Link></li>
+                <li><span className="text-sm text-dojo-text-muted">Privacy Policy</span></li>
+                <li><span className="text-sm text-dojo-text-muted">Terms of Service</span></li>
               </ul>
             </div>
           </div>

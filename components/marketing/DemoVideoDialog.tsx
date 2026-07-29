@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Play, Pause, Maximize, Minimize } from 'lucide-react';
 
-const DEMO_VIDEO_PATH = '/demo-video.mp4';
+const DEMO_VIDEO_PATH = '/api/video/demo';
 
 export function DemoVideoDialog() {
   const [open, setOpen] = useState(false);
@@ -40,19 +40,20 @@ export function DemoVideoDialog() {
   }, [open, close, fullscreen]);
 
   useEffect(() => {
-    if (open && videoRef.current) {
-      videoRef.current.play().then(() => setPlaying(true)).catch(() => {});
-    }
+    if (!open || !videoRef.current) return;
+    let active = true;
+    videoRef.current.play().then(() => { if (active) setPlaying(true); }).catch(() => {});
+    return () => { active = false; };
   }, [open]);
 
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (playing) {
       videoRef.current.pause();
+      setPlaying(false);
     } else {
-      videoRef.current.play();
+      videoRef.current.play().then(() => setPlaying(true)).catch(() => {});
     }
-    setPlaying(!playing);
   };
 
   const handleTimeUpdate = () => {

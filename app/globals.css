@@ -109,8 +109,15 @@ body {
   animation: marquee-scroll 30s linear infinite;
 }
 
-.animate-marquee:hover {
+.animate-marquee:hover,
+.animate-marquee:focus-within {
   animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
 }
 
 /* Utility classes — used by Skeleton.tsx for animations.

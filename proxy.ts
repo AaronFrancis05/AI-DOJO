@@ -65,5 +65,5 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|.+\.hdr|auth|api|share).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|restaurant.png|.+\.hdr|.+\.mp4|.+\.png|.+\.jpg|.+\.jpeg|.+\.webp|.+\.gif|.+\.svg|.+\.ico|.+\.woff2?|.+\.ttf|.+\.glb|.+\.css|.+\.js|.+\.json|auth|api|share).*)'],
 };
