@@ -212,27 +212,26 @@ export default async function LandingPage() {
                     />
                   </div>
                 </div>
-                  <div className="absolute  bottom-3 sm:bottom-2 flex gap-3 sm:gap-4 w-full items-center justify-evenly">
 
-
-                {/* ── PROGRESS BAR (bottom) ── */}
-                <div className="pb-3 sm:left-5 sm:right-5 sm:pb-4">
-                  <div className="rounded-2xl border border-white/10 bg-black/60 px-3.5 py-3 backdrop-blur-xl sm:px-4 sm:py-3.5">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[10px] text-white/50 sm:text-xs">Conversation Progress</span>
-                      <span className="text-xs font-semibold text-white sm:text-sm">72%</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white/10 sm:h-2.5">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-dojo-accent via-cyan-400 to-green-400"
-                        style={{ width: '72%' }}
-                      />
+                {/* ── BOTTOM OVERLAY (progress bar + mic) ── */}
+                <div className="absolute bottom-0 left-0 right-0 flex items-end gap-3 px-3 pb-3 sm:px-5 sm:pb-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="rounded-2xl border border-white/10 bg-black/60 px-3.5 py-3 backdrop-blur-xl sm:px-4 sm:py-3.5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-[10px] text-white/50 sm:text-xs">Conversation Progress</span>
+                        <span className="text-xs font-semibold text-white sm:text-sm">72%</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-white/10 sm:h-2.5">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-dojo-accent via-cyan-400 to-green-400"
+                          style={{ width: '72%' }}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* ── MIC + VOICE WAVE (center-left, under the conversation bubble) ── */}
-                <div className=" sm:bottom-[18%] sm:left-6">
+                  {/* ── MIC + VOICE WAVE ── */}
+                  <div className="shrink-0">
                   <div className="flex items-center gap-3 sm:gap-4">
                     {/* Mic button */}
                     <button className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-indigo-600 shadow-[0_0_30px_rgba(99,102,241,0.6)] transition-all hover:scale-110 hover:shadow-[0_0_40px_rgba(99,102,241,0.8)] sm:h-14 sm:w-14">
@@ -376,7 +375,7 @@ export default async function LandingPage() {
                     <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
                   </div>
                 ))}
-                <div aria-hidden="true" className="flex">{['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
+                <div aria-hidden="true" className="flex gap-16 sm:gap-24">{['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
                   <div key={`${name}-dup`} className="flex shrink-0 items-center gap-3">
                     <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
                       <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
@@ -391,7 +390,7 @@ export default async function LandingPage() {
       </section>
 
       {/* ── BOTTOM CTA BANNER ── */}
-      <section id="cta" className="mx-4 mb-36 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-6 py-12 sm:mx-6 sm:px-10 sm:py-14 lg:mx-auto">
+      <section id="cta" className="scroll-mt-16 mx-4 mb-36 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 via-dojo-sidebar to-dojo-accent/10 px-6 py-12 sm:mx-6 sm:px-10 sm:py-14 lg:mx-auto">
         <div className="flex flex-col items-center justify-between gap-6 text-center sm:flex-row sm:text-left">
           <div>
             <h2 className="text-xl font-bold text-dojo-text-primary sm:text-2xl">Ready to Start Your Journey?</h2>
@@ -463,8 +462,8 @@ export default async function LandingPage() {
             <div>
               <h3 className="text-sm font-semibold text-dojo-text-primary">Legal</h3>
               <ul className="mt-4 space-y-3">
-                <li><span className="text-sm text-dojo-text-muted">Privacy Policy</span></li>
-                <li><span className="text-sm text-dojo-text-muted">Terms of Service</span></li>
+                <li><a href="/privacy" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Privacy Policy</a></li>
+                <li><a href="/terms" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Terms of Service</a></li>
               </ul>
             </div>
           </div>
