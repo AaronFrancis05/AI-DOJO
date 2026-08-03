@@ -10,7 +10,10 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx src/seed.ts"
+    "db:seed": "tsx src/seed.ts",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
+    "docker:prod": "docker compose up --build -d",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.1",
