@@ -22,5 +22,5 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      HOSTNAME: 0.0.0.0
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
     restart: unless-stopped

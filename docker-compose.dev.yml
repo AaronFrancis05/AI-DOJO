@@ -19,7 +19,6 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      HOSTNAME: 0.0.0.0
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     volumes:
