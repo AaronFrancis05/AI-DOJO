@@ -168,10 +168,30 @@ body {
   display: none;
 }
 
+@keyframes arena-rise {
+  0%   { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-arena-rise {
+  animation: arena-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.arena-delay-1 { animation-delay: 0.1s; }
+.arena-delay-2 { animation-delay: 0.22s; }
+.arena-delay-3 { animation-delay: 0.34s; }
+.arena-delay-4 { animation-delay: 0.46s; }
+
 @media (prefers-reduced-motion: reduce) {
   .animate-shimmer-sweep,
   .animate-typing-bounce,
   .animate-progress-indeterminate {
     animation: none !important;
+  }
+
+  .animate-arena-rise {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }

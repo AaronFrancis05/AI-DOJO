@@ -8,7 +8,7 @@ import { getBCP47 } from '@/lib/language';
 interface VocabWord {
   id: number;
   japanese: string;
-  romaji: string;
+  phonetic: string;
   english: string;
   usageTip?: string | null;
 }
@@ -140,9 +140,9 @@ export function IcebreakerDrill({
                 <p className="text-2xl font-bold text-dojo-text-primary">
                   {word.japanese}
                 </p>
-                {word.romaji && (
+                {word.phonetic && (
                   <p className="text-sm text-dojo-text-muted italic">
-                    {word.romaji}
+                    {word.phonetic}
                   </p>
                 )}
               </div>
@@ -172,7 +172,7 @@ export function IcebreakerDrill({
             <div className="space-y-6">
               <div className="space-y-2">
                 <p className="text-2xl font-bold text-dojo-text-primary">{word.japanese}</p>
-                <p className="text-sm text-dojo-text-muted italic">{word.romaji}</p>
+                <p className="text-sm text-dojo-text-muted italic">{word.phonetic}</p>
                 <p className="text-xs text-dojo-text-muted">({word.english})</p>
                 {word.usageTip && (
                   <p className="text-xs text-dojo-text-muted/70 mt-2">{word.usageTip}</p>
@@ -226,7 +226,7 @@ export function IcebreakerDrill({
                   <p className="text-sm text-dojo-text-muted">
                     The word is: <span className="text-dojo-text-primary font-medium">{word.japanese}</span>
                     <br />
-                    <span className="italic">{word.romaji}</span>
+                    <span className="italic">{word.phonetic}</span>
                   </p>
                 </div>
               )}

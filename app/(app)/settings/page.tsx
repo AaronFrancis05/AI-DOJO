@@ -12,11 +12,14 @@ import { SliderRow } from '@/components/ui/SliderRow';
 import { Button } from '@/components/ui/Button';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
+import { LanguagePicker } from '@/components/ui/LanguagePicker';
 import { useState } from 'react';
-import Link from 'next/link';
 import { type BehaviorMode } from '@/lib/design-tokens';
-import { ChevronRight, User, CreditCard } from 'lucide-react';
+import { ChevronRight, User, CreditCard, Check, LoaderIcon } from 'lucide-react';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
+import { useUser } from '@/lib/auth/user-context';
+import { AvatarSettingsDialog } from '@/components/settings/AvatarSettingsDialog';
+import { BillingDialog } from '@/components/settings/BillingDialog';
 
 const tabs: Tab[] = [
   { id: 'preferences', label: 'Preferences' },
@@ -26,6 +29,7 @@ const tabs: Tab[] = [
 
 export default function SettingsPage() {
   usePageTitle('Settings');
+  const user = useUser();
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
@@ -36,6 +40,38 @@ export default function SettingsPage() {
     progressReports: true,
     weeklyDigest: false,
   });
+  const [targetLanguage, setTargetLanguage] = useState(user?.preferredTargetLanguage ?? 'ja');
+  const [nativeLanguage, setNativeLanguage] = useState(user?.nativeLanguage ?? 'en');
+  const [languageDirty, setLanguageDirty] = useState(false);
+  const [savingLanguage, setSavingLanguage] = useState(false);
+  const [savedLanguage, setSavedLanguage] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
+
+  const saveLanguages = async () => {
+    setSavingLanguage(true);
+    setSavedLanguage(false);
+    try {
+      const res = await fetch('/api/user/preferences', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preferredTargetLanguage: targetLanguage,
+          nativeLanguage,
+        }),
+      });
+      if (res.ok) {
+        setLanguageDirty(false);
+        setSavedLanguage(true);
+        setTimeout(() => setSavedLanguage(false), 2500);
+      }
+    } catch {
+      setSavedLanguage(false);
+    } finally {
+      setSavingLanguage(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -46,9 +82,13 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Links to sub-pages */}
+      {/* Links to sub-sections (opened as dialogue sections) */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Link href="/settings/avatar">
+        <button
+          type="button"
+          onClick={() => setAvatarOpen(true)}
+          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent rounded-[--radius-lg]"
+        >
           <Card hoverable>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -63,8 +103,12 @@ export default function SettingsPage() {
               <ChevronRight className="h-5 w-5 text-dojo-text-muted" />
             </div>
           </Card>
-        </Link>
-        <Link href="/settings/billing">
+        </button>
+        <button
+          type="button"
+          onClick={() => setBillingOpen(true)}
+          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent rounded-[--radius-lg]"
+        >
           <Card hoverable>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -79,7 +123,7 @@ export default function SettingsPage() {
               <ChevronRight className="h-5 w-5 text-dojo-text-muted" />
             </div>
           </Card>
-        </Link>
+        </button>
       </div>
 
       {/* Settings tabs */}
@@ -89,6 +133,43 @@ export default function SettingsPage() {
             case 'preferences':
               return (
                 <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Language</h4>
+                    <LanguagePicker
+                      targetLanguage={targetLanguage}
+                      nativeLanguage={nativeLanguage}
+                      onTargetChange={(code) => {
+                        setTargetLanguage(code);
+                        setLanguageDirty(true);
+                        setSavedLanguage(false);
+                      }}
+                      onNativeChange={(code) => {
+                        setNativeLanguage(code);
+                        setLanguageDirty(true);
+                        setSavedLanguage(false);
+                      }}
+                    />
+                    <div className="mt-4 flex items-center gap-3">
+                      <Button
+                        size="sm"
+                        onClick={saveLanguages}
+                        disabled={!languageDirty || savingLanguage}
+                      >
+                        {savingLanguage ? (
+                          <LoaderIcon className="h-4 w-4 animate-spin" />
+                        ) : (
+                          'Save Languages'
+                        )}
+                      </Button>
+                      {savedLanguage && (
+                        <span className="flex items-center gap-1.5 text-sm text-dojo-success">
+                          <Check className="h-4 w-4" />
+                          Saved — your paths are now personalized.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Default Behavior Mode</h4>
                     <BehaviorModeToggle value={defaultMode} onChange={setDefaultMode} />
@@ -176,6 +257,9 @@ export default function SettingsPage() {
           }
         }} />
       </Card>
+
+      <AvatarSettingsDialog open={avatarOpen} onClose={() => setAvatarOpen(false)} />
+      <BillingDialog open={billingOpen} onClose={() => setBillingOpen(false)} />
     </div>
   );
 }

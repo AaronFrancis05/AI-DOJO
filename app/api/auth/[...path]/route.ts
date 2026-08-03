@@ -247,7 +247,9 @@ async function handleOAuthExchange(request: NextRequest) {
 async function handleGET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');
 
-  if (path === 'oauth/callback') {
+  // OAuth callback — the verifier exchange. Google/Neon may redirect to either
+  // `/api/auth/oauth/callback` or the SDK-default `/api/auth/callback/<provider>`.
+  if (path === 'oauth/callback' || path === 'callback' || path.startsWith('callback/')) {
     return handleOAuthExchange(request);
   }
 

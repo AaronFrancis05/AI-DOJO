@@ -1,21 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { CharacterSelectDialog } from '@/components/dojo/CharacterSelectDialog';
 import { getSituationById, type SituationFixture } from '@/lib/data/situations';
 import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 
 export default function SituationPickerPage() {
   const { domainSlug, situationId } = useParams<{ domainSlug: string; situationId: string }>();
+  const searchParams = useSearchParams();
   const [situation, setSituation] = useState<SituationFixture | undefined>();
   const [domain, setDomain] = useState<DomainFixture | undefined>();
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<'live' | 'fixture'>('live');
+  const [partnerOpen, setPartnerOpen] = useState(false);
+
+  const behaviorMode = searchParams.get('mode') ?? 'standard';
 
   useEffect(() => {
     async function load() {
@@ -92,12 +96,18 @@ export default function SituationPickerPage() {
         </div>
       </div>
 
-      <Link href={`/dojo/${domainSlug}/${situationId}/character`}>
-        <Button variant="primary" size="lg" className="w-full">
-          Choose Your Partner
-          <ChevronRight className="h-4 w-4 ml-1" />
-        </Button>
-      </Link>
+      <Button variant="primary" size="lg" className="w-full" onClick={() => setPartnerOpen(true)}>
+        Choose Your Partner
+        <ChevronRight className="h-4 w-4 ml-1" />
+      </Button>
+
+      <CharacterSelectDialog
+        open={partnerOpen}
+        onClose={() => setPartnerOpen(false)}
+        domainSlug={domainSlug}
+        situationId={situationId}
+        behaviorMode={behaviorMode}
+      />
     </div>
   );
 }

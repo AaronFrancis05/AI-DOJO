@@ -1,22 +1,16 @@
 import { db } from '../../../../src/db';
-import { dbPool, withSessionLock } from '../../../../src/db-pool';
-import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, vocabulary, audioJobs } from '../../../../src/schema';
-
-type ScenarioRow = typeof scenarios.$inferSelect;
-type SituationRow = typeof situations.$inferSelect;
-type GoalRow = typeof scenarioGoals.$inferSelect;
-import { analyzeUserTurn } from '../../../../lib/ai-engine';
-import type { ChatTurn } from '../../../../lib/ai-providers';
+import { withSessionLock } from '../../../../src/db-pool';
+import { sessions, conversations, corrections, evaluations, goalCompletions, users, vocabularyEncounters, audioJobs } from '../../../../src/schema';
+import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
-import { nextPhase, UNGUIDED_MISTAKE_PENALTY, UNGUIDED_ENGLISH_PENALTY, type SessionPhase } from '../../../../lib/roleplay/phase-engine';
-import { eq, and, asc, sql } from 'drizzle-orm';
+import { nextPhase, UNGUIDED_MISTAKE_PENALTY, UNGUIDED_ENGLISH_PENALTY } from '../../../../lib/roleplay/phase-engine';
+import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
-import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
+import { inngest } from '../../../../lib/inngest/client';
 
 const SAFETY_CAP_TURN = 15;
-const MAX_ICEBREAKER_VOCAB = 5;
 
 async function enqueueAudioJob(
   conversationId: number,
@@ -26,9 +20,9 @@ async function enqueueAudioJob(
   phase: string,
   speaker: string,
   voiceGender?: string,
-): Promise<void> {
+): Promise<number | null> {
   try {
-    await db.insert(audioJobs).values({
+    const [row] = await db.insert(audioJobs).values({
       conversationId,
       sessionId,
       text,
@@ -36,9 +30,23 @@ async function enqueueAudioJob(
       phase,
       speaker,
       voiceGender: voiceGender ?? null,
-    });
+    }).returning({ id: audioJobs.id });
+    return row?.id ?? null;
   } catch (err) {
     console.error('[AUDIO QUEUE] Failed to enqueue job:', err);
+    return null;
+  }
+}
+
+async function dispatchAudioJob(jobId: number | null, conversationId: number, sessionId: number): Promise<void> {
+  if (jobId == null) return;
+  try {
+    await inngest.send({
+      name: 'audio/enqueued',
+      data: { jobId, conversationId, sessionId },
+    });
+  } catch (err) {
+    console.error('[INNGEST] Failed to dispatch audio job', jobId, err);
   }
 }
 
@@ -83,102 +91,37 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (session.status !== 'active') {
+    if (session.status === 'completed') {
       return Response.json({ error: 'Session is already completed' }, { status: 400 });
     }
 
-    const { scenarioId } = session;
-    const behaviorMode = session.behaviorMode ?? 'standard';
-    const targetLanguage = session.targetLanguage ?? 'ja';
-    const nativeLanguage = session.nativeLanguage ?? 'en';
-    const isSameLanguage = targetLanguage === nativeLanguage;
-    let phaseTurnCount = session.phaseTurnCount ?? 0;
-
-    const [currentScenario, conversationRows, goalsResult, completionsResult, situationResult] = await Promise.all([
-      (async (): Promise<ScenarioRow | null> => {
-        const k = cacheKeys.scenario(scenarioId);
-        const c = await cacheGet<ScenarioRow | null>(k);
-        if (c) return c;
-        const r = await db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null);
-        if (r) await cacheSet(k, r, TTL.SCENARIO);
-        return r;
-      })(),
-
-      db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.sessionId, numericSessionId))
-        .orderBy(asc(conversations.turnNo)),
-
-      (async (): Promise<GoalRow[]> => {
-        const k = cacheKeys.goals(scenarioId);
-        const c = await cacheGet<GoalRow[]>(k);
-        if (c) return c;
-        const r = await db.select().from(scenarioGoals).where(eq(scenarioGoals.scenarioId, scenarioId)).orderBy(asc(scenarioGoals.sequenceOrder));
-        await cacheSet(k, r, TTL.GOALS);
-        return r;
-      })(),
-
-      db
-        .select({ seqOrder: scenarioGoals.sequenceOrder })
-        .from(goalCompletions)
-        .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
-        .where(and(eq(goalCompletions.sessionId, numericSessionId), eq(scenarioGoals.scenarioId, scenarioId))),
-
-      session.situationId
-        ? (async (): Promise<SituationRow | null> => {
-            const k = cacheKeys.situation(session.situationId!);
-            const c = await cacheGet<SituationRow | null>(k);
-            if (c) return c;
-            const r = await db.select().from(situations).where(eq(situations.id, session.situationId!)).then(r => r[0] ?? null);
-            if (r) await cacheSet(k, r, TTL.SITUATION);
-            return r;
-          })()
-        : Promise.resolve(null),
-    ]);
+    const turnData = await loadSessionTurnData(session);
+    const currentScenario = turnData.scenario;
+    const situationResult = turnData.situation;
+    const goals = turnData.goals;
+    const completedSequenceOrders = turnData.completedSequenceOrders;
+    const conversationHistory = turnData.conversationHistory;
+    const currentTurnNo = turnData.currentTurnNo;
+    const vocabRows = turnData.vocabRows;
+    const behaviorMode = turnData.behaviorMode;
+    const targetLanguage = turnData.targetLanguage;
+    const nativeLanguage = turnData.nativeLanguage;
+    const isSameLanguage = turnData.isSameLanguage;
+    const currentPhase = turnData.currentPhase;
 
     if (!currentScenario) {
       return Response.json({ error: 'Scenario not found' }, { status: 404 });
     }
 
-    const goals = goalsResult;
-    const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
-
     let situationContext = currentScenario.context;
     let situationLearningGoals = currentScenario.learningGoals;
-    if (situationResult) {
+    if (situationResult && !turnData.scenarioLocalized) {
       situationContext = situationResult.context;
       situationLearningGoals = situationResult.learningGoals;
     }
 
-    const currentTurnNo = conversationRows.length > 0
-      ? Math.max(...conversationRows.map(c => c.turnNo)) + 1
-      : 1;
-
-    const conversationHistory: ChatTurn[] = conversationRows.map(row => ({
-      role: row.speaker === 'ai' ? 'assistant' as const : 'user' as const,
-      content: row.messageNative ?? row.messageTarget,
-    }));
-
     const targetLangName = getTargetLangConfig(targetLanguage).name;
     const nativeLangName = getNativeLangName(nativeLanguage);
-    const currentPhase = session.phase as SessionPhase;
-
-    // ── Load scenario vocabulary for icebreaker phase ──
-    let vocabRows = currentPhase === 'icebreaker' || currentPhase === 'guided'
-      ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {
-            const k = cacheKeys.vocabulary(scenarioId);
-            const c = await cacheGet<typeof vocabulary.$inferSelect[]>(k);
-            if (c) return c;
-            const r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenarioId)).orderBy(vocabulary.id);
-            await cacheSet(k, r, TTL.VOCABULARY);
-            return r;
-          })()
-      : [];
-
-    if (currentPhase === 'icebreaker' && vocabRows.length > MAX_ICEBREAKER_VOCAB) {
-      vocabRows = vocabRows.slice(0, MAX_ICEBREAKER_VOCAB);
-    }
 
     const isSessionStart = userRawInput === '__session_start__';
     const effectiveInput = isSessionStart ? '' : userRawInput;
@@ -188,9 +131,9 @@ export async function POST(req: Request) {
           isSameLanguage
             ? vocabRows.map((v, i) => `  ${i + 1}. "${v.translation}"${v.usageTip ? ` — ${v.usageTip}` : ''}`).join('\n')
             : vocabRows.map((v, i) => {
-                const hasRomaji = getTargetLangConfig(targetLanguage).hasRomaji;
-                const romajiPart = hasRomaji && v.romaji ? ` (${v.romaji})` : '';
-                return `  ${i + 1}. "${v.targetText}"${romajiPart} = "${v.translation}"`;
+                const hasPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic;
+                const phoneticPart = hasPhonetic && v.phonetic ? ` (${v.phonetic})` : '';
+                return `  ${i + 1}. "${v.targetText}"${phoneticPart} = "${v.translation}"`;
               }).join('\n')
         }`
       : '';
@@ -205,7 +148,9 @@ export async function POST(req: Request) {
       ? `The AI character should be MORE DIFFICULT to deal with — less cooperative, more complex vocabulary, occasionally misunderstand the user.`
       : `The AI character should be cooperative, friendly, and helpful.`;
 
-    const scenarioTitle = situationResult?.title ?? currentScenario.title;
+    const scenarioTitle = turnData.scenarioLocalized
+      ? currentScenario.title
+      : (situationResult?.title ?? currentScenario.title);
     const scenarioContextBlock = `
 ===== SCENARIO =====
 Title: ${scenarioTitle}
@@ -435,11 +380,11 @@ RULES:
           }
 
           // Phase 2: Analyze the user's turn (skip for session start greeting)
-          if (isSessionStart) {
+            if (isSessionStart) {
             let aiConversationId: number | null = null;
             const { newPhase: sessionStartPhase } = await withSessionLock(numericSessionId, async (tx) => {
               const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-              if (freshSession.status !== 'active') throw new Error('Session was completed by another request');
+              if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
 
               const existingGreeting = await tx.select({ id: conversations.id })
                 .from(conversations)
@@ -456,7 +401,7 @@ RULES:
                 speaker: 'ai',
                 messageTarget: fullAiText,
                 messageNative: '',
-                messageRomaji: null,
+                messagePhonetic: null,
                 isValidInContext: true,
               }).returning({ id: conversations.id });
 
@@ -470,13 +415,14 @@ RULES:
               await tx.update(sessions).set({
                 phase: newPhaseInner,
                 totalTurns: currentTurnNo,
+                status: 'active',
               }).where(eq(sessions.id, numericSessionId));
 
               return { newPhase: newPhaseInner };
             });
 
             if (aiConversationId) {
-              enqueueAudioJob(
+              const jobId = await enqueueAudioJob(
                 aiConversationId,
                 numericSessionId,
                 fullAiText,
@@ -485,6 +431,7 @@ RULES:
                 'ai',
                 session.voiceGender ?? undefined,
               );
+              await dispatchAudioJob(jobId, aiConversationId, numericSessionId);
             }
 
               send(JSON.stringify({
@@ -497,20 +444,12 @@ RULES:
               return;
           }
 
-          const analysis = await analyzeUserTurn(
-            userRawInput,
-            fullAiText,
-            currentTurnNo,
-            currentScenario,
-            goals,
-            completedSequenceOrders,
-            conversationHistory,
-            behaviorMode,
-            situationContext,
-            situationLearningGoals,
-            targetLanguage,
-            nativeLanguage,
-          );
+          const analysis = await analyzeTurn({
+            userInput: userRawInput,
+            aiReplyText: fullAiText,
+            scenario: currentScenario,
+            data: turnData,
+          });
 
           const correctionItems = analysis.corrections ?? [];
           const hasCorrections = correctionItems.length > 0 && correctionItems.some(c => c.correctedText);
@@ -538,7 +477,7 @@ RULES:
               if (validCorrections.length > 0) {
                 const { newPendingRetryId, userConvId } = await withSessionLock(numericSessionId, async (tx) => {
                   const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-                  if (freshSession.status !== 'active') throw new Error('Session was completed by another request');
+                  if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
 
                   const existingTurn = await tx.select({ id: conversations.id })
                     .from(conversations)
@@ -555,7 +494,7 @@ RULES:
                     speaker: 'user',
                     messageTarget: analysis.messageTarget,
                     messageNative: analysis.messageNative,
-                    messageRomaji: analysis.messageRomaji,
+                    messagePhonetic: analysis.messagePhonetic,
                     emotionTone: analysis.emotionTone ?? null,
                     gestureHint: analysis.gestureHint ?? null,
                     responseTimeMs,
@@ -566,9 +505,9 @@ RULES:
                       conversationId: userConversation.id,
                       correctionType: c.correctionType,
                       originalText: c.originalText,
-                      originalRomaji: c.originalRomaji ?? null,
+                      originalPhonetic: c.originalPhonetic ?? null,
                       correctedText: c.correctedText,
-                      correctedRomaji: c.correctedRomaji ?? null,
+                      correctedPhonetic: c.correctedPhonetic ?? null,
                       explanation: c.explanation,
                       severity: c.severity,
                     }))
@@ -592,13 +531,13 @@ RULES:
                 analysis: {
                   messageTarget: analysis.messageTarget,
                   messageNative: analysis.messageNative,
-                  messageRomaji: analysis.messageRomaji,
+                  messagePhonetic: analysis.messagePhonetic,
                   emotionTone: analysis.emotionTone,
                   gestureHint: analysis.gestureHint,
                   corrections: correctionItems.map(c => ({
                     ...c,
-                    originalRomaji: c.originalRomaji ?? null,
-                    correctedRomaji: c.correctedRomaji ?? null,
+                    originalPhonetic: c.originalPhonetic ?? null,
+                    correctedPhonetic: c.correctedPhonetic ?? null,
                   })),
                   suggestedReplies: analysis.suggestedReplies ?? [],
                 },
@@ -611,7 +550,7 @@ RULES:
           // ── Wrap all writes in a transaction with session lock ──
           const writeResult = await withSessionLock(numericSessionId, async (tx) => {
             const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-            if (freshSession.status !== 'active') throw new Error('Session was completed by another request');
+            if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
 
             const existingTurn = await tx.select({ id: conversations.id })
               .from(conversations)
@@ -630,7 +569,7 @@ RULES:
               speaker: 'user',
               messageTarget: analysis.messageTarget,
               messageNative: analysis.messageNative,
-              messageRomaji: analysis.messageRomaji,
+              messagePhonetic: analysis.messagePhonetic,
               emotionTone: analysis.emotionTone ?? null,
               gestureHint: analysis.gestureHint ?? null,
               responseTimeMs,
@@ -644,9 +583,9 @@ RULES:
                     conversationId: userConversation.id,
                     correctionType: c.correctionType,
                     originalText: c.originalText,
-                    originalRomaji: c.originalRomaji ?? null,
+                    originalPhonetic: c.originalPhonetic ?? null,
                     correctedText: c.correctedText,
-                    correctedRomaji: c.correctedRomaji ?? null,
+                    correctedPhonetic: c.correctedPhonetic ?? null,
                     explanation: c.explanation,
                     severity: c.severity,
                   }))
@@ -660,7 +599,7 @@ RULES:
               speaker: 'ai',
               messageTarget: fullAiText,
               messageNative: '',
-              messageRomaji: null,
+              messagePhonetic: null,
               isValidInContext: true,
             }).returning({ id: conversations.id });
 
@@ -729,7 +668,7 @@ RULES:
             const currentTaskScore = freshSession.taskScore ?? 0;
             const currentExpressionScore = freshSession.expressionAppropriatenessScore ?? 0;
 
-            const scoredTurnsCount = Math.max(1, Math.floor((conversationRows.filter(c => c.speaker === 'user').length) + 1));
+            const scoredTurnsCount = Math.max(1, Math.floor((turnData.userTurnCount) + 1));
 
             const blendedVocab = Math.round(((currentVocabScore * (scoredTurnsCount - 1)) + analysis.scores.vocabulary) / scoredTurnsCount);
             const blendedGrammar = Math.round(((currentGrammarScore * (scoredTurnsCount - 1)) + analysis.scores.grammar) / scoredTurnsCount);
@@ -755,6 +694,10 @@ RULES:
               updateData.status = 'completed';
               updateData.completedAt = new Date();
               updateData.feedback = analysis.feedback;
+            }
+
+            if (freshSession.status === 'paused' && !shouldCompleteInner) {
+              updateData.status = 'active';
             }
 
             await tx.update(sessions).set(updateData).where(eq(sessions.id, numericSessionId));
@@ -886,7 +829,7 @@ RULES:
             analysis: {
               messageTarget: analysis.messageTarget,
               messageNative: analysis.messageNative,
-              messageRomaji: analysis.messageRomaji,
+              messagePhonetic: analysis.messagePhonetic,
               emotionTone: analysis.emotionTone,
               gestureHint: analysis.gestureHint,
               corrections: responseCorrections,

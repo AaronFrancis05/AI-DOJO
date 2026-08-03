@@ -8,7 +8,7 @@ import { eq, and, count } from 'drizzle-orm';
 interface VocabInput {
   targetText: string;
   translation: string;
-  romaji?: string;
+  phonetic?: string;
 }
 
 function slugify(text: string): string {
@@ -108,14 +108,14 @@ export async function POST(req: Request) {
     const lang = targetLanguage ?? 'ja';
     const langName = getTargetLangConfig(lang).name;
 
-    let vocabRows: Array<{ targetText: string; romaji: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+    let vocabRows: Array<{ targetText: string; phonetic: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
 
     if (vocabItems && Array.isArray(vocabItems)) {
       const valid = vocabItems.slice(0, 8).filter((v: VocabInput) => v.targetText && v.translation);
       if (valid.length > 0) {
         vocabRows = valid.map((v: VocabInput) => ({
           targetText: v.targetText,
-          romaji: v.romaji ?? '',
+          phonetic: v.phonetic ?? '',
           translation: v.translation,
           category: 'custom',
           usageTip: '',
@@ -135,7 +135,7 @@ Learning goals: ${learningGoals}
 Each item must be a single ${langName} word or short phrase directly relevant to the scenario. Return strictly a JSON array of objects matching this schema:
 {
   "targetText": "The ${langName} word or phrase",
-  "romaji": "Romaji pronunciation (only for Japanese, else empty string)",
+  "phonetic": "Phonetic pronunciation (only for Japanese, else empty string)",
   "translation": "English translation",
   "category": "Category like greeting, ordering, question, polite_phrase, direction, etc.",
   "usageTip": "Brief tip on when/how to use this word (in English)",
@@ -146,7 +146,7 @@ Each item must be a single ${langName} word or short phrase directly relevant to
         if (Array.isArray(parsed)) {
           vocabRows = parsed.slice(0, 8).map((v: any) => ({
             targetText: String(v.targetText ?? ''),
-            romaji: String(v.romaji ?? ''),
+            phonetic: String(v.phonetic ?? ''),
             translation: String(v.translation ?? ''),
             category: String(v.category ?? 'general'),
             usageTip: String(v.usageTip ?? ''),
@@ -164,7 +164,7 @@ Each item must be a single ${langName} word or short phrase directly relevant to
         vocabRows.map((v: any) => ({
           scenarioId: scenario.id,
           targetText: v.targetText,
-          romaji: v.romaji ?? '',
+          phonetic: v.phonetic ?? '',
           translation: v.translation,
           languageCode: lang,
           category: v.category ?? 'custom',

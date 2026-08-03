@@ -3,6 +3,7 @@ import { sessions, scenarios, conversations, corrections, evaluations, goalCompl
 import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
+import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
@@ -257,6 +258,21 @@ export async function PATCH(
   }
 
   await db.update(sessions).set(updateData).where(eq(sessions.id, sessionId));
+
+  // A curriculum lesson is complete when its linked session completes.
+  if (status === 'completed' && session.lessonId) {
+    try {
+      await recordLessonActivity({
+        userId: user.id,
+        lessonId: session.lessonId,
+        phaseKey: 'evaluation',
+        complete: true,
+        score: session.vocabularyScore ?? null,
+      });
+    } catch (err) {
+      console.error('[session-complete] failed to record lesson progress', { sessionId, lessonId: session.lessonId, error: String(err) });
+    }
+  }
 
   return Response.json({ success: true });
 }

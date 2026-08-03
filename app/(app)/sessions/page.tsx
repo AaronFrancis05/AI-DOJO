@@ -1,7 +1,6 @@
 /* ───────────────────────────────────────────────
    Sessions — full list with share/delete/report and conversation continue
-   For active sessions: resume → /session/new
-   For completed: view report with new evaluation structure
+   Active sessions resume into /session/[id]; completed show the report.
    ─────────────────────────────────────────────── */
 
 'use client';
@@ -14,11 +13,10 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
+import { useUser } from '@/lib/auth/user-context';
 import { type SessionRecord } from '@/lib/types';
 import {
   ArrowLeft,
-  ArrowRight,
-  ExternalLink,
   Share2,
   Trash2,
   Sparkles,
@@ -35,6 +33,7 @@ function computeTotalPct(s: SessionRecord): number | null {
 export default function SessionsPage() {
   usePageTitle('All Sessions');
   const router = useRouter();
+  const user = useUser();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -43,7 +42,8 @@ export default function SessionsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch('/api/sessions');
+        const lang = user?.nativeLanguage ?? 'en';
+        const res = await fetch(`/api/sessions?lang=${encodeURIComponent(lang)}`, { credentials: 'include' });
         const data = await res.json();
         if (data.success && Array.isArray(data.sessions)) {
           setSessions(data.sessions);
@@ -55,12 +55,12 @@ export default function SessionsPage() {
       }
     }
     load();
-  }, []);
+  }, [user?.nativeLanguage]);
 
   async function handleShare(sessionId: number) {
     if (sharing[sessionId]) { navigator.clipboard.writeText(sharing[sessionId]); return; }
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/share`, { method: 'POST' });
+      const res = await fetch(`/api/sessions/${sessionId}/share`, { method: 'POST', credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         const link = `${window.location.origin}/share/${data.token}`;
@@ -74,7 +74,7 @@ export default function SessionsPage() {
     if (!confirm('Delete this session? This cannot be undone.')) return;
     setDeleting(sessionId);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE', credentials: 'include' });
       const data = await res.json();
       if (data.success) setSessions(prev => prev.filter(s => s.id !== sessionId));
     } catch (e) { console.error('Delete failed:', e); }

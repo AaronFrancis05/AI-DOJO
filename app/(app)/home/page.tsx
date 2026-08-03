@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -20,6 +20,8 @@ import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
+import { getLeaderboardGlobal } from '@/lib/data/sessions';
+import { getDomains, type DomainFixture } from '@/lib/data/domains';
 
 const WelcomeBanner = dynamic(() => import('@/components/roleplay/avatar-variants/WelcomeBanner').then(m => ({ default: m.WelcomeBanner })), {
   ssr: false,
@@ -33,7 +35,6 @@ import {
   ArrowRight,
   Flame,
   BookOpen,
-  Clock,
   Target,
   Footprints,
   MessageSquare,
@@ -46,11 +47,17 @@ import {
   Trash2,
   Trophy,
   History,
-  Layout,
   Play,
   TrendingUp,
   Award,
-  Calendar,
+  UtensilsCrossed,
+  Building2,
+  Plane,
+  HeartPulse,
+  ShoppingBag,
+  Briefcase,
+  Compass,
+  Sun,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -88,6 +95,43 @@ const iconMap: Record<string, LucideIcon> = {
 };
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const domainIconMap: Record<string, LucideIcon> = {
+  restaurant: UtensilsCrossed,
+  hotel: Building2,
+  airport: Plane,
+  hospital: HeartPulse,
+  shopping: ShoppingBag,
+  business: Briefcase,
+  travel: Compass,
+  daily_life: Sun,
+};
+
+interface JourneyItem {
+  slug: string;
+  name: string;
+  completed: number;
+  total: number;
+  pct: number;
+}
+
+const NATIVE_GREETINGS: Record<string, string> = {
+  en: 'Welcome back',
+  ja: 'Okaeri',
+  fr: 'Bienvenue de retour',
+  es: 'Bienvenido de vuelta',
+  de: 'Willkommen zurück',
+  pt: 'Bem-vindo de volta',
+  zh: '欢迎回来',
+  ko: '어서 오세요',
+  vi: 'Chào mừng trở lại',
+  th: 'ยินดีต้อนรับกลับ',
+  hi: 'वापसी पर स्वागत है',
+};
+
+function greet(nativeLanguage?: string): string {
+  return NATIVE_GREETINGS[nativeLanguage ?? 'en'] ?? 'Welcome back';
+}
 
 const DEFAULT_WEEKLY_ACTIVITY = dayNames.map(day => ({ day, minutes: 0 }));
 
@@ -150,18 +194,22 @@ export default function HomePage() {
   const router = useRouter();
   const user = useUser();
   const currentAvatarModelUrl = useCurrentAvatarModel();
-  usePageTitle(`Okaeri, ${user?.name ?? 'Learner'}!`);
+  const greeting = greet(user?.nativeLanguage);
+  usePageTitle(`${greeting}, ${user?.name ?? 'Learner'}!`);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
   const [deleting, setDeleting] = useState<number | null>(null);
   const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityItem[]>(DEFAULT_WEEKLY_ACTIVITY);
+  const [globalRank, setGlobalRank] = useState<number | null>(null);
+  const [domains, setDomains] = useState<DomainFixture[]>([]);
 
   // Load sessions from DB via API
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch('/api/sessions');
+        const lang = user?.nativeLanguage ?? 'en';
+        const res = await fetch(`/api/sessions?lang=${encodeURIComponent(lang)}`, { credentials: 'include' });
         const data = await res.json();
         if (data.success && Array.isArray(data.sessions)) {
           setSessions(data.sessions);
@@ -174,7 +222,17 @@ export default function HomePage() {
       }
     }
     load();
-  }, []);
+  }, [user?.nativeLanguage]);
+
+  // Load rank + domains for dashboard stats
+  useEffect(() => {
+    if (!user?.id) return;
+    getLeaderboardGlobal().then(({ entries }) => {
+      const me = entries.find(e => e.userId === user.id);
+      if (me?.rank != null) setGlobalRank(me.rank);
+    }).catch(() => {});
+    getDomains().then(({ data }) => setDomains(data)).catch(() => {});
+  }, [user?.id]);
 
   // Share a session
   async function handleShare(sessionId: number) {
@@ -183,7 +241,7 @@ export default function HomePage() {
       return;
     }
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/share`, { method: 'POST' });
+      const res = await fetch(`/api/sessions/${sessionId}/share`, { method: 'POST', credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         const link = `${window.location.origin}/share/${data.token}`;
@@ -200,7 +258,7 @@ export default function HomePage() {
     if (!confirm('Delete this session? This cannot be undone.')) return;
     setDeleting(sessionId);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE', credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         setSessions(prev => {
@@ -216,7 +274,7 @@ export default function HomePage() {
     }
   }
 
-  const activeSession = sessions.find((s) => s.status === 'active');
+  const activeSession = sessions.find((s) => s.status === 'active' || s.status === 'paused');
   const completedSessions = sessions.filter((s) => s.status === 'completed');
   const totalScore = completedSessions.reduce((sum, s) => {
     const pct = computeTotalPct(s);
@@ -225,6 +283,30 @@ export default function HomePage() {
   const avgScore = completedSessions.length > 0 ? Math.round(totalScore / completedSessions.length) : null;
   const today = dayNames[new Date().getDay()];
   const todayMinutes = weeklyActivity.find(d => d.day === today)?.minutes ?? 0;
+
+  const journey = useMemo<JourneyItem[]>(() => {
+    const counts = new Map<number, number>();
+    for (const s of completedSessions) {
+      if (s.domainId != null) counts.set(s.domainId, (counts.get(s.domainId) ?? 0) + 1);
+    }
+    return domains
+      .filter(d => counts.has(d.id))
+      .map(d => {
+        const total = Math.max(d.situationCount, counts.get(d.id) ?? 0);
+        const completed = Math.min(counts.get(d.id) ?? 0, total);
+        return {
+          slug: d.slug,
+          name: d.name,
+          completed,
+          total,
+          pct: total > 0 ? Math.round((completed / total) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.completed - a.completed)
+      .slice(0, 2);
+  }, [completedSessions, domains]);
+
+  const xpRemaining = Math.max((user?.xpToNext ?? 100) - (user?.xp ?? 0), 0);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-10">
@@ -255,7 +337,7 @@ export default function HomePage() {
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight">Okaeri, {user?.name ?? 'Learner'}!</h1>
+                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight">{greeting}, {user?.name ?? 'Learner'}!</h1>
               </div>
               <p className="mt-1 text-dojo-text-muted">{completedSessions.length > 0 ? `Master of ${completedSessions.length} real-world scenarios. Keep up the great work!` : 'Start your first conversation to begin tracking your progress.'}</p>
               
@@ -326,13 +408,13 @@ export default function HomePage() {
           <div className="grid grid-cols-2 gap-4">
             <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer" onClick={() => router.push('/leaderboard')}>
               <TrendingUp className="mx-auto h-5 w-5 text-dojo-success mb-2" />
-              <p className="text-lg font-bold text-dojo-text-primary">--</p>
+              <p className="text-lg font-bold text-dojo-text-primary">{globalRank != null ? `#${globalRank}` : '--'}</p>
               <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Global Rank</p>
             </Card>
-            <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer">
-              <Calendar className="mx-auto h-5 w-5 text-dojo-accent mb-2" />
-              <p className="text-lg font-bold text-dojo-text-primary">--</p>
-              <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Next Milestone</p>
+            <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer" onClick={() => router.push('/progress')}>
+              <Zap className="mx-auto h-5 w-5 text-dojo-accent mb-2" />
+              <p className="text-lg font-bold text-dojo-text-primary">{xpRemaining} <span className="text-xs font-semibold text-dojo-text-muted">XP</span></p>
+              <p className="text-[10px] uppercase text-dojo-text-muted font-bold">To Next Level</p>
             </Card>
           </div>
         </div>
@@ -344,28 +426,32 @@ export default function HomePage() {
             {/* Live session banner merged here */}
             {activeSession && (
               <Link href={`/session/${activeSession.id}`} suppressHydrationWarning>
-                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-dojo-danger/20 to-dojo-accent/10 border border-dojo-danger/30 p-5 group cursor-pointer hover:shadow-xl transition-all">
-                  <div className="absolute top-0 right-0 p-2">
-                    <div className="h-2 w-2 rounded-full bg-dojo-danger animate-ping" />
-                  </div>
+                <div className={`relative overflow-hidden rounded-2xl p-5 group cursor-pointer hover:shadow-xl transition-all ${activeSession.status === 'paused' ? 'bg-gradient-to-r from-dojo-accent/20 to-dojo-success/10 border border-dojo-accent/30' : 'bg-gradient-to-r from-dojo-danger/20 to-dojo-accent/10 border border-dojo-danger/30'}`}>
+                  {activeSession.status !== 'paused' && (
+                    <div className="absolute top-0 right-0 p-2">
+                      <div className="h-2 w-2 rounded-full bg-dojo-danger animate-ping" />
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-dojo-danger/20 text-dojo-danger">
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${activeSession.status === 'paused' ? 'bg-dojo-accent/20 text-dojo-accent' : 'bg-dojo-danger/20 text-dojo-danger'}`}>
                         <Play className="h-6 w-6 fill-current" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-dojo-danger">Live Session</span>
-                          <LiveBadge />
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${activeSession.status === 'paused' ? 'text-dojo-accent' : 'text-dojo-danger'}`}>
+                            {activeSession.status === 'paused' ? 'Resume Training' : 'Live Session'}
+                          </span>
+                          {activeSession.status !== 'paused' && <LiveBadge />}
                         </div>
                         <p className="text-lg font-bold text-dojo-text-primary">
                           {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
                         </p>
-                        <p className="text-xs text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation with Hana</p>
+                        <p className="text-xs text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation</p>
                       </div>
                     </div>
-                    <Button variant="primary" size="sm" className="bg-dojo-danger hover:bg-dojo-danger/90">
-                      Resume Now
+                    <Button variant="primary" size="sm" className={activeSession.status === 'paused' ? '' : 'bg-dojo-danger hover:bg-dojo-danger/90'}>
+                      {activeSession.status === 'paused' ? 'Resume Session' : 'Resume Now'}
                     </Button>
                   </div>
                 </div>
@@ -419,40 +505,41 @@ export default function HomePage() {
             </Button>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface/40 p-4 group hover:border-dojo-accent transition-all cursor-pointer">
-              <div className="absolute top-0 left-0 h-1 w-full bg-dojo-accent" />
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-dojo-accent/20 text-dojo-accent">
-                  <Layout className="h-4 w-4" />
-                </div>
-                <p className="text-sm font-bold text-dojo-text-primary">Social Situations</p>
-                <Badge variant="accent" className="ml-auto text-[9px]">In Progress</Badge>
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {journey.length === 0 ? (
+              <div className="md:col-span-2 rounded-xl border border-dashed border-dojo-border/60 bg-dojo-surface/40 p-6 text-center">
+                <Globe className="mx-auto h-8 w-8 text-dojo-border mb-2" />
+                <p className="text-sm font-bold text-dojo-text-primary mb-1">Your learning journey starts here</p>
+                <p className="text-xs text-dojo-text-muted max-w-sm mx-auto leading-relaxed">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
+                <Button variant="primary" size="sm" className="mt-5" onClick={() => router.push('/hub')}>
+                  Explore Scenarios <ArrowRight className="ml-1 h-3 w-3" />
+                </Button>
               </div>
-                <p className="text-[11px] text-dojo-text-muted mb-3 leading-relaxed">Mastering introductions and small talk in various social settings.</p>
-              <div className="flex items-center justify-between text-[10px] font-bold text-dojo-text-muted mb-1">
-                <span>{completedSessions.length > 0 ? '8 / 12 Situations' : '0 / 12 Situations'}</span>
-                <span>{completedSessions.length > 0 ? '66%' : '0%'}</span>
-              </div>
-              <ProgressBar value={completedSessions.length > 0 ? 66 : 0} color="accent" size="sm" />
-            </div>
-
-            <div className="relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface/40 p-4 group hover:border-dojo-success transition-all cursor-pointer">
-              <div className="absolute top-0 left-0 h-1 w-full bg-dojo-success/40" />
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-dojo-success/20 text-dojo-success">
-                  <Globe className="h-4 w-4" />
-                </div>
-                <p className="text-sm font-bold text-dojo-text-primary">Travel Essentials</p>
-                <Badge variant={completedSessions.length > 0 ? 'success' : 'outline'} className="ml-auto text-[9px]">{completedSessions.length > 0 ? 'Completed' : 'Not Started'}</Badge>
-              </div>
-              <p className="text-[11px] text-dojo-text-muted mb-3 leading-relaxed">Booking hotels, asking directions, and navigating airports with ease.</p>
-              <div className="flex items-center justify-between text-[10px] font-bold text-dojo-text-muted mb-1">
-                <span>{completedSessions.length > 0 ? '10 / 10 Situations' : '0 / 10 Situations'}</span>
-                <span>{completedSessions.length > 0 ? '100%' : '0%'}</span>
-              </div>
-              <ProgressBar value={completedSessions.length > 0 ? 100 : 0} color="success" size="sm" />
-            </div>
+            ) : (
+              journey.map((item, i) => {
+                const Icon = domainIconMap[item.slug] ?? Sparkles;
+                const isAccent = i === 0;
+                const completed = item.pct >= 100;
+                return (
+                  <Link key={item.slug} href={`/dojo/${item.slug}`} className="relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface/40 p-4 group hover:border-dojo-accent transition-all cursor-pointer">
+                    <div className={`absolute top-0 left-0 h-1 w-full ${isAccent ? 'bg-dojo-accent' : 'bg-dojo-success/40'}`} />
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isAccent ? 'bg-dojo-accent/20 text-dojo-accent' : 'bg-dojo-success/20 text-dojo-success'}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <p className="text-sm font-bold text-dojo-text-primary">{item.name}</p>
+                      <Badge variant={completed ? 'success' : 'accent'} className="ml-auto text-[9px]">{completed ? 'Completed' : 'In Progress'}</Badge>
+                    </div>
+                    <p className="text-[11px] text-dojo-text-muted mb-3 leading-relaxed">{item.completed} of {item.total} scenarios practiced in this domain.</p>
+                    <div className="flex items-center justify-between text-[10px] font-bold text-dojo-text-muted mb-1">
+                      <span>{item.completed} / {item.total} Situations</span>
+                      <span>{item.pct}%</span>
+                    </div>
+                    <ProgressBar value={item.pct} color={isAccent ? 'accent' : 'success'} size="sm" />
+                  </Link>
+                );
+              })
+            )}
           </div>
         </Card>
 
@@ -570,13 +657,13 @@ export default function HomePage() {
                     </div>
 
                     <h4 className="text-sm font-bold text-dojo-text-primary group-hover:text-dojo-accent transition-colors line-clamp-1">
-                      {(session as any).scenarioTitle ?? `Session #${session.id}`}
+                      {session.scenarioTitle ?? `Session #${session.id}`}
                     </h4>
                     <p className="text-[11px] text-dojo-text-muted mt-1 font-medium">
                       {formatDate(session.startedAt)} • {session.totalTurns} Turns
                     </p>
 
-                    <div className="mt-auto pt-6 flex items-center justify-between border-t border-dojo-border/50 mt-6">
+                    <div className="mt-auto pt-6 flex items-center justify-between border-t border-dojo-border/50">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] font-bold uppercase text-dojo-text-muted">Fluency:</span>
                         <span className={`text-xs font-black ${pct && pct > 80 ? 'text-dojo-success' : 'text-dojo-warning'}`}>{pct ? `${pct}%` : '-'}</span>

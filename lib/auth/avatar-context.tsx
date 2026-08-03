@@ -30,7 +30,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
 
   const fetchAvatars = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/avatars');
+      const res = await fetch('/api/user/avatars', { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       if (data.success) setAvatars(data.avatars);
@@ -48,7 +48,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
   const selectAvatar = useCallback(async (id: number) => {
     setAvatars(prev => prev.map(a => ({ ...a, isSelected: a.id === id })));
     try {
-      const res = await fetch(`/api/user/avatars/${id}/select`, { method: 'PATCH' });
+      const res = await fetch(`/api/user/avatars/${id}/select`, { method: 'PATCH', credentials: 'include' });
       if (!res.ok) throw new Error('Failed');
     } catch {
       await fetchAvatars();
@@ -69,6 +69,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/user/avatars', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ avatarUrl, thumbnailUrl }),
       });
@@ -83,7 +84,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
     const deleted = avatars.find(a => a.id === id);
     setAvatars(prev => prev.filter(a => a.id !== id));
     try {
-      const res = await fetch(`/api/user/avatars/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/user/avatars/${id}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) throw new Error('Failed');
     } catch {
       await fetchAvatars();

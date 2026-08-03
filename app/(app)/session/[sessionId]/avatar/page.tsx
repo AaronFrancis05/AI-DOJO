@@ -29,6 +29,7 @@ export default function AvatarModePage() {
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     submitTurnStream, sendGreeting,
+    pendingRetry, retryCorrection,
   } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
@@ -276,7 +277,7 @@ export default function AvatarModePage() {
               <ConversationBubble
                 speaker="ai" name={charName} accentColor={charColor}
                 messageJp={streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
-                messageRomaji={latestAiConvo.messageRomaji ?? undefined}
+                messagePhonetic={latestAiConvo.messagePhonetic ?? undefined}
                 messageEn={latestAiConvo.messageNative ?? undefined}
               />
               <div className="flex items-center gap-2 px-1">
@@ -300,6 +301,8 @@ export default function AvatarModePage() {
           <VoiceCoachPanel
             corrections={coachOpen ? lastCorrections : []}
             suggestedReplies={coachOpen ? suggestedReplies : []}
+            retryTarget={pendingRetry}
+            onRetry={() => { setCoachOpen(false); retryCorrection(); }}
             onDismiss={() => setCoachOpen(false)}
             onPickSuggestion={(text) => { setCoachOpen(false); handleFinalTranscript(text); }}
           />
@@ -355,7 +358,7 @@ export default function AvatarModePage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
+        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
         onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
       />
 

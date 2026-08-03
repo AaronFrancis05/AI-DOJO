@@ -24,7 +24,7 @@ function adaptDbSituation(d: Situation, domainSlug?: string): SituationFixture {
 
 export async function getSituationsByDomain(domainSlug: string): Promise<{ data: SituationFixture[]; source: DataSource }> {
   try {
-    const res = await fetch(`/api/situations?domainSlug=${domainSlug}`);
+    const res = await fetch(`/api/situations?domainSlug=${domainSlug}`, { credentials: 'include' });
     const body = await res.json();
     if (body.success && body.situations.length > 0) {
       return { data: body.situations.map((s: any) => adaptDbSituation(s, domainSlug)), source: 'live' };
@@ -37,7 +37,7 @@ export async function getSituationsByDomain(domainSlug: string): Promise<{ data:
 
 export async function getSituationById(id: number): Promise<{ situation: SituationFixture | undefined; source: DataSource }> {
   try {
-    const res = await fetch(`/api/situations/${id}`);
+    const res = await fetch(`/api/situations/${id}`, { credentials: 'include' });
     const body = await res.json();
     if (body.success) {
       return { situation: adaptDbSituation(body.situation), source: 'live' };
@@ -50,7 +50,7 @@ export async function getSituationById(id: number): Promise<{ situation: Situati
 
 export async function getAllSituations(): Promise<{ data: SituationFixture[]; source: DataSource }> {
   try {
-    const res = await fetch('/api/situations');
+    const res = await fetch('/api/situations', { credentials: 'include' });
     const body = await res.json();
     if (body.success && body.situations.length > 0) {
       return { data: body.situations.map(adaptDbSituation), source: 'live' };

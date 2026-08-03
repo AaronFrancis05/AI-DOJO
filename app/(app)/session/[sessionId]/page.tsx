@@ -24,7 +24,7 @@ export default function SessionChooserPage() {
     }
     async function load() {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}`);
+        const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
         if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Session not found'); }
         const data = await res.json();
         setSession(data.session);

@@ -9,7 +9,7 @@ import type { CharacterFixture } from '@/lib/mock-data/characters';
 
 interface VocabItem {
   japanese: string;
-  romaji: string;
+  phonetic: string;
   english: string;
 }
 
@@ -24,7 +24,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
   const [context, setContext] = useState('');
   const [learningGoals, setLearningGoals] = useState('');
   const [vocabItems, setVocabItems] = useState<VocabItem[]>([
-    { japanese: '', romaji: '', english: '' },
+    { japanese: '', phonetic: '', english: '' },
   ]);
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
@@ -35,7 +35,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    fetch('/api/characters', { signal: controller.signal })
+    fetch('/api/characters', { signal: controller.signal, credentials: 'include' })
       .then(r => r.json())
       .then(body => {
         if (body.success && !controller.signal.aborted) setCharacters(body.characters);
@@ -54,6 +54,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
     try {
       const res = await fetch('/api/domains/create-custom', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           domainName: domainName.trim(),
@@ -77,7 +78,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
     }
   };
 
-  const addVocab = () => { if (vocabItems.length < 5) setVocabItems([...vocabItems, { japanese: '', romaji: '', english: '' }]); };
+  const addVocab = () => { if (vocabItems.length < 5) setVocabItems([...vocabItems, { japanese: '', phonetic: '', english: '' }]); };
   const removeVocab = (i: number) => setVocabItems(vocabItems.filter((_, idx) => idx !== i));
   const updateVocab = (i: number, field: keyof VocabItem, val: string) => {
     const next = [...vocabItems];
@@ -143,7 +144,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
               {vocabItems.map((item, i) => (
                 <div key={i} className="flex gap-2 items-start">
                   <input type="text" value={item.japanese} onChange={e => updateVocab(i, 'japanese', e.target.value)} placeholder="Japanese" className={`${inputCls} flex-1`} />
-                  <input type="text" value={item.romaji} onChange={e => updateVocab(i, 'romaji', e.target.value)} placeholder="Romaji" className={`${inputCls} flex-1`} />
+                  <input type="text" value={item.phonetic} onChange={e => updateVocab(i, 'phonetic', e.target.value)} placeholder="phonetic" className={`${inputCls} flex-1`} />
                   <input type="text" value={item.english} onChange={e => updateVocab(i, 'english', e.target.value)} placeholder="English" className={`${inputCls} flex-1`} />
                   {vocabItems.length > 1 && (
                     <button type="button" onClick={() => removeVocab(i)} className="mt-1.5 p-1 text-dojo-text-muted hover:text-dojo-danger transition-colors">
