@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
+import { getAuthErrorMessage } from '@/lib/auth/errors';
 import { MailIcon, LoaderIcon, CheckCircleIcon, AlertCircleIcon } from '@/components/Icons';
 
 export default function VerifyEmailPage(props: {
@@ -36,11 +37,12 @@ export default function VerifyEmailPage(props: {
         type: 'email-verification',
       });
       if (sendError) {
-        setError(sendError.message || 'Failed to send code');
+        setError(getAuthErrorMessage(sendError, 'Failed to send code', 'verify'));
+        return;
       }
       setSent(true);
-    } catch {
-      setError('Network error');
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error', 'verify'));
     } finally {
       setSending(false);
     }
@@ -57,13 +59,13 @@ export default function VerifyEmailPage(props: {
         otp: code,
       });
       if (verifyError) {
-        setError(verifyError.message || 'Verification failed');
+        setError(getAuthErrorMessage(verifyError, 'Verification failed', 'verify'));
       } else {
         setVerified(true);
         setTimeout(() => router.push('/home'), 2000);
       }
-    } catch (err: any) {
-      setError(err.message || 'Network error');
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error', 'verify'));
     } finally {
       setVerifying(false);
     }

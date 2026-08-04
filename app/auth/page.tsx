@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
+import { getAuthErrorMessage } from '@/lib/auth/errors';
 import PasswordInput from '@/components/PasswordInput';
 import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { MailIcon, UserIcon, LoaderIcon, AlertCircleIcon, GoogleLogo, Trophy } from '@/components/Icons';
@@ -44,7 +45,13 @@ export default function AuthPage() {
           });
 
       if (authError) {
-        setError(authError.message || 'Something went wrong');
+        setError(
+          getAuthErrorMessage(
+            authError,
+            'Something went wrong. Please try again.',
+            isLogin ? 'sign-in' : 'sign-up',
+          ),
+        );
         return;
       }
 
@@ -56,8 +63,14 @@ export default function AuthPage() {
         router.push('/onboarding');
       }
       router.refresh();
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (err) {
+      setError(
+        getAuthErrorMessage(
+          err,
+          'Network error. Please try again.',
+          isLogin ? 'sign-in' : 'sign-up',
+        ),
+      );
     } finally {
       setLoading(false);
     }

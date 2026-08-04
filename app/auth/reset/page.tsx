@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
+import { getAuthErrorMessage } from '@/lib/auth/errors';
 import PasswordInput from '@/components/PasswordInput';
 import { LoaderIcon, AlertCircleIcon, CheckCircleIcon } from '@/components/Icons';
 
@@ -37,13 +38,13 @@ function ResetPasswordForm() {
         token,
       });
       if (resetError) {
-        setError(resetError.message || 'This link may have expired. Request a new one.');
+        setError(getAuthErrorMessage(resetError, 'This link may have expired. Request a new one.', 'reset'));
         return;
       }
       setDone(true);
       setTimeout(() => router.push('/auth'), 2000);
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'reset'));
     } finally {
       setLoading(false);
     }
