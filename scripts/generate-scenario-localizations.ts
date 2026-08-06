@@ -29,6 +29,7 @@ import {
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { TARGET_LANGUAGES } from '../lib/language';
 import { getAIProvider } from '../lib/ai-providers';
+import { cacheDel, cacheKeys } from '../lib/cache';
 
 const BASE_SCRIPT_LANG = 'ja'; // base vocabulary rows are Japanese
 const BASE_SCENARIO_LANG = 'en'; // base scenario rows are English
@@ -209,6 +210,9 @@ async function main(): Promise<void> {
             userCharacterName: scenarioFields.userCharacterName ?? null,
             userCharacterRole: scenarioFields.userCharacterRole ?? null,
           }).onConflictDoNothing();
+          // Invalidate the shared (Upstash) scenario cache immediately so the
+          // API sees the fresh row even if a later vocab step fails.
+          await cacheDel(cacheKeys.scenarioLocalization(sc.id, lang.code));
         }
 
         const genByOriginal = new Map<string, GeneratedVocabEntry>(
@@ -235,6 +239,9 @@ async function main(): Promise<void> {
 
         if (vocabInserts.length > 0 && needsVocab) {
           await db.insert(vocabularyLocalizations).values(vocabInserts).onConflictDoNothing();
+          // Invalidate the shared (Upstash) vocab cache immediately after the
+          // write succeeds.
+          await cacheDel(cacheKeys.vocabLocalizations(sc.id, lang.code));
         }
         totalInserted += vocabInserts.length;
 
