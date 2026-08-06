@@ -76,7 +76,7 @@ export async function GET(
             speaker: conv.speaker,
             messageTarget: conv.messageTarget,
             messageNative: conv.messageNative,
-            messageRomaji: conv.messageRomaji,
+            messagePhonetic: conv.messagePhonetic,
           };
 
           if (conv.emotionTone) entry.emotionTone = conv.emotionTone;

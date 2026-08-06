@@ -1,5 +1,5 @@
 import { db } from '../../../src/db';
-import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences, vocabulary } from '../../../src/schema';
+import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../lib/language';
@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const scenarioIdFilter = url.searchParams.get('scenarioId');
   const statusFilter = url.searchParams.get('status');
+  const lang = url.searchParams.get('lang') ?? '';
 
   const conditions = [eq(sessions.userId, user.id)];
   if (scenarioIdFilter) conditions.push(eq(sessions.scenarioId, Number(scenarioIdFilter)));
@@ -31,9 +32,20 @@ export async function GET(req: Request) {
     .where(and(...conditions))
     .orderBy(desc(sessions.startedAt));
 
+  const localizedTitles = lang && lang !== 'en'
+    ? new Map(
+        (await db
+          .select({ scenarioId: scenarioLocalizations.scenarioId, title: scenarioLocalizations.title })
+          .from(scenarioLocalizations)
+          .where(eq(scenarioLocalizations.languageCode, lang)))
+          .filter(r => r.title)
+          .map(r => [r.scenarioId, r.title as string]),
+      )
+    : new Map<number, string>();
+
   const list = rows.map(r => ({
     ...r.session,
-    scenarioTitle: r.scenarioTitle ?? 'Practice Session',
+    scenarioTitle: localizedTitles.get(r.session.scenarioId) ?? r.scenarioTitle ?? 'Practice Session',
     domainId: r.domainId ?? null,
   }));
 
@@ -47,7 +59,16 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage } = body;
+  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, lessonId } = body;
+
+  const [profile] = await db
+    .select({
+      nativeLanguage: users.nativeLanguage,
+      preferredTargetLanguage: users.preferredTargetLanguage,
+    })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
 
   let resolvedScenarioId = scenarioId ? Number(scenarioId) : null;
 
@@ -115,7 +136,7 @@ export async function POST(req: Request) {
       const lang = targetLanguage ?? 'ja';
       const langName = getTargetLangConfig(lang).name;
 
-      let vocabRows: Array<{ targetText: string; romaji: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+      let vocabRows: Array<{ targetText: string; phonetic: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
 
       const focusPills = situation.focusPills?.split('|||').map((s: string) => s.trim()).filter(Boolean) ?? [];
 
@@ -130,7 +151,7 @@ ${focusPills.length > 0 ? `Focus areas: ${focusPills.join(', ')}` : ''}
 Each item must be a single ${langName} word or short phrase that is directly relevant to the scenario. Return strictly a JSON array of objects matching this schema:
 {
   "targetText": "The ${langName} word or phrase",
-  "romaji": "Romaji pronunciation (only for Japanese, else empty string)",
+  "phonetic": "Phonetic pronunciation (only for Japanese, else empty string)",
   "translation": "English translation",
   "category": "Category like greeting, ordering, question, polite_phrase, direction, etc.",
   "usageTip": "Brief tip on when/how to use this word (in English)",
@@ -141,7 +162,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
         if (Array.isArray(parsed)) {
           vocabRows = parsed.slice(0, 8).map((v: any) => ({
             targetText: String(v.targetText ?? ''),
-            romaji: String(v.romaji ?? ''),
+            phonetic: String(v.phonetic ?? ''),
             translation: String(v.translation ?? ''),
             category: String(v.category ?? 'general'),
             usageTip: String(v.usageTip ?? ''),
@@ -155,7 +176,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
       if (vocabRows.length === 0 && focusPills.length > 0) {
         vocabRows = focusPills.slice(0, 8).map((pill: string) => ({
           targetText: pill,
-          romaji: '',
+          phonetic: '',
           translation: pill,
           category: 'general',
           usageTip: '',
@@ -184,7 +205,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
             vocabRows.map(v => ({
               scenarioId: sc.id,
               targetText: v.targetText,
-              romaji: v.romaji,
+              phonetic: v.phonetic,
               translation: v.translation,
               languageCode: lang,
               category: v.category,
@@ -211,6 +232,22 @@ Each item must be a single ${langName} word or short phrase that is directly rel
     return Response.json({ error: 'Scenario not found' }, { status: 404 });
   }
 
+  let resolvedLessonId: number | null = null;
+  if (lessonId) {
+    const numericLessonId = Number(lessonId);
+    if (isNaN(numericLessonId)) {
+      return Response.json({ error: 'Invalid lessonId' }, { status: 400 });
+    }
+    const [lessonRow] = await db.select().from(lessons).where(eq(lessons.id, numericLessonId));
+    if (!lessonRow) {
+      return Response.json({ error: 'Lesson not found' }, { status: 404 });
+    }
+    if (lessonRow.scenarioId !== numericScenarioId) {
+      return Response.json({ error: 'Lesson does not belong to this scenario' }, { status: 400 });
+    }
+    resolvedLessonId = lessonRow.id;
+  }
+
   const [result] = await db
     .select({ count: count() })
     .from(sessions)
@@ -232,11 +269,12 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   const [session] = await db.insert(sessions).values({
     userId: user.id,
     scenarioId: numericScenarioId,
+    lessonId: resolvedLessonId,
     situationId: situationId ? Number(situationId) : scenario.situationId,
     characterId: characterId ? Number(characterId) : null,
     behaviorMode: behaviorMode ?? 'standard',
-    targetLanguage: targetLanguage ?? 'ja',
-    nativeLanguage: nativeLanguage ?? 'en',
+    targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? 'ja',
+    nativeLanguage: nativeLanguage ?? profile?.nativeLanguage ?? 'en',
     voiceGender,
     sessionNumber,
     status: 'active',

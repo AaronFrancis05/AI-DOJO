@@ -31,7 +31,7 @@ export {
 
 export async function getUserStats(): Promise<{ stats: UserStats | null; source: DataSource }> {
   try {
-    const res = await fetch('/api/user/stats');
+    const res = await fetch('/api/user/stats', { credentials: 'include' });
     const body = await res.json();
     if (body.success && body.stats) {
       return { stats: body.stats, source: 'live' };
@@ -44,7 +44,7 @@ export async function getUserStats(): Promise<{ stats: UserStats | null; source:
 
 export async function getSessionHistory(): Promise<{ sessions: any[]; source: DataSource }> {
   try {
-    const res = await fetch('/api/sessions');
+    const res = await fetch('/api/sessions', { credentials: 'include' });
     const body = await res.json();
     if (body.success && Array.isArray(body.sessions)) {
       return { sessions: body.sessions, source: 'live' };
@@ -57,7 +57,7 @@ export async function getSessionHistory(): Promise<{ sessions: any[]; source: Da
 
 export async function getSessionById(id: number): Promise<{ session: any | null; source: DataSource }> {
   try {
-    const res = await fetch(`/api/sessions/${id}`);
+    const res = await fetch(`/api/sessions/${id}`, { credentials: 'include' });
     if (!res.ok) return { session: null, source: 'fixture' };
     const body = await res.json();
     if (body.success) {
@@ -71,7 +71,7 @@ export async function getSessionById(id: number): Promise<{ session: any | null;
 
 export async function getLeaderboardGlobal(): Promise<{ entries: any[]; source: DataSource }> {
   try {
-    const res = await fetch('/api/leaderboard');
+    const res = await fetch('/api/leaderboard', { credentials: 'include' });
     const body = await res.json();
     if (body.success && Array.isArray(body.leaderboard)) {
       return { entries: body.leaderboard, source: 'live' };
@@ -84,7 +84,7 @@ export async function getLeaderboardGlobal(): Promise<{ entries: any[]; source: 
 
 export async function getWeeklyActivity(): Promise<{ data: WeeklyActivity[]; source: DataSource }> {
   try {
-    const res = await fetch('/api/sessions');
+    const res = await fetch('/api/sessions', { credentials: 'include' });
     const body = await res.json();
     if (body.success && Array.isArray(body.sessions)) {
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

@@ -37,7 +37,7 @@ export default function SessionReportPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}`);
+        const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Not found'); }
         const d = await res.json();
         setData(d);
@@ -262,9 +262,9 @@ export default function SessionReportPage() {
                             {msg.messageTarget ?? msg.messageJp}
                           </p>
                         )}
-                        {msg.messageRomaji && (
+                        {msg.messagePhonetic && (
                           <p className={`mt-1 text-xs italic ${isUser ? 'text-white/70' : 'text-dojo-text-muted'}`}>
-                            {msg.messageRomaji}
+                            {msg.messagePhonetic}
                           </p>
                         )}
                         {(msg.messageNative || msg.messageEn) && (

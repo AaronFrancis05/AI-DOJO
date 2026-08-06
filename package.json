@@ -32,6 +32,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fbx2gltf": "^0.9.7-p1",
+    "inngest": "^4.14.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.24.0",
     "meshoptimizer": "^1.2.0",

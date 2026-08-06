@@ -10,6 +10,8 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
+AGENTS.md
+
 # testing
 /coverage
 
@@ -42,6 +44,11 @@ next-env.d.ts
 
 # local dev logs (may contain sensitive auth data)
 dev-log.txt
+next-dev.log
+inngest-dev.log
+
+# local agent scratch
+.codex/
 
 #context
 /context/**/**

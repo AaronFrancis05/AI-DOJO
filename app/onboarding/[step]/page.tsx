@@ -8,6 +8,8 @@ import {
   MODE_OPTIONS, AGE_OPTIONS, FREQUENCY_OPTIONS,
 } from '@/lib/onboarding/steps';
 import { SingleSelectStep, InterstitialStep, OnboardingShell } from '@/components/onboarding';
+import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
+import { NATIVE_LANGUAGES } from '@/lib/language';
 import { Sparkles, MessageSquare, Mic, User, BookOpen, Clock, CheckCircle2, LoaderIcon } from 'lucide-react';
 import { authClient } from '@/lib/auth/client';
 
@@ -37,7 +39,7 @@ export default function OnboardingStepPage() {
   useEffect(() => {
     if (step === 'domain' && dbDomains.length === 0 && !loadingDomains) {
       setLoadingDomains(true);
-      fetch('/api/domains')
+      fetch('/api/domains', { credentials: 'include' })
         .then(r => r.json())
         .then(data => {
           setDbDomains(Array.isArray(data) ? data : data?.domains ?? []);
@@ -67,12 +69,14 @@ export default function OnboardingStepPage() {
           if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
           if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
           if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
+          if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
           if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
           if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
 
           setSaving(true);
           fetch('/api/user/onboarding', {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(onboardingPayload),
           }).then(() => {
@@ -128,11 +132,13 @@ export default function OnboardingStepPage() {
       if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
       if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
       if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
+      if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
       if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
       if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
 
       await fetch('/api/user/onboarding', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingPayload),
       });
@@ -257,65 +263,52 @@ export default function OnboardingStepPage() {
       <SingleSelectStep
         options={AGE_OPTIONS}
         value={state.ageRange}
-        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, 'native-language')}
+        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, 'target-language')}
         title={ONBOARDING_STEPS[7].title}
         subtitle={ONBOARDING_STEPS[7].subtitle}
         skippable={true}
-        onSkip={() => goToStep('native-language')}
+        onSkip={() => goToStep('target-language')}
       />
     ),
-    'native-language': (
+    'target-language': (
       <div className="flex flex-col gap-6">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[8].title}</h2>
           <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[8].subtitle}</p>
         </div>
-        <div className="flex flex-col gap-3">
-          {[
-            { value: 'en', label: 'English' },
-            { value: 'es', label: 'Spanish' },
-            { value: 'fr', label: 'French' },
-            { value: 'de', label: 'German' },
-            { value: 'pt', label: 'Portuguese' },
-            { value: 'zh', label: 'Chinese' },
-            { value: 'ko', label: 'Korean' },
-            { value: 'vi', label: 'Vietnamese' },
-            { value: 'tl', label: 'Tagalog' },
-            { value: 'th', label: 'Thai' },
-          ].map((lang) => {
-            const selected = state.nativeLanguage === lang.value;
-            return (
-              <button
-                key={lang.value}
-                type="button"
-                onClick={() => {
-                  dispatch({ type: 'SET_NATIVE_LANGUAGE', payload: lang.value });
-                  dispatch({ type: 'COMPLETE_STEP', payload: 'frequency' });
-                  goToStep('frequency');
-                }}
-                className={`flex items-center gap-4 rounded-xl border p-4 text-left transition-all ${
-                  selected
-                    ? 'border-dojo-accent bg-dojo-accent/5 ring-2 ring-dojo-accent/20'
-                    : 'border-dojo-border bg-dojo-surface hover:border-dojo-accent/50'
-                }`}
-              >
-                <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                  selected ? 'border-dojo-accent bg-dojo-accent' : 'border-dojo-text-muted'
-                }`}>
-                  {selected && <CheckCircle2 className="h-3 w-3 text-white" />}
-                </div>
-                <span className="font-semibold text-dojo-text-primary">{lang.label}</span>
-              </button>
-            );
-          })}
+        <LanguageSelectionPanel
+          value={state.targetLanguage}
+          onSelect={(code) => {
+            dispatch({ type: 'SET_TARGET_LANGUAGE', payload: code });
+            dispatch({ type: 'COMPLETE_STEP', payload: 'native-language' });
+            goToStep('native-language');
+          }}
+        />
+      </div>
+    ),
+    'native-language': (
+      <div className="flex flex-col gap-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[9].title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[9].subtitle}</p>
         </div>
+        <LanguageSelectionPanel
+          value={state.nativeLanguage}
+          options={NATIVE_LANGUAGES}
+          searchPlaceholder="Search your native language..."
+          onSelect={(code) => {
+            dispatch({ type: 'SET_NATIVE_LANGUAGE', payload: code });
+            dispatch({ type: 'COMPLETE_STEP', payload: 'frequency' });
+            goToStep('frequency');
+          }}
+        />
       </div>
     ),
     'frequency': (
       <div className="flex flex-col gap-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[9].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[9].subtitle}</p>
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[10].title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[10].subtitle}</p>
         </div>
         <div className="flex flex-col gap-3">
           {FREQUENCY_OPTIONS.map((opt) => {
@@ -374,8 +367,8 @@ export default function OnboardingStepPage() {
     'account': (
       <div className="flex flex-col gap-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[12].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[12].subtitle}</p>
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[13].title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[13].subtitle}</p>
         </div>
 
         {accountCreated ? (

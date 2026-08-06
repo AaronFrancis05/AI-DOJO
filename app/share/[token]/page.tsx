@@ -185,16 +185,16 @@ export default function SharedSessionPage() {
                             ? 'rounded-br-none bg-dojo-accent'
                             : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
                         }`}>
-                          {msg.messageJp && (
+                          {msg.messageTarget && (
                             <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                              {msg.messageJp}
+                              {msg.messageTarget}
                             </p>
                           )}
-                          {(msg.messageRomaji || msg.messageEn) && (
+                          {(msg.messagePhonetic || msg.messageNative) && (
                             <div className={`mt-1 text-xs ${isUser ? 'text-white/70' : 'text-dojo-text-muted'}`}>
-                              {msg.messageRomaji && <i>{msg.messageRomaji}</i>}
-                              {msg.messageRomaji && msg.messageEn && <br />}
-                              {msg.messageEn}
+                              {msg.messagePhonetic && <i>{msg.messagePhonetic}</i>}
+                              {msg.messagePhonetic && msg.messageNative && <br />}
+                              {msg.messageNative}
                             </div>
                           )}
                         </div>

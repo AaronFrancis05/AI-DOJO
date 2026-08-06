@@ -148,6 +148,41 @@
       "when": 1785095406538,
       "tag": "0020_happy_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786310400000,
+      "tag": "0021_english_first_phonetic_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785739569023,
+      "tag": "0022_localization_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785740579953,
+      "tag": "0023_country_native_layer",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785745567478,
+      "tag": "0024_curriculum",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785755874755,
+      "tag": "0025_first_inhumans",
+      "breakpoints": true
     }
   ]
 }

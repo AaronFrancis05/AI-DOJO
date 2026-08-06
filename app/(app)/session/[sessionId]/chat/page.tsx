@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChatPanel } from '@/components/roleplay/ChatPanel';
 import { RoleplayInputBar } from '@/components/roleplay/RoleplayInputBar';
+import { CorrectionRetryBar } from '@/components/roleplay/CorrectionRetryBar';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
@@ -26,6 +27,7 @@ export default function ChatOnlyPage() {
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     submitTurnStream, sendGreeting,
+    pendingRetry, retryCorrection, dismissRetry,
   } = useRoleplaySessionContext();
 
   const [sending, setSending] = useState(false);
@@ -165,11 +167,22 @@ export default function ChatOnlyPage() {
         <ChatPanel {...panelProps} />
       </div>
 
+      {pendingRetry && (
+        <div className="shrink-0">
+          <CorrectionRetryBar
+            retry={pendingRetry}
+            onRetry={retryCorrection}
+            onDismiss={dismissRetry}
+            disabled={sending}
+          />
+        </div>
+      )}
+
       <div className="shrink-0 px-4 py-3 border-t border-dojo-border safe-bottom">
         <RoleplayInputBar
           onSend={handleSend}
           onPause={() => {
-            fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }).catch(() => {});
+            fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }).catch(() => {});
           }}
           disabled={!isActive || sending}
           showTextInput={textMode}
@@ -186,7 +199,7 @@ export default function ChatOnlyPage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
+        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
         onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
       />
 

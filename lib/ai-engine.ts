@@ -6,9 +6,9 @@ import type { ChatTurn } from './ai-providers';
 export interface CorrectionItem {
   correctionType: string;
   originalText: string;
-  originalRomaji?: string | null;
+  originalPhonetic?: string | null;
   correctedText: string;
-  correctedRomaji?: string | null;
+  correctedPhonetic?: string | null;
   explanation: string;
   severity: string;
 }
@@ -34,7 +34,7 @@ export function normalizeGesture(val: unknown): GestureHint {
 export interface UserTurnAnalysis {
   messageTarget: string;
   messageNative: string;
-  messageRomaji: string | null;
+  messagePhonetic: string | null;
   isValidInContext: boolean;
   isEnglishWhenExpected: boolean;
   emotionTone?: string;
@@ -57,7 +57,7 @@ export interface UserTurnAnalysis {
 export interface AIResponseAnalysis {
   messageTarget: string;
   messageNative: string;
-  messageRomaji: string | null;
+  messagePhonetic: string | null;
   isValidInContext: boolean;
   isEnglishWhenExpected: boolean;
   emotionTone?: string;
@@ -76,7 +76,7 @@ export interface AIResponseAnalysis {
   nextAiReply: {
     target: string;
     native: string;
-    romaji: string | null;
+    phonetic: string | null;
     emotionTone?: string;
     gestureHint?: GestureHint;
   };
@@ -127,7 +127,7 @@ export async function analyzeAndGenerateTurn(
   const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
-  const hasRomaji = targetCfg.hasRomaji;
+  const hasPhonetic = targetCfg.hasPhonetic;
 
   const goalsBlock = goals.map(g => {
     const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
@@ -158,14 +158,14 @@ The AI character should be cooperative, friendly, and helpful. They should:
 - Be patient with the learner's language level
 - Provide a supportive learning environment`;
 
-  const correctionRomajiInstruction = hasRomaji
-    ? `      "originalRomaji": "Romaji of originalText (Japanese only, else null)",\n      "correctedRomaji": "Romaji of correctedText (Japanese only, else null)",`
+  const correctionPhoneticInstruction = hasPhonetic
+    ? `      "originalPhonetic": "Phonetic of originalText (Japanese only, else null)",\n      "correctedPhonetic": "Phonetic of correctedText (Japanese only, else null)",`
     : '';
-  const romajiInstruction = hasRomaji
-    ? `  - "romaji": "Romaji transcription of what the user said (only if target language is Japanese, otherwise null)"`
+  const phoneticInstruction = hasPhonetic
+    ? `  - "phonetic": "Phonetic transcription of what the user said (only if target language is Japanese, otherwise null)"`
     : '';
-  const aiRomajiInstruction = hasRomaji
-    ? `    "romaji": "Romaji transcription of that AI response sentence (only if target language is Japanese, otherwise null)",`
+  const aiPhoneticInstruction = hasPhonetic
+    ? `    "phonetic": "Phonetic transcription of that AI response sentence (only if target language is Japanese, otherwise null)",`
     : '';
 
   const systemInstruction = `
@@ -195,7 +195,7 @@ IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}")
 - The ${targetLangName} elements should be high-value, contextual, and relevant to the scenario — greetings, set expressions, key vocabulary, or situational phrases embedded naturally in the ${nativeLangName} conversation. They are highlighted insertions, not full sentences.
 - ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is. This is scaffolding, not dialogue, and must never switch to ${targetLangName} even partially.
 - The user is encouraged to attempt ${targetLangName} phrases alongside their ${nativeLangName}. Using only ${nativeLangName} is acceptable and should not be flagged as an error. If the user does attempt ${targetLangName}, praise their effort.
-${hasRomaji ? '- Provide romaji transcription for Japanese target-language text (messageRomaji, nextAiReply.romaji, and correction romaji fields below).' : '- Romaji is NOT relevant for this language — always set romaji fields to null.'}
+${hasPhonetic ? '- Provide phonetic transcription for Japanese target-language text (messagePhonetic, nextAiReply.phonetic, and correction phonetic fields below).' : '- Phonetic is NOT relevant for this language — always set phonetic fields to null.'}
 
 ===== SCENARIO GOALS =====
 ${goalsBlock}
@@ -244,7 +244,7 @@ Provide your response strictly as a single JSON object matching this schema blue
 {
   "messageTarget": "The ${targetLangName} phrase(s) the user produced — empty string if they used only ${nativeLangName}",
   "messageNative": "The user's full utterance (primarily ${nativeLangName}, may include code-switched ${targetLangName} phrases)",
-  "messageRomaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
+  "messagePhonetic": ${hasPhonetic ? '"Phonetic transcription (only for Japanese)"' : 'null'},
   "isValidInContext": true,
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",
@@ -256,7 +256,7 @@ Provide your response strictly as a single JSON object matching this schema blue
     {
       "correctionType": "grammar",
       "originalText": "example with error",
-${correctionRomajiInstruction}      "correctedText": "corrected version",
+${correctionPhoneticInstruction}      "correctedText": "corrected version",
       "explanation": "Explanation of the correction in ${nativeLangName}",
       "severity": "minor"
     }
@@ -264,7 +264,7 @@ ${correctionRomajiInstruction}      "correctedText": "corrected version",
   "nextAiReply": {
     "target": "The ${targetLangName} phrase(s) the AI character code-switches into this response — a word, expression, or phrase, or empty string if none",
     "native": "The AI character's full response (primarily ${nativeLangName} with code-switched ${targetLangName} phrases embedded)",
-    "romaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
+    "phonetic": ${hasPhonetic ? '"Phonetic transcription (only for Japanese)"' : 'null'},
     "emotionTone": "formal-polite",
     "gestureHint": "bow"
   },
@@ -333,7 +333,7 @@ export async function analyzeUserTurn(
   const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
-  const hasRomaji = targetCfg.hasRomaji;
+  const hasPhonetic = targetCfg.hasPhonetic;
 
   const goalsBlock = goals.map(g => {
     const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
@@ -364,11 +364,11 @@ The AI character should be cooperative, friendly, and helpful. They should:
 - Be patient with the learner's language level
 - Provide a supportive learning environment`;
 
-  const correctionRomajiInstruction = hasRomaji
-    ? `      "originalRomaji": "Romaji of originalText (Japanese only, else null)",\n      "correctedRomaji": "Romaji of correctedText (Japanese only, else null)",`
+  const correctionPhoneticInstruction = hasPhonetic
+    ? `      "originalPhonetic": "Phonetic of originalText (Japanese only, else null)",\n      "correctedPhonetic": "Phonetic of correctedText (Japanese only, else null)",`
     : '';
-  const romajiInstruction = hasRomaji
-    ? `  - "romaji": "Romaji transcription of what the user said (only if target language is Japanese, otherwise null)"`
+  const phoneticInstruction = hasPhonetic
+    ? `  - "phonetic": "Phonetic transcription of what the user said (only if target language is Japanese, otherwise null)"`
     : '';
 
   const systemInstruction = `
@@ -393,7 +393,7 @@ IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}")
 - Code-switching is expected — the user may respond primarily in ${nativeLangName}, primarily in ${targetLangName}, or a mix. All are valid.
 - ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is.
 - messageNative should contain the user's full utterance. messageTarget should contain only the ${targetLangName} phrase(s) the user produced, or empty string if none.
-${hasRomaji ? '- Provide romaji transcription for Japanese target-language text (messageRomaji and correction romaji fields below).' : '- Romaji is NOT relevant for this language — always set romaji fields to null.'}
+${hasPhonetic ? '- Provide phonetic transcription for Japanese target-language text (messagePhonetic and correction phonetic fields below).' : '- Phonetic is NOT relevant for this language — always set phonetic fields to null.'}
 
 ===== SCENARIO GOALS =====
 ${goalsBlock}
@@ -423,7 +423,7 @@ Provide your response strictly as a single JSON object matching this schema blue
 {
   "messageTarget": "The ${targetLangName} phrase(s) the user produced — empty string if they used only ${nativeLangName}",
   "messageNative": "The user's full utterance (primarily ${nativeLangName}, may include code-switched ${targetLangName} phrases)",
-  "messageRomaji": ${hasRomaji ? '"Romaji transcription (only for Japanese)"' : 'null'},
+  "messagePhonetic": ${hasPhonetic ? '"Phonetic transcription (only for Japanese)"' : 'null'},
   "isValidInContext": true,
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",
@@ -435,7 +435,7 @@ Provide your response strictly as a single JSON object matching this schema blue
     {
       "correctionType": "grammar",
       "originalText": "example with error",
-${correctionRomajiInstruction}      "correctedText": "corrected version",
+${correctionPhoneticInstruction}      "correctedText": "corrected version",
       "explanation": "Explanation of the correction in ${nativeLangName}",
       "severity": "minor"
     }
@@ -466,7 +466,7 @@ ${correctionRomajiInstruction}      "correctedText": "corrected version",
   return {
     messageTarget: parsed.messageTarget,
     messageNative: parsed.messageNative,
-    messageRomaji: parsed.messageRomaji,
+    messagePhonetic: parsed.messagePhonetic,
     isValidInContext: parsed.isValidInContext,
     isEnglishWhenExpected: parsed.isEnglishWhenExpected,
     emotionTone: parsed.emotionTone,
