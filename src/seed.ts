@@ -361,7 +361,7 @@ async function seed() {
       },
     });
 
-    const s1Vocab = await db
+    const s1LocalizationVocab = await db
       .select({ id: vocabulary.id })
       .from(vocabulary)
       .where(eq(vocabulary.scenarioId, sIds[0]))
@@ -376,7 +376,7 @@ async function seed() {
       ['Nsanyuse', 'Enfaanana enkyusifu ya yoroshiku onegaishimasu.'],
     ];
     await db.insert(vocabularyLocalizations).values(
-      s1Vocab.slice(0, lgVocab.length).map((v, i) => ({
+      s1LocalizationVocab.slice(0, lgVocab.length).map((v, i) => ({
         vocabularyId: v.id,
         languageCode: 'lg',
         translation: lgVocab[i][0],
@@ -1152,10 +1152,20 @@ const [s1Row] = await db.insert(sessions).values({
 
     const courseId = courseRow?.id ?? (await db.select({ id: courses.id }).from(courses).where(eq(courses.slug, 'survival-japanese-uganda')))[0].id;
 
-    const levelRows = await db.insert(courseLevels).values([
-      { courseId, sequenceOrder: 1, title: 'Level 1 — Foundations', description: 'Greetings, introductions and daily survival phrases.', requiredXp: 0 },
-      { courseId, sequenceOrder: 2, title: 'Level 2 — Daily Life', description: 'Shopping, transport and everyday services.', requiredXp: 200 },
-    ]).onConflictDoNothing().returning();
+    const levelStructure = [
+      { seq: 1, title: 'Level 1 — Foundations', desc: 'Greetings, introductions and daily survival phrases.', reqXp: 0 },
+      { seq: 2, title: 'Level 2 — Daily Life', desc: 'Shopping, transport and everyday services.', reqXp: 200 },
+    ];
+
+    const levelRows = await db.insert(courseLevels).values(
+      levelStructure.map((l) => ({
+        courseId,
+        sequenceOrder: l.seq,
+        title: l.title,
+        description: l.desc,
+        requiredXp: l.reqXp,
+      })),
+    ).onConflictDoNothing().returning();
 
     const levelIds = levelRows.length > 0
       ? levelRows.map((r) => r.id)
