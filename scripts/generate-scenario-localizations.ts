@@ -29,6 +29,7 @@ import {
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { TARGET_LANGUAGES } from '../lib/language';
 import { getAIProvider } from '../lib/ai-providers';
+import { cacheDel, cacheKeys } from '../lib/cache';
 
 const BASE_SCRIPT_LANG = 'ja'; // base vocabulary rows are Japanese
 const BASE_SCENARIO_LANG = 'en'; // base scenario rows are English
@@ -237,6 +238,12 @@ async function main(): Promise<void> {
           await db.insert(vocabularyLocalizations).values(vocabInserts).onConflictDoNothing();
         }
         totalInserted += vocabInserts.length;
+
+        // Invalidate the shared (Upstash) localization caches so the API and
+        // the regression check see the freshly written rows instead of stale
+        // empty entries.
+        await cacheDel(cacheKeys.scenarioLocalization(sc.id, lang.code));
+        await cacheDel(cacheKeys.vocabLocalizations(sc.id, lang.code));
 
         console.log(
           `  [ok] "${sc.title}" — scenario:${scenarioFields && needsScenario ? 'yes' : 'no'} vocab:${matched}/${vocabItems.length}`,

@@ -18,10 +18,15 @@ export function createAnthropicProvider(): AIProvider {
       try {
         const systemWithJson = `${systemInstruction}\n\nCRITICAL: Respond with raw JSON only. No markdown fences, no code blocks, no surrounding text — just the JSON object.`;
 
-        const messages = history.map(t => ({
-          role: t.role as 'user' | 'assistant',
-          content: t.content,
-        }));
+        // Anthropic rejects an empty `messages` array, so when no history is
+        // supplied we still need a valid user turn. The system instruction
+        // carries the actual task; this placeholder is just a legal message.
+        const messages: { role: 'user' | 'assistant'; content: string }[] = history.length > 0
+          ? history.map(t => ({
+              role: t.role as 'user' | 'assistant',
+              content: t.content,
+            }))
+          : [{ role: 'user' as const, content: 'Generate the requested output described in the system instruction.' }];
 
         const response = await client.messages.create({
           model: modelName,

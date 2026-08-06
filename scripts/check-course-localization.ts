@@ -11,16 +11,49 @@
    Usage: npm run db:check-localization
    ───────────────────────────────────────────────────────────── */
 import { db } from '../src/db';
-import { courses, courseLevels, units, lessons, scenarios, vocabulary } from '../src/schema';
-import { eq, and } from 'drizzle-orm';
 import {
-  getTargetScenarioLocalization,
-  getTargetVocabLocalizations,
-  applyScenarioLocalization,
-  applyTargetLanguageVocab,
-} from '../lib/localization';
+  courses,
+  courseLevels,
+  units,
+  lessons,
+  scenarios,
+  vocabulary,
+  scenarioLocalizations,
+  vocabularyLocalizations,
+} from '../src/schema';
+import { eq, and } from 'drizzle-orm';
+import { applyScenarioLocalization, applyTargetLanguageVocab } from '../lib/localization';
 
 const JAPANESE_SCRIPT = /[\u3040-\u309F\u30A0-\u30FF\uFF66-\uFF9D]/;
+
+// Loads target-language localizations straight from the DB (bypassing the
+// Upstash cache) so the check asserts ground truth, not cached state.
+async function loadTargetLocalizations(scenarioId: number, lang: string) {
+  const [scenarioLoc] = await db
+    .select()
+    .from(scenarioLocalizations)
+    .where(and(
+      eq(scenarioLocalizations.scenarioId, scenarioId),
+      eq(scenarioLocalizations.languageCode, lang),
+    ))
+    .limit(1);
+
+  const vocabLocRows = await db
+    .select({
+      vocabularyId: vocabularyLocalizations.vocabularyId,
+      translation: vocabularyLocalizations.translation,
+      usageTip: vocabularyLocalizations.usageTip,
+    })
+    .from(vocabularyLocalizations)
+    .innerJoin(vocabulary, eq(vocabularyLocalizations.vocabularyId, vocabulary.id))
+    .where(and(
+      eq(vocabularyLocalizations.languageCode, lang),
+      eq(vocabulary.scenarioId, scenarioId),
+    ));
+
+  const vocabLoc = new Map(vocabLocRows.map((r) => [r.vocabularyId, { translation: r.translation, usageTip: r.usageTip }]));
+  return { scenarioLoc: scenarioLoc ?? null, vocabLoc };
+}
 
 async function main(): Promise<void> {
   console.log('=== Course Localization Check ===\n');
@@ -63,10 +96,7 @@ async function main(): Promise<void> {
     let localizedVocab = vocabRows;
     const targetLang = course.targetLanguage;
     if (scenario && targetLang) {
-      const [scenarioLoc, vocabLoc] = await Promise.all([
-        getTargetScenarioLocalization(scenario.id, targetLang),
-        vocabRows.length > 0 ? getTargetVocabLocalizations(scenario.id, targetLang) : Promise.resolve(new Map()),
-      ]);
+      const { scenarioLoc, vocabLoc } = await loadTargetLocalizations(scenario.id, targetLang);
       if (scenarioLoc) localizedScenario = applyScenarioLocalization(scenario, scenarioLoc);
       if (vocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(vocabRows, vocabLoc);
     }
