@@ -95,6 +95,9 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     name: 'Luganda',
     nativeName: 'Luganda',
     flag: '🇺🇬',
+    // Intentional stub: no Azure neural voice exists for Luganda yet, so STT/TTS
+    // reuse en-US as a stand-in and ttsSupported is false (the UI hides TTS for
+    // this language instead of attempting playback with a wrong voice).
     bcp47: { stt: 'en-US', tts: 'en-US' },
     azureVoice: { female: 'en-US-JennyNeural', male: 'en-US-GuyNeural' },
     hasPhonetic: false,
@@ -295,6 +298,10 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     name: 'Khmer',
     nativeName: 'ខ្មែរ',
     flag: '🇰🇭',
+    // Intentional stubs for km/my/lo: no Azure neural voices exist for these
+    // languages yet, so they share en-US fallback voices and mark
+    // ttsSupported: false. Until real voices are wired up the UI must never
+    // attempt TTS playback for them.
     bcp47: { stt: 'km-KH', tts: 'km-KH' },
     azureVoice: { female: 'en-US-JennyNeural', male: 'en-US-GuyNeural' },
     hasPhonetic: true,
@@ -450,5 +457,9 @@ export function resolveAzureVoice(bcp47: string, gender: string = 'female'): str
   const key = gender.toLowerCase() === 'male' ? 'male' : 'female';
   return AZURE_VOICE_MAP[bcp47]?.[key]
     ?? AZURE_VOICE_MAP[bcp47?.split('-')[0]]?.[key]
+    // Fallback: languages without a real Azure voice (lg, km, my, lo are
+    // intentional en-US stand-ins) resolve to a generic en-US voice. Callers
+    // should gate playback on ttsSupported so this default is never actually
+    // used for those languages.
     ?? 'en-US-JennyNeural';
 }

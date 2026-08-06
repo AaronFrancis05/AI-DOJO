@@ -1,8 +1,8 @@
 import { db } from '@/src/db';
-import { sessions, vocabulary, vocabularyEncounters } from '@/src/schema';
+import { sessions, vocabulary, vocabularyEncounters, vocabularyLocalizations } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
 import { nextPhase } from '@/lib/roleplay/phase-engine';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 export async function POST(
   req: Request,
@@ -42,13 +42,35 @@ export async function POST(
     return Response.json({ error: 'Vocabulary word not found' }, { status: 404 });
   }
 
+  // Use the localized target-language word for feedback when the session is
+  // running in a language other than the Japanese base (e.g. a French course).
+  let displayWord = word;
+  const targetLang = session.targetLanguage ?? 'ja';
+  if (targetLang) {
+    const [loc] = await db
+      .select()
+      .from(vocabularyLocalizations)
+      .where(and(
+        eq(vocabularyLocalizations.vocabularyId, word.id),
+        eq(vocabularyLocalizations.languageCode, targetLang),
+      ))
+      .limit(1);
+    if (loc?.translation) {
+      displayWord = {
+        ...word,
+        targetText: loc.translation,
+        usageTip: loc.usageTip ?? word.usageTip,
+      };
+    }
+  }
+
   const currentAttempt = attemptNumber ?? 1;
   const passed = accuracyScore >= 70;
 
   if (!passed && currentAttempt === 1) {
     return Response.json({
       retry: true,
-      feedback: 'Not quite — try again: ' + word.translation,
+      feedback: 'Not quite — try again: ' + displayWord.targetText,
       vocabId: vocabularyId,
       attemptNumber: 2,
     });

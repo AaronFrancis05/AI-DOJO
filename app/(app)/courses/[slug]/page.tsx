@@ -218,7 +218,12 @@ export default function CourseDetailPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ scenarioId: lesson.scenarioId, lessonId: lesson.id }),
+        body: JSON.stringify({
+          scenarioId: lesson.scenarioId,
+          lessonId: lesson.id,
+          targetLanguage: course?.targetLanguage,
+          nativeLanguage: course?.nativeLanguage,
+        }),
       });
       const data = await res.json();
       if (data.success && data.session?.id) {
