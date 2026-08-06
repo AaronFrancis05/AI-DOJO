@@ -9,10 +9,23 @@
    language and upserts the results into `scenarioLocalizations` /
    `vocabularyLocalizations` (the schema already had the tables).
 
+   DESIGN DECISION (native vs target):
+   A `scenarioLocalizations` row is keyed by (scenarioId, languageCode) via
+   the unique index uq_scenario_localizations_key, and it serves BOTH roles:
+   the same translated scenario text works as the learner's native-language
+   instructional text AND as the target-language roleplay content. There is
+   no separate native/target split, so a language that is a course target
+   language already has full native-language coverage for free. The
+   `--native-lang` flag below is therefore only needed for native languages
+   that are NOT also course target languages (e.g. 'ne' Nepali), which have
+   no scenarioLocalizations rows at all yet.
+
    Usage:
-     npm run db:localize                    # all languages
-     npm run db:localize -- --lang=fr       # single language
+     npm run db:localize                    # all target languages
+     npm run db:localize -- --lang=fr       # single target language
      npm run db:localize -- --lang=fr --limit=3   # first 3 scenarios
+     npm run db:localize -- --native-lang=ne     # native instructional text only
+     npm run db:localize -- --native-lang=sw,lg  # several native languages
 
    The script is idempotent — scenarios/vocab that are already fully
    localized for a language are skipped (no re-generation, no extra AI
@@ -27,8 +40,8 @@ import {
   lessons,
 } from '../src/schema';
 import { eq, and, inArray, sql } from 'drizzle-orm';
-import { TARGET_LANGUAGES } from '../lib/language';
-import { getAIProvider } from '../lib/ai-providers';
+import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '../lib/language';
+import { getAIProvider, type AIProvider } from '../lib/ai-providers';
 import { cacheDel, cacheKeys } from '../lib/cache';
 
 const BASE_SCRIPT_LANG = 'ja'; // base vocabulary rows are Japanese
@@ -102,10 +115,101 @@ Return strictly a JSON object (no markdown, no code fences) matching exactly thi
 The "vocabulary" array MUST contain exactly ${vocabItems.length} entries — one per base item — and each entry's "original" must match the base targetText exactly. "usageTip" should be a short English tip on when/how to use the word.`;
 }
 
+function parseNativeLangs(): string[] {
+  const arg = parseArg('native-lang');
+  if (!arg) return [];
+  return arg.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
+function buildNativePrompt(langName: string, langCode: string, sc: typeof scenarios.$inferSelect): string {
+  return `You are localizing instructional scenario text for a language-learning app into ${langName} (${langCode}).
+
+The learner's native language is ${langName}. Translate the following English scenario description into natural ${langName} so the learner fully understands the setup. Keep the same meaning, tone, and character personalities. The setting stays the same; only the language changes.
+
+Base scenario (currently English):
+Title: ${sc.title}
+Context: ${sc.context}
+Learning goals: ${sc.learningGoals}
+AI character name: ${sc.aiCharacterName}
+AI character role: ${sc.aiCharacterRole}
+User character name: ${sc.userCharacterName}
+User character role: ${sc.userCharacterRole}
+
+Return strictly a JSON object (no markdown, no code fences) matching exactly this schema:
+{
+  "scenario": {
+    "title": "...",
+    "context": "...",
+    "learningGoals": "...",
+    "aiCharacterName": "...",
+    "aiCharacterRole": "...",
+    "userCharacterName": "...",
+    "userCharacterRole": "..."
+  }
+}`;
+}
+
+async function runNativeMode(
+  provider: AIProvider,
+  scenarioRows: typeof scenarios.$inferSelect[],
+  nativeLangs: string[],
+): Promise<void> {
+  for (const code of nativeLangs) {
+    const cfg = TARGET_LANGUAGES.find((l) => l.code === code) ?? NATIVE_LANGUAGES.find((l) => l.code === code);
+    if (!cfg) {
+      console.warn(`  [WARN] Unknown native language code "${code}" — skipping.`);
+      continue;
+    }
+    // Native languages that are also course target languages already have
+    // scenarioLocalizations rows (the same key serves both purposes), so
+    // nothing is generated for them — skip silently.
+    console.log(`\n=== Native-language scenario text: ${cfg.name} (${code}) ===`);
+    let written = 0;
+    for (const sc of scenarioRows) {
+      const [existing] = await db
+        .select({ id: scenarioLocalizations.id })
+        .from(scenarioLocalizations)
+        .where(and(
+          eq(scenarioLocalizations.scenarioId, sc.id),
+          eq(scenarioLocalizations.languageCode, code),
+        ))
+        .limit(1);
+      if (existing) continue;
+
+      try {
+        const raw = await provider.generateJSON(buildNativePrompt(cfg.name, code, sc), []);
+        const parsed = JSON.parse(raw) as GeneratedLocalization;
+        const f = parsed.scenario;
+        if (!f) throw new Error('response missing "scenario" object');
+
+        await db.insert(scenarioLocalizations).values({
+          scenarioId: sc.id,
+          languageCode: code,
+          title: f.title ?? null,
+          context: f.context ?? null,
+          learningGoals: f.learningGoals ?? null,
+          aiCharacterName: f.aiCharacterName ?? null,
+          aiCharacterRole: f.aiCharacterRole ?? null,
+          userCharacterName: f.userCharacterName ?? null,
+          userCharacterRole: f.userCharacterRole ?? null,
+        }).onConflictDoNothing();
+
+        await cacheDel(cacheKeys.scenarioLocalization(sc.id, code));
+        written++;
+        console.log(`  [ok] "${sc.title}" (${code})`);
+      } catch (err) {
+        console.warn(`  [ERR] "${sc.title}" (${code}):`, err instanceof Error ? err.message : String(err));
+      }
+    }
+    console.log(`  Wrote native-language rows for ${written} scenario(s).`);
+  }
+}
+
 async function main(): Promise<void> {
   const langFilter = parseArg('lang');
   const limitRaw = parseArg('limit');
   const limit = limitRaw ? Number(limitRaw) : null;
+  const nativeLangs = parseNativeLangs();
 
   console.log('=== Scenario/Vocabulary Localization Generator ===\n');
 
@@ -252,6 +356,10 @@ async function main(): Promise<void> {
         console.warn(`  [ERR] "${sc.title}" (${lang.code}):`, err instanceof Error ? err.message : String(err));
       }
     }
+  }
+
+  if (nativeLangs.length > 0) {
+    await runNativeMode(provider, scenarioRows, nativeLangs);
   }
 
   console.log(`\n=== Done. Upserted ${totalInserted} vocabulary localizations. ===`);
