@@ -4,6 +4,12 @@ import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
+import {
+  getTargetScenarioLocalization,
+  getTargetVocabLocalizations,
+  applyScenarioLocalization,
+  applyTargetLanguageVocab,
+} from '../../../../lib/localization';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
@@ -160,14 +166,29 @@ export async function GET(
     corrections: correctionsByConvId.get(conv.id) ?? [],
   }));
 
+  // Localize scenario + vocabulary into the session's target language so the
+  // icebreaker and chat screens show the words the learner is actually
+  // practicing (not the Japanese base rows).
+  let localizedScenario = scenario;
+  let localizedVocab = vocabItems;
+  const targetLang = session.targetLanguage ?? 'ja';
+  if (localizedScenario && targetLang) {
+    const [scenarioLoc, vocabLoc] = await Promise.all([
+      getTargetScenarioLocalization(localizedScenario.id, targetLang),
+      localizedVocab.length > 0 ? getTargetVocabLocalizations(localizedScenario.id, targetLang) : Promise.resolve(new Map()),
+    ]);
+    if (scenarioLoc) localizedScenario = applyScenarioLocalization(localizedScenario, scenarioLoc);
+    if (vocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(localizedVocab, vocabLoc);
+  }
+
   return Response.json({
     success: true,
     session,
-    scenario: scenario ?? null,
+    scenario: localizedScenario ?? null,
     situation,
     domain: domainResult,
     character,
-    vocabulary: vocabItems,
+    vocabulary: localizedVocab,
     goals,
     conversations: conversationWithCorrections,
     evaluation: evaluationResult,

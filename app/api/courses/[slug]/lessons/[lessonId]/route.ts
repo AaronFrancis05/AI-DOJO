@@ -1,6 +1,12 @@
 import { db } from '@/src/db';
 import { courses, lessons, lessonPhases, scenarios, vocabulary } from '@/src/schema';
 import { asc, eq, and } from 'drizzle-orm';
+import {
+  getTargetScenarioLocalization,
+  getTargetVocabLocalizations,
+  applyScenarioLocalization,
+  applyTargetLanguageVocab,
+} from '@/lib/localization';
 
 export async function GET(
   _req: Request,
@@ -44,8 +50,23 @@ export async function GET(
       : Promise.resolve([]),
   ]);
 
+  // Localize scenario + vocabulary into the course's target language so a
+  // non-Japanese course (e.g. "Survival French for Uganda") drills the right
+  // words and shows the right context instead of the Japanese base content.
+  let localizedScenario = scenario;
+  let localizedVocab = vocabRows;
+  const targetLanguage = course.targetLanguage;
+  if (scenario && targetLanguage) {
+    const [scenarioLoc, vocabLoc] = await Promise.all([
+      getTargetScenarioLocalization(scenario.id, targetLanguage),
+      vocabRows.length > 0 ? getTargetVocabLocalizations(scenario.id, targetLanguage) : Promise.resolve(new Map()),
+    ]);
+    if (scenarioLoc) localizedScenario = applyScenarioLocalization(scenario, scenarioLoc);
+    if (vocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(vocabRows, vocabLoc);
+  }
+
   return Response.json({
     success: true,
-    lesson: { ...lesson, phases, scenario, vocabulary: vocabRows },
+    lesson: { ...lesson, phases, scenario: localizedScenario, vocabulary: localizedVocab },
   });
 }

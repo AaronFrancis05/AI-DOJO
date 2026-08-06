@@ -17,6 +17,9 @@ import {
   getScenarioLocalization,
   getScenarioVocabLocalizations,
   applyScenarioLocalization,
+  getTargetScenarioLocalization,
+  getTargetVocabLocalizations,
+  applyTargetLanguageVocab,
 } from '../localization';
 
 export const MAX_ICEBREAKER_VOCAB = 5;
@@ -40,7 +43,7 @@ export interface SessionTurnData {
   targetLanguage: string;
   nativeLanguage: string;
   isSameLanguage: boolean;
-  /** True when a curated localization row exists for this scenario in the session's native language. */
+  /** True when a curated localization row exists for this scenario in the session's native or target language. */
   scenarioLocalized: boolean;
   currentPhase: SessionPhase;
 }
@@ -133,20 +136,46 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
   }
 
   let scenarioLocalized = false;
-  if (nativeLanguage !== 'en' && currentScenario) {
-    const [scenarioLoc, vocabLoc] = await Promise.all([
-      getScenarioLocalization(scenarioId, nativeLanguage),
-      vocabRows.length > 0 ? getScenarioVocabLocalizations(scenarioId, nativeLanguage) : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
-    ]);
 
-    if (scenarioLoc) {
-      currentScenario = applyScenarioLocalization(currentScenario, scenarioLoc);
+  const scenarioLocs = await Promise.all([
+    nativeLanguage !== 'en' ? getScenarioLocalization(scenarioId, nativeLanguage) : Promise.resolve(null),
+    targetLanguage && targetLanguage !== 'en' ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
+  ]);
+
+  if (currentScenario) {
+    // Native-language scenario localization (the base scenario fields are
+    // English) so a learner who doesn't speak English still gets a scenario
+    // they can understand.
+    const nativeLoc = scenarioLocs[0];
+    if (nativeLoc) {
+      currentScenario = applyScenarioLocalization(currentScenario, nativeLoc);
       scenarioLocalized = true;
     }
 
-    if (vocabLoc.size > 0) {
+    // Target-language scenario localization (e.g. French context and
+    // character names for a French course). Applied last so the roleplay
+    // content matches the language the student is actually learning.
+    const targetLoc = scenarioLocs[1];
+    if (targetLoc) {
+      currentScenario = applyScenarioLocalization(currentScenario, targetLoc);
+      scenarioLocalized = true;
+    }
+  }
+
+  if (currentScenario && vocabRows.length > 0) {
+    const [nativeVocabLoc, targetVocabLoc] = await Promise.all([
+      nativeLanguage !== 'en'
+        ? getScenarioVocabLocalizations(scenarioId, nativeLanguage)
+        : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
+      targetLanguage
+        ? getTargetVocabLocalizations(scenarioId, targetLanguage)
+        : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
+    ]);
+
+    if (nativeVocabLoc.size > 0) {
+      // Native-language meaning shown alongside the word being learned.
       vocabRows = vocabRows.map((v) => {
-        const localized = vocabLoc.get(v.id);
+        const localized = nativeVocabLoc.get(v.id);
         if (!localized) return v;
         return {
           ...v,
@@ -154,6 +183,12 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
           usageTip: localized.usageTip ?? v.usageTip,
         };
       });
+    }
+
+    if (targetVocabLoc.size > 0) {
+      // Target-language word/phrase replaces the Japanese base targetText so
+      // a French (or English, etc.) course drills the correct words.
+      vocabRows = applyTargetLanguageVocab(vocabRows, targetVocabLoc);
     }
   }
 
