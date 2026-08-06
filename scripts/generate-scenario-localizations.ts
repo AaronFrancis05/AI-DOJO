@@ -210,6 +210,9 @@ async function main(): Promise<void> {
             userCharacterName: scenarioFields.userCharacterName ?? null,
             userCharacterRole: scenarioFields.userCharacterRole ?? null,
           }).onConflictDoNothing();
+          // Invalidate the shared (Upstash) scenario cache immediately so the
+          // API sees the fresh row even if a later vocab step fails.
+          await cacheDel(cacheKeys.scenarioLocalization(sc.id, lang.code));
         }
 
         const genByOriginal = new Map<string, GeneratedVocabEntry>(
@@ -236,14 +239,11 @@ async function main(): Promise<void> {
 
         if (vocabInserts.length > 0 && needsVocab) {
           await db.insert(vocabularyLocalizations).values(vocabInserts).onConflictDoNothing();
+          // Invalidate the shared (Upstash) vocab cache immediately after the
+          // write succeeds.
+          await cacheDel(cacheKeys.vocabLocalizations(sc.id, lang.code));
         }
         totalInserted += vocabInserts.length;
-
-        // Invalidate the shared (Upstash) localization caches so the API and
-        // the regression check see the freshly written rows instead of stale
-        // empty entries.
-        await cacheDel(cacheKeys.scenarioLocalization(sc.id, lang.code));
-        await cacheDel(cacheKeys.vocabLocalizations(sc.id, lang.code));
 
         console.log(
           `  [ok] "${sc.title}" — scenario:${scenarioFields && needsScenario ? 'yes' : 'no'} vocab:${matched}/${vocabItems.length}`,
