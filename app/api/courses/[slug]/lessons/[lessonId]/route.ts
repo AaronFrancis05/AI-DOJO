@@ -9,7 +9,7 @@ import {
 } from '@/lib/localization';
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ slug: string; lessonId: string }> },
 ) {
   const { slug, lessonId } = await params;
@@ -17,6 +17,9 @@ export async function GET(
   if (isNaN(numericLessonId)) {
     return Response.json({ success: false, error: 'Invalid lessonId' }, { status: 400 });
   }
+
+  const url = new URL(req.url);
+  const target = url.searchParams.get('target') ?? undefined;
 
   const [course] = await db
     .select()
@@ -50,12 +53,12 @@ export async function GET(
       : Promise.resolve([]),
   ]);
 
-  // Localize scenario + vocabulary into the course's target language so a
-  // non-Japanese course (e.g. "Survival French for Uganda") drills the right
-  // words and shows the right context instead of the Japanese base content.
+  // Localize scenario + vocabulary into the learner's chosen target language
+  // (from the ?target= query) so a non-Japanese course (e.g. French) drills
+  // the right words and shows the right context instead of the Japanese base.
   let localizedScenario = scenario;
   let localizedVocab = vocabRows;
-  const targetLanguage = course.targetLanguage;
+  const targetLanguage = target ?? 'ja';
   if (scenario && targetLanguage) {
     const [scenarioLoc, vocabLoc] = await Promise.all([
       getTargetScenarioLocalization(scenario.id, targetLanguage),

@@ -183,6 +183,13 @@
       "when": 1785755874755,
       "tag": "0025_first_inhumans",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786090415918,
+      "tag": "0026_language_agnostic_courses",
+      "breakpoints": true
     }
   ]
 }

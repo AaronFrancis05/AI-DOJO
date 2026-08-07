@@ -10,6 +10,8 @@ interface RecordLessonActivityInput {
   phaseKey?: string | null;
   complete?: boolean;
   score?: number | null;
+  targetLanguage?: string;
+  nativeLanguage?: string;
 }
 
 /**
@@ -17,6 +19,8 @@ interface RecordLessonActivityInput {
  *  - upserts student_lesson_progress (active/completed)
  *  - updates the course-level student_progress snapshot (current lesson, XP, lessons completed)
  *  - on completion, seeds SRS cards from the lesson's scenario vocabulary
+ * Progress is tracked per (course, targetLanguage) since a course is a
+ * language-neutral template.
  */
 export async function recordLessonActivity({
   userId,
@@ -24,6 +28,8 @@ export async function recordLessonActivity({
   phaseKey = null,
   complete = false,
   score = null,
+  targetLanguage = 'ja',
+  nativeLanguage = 'en',
 }: RecordLessonActivityInput) {
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
   if (!lesson) {
@@ -48,7 +54,7 @@ export async function recordLessonActivity({
   const [existingLessonProgress] = await db
     .select()
     .from(studentLessonProgress)
-    .where(sql`${studentLessonProgress.userId} = ${userId} AND ${studentLessonProgress.lessonId} = ${lesson.id}`)
+    .where(sql`${studentLessonProgress.userId} = ${userId} AND ${studentLessonProgress.lessonId} = ${lesson.id} AND ${studentLessonProgress.targetLanguage} = ${targetLanguage}`)
     .limit(1);
 
   const completedPhases = complete
@@ -64,6 +70,7 @@ export async function recordLessonActivity({
     .values({
       userId,
       lessonId: lesson.id,
+      targetLanguage,
       status: complete ? 'completed' : 'active',
       currentPhaseKey: complete ? (phaseRows[phaseRows.length - 1]?.phaseKey ?? null) : phaseKey,
       completedPhases,
@@ -75,7 +82,7 @@ export async function recordLessonActivity({
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [studentLessonProgress.userId, studentLessonProgress.lessonId],
+      target: [studentLessonProgress.userId, studentLessonProgress.lessonId, studentLessonProgress.targetLanguage],
       set: {
         status: complete ? 'completed' : 'active',
         currentPhaseKey: complete ? (phaseRows[phaseRows.length - 1]?.phaseKey ?? null) : phaseKey,
@@ -96,6 +103,8 @@ export async function recordLessonActivity({
       .values({
         userId,
         courseId: level.courseId,
+        targetLanguage,
+        nativeLanguage,
         currentLevelId: unit?.levelId ?? null,
         currentUnitId: lesson.unitId,
         currentLessonId: lesson.id,
@@ -107,7 +116,7 @@ export async function recordLessonActivity({
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: [studentProgress.userId, studentProgress.courseId],
+        target: [studentProgress.userId, studentProgress.courseId, studentProgress.targetLanguage],
         set: {
           currentLevelId: unit?.levelId ?? null,
           currentUnitId: lesson.unitId,
