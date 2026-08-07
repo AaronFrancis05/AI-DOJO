@@ -1,6 +1,6 @@
 import { db } from './db';
-import { hashPassword } from '../lib/auth';
-import { eq } from 'drizzle-orm';
+import bcrypt from 'bcryptjs';
+import { eq, inArray, sql } from 'drizzle-orm';
 import {
   users, scenarios, vocabulary, scenarioGoals,
   sessions, conversations, corrections, evaluations,
@@ -26,7 +26,7 @@ async function seed() {
 
     // Dev-only default password: changeme123
     // In production, users should register with their own passwords.
-    const defaultPwHash = await hashPassword('changeme123');
+    const defaultPwHash = bcrypt.hashSync('changeme123', 10);
 
     const insertedUsers = await db.insert(users).values([
       { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 2400, xpToNext: 3000, tier: 'premium', streak: 12, consentToDataSharing: true },
@@ -1136,84 +1136,92 @@ const [s1Row] = await db.insert(sessions).values({
     ]).onConflictDoNothing();
 
     // ================================================================
-    // 8. CURRICULUM (sample course tree)
+    // 8. CURRICULUM (single language-agnostic course template)
+    //    A course is a template, not a language: the learner picks the
+    //    target + native language when they enrol, so we seed ONE course.
     // ================================================================
     console.log('Inserting sample curriculum...');
     const [courseRow] = await db.insert(courses).values({
-      slug: 'survival-japanese-uganda',
-      title: 'Survival Japanese for Uganda',
-      description: 'A guided path from first greetings to workplace conversations, built for Ugandan learners of Japanese.',
-      targetLanguage: 'ja',
-      nativeLanguage: 'en',
+      slug: 'survival-uganda',
+      title: 'Survival Course for Uganda',
+      description: 'A guided path from first greetings to everyday conversations, built for Ugandan learners.',
       difficulty: 'beginner',
       icon: 'GraduationCap',
       displayOrder: 1,
-    }).onConflictDoNothing().returning();
+    }).onConflictDoUpdate({
+      target: courses.slug,
+      set: {
+        title: 'Survival Course for Uganda',
+        description: 'A guided path from first greetings to everyday conversations, built for Ugandan learners.',
+        difficulty: 'beginner',
+        icon: 'GraduationCap',
+        displayOrder: 1,
+      },
+    }).returning();
 
-    const courseId = courseRow?.id ?? (await db.select({ id: courses.id }).from(courses).where(eq(courses.slug, 'survival-japanese-uganda')))[0].id;
+    const courseId = courseRow.id;
 
-    const levelStructure = [
-      { seq: 1, title: 'Level 1 — Foundations', desc: 'Greetings, introductions and daily survival phrases.', reqXp: 0 },
-      { seq: 2, title: 'Level 2 — Daily Life', desc: 'Shopping, transport and everyday services.', reqXp: 200 },
-    ];
+    await db.insert(courseLevels).values([
+      { courseId, sequenceOrder: 1, title: 'Foundations', requiredXp: 0 },
+      { courseId, sequenceOrder: 2, title: 'Daily Life', requiredXp: 100 },
+    ]).onConflictDoUpdate({
+      target: [courseLevels.courseId, courseLevels.sequenceOrder],
+      set: {
+        title: sql`excluded.title`,
+        requiredXp: sql`excluded.required_xp`,
+      },
+    });
 
-    const levelRows = await db.insert(courseLevels).values(
-      levelStructure.map((l) => ({
-        courseId,
-        sequenceOrder: l.seq,
-        title: l.title,
-        description: l.desc,
-        requiredXp: l.reqXp,
-      })),
-    ).onConflictDoNothing().returning();
+    const levelIds = (await db.select({ id: courseLevels.id })
+      .from(courseLevels)
+      .where(eq(courseLevels.courseId, courseId))
+      .orderBy(courseLevels.sequenceOrder)).map((r) => r.id);
+    const [level1Id, level2Id] = levelIds;
 
-    const levelIds = levelRows.length > 0
-      ? levelRows.map((r) => r.id)
-      : (await db.select({ id: courseLevels.id, seq: courseLevels.sequenceOrder }).from(courseLevels).where(eq(courseLevels.courseId, courseId)).orderBy(courseLevels.sequenceOrder)).map((r) => r.id);
+    await db.insert(units).values([
+      { levelId: level1Id, sequenceOrder: 1, title: 'First Meetings', description: 'Introduce yourself and connect with new people.' },
+      { levelId: level1Id, sequenceOrder: 2, title: 'Business Manners', description: 'Learn the polite essentials of Japanese business culture.' },
+      { levelId: level2Id, sequenceOrder: 1, title: 'Work Life', description: 'Manage workplace situations from interview to team calls.' },
+      { levelId: level2Id, sequenceOrder: 2, title: 'Everyday Errands', description: 'Handle post office and bank errands confidently.' },
+      { levelId: level2Id, sequenceOrder: 3, title: 'Wrapping Up', description: 'Close conversations and relationships with gratitude.' },
+    ]).onConflictDoUpdate({
+      target: [units.levelId, units.sequenceOrder],
+      set: {
+        title: sql`excluded.title`,
+        description: sql`excluded.description`,
+      },
+    });
 
-    const unitRows = await db.insert(units).values([
-      { levelId: levelIds[0], sequenceOrder: 1, title: 'First Meetings', description: 'Introduce yourself and connect with new people.' },
-      { levelId: levelIds[0], sequenceOrder: 2, title: 'Around the Neighbourhood', description: 'Greet neighbours and navigate your area.' },
-    ]).onConflictDoNothing().returning();
+    const unitIds = (await db.select({ id: units.id })
+      .from(units)
+      .where(inArray(units.levelId, levelIds))
+      .orderBy(units.levelId, units.sequenceOrder)).map((r) => r.id);
+    const [u1, u2, u3, u4, u5] = unitIds;
 
-    const unitIds = unitRows.length > 0
-      ? unitRows.map((r) => r.id)
-      : (await db.select({ id: units.id, seq: units.sequenceOrder }).from(units).where(eq(units.levelId, levelIds[0])).orderBy(units.sequenceOrder)).map((r) => r.id);
+    await db.insert(lessons).values([
+      { unitId: u1, sequenceOrder: 1, title: 'Hello, I am...', summary: 'Introduce yourself and start a conversation.', scenarioId: sIds[11], estimatedMinutes: 10 },
+      { unitId: u1, sequenceOrder: 2, title: 'Your First Day', summary: 'Introduce yourself to colleagues on your first day.', scenarioId: sIds[13], estimatedMinutes: 8 },
+      { unitId: u2, sequenceOrder: 1, title: 'Business Card Exchange', summary: 'Exchange business cards politely and correctly.', scenarioId: sIds[15], estimatedMinutes: 8 },
+      { unitId: u2, sequenceOrder: 2, title: 'A Business Meeting', summary: 'Use respectful language during a business meeting.', scenarioId: sIds[14], estimatedMinutes: 10 },
+      { unitId: u3, sequenceOrder: 1, title: 'Job Interview', summary: 'Present yourself clearly in a job interview.', scenarioId: sIds[12], estimatedMinutes: 10 },
+      { unitId: u3, sequenceOrder: 2, title: 'Video Conference', summary: 'Participate confidently in a remote team call.', scenarioId: sIds[16], estimatedMinutes: 8 },
+      { unitId: u4, sequenceOrder: 1, title: 'Sending a Parcel', summary: 'Send a parcel and choose a shipping method.', scenarioId: sIds[17], estimatedMinutes: 8 },
+      { unitId: u4, sequenceOrder: 2, title: 'Opening a Bank Account', summary: 'Open a bank account and understand the questions.', scenarioId: sIds[18], estimatedMinutes: 8 },
+      { unitId: u5, sequenceOrder: 1, title: 'Farewell & Goodbye', summary: 'Express gratitude and say a proper goodbye.', scenarioId: sIds[19], estimatedMinutes: 8 },
+    ]).onConflictDoUpdate({
+      target: [lessons.unitId, lessons.sequenceOrder],
+      set: {
+        title: sql`excluded.title`,
+        summary: sql`excluded.summary`,
+        scenarioId: sql`excluded.scenario_id`,
+        estimatedMinutes: sql`excluded.estimated_minutes`,
+      },
+    });
 
-    const lessonRows = await db.insert(lessons).values([
-      { unitId: unitIds[0], sequenceOrder: 1, title: 'Hello, I am...', summary: 'Master hajimemashite and a full self-introduction.', scenarioId: sIds[0], estimatedMinutes: 10 },
-      { unitId: unitIds[0], sequenceOrder: 2, title: 'Where are you from?', summary: 'Talk about your origin and your reason for being in Japan.', scenarioId: sIds[11], estimatedMinutes: 8 },
-      { unitId: unitIds[1], sequenceOrder: 1, title: 'Meeting your neighbour', summary: 'Greet a neighbour politely and exchange pleasantries.', scenarioId: sIds[8], estimatedMinutes: 8 },
-    ]).onConflictDoNothing().returning();
-
-    const lessonIds = lessonRows.length > 0
-      ? lessonRows.map((r) => r.id)
-      : (await db.select({ id: lessons.id, seq: lessons.sequenceOrder }).from(lessons).where(eq(lessons.unitId, unitIds[0])).orderBy(lessons.sequenceOrder)).map((r) => r.id);
-
-    // ── Level 2 — Daily Life ──
-    const level2UnitRows = await db.insert(units).values([
-      { levelId: levelIds[1], sequenceOrder: 1, title: 'Eating & Shopping', description: 'Order food and shop for everyday needs.' },
-      { levelId: levelIds[1], sequenceOrder: 2, title: 'Getting Around', description: 'Ask for directions and use public transport.' },
-      { levelId: levelIds[1], sequenceOrder: 3, title: 'Health & Errands', description: 'Visit a clinic and run simple errands.' },
-    ]).onConflictDoNothing().returning();
-
-    const level2UnitIds = level2UnitRows.length > 0
-      ? level2UnitRows.map((r) => r.id)
-      : (await db.select({ id: units.id, seq: units.sequenceOrder }).from(units).where(eq(units.levelId, levelIds[1])).orderBy(units.sequenceOrder)).map((r) => r.id);
-
-    const level2LessonRows = await db.insert(lessons).values([
-      { unitId: level2UnitIds[0], sequenceOrder: 1, title: 'Ordering Food', summary: 'Order a meal politely and pay the bill.', scenarioId: sIds[4], estimatedMinutes: 10 },
-      { unitId: level2UnitIds[0], sequenceOrder: 2, title: 'Buying a Snack', summary: 'Make a quick purchase at a konbini.', scenarioId: sIds[1], estimatedMinutes: 8 },
-      { unitId: level2UnitIds[0], sequenceOrder: 3, title: 'Shopping at a Supermarket', summary: 'Find items and pay at the register.', scenarioId: sIds[5], estimatedMinutes: 9 },
-      { unitId: level2UnitIds[1], sequenceOrder: 1, title: 'Asking for Directions', summary: 'Ask and follow directions to a destination.', scenarioId: sIds[2], estimatedMinutes: 8 },
-      { unitId: level2UnitIds[1], sequenceOrder: 2, title: 'Buying a Train Ticket', summary: 'Buy the right ticket and find your platform.', scenarioId: sIds[6], estimatedMinutes: 8 },
-      { unitId: level2UnitIds[2], sequenceOrder: 1, title: 'Visiting a Clinic', summary: 'Describe symptoms and understand the response.', scenarioId: sIds[3], estimatedMinutes: 10 },
-      { unitId: level2UnitIds[2], sequenceOrder: 2, title: 'Sending a Parcel', summary: 'Send a parcel and choose a shipping method.', scenarioId: sIds[17], estimatedMinutes: 8 },
-    ]).onConflictDoNothing().returning();
-
-    const level2LessonIds = level2LessonRows.length > 0
-      ? level2LessonRows.map((r) => r.id)
-      : (await db.select({ id: lessons.id, seq: lessons.sequenceOrder }).from(lessons).where(eq(lessons.unitId, level2UnitIds[0])).orderBy(lessons.sequenceOrder)).map((r) => r.id);
+    const lessonIds = (await db.select({ id: lessons.id })
+      .from(lessons)
+      .where(inArray(lessons.unitId, unitIds))
+      .orderBy(lessons.unitId, lessons.sequenceOrder)).map((r) => r.id);
 
     const phaseDefs = [
       { key: 'learn', title: 'Learn', objective: 'Learn the key vocabulary and phrases for this lesson.' },
@@ -1222,9 +1230,8 @@ const [s1Row] = await db.insert(sessions).values({
       { key: 'review', title: 'Review', objective: 'Solidify what you learned with a short review.' },
     ];
 
-    const lessonIdList = [...lessonIds, ...level2LessonIds];
-    const phaseValues = phaseDefs.flatMap((p, i) =>
-      lessonIdList.map((lid, li) => ({
+    const phaseValues = lessonIds.flatMap((lid, li) =>
+      phaseDefs.map((p, i) => ({
         lessonId: lid,
         sequenceOrder: i + 1,
         phaseKey: p.key,
@@ -1233,143 +1240,15 @@ const [s1Row] = await db.insert(sessions).values({
         durationMinutes: 3,
       })),
     );
-    await db.insert(lessonPhases).values(phaseValues).onConflictDoNothing();
-
-    // ── Additional target-language courses (mirrored structure) ──
-    const extraTargetLanguages: { code: string; name: string; nativeName: string; order: number }[] = [
-      { code: 'en', name: 'English', nativeName: 'English', order: 2 },
-      { code: 'fr', name: 'French', nativeName: 'Français', order: 3 },
-      { code: 'de', name: 'German', nativeName: 'Deutsch', order: 4 },
-      { code: 'es', name: 'Spanish', nativeName: 'Español', order: 5 },
-      { code: 'ru', name: 'Russian', nativeName: 'Русский', order: 6 },
-      { code: 'ar', name: 'Arabic', nativeName: 'العربية', order: 7 },
-      { code: 'sw', name: 'Kiswahili', nativeName: 'Kiswahili', order: 8 },
-      { code: 'lg', name: 'Luganda', nativeName: 'Luganda', order: 9 },
-      { code: 'pt', name: 'Portuguese', nativeName: 'Português', order: 10 },
-      { code: 'it', name: 'Italian', nativeName: 'Italiano', order: 11 },
-      { code: 'nl', name: 'Dutch', nativeName: 'Nederlands', order: 12 },
-      { code: 'tr', name: 'Turkish', nativeName: 'Türkçe', order: 13 },
-      { code: 'pl', name: 'Polish', nativeName: 'Polski', order: 14 },
-      { code: 'uk', name: 'Ukrainian', nativeName: 'Українська', order: 15 },
-      { code: 'el', name: 'Greek', nativeName: 'Ελληνικά', order: 16 },
-      { code: 'he', name: 'Hebrew', nativeName: 'עברית', order: 17 },
-      { code: 'fa', name: 'Persian (Farsi)', nativeName: 'فارسی', order: 18 },
-      { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', order: 19 },
-      { code: 'bn', name: 'Bengali', nativeName: 'বাংলা', order: 20 },
-      { code: 'ur', name: 'Urdu', nativeName: 'اردو', order: 21 },
-      { code: 'zh', name: 'Chinese (Mandarin)', nativeName: '中文', order: 22 },
-      { code: 'ko', name: 'Korean', nativeName: '한국어', order: 23 },
-      { code: 'th', name: 'Thai', nativeName: 'ไทย', order: 24 },
-      { code: 'vi', name: 'Vietnamese', nativeName: 'Tiếng Việt', order: 25 },
-      { code: 'tl', name: 'Filipino', nativeName: 'Filipino', order: 26 },
-      { code: 'ms', name: 'Malay', nativeName: 'Bahasa Melayu', order: 27 },
-      { code: 'id', name: 'Indonesian', nativeName: 'Bahasa Indonesia', order: 28 },
-      { code: 'km', name: 'Khmer', nativeName: 'ខ្មែរ', order: 29 },
-      { code: 'my', name: 'Burmese', nativeName: 'မြန်မာ', order: 30 },
-      { code: 'lo', name: 'Lao', nativeName: 'ລາວ', order: 31 },
-    ];
-
-    const unitDefs = [
-      { levelIdx: 0, unitTitle: 'First Meetings', unitDesc: 'Introduce yourself and connect with new people.' },
-      { levelIdx: 0, unitTitle: 'Around the Neighbourhood', unitDesc: 'Greet neighbours and navigate your area.' },
-      { levelIdx: 1, unitTitle: 'Eating & Shopping', unitDesc: 'Order food and shop for everyday needs.' },
-      { levelIdx: 1, unitTitle: 'Getting Around', unitDesc: 'Ask for directions and use public transport.' },
-      { levelIdx: 1, unitTitle: 'Health & Errands', unitDesc: 'Visit a clinic and run simple errands.' },
-    ];
-
-    const lessonGroups = [
-      [
-        { title: 'Hello, I am...', summary: 'Introduce yourself and start a conversation.', scenarioId: sIds[0], estimatedMinutes: 10 },
-        { title: 'Where are you from?', summary: 'Talk about your background and why you\'re here.', scenarioId: sIds[11], estimatedMinutes: 8 },
-      ],
-      [
-        { title: 'Meeting your neighbour', summary: 'Greet a neighbour politely and exchange pleasantries.', scenarioId: sIds[8], estimatedMinutes: 8 },
-      ],
-      [
-        { title: 'Ordering Food', summary: 'Order a meal politely and pay the bill.', scenarioId: sIds[4], estimatedMinutes: 10 },
-        { title: 'Buying a Snack', summary: 'Make a quick purchase at a convenience store.', scenarioId: sIds[1], estimatedMinutes: 8 },
-        { title: 'Shopping at a Supermarket', summary: 'Find items and pay at the register.', scenarioId: sIds[5], estimatedMinutes: 9 },
-      ],
-      [
-        { title: 'Asking for Directions', summary: 'Ask and follow directions to a destination.', scenarioId: sIds[2], estimatedMinutes: 8 },
-        { title: 'Buying a Ticket', summary: 'Buy the right ticket and find your platform.', scenarioId: sIds[6], estimatedMinutes: 8 },
-      ],
-      [
-        { title: 'Visiting a Clinic', summary: 'Describe symptoms and understand the response.', scenarioId: sIds[3], estimatedMinutes: 10 },
-        { title: 'Sending a Parcel', summary: 'Send a parcel and choose a shipping method.', scenarioId: sIds[17], estimatedMinutes: 8 },
-      ],
-    ];
-
-    for (const lang of extraTargetLanguages) {
-      const slug = `survival-${lang.code}-uganda`;
-      const [extraCourseRow] = await db.insert(courses).values({
-        slug,
-        title: `Survival ${lang.name} for Uganda`,
-        description: `A guided path from first greetings to everyday conversations, built for Ugandan learners of ${lang.name}.`,
-        targetLanguage: lang.code,
-        nativeLanguage: 'en',
-        difficulty: 'beginner',
-        icon: 'GraduationCap',
-        displayOrder: lang.order,
-      }).onConflictDoNothing().returning();
-
-      const extraCourseId = extraCourseRow?.id
-        ?? (await db.select({ id: courses.id }).from(courses).where(eq(courses.slug, slug)))[0]?.id;
-      if (!extraCourseId) continue;
-
-      const extraLevelRows = await db.insert(courseLevels).values(
-        levelStructure.map((l) => ({
-          courseId: extraCourseId,
-          sequenceOrder: l.seq,
-          title: l.title,
-          description: l.desc,
-          requiredXp: l.reqXp,
-        })),
-      ).onConflictDoNothing().returning();
-      const extraLevelIds = extraLevelRows.length > 0
-        ? extraLevelRows.map((r) => r.id)
-        : (await db.select({ id: courseLevels.id, seq: courseLevels.sequenceOrder })
-            .from(courseLevels).where(eq(courseLevels.courseId, extraCourseId))
-            .orderBy(courseLevels.sequenceOrder)).map((r) => r.id);
-
-      const extraUnitRows = await db.insert(units).values(
-        unitDefs.map((u, i) => ({
-          levelId: extraLevelIds[u.levelIdx],
-          sequenceOrder: i + 1,
-          title: u.unitTitle,
-          description: u.unitDesc,
-        })),
-      ).onConflictDoNothing().returning();
-      const extraUnitIds = extraUnitRows.length > 0
-        ? extraUnitRows.map((r) => r.id)
-        : (await db.select({ id: units.id, seq: units.sequenceOrder }).from(units)
-            .where(eq(units.levelId, extraLevelIds[0])).orderBy(units.sequenceOrder)).map((r) => r.id);
-
-      const extraLessonValues = lessonGroups.flatMap((group, gi) =>
-        group.map((l, li) => ({
-          unitId: extraUnitIds[gi],
-          sequenceOrder: li + 1,
-          title: l.title,
-          summary: l.summary,
-          scenarioId: l.scenarioId,
-          estimatedMinutes: l.estimatedMinutes,
-        })),
-      );
-      const extraLessonRows = await db.insert(lessons).values(extraLessonValues).onConflictDoNothing().returning();
-      const extraLessonIds = extraLessonRows.map((r) => r.id);
-
-      const extraPhaseValues = phaseDefs.flatMap((p, i) =>
-        extraLessonIds.map((lid, li) => ({
-          lessonId: lid,
-          sequenceOrder: i + 1,
-          phaseKey: p.key,
-          title: `${p.title} — Lesson ${li + 1}`,
-          objective: p.objective,
-          durationMinutes: 3,
-        })),
-      );
-      await db.insert(lessonPhases).values(extraPhaseValues).onConflictDoNothing();
-    }
+    await db.insert(lessonPhases).values(phaseValues).onConflictDoUpdate({
+      target: [lessonPhases.lessonId, lessonPhases.sequenceOrder],
+      set: {
+        phaseKey: sql`excluded.phase_key`,
+        title: sql`excluded.title`,
+        objective: sql`excluded.objective`,
+        durationMinutes: sql`excluded.duration_minutes`,
+      },
+    });
 
     console.log('🚀 AI DOJO seed completed successfully!');
   } catch (error) {

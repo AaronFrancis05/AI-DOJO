@@ -327,13 +327,15 @@ export const quickDrills = pgTable('quick_drills', {
 }));
 
 // ── Curriculum ────────────────────────────────────────────
+// A course is a LANGUAGE-AGNOSTIC pedagogical template (title, structure).
+// Target/ native language are chosen per-enrollment / per-session, never
+// baked onto the course row — so the same template can be learned in any
+// target language.
 export const courses = pgTable('courses', {
   id:            serial('id').primaryKey(),
   slug:          varchar('slug', { length: 60 }).notNull().unique(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description').notNull(),
-  targetLanguage: varchar('target_language', { length: 10 }).default('ja').notNull(),
-  nativeLanguage: varchar('native_language', { length: 10 }).default('en').notNull(),
   difficulty:    varchar('difficulty', { length: 20 }).default('beginner').notNull(),
   icon:          varchar('icon', { length: 40 }),
   isActive:      boolean('is_active').default(true).notNull(),
@@ -398,6 +400,8 @@ export const studentProgress = pgTable('student_progress', {
   id:               serial('id').primaryKey(),
   userId:           text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   courseId:         integer('course_id').references(() => courses.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:   varchar('target_language', { length: 10 }).default('ja').notNull(),
+  nativeLanguage:   varchar('native_language', { length: 10 }).default('en').notNull(),
   currentLevelId:   integer('current_level_id').references(() => courseLevels.id, { onDelete: 'set null' }),
   currentUnitId:    integer('current_unit_id').references(() => units.id, { onDelete: 'set null' }),
   currentLessonId:  integer('current_lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
@@ -408,13 +412,14 @@ export const studentProgress = pgTable('student_progress', {
   lastActivityAt:   timestamp('last_activity_at'),
   updatedAt:        timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
-  uniqueUserCourse: uniqueIndex('uq_student_progress_key').on(table.userId, table.courseId),
+  uniqueUserCourseLang: uniqueIndex('uq_student_progress_key').on(table.userId, table.courseId, table.targetLanguage),
 }));
 
 export const studentLessonProgress = pgTable('student_lesson_progress', {
   id:              serial('id').primaryKey(),
   userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   lessonId:        integer('lesson_id').references(() => lessons.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
   status:          varchar('status', { length: 20 }).default('not_started').notNull(),
   currentPhaseKey: varchar('current_phase_key', { length: 20 }),
   completedPhases: text('completed_phases'),
@@ -425,7 +430,7 @@ export const studentLessonProgress = pgTable('student_lesson_progress', {
   completedAt:     timestamp('completed_at'),
   updatedAt:       timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
-  uniqueUserLesson: uniqueIndex('uq_student_lesson_progress_key').on(table.userId, table.lessonId),
+  uniqueUserLessonLang: uniqueIndex('uq_student_lesson_progress_key').on(table.userId, table.lessonId, table.targetLanguage),
 }));
 
 export const srsCards = pgTable('srs_cards', {

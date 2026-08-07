@@ -1,12 +1,13 @@
 /* ─────────────────────────────────────────────────────────────
    Regression check: confirm course content is actually localized.
 
-   For every active course whose target language is not Japanese (the
-   base vocabulary script), loads the first lesson's scenario +
-   vocabulary and runs the same localization merge the API uses. Flags
-   any course whose drilled vocabulary (or scenario context) still
-   contains Japanese script — a sign the localization rows are missing
-   for that language.
+   Courses are language-neutral templates: the learner picks a target
+   language when they enrol. For every active template, loads each
+   scenario used by its lessons, and for each supported target
+   language (everything except the Japanese base vocabulary script) runs
+   the same localization merge the API uses. Flags any (template, lang)
+   whose drilled vocabulary (or scenario context) still contains
+   Japanese script — a sign the localization rows are missing.
 
    Usage: npm run db:check-localization
    ───────────────────────────────────────────────────────────── */
@@ -16,15 +17,18 @@ import {
   courseLevels,
   units,
   lessons,
-  scenarios,
   vocabulary,
   scenarioLocalizations,
   vocabularyLocalizations,
 } from '../src/schema';
-import { eq, and } from 'drizzle-orm';
-import { applyScenarioLocalization, applyTargetLanguageVocab } from '../lib/localization';
+import { eq, and, inArray } from 'drizzle-orm';
+import { applyTargetLanguageVocab } from '../lib/localization';
+import { TARGET_LANGUAGES } from '../lib/language';
 
 const JAPANESE_SCRIPT = /[\u3040-\u309F\u30A0-\u30FF\uFF66-\uFF9D]/;
+
+// Everything except the Japanese base vocabulary script needs localization.
+const TARGET_CODES = TARGET_LANGUAGES.map((l) => l.code).filter((c) => c !== 'ja');
 
 // Loads target-language localizations straight from the DB (bypassing the
 // Upstash cache) so the check asserts ground truth, not cached state.
@@ -55,6 +59,84 @@ async function loadTargetLocalizations(scenarioId: number, lang: string) {
   return { scenarioLoc: scenarioLoc ?? null, vocabLoc };
 }
 
+// Distinct scenarioIds used across a template's active lessons.
+async function getCourseScenarioIds(courseId: number): Promise<number[]> {
+  const rows = await db
+    .select({ scenarioId: lessons.scenarioId })
+    .from(lessons)
+    .innerJoin(units, eq(lessons.unitId, units.id))
+    .innerJoin(courseLevels, eq(units.levelId, courseLevels.id))
+    .where(and(eq(courseLevels.courseId, courseId), eq(lessons.isActive, true)));
+  const seen = new Set<number | null>();
+  const ids: number[] = [];
+  for (const r of rows) {
+    if (r.scenarioId != null && !seen.has(r.scenarioId)) {
+      seen.add(r.scenarioId);
+      ids.push(r.scenarioId);
+    }
+  }
+  return ids;
+}
+
+// Validates every lesson-scenario of a template for a single target language.
+// Returns an array of failure messages, or [] if the (template, lang) is OK.
+async function checkTemplateLang(course: typeof courses.$inferSelect, lang: string, scenarioIds: number[]): Promise<{ ok: boolean; message: string }> {
+  if (scenarioIds.length === 0) {
+    return { ok: true, message: 'no scenario-linked lessons' };
+  }
+
+  const failures: string[] = [];
+  let vocabChecked = 0;
+
+  if (scenarioIds.length > 0) {
+    const vocabRows = await db
+      .select()
+      .from(vocabulary)
+      .where(inArray(vocabulary.scenarioId, scenarioIds))
+      .orderBy(vocabulary.id);
+    const vocabByScenario = new Map<number, typeof vocabRows>();
+    for (const v of vocabRows) {
+      const list = vocabByScenario.get(v.scenarioId) ?? [];
+      list.push(v);
+      vocabByScenario.set(v.scenarioId, list);
+    }
+
+    for (const sid of scenarioIds) {
+      const rowVocab = vocabByScenario.get(sid) ?? [];
+
+      const locs = await loadTargetLocalizations(sid, lang);
+      const localizedVocab = locs.vocabLoc.size > 0 ? applyTargetLanguageVocab(rowVocab, locs.vocabLoc) : rowVocab;
+      const japaneseVocab = localizedVocab.filter((v) => JAPANESE_SCRIPT.test(v.targetText));
+
+      let coverageIssue = '';
+      // The base scenario is English, so only non-English targets must have a
+      // localization row with a real context (not just a title-only row).
+      if (lang !== 'en') {
+        if (!locs.scenarioLoc) {
+          coverageIssue = 'scenario localization MISSING';
+        } else if (!locs.scenarioLoc.context) {
+          coverageIssue = 'scenario context is NULL (title-only row)';
+        }
+      }
+
+      const parts: string[] = [];
+      if (japaneseVocab.length > 0) parts.push(`${japaneseVocab.length}/${localizedVocab.length} vocab items still Japanese`);
+      if (coverageIssue) parts.push(coverageIssue);
+
+      if (parts.length > 0) {
+        failures.push(`scenario ${sid}: ${parts.join('; ')}`);
+      } else {
+        vocabChecked += localizedVocab.length;
+      }
+    }
+  }
+
+  if (failures.length > 0) {
+    return { ok: false, message: failures.join(' | ') };
+  }
+  return { ok: true, message: `${vocabChecked} vocab items localized across ${scenarioIds.length} scenarios` };
+}
+
 async function main(): Promise<void> {
   console.log('=== Course Localization Check ===\n');
 
@@ -64,78 +146,21 @@ async function main(): Promise<void> {
   let checked = 0;
 
   for (const course of courseRows) {
-    if (course.targetLanguage === 'ja') continue; // base vocabulary is Japanese — nothing to localize
+    const scenarioIds = await getCourseScenarioIds(course.id);
 
-    const [firstLesson] = await db
-      .select({ id: lessons.id, scenarioId: lessons.scenarioId })
-      .from(lessons)
-      .innerJoin(units, eq(lessons.unitId, units.id))
-      .innerJoin(courseLevels, eq(units.levelId, courseLevels.id))
-      .where(and(eq(courseLevels.courseId, course.id), eq(lessons.isActive, true)))
-      .orderBy(courseLevels.sequenceOrder, lessons.sequenceOrder)
-      .limit(1);
-
-    if (!firstLesson?.scenarioId) {
-      console.log(`  [skip] ${course.slug}: no scenario-linked lesson`);
-      continue;
-    }
-
-    checked++;
-
-    const [scenario] = await db
-      .select()
-      .from(scenarios)
-      .where(eq(scenarios.id, firstLesson.scenarioId));
-    const vocabRows = await db
-      .select()
-      .from(vocabulary)
-      .where(eq(vocabulary.scenarioId, firstLesson.scenarioId))
-      .orderBy(vocabulary.id);
-
-    let localizedScenario = scenario;
-    let localizedVocab = vocabRows;
-    const targetLang = course.targetLanguage;
-    let scenarioLoc = null;
-    if (scenario && targetLang) {
-      const locs = await loadTargetLocalizations(scenario.id, targetLang);
-      scenarioLoc = locs.scenarioLoc;
-      if (scenarioLoc) localizedScenario = applyScenarioLocalization(scenario, scenarioLoc);
-      if (locs.vocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(vocabRows, locs.vocabLoc);
-    }
-
-    const japaneseVocab = localizedVocab.filter((v) => JAPANESE_SCRIPT.test(v.targetText));
-    const japaneseContext = localizedScenario && JAPANESE_SCRIPT.test(localizedScenario.context ?? '');
-
-    // Scenario-coverage guard: the base scenario is English, so a non-English
-    // target must have a localization row with a real context — not just a
-    // title-only row that silently falls back to English narration.
-    let coverageIssue = '';
-    if (targetLang !== 'en') {
-      if (!scenarioLoc) {
-        coverageIssue = 'scenario localization MISSING';
-      } else if (!scenarioLoc.context) {
-        coverageIssue = 'scenario context is NULL (title-only row)';
+    for (const lang of TARGET_CODES) {
+      checked++;
+      const result = await checkTemplateLang(course, lang, scenarioIds);
+      if (result.ok) {
+        console.log(`  [ok]   ${course.slug} (${lang}): ${result.message}`);
+      } else {
+        console.log(`  [FAIL] ${course.slug} (${lang}): ${result.message}`);
+        failures++;
       }
-    }
-
-    if (japaneseVocab.length > 0 || japaneseContext || coverageIssue) {
-      const parts: string[] = [];
-      if (japaneseVocab.length > 0) parts.push(`${japaneseVocab.length}/${localizedVocab.length} vocab items still Japanese`);
-      if (japaneseContext) parts.push('scenario context still Japanese');
-      if (coverageIssue) parts.push(coverageIssue);
-      console.log(
-        `  [FAIL] ${course.slug} (${targetLang}): ${parts.join('; ')}`,
-      );
-      if (japaneseVocab.length > 0) {
-        console.log(`         Japanese words: ${japaneseVocab.map((v) => v.targetText).join(', ')}`);
-      }
-      failures++;
-    } else {
-      console.log(`  [ok]   ${course.slug} (${targetLang}): ${localizedVocab.length} vocab items localized`);
     }
   }
 
-  console.log(`\n=== Checked ${checked} courses, ${failures} failing. ===`);
+  console.log(`\n=== Checked ${checked} course/language combos, ${failures} failing. ===`);
   if (failures > 0) process.exit(1);
 }
 

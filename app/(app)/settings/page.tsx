@@ -135,20 +135,27 @@ export default function SettingsPage() {
                 <div className="space-y-6">
                   <div>
                     <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Language</h4>
-                    <LanguagePicker
-                      targetLanguage={targetLanguage}
-                      nativeLanguage={nativeLanguage}
-                      onTargetChange={(code) => {
-                        setTargetLanguage(code);
-                        setLanguageDirty(true);
-                        setSavedLanguage(false);
-                      }}
-                      onNativeChange={(code) => {
-                        setNativeLanguage(code);
-                        setLanguageDirty(true);
-                        setSavedLanguage(false);
-                      }}
-                    />
+                    <div className="rounded-2xl border border-dojo-border bg-dojo-surface/60 p-5">
+                      <LanguagePicker
+                        targetLanguage={targetLanguage}
+                        nativeLanguage={nativeLanguage}
+                        onTargetChange={(code) => {
+                          setTargetLanguage(code);
+                          setLanguageDirty(true);
+                          setSavedLanguage(false);
+                        }}
+                        onNativeChange={(code) => {
+                          setNativeLanguage(code);
+                          setLanguageDirty(true);
+                          setSavedLanguage(false);
+                        }}
+                      />
+                      <p className="mt-4 text-xs text-dojo-text-muted leading-relaxed">
+                        These are your defaults. Courses are language templates, so you can
+                        pick a different target or native language on each course card whenever
+                        you start a path.
+                      </p>
+                    </div>
                     <div className="mt-4 flex items-center gap-3">
                       <Button
                         size="sm"

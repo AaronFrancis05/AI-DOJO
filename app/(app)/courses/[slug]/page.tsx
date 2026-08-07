@@ -7,13 +7,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
+import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import {
   ArrowLeft,
   Check,
@@ -60,8 +61,6 @@ interface CourseDetail {
   slug: string;
   title: string;
   description: string;
-  targetLanguage: string;
-  nativeLanguage: string;
   difficulty: string;
   icon: string | null;
   levels: LevelRow[];
@@ -73,6 +72,7 @@ interface LessonProgressRow {
   bestScore: number | null;
   attempts: number;
   completedAt: string | null;
+  targetLanguage?: string;
 }
 
 interface CourseProgressRow {
@@ -81,12 +81,8 @@ interface CourseProgressRow {
   xpEarned: number;
   status: string;
   currentLessonId: number | null;
-}
-
-interface UserPreferences {
+  targetLanguage?: string;
   nativeLanguage?: string;
-  preferredTargetLanguage?: string;
-  preferredMode?: string;
 }
 
 type LessonStatus = 'completed' | 'in-progress' | 'available' | 'locked';
@@ -108,11 +104,13 @@ export default function CourseDetailPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetLanguage = searchParams.get('target') || 'ja';
+  const nativeLanguage = searchParams.get('native') ?? 'en';
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [lessonProgress, setLessonProgress] = useState<LessonProgressRow[]>([]);
   const [courseProgress, setCourseProgress] = useState<CourseProgressRow | null>(null);
-  const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingLesson, setStartingLesson] = useState<number | null>(null);
 
@@ -122,10 +120,9 @@ export default function CourseDetailPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [courseRes, progressRes, prefsRes] = await Promise.all([
+        const [courseRes, progressRes] = await Promise.all([
           fetch(`/api/courses/${slug}`),
           fetch('/api/progress', { credentials: 'include' }),
-          fetch('/api/user/preferences', { credentials: 'include' }).catch(() => null),
         ]);
 
         const courseData = await courseRes.json();
@@ -135,23 +132,20 @@ export default function CourseDetailPage() {
         } catch {
           /* unauthenticated — no progress data */
         }
-        let prefsData: { preferences?: UserPreferences } | null = null;
-        try {
-          if (prefsRes?.ok) prefsData = await prefsRes.json();
-        } catch {
-          /* unauthenticated — no preferences */
-        }
 
         if (!cancelled) {
           if (courseData.success && courseData.course) {
             setCourse(courseData.course);
           }
-          setUserPrefs(prefsData?.preferences ?? null);
           if (Array.isArray(progressData.lessonProgress)) {
-            setLessonProgress(progressData.lessonProgress);
+            setLessonProgress(
+              progressData.lessonProgress.filter((lp) => !lp.targetLanguage || lp.targetLanguage === targetLanguage),
+            );
           }
           if (Array.isArray(progressData.progress)) {
-            const row = progressData.progress.find((p) => p.courseId === courseData.course?.id);
+            const row = progressData.progress.find(
+              (p) => p.courseId === courseData.course?.id && p.targetLanguage === targetLanguage,
+            );
             if (row) setCourseProgress(row);
           }
         }
@@ -165,7 +159,7 @@ export default function CourseDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, targetLanguage]);
 
   const { flatLessons, totalLessons, completedCount } = useMemo(() => {
     if (!course) return { flatLessons: [] as FlatLesson[], totalLessons: 0, completedCount: 0 };
@@ -190,7 +184,7 @@ export default function CourseDetailPage() {
 
     let lockAfter = false;
     return {
-      flatLessons: flat.map((f, i) => {
+      flatLessons: flat.map((f) => {
         let status: LessonStatus;
         if (completedIds.has(f.lesson.id)) {
           status = 'completed';
@@ -226,7 +220,7 @@ export default function CourseDetailPage() {
           method: 'POST',
           credentials: 'include',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ phaseKey: 'learn' }),
+          body: JSON.stringify({ phaseKey: 'learn', targetLanguage, nativeLanguage }),
         });
       }
       const res = await fetch('/api/sessions', {
@@ -236,8 +230,8 @@ export default function CourseDetailPage() {
         body: JSON.stringify({
           scenarioId: lesson.scenarioId,
           lessonId: lesson.id,
-          targetLanguage: course?.targetLanguage,
-          nativeLanguage: userPrefs?.nativeLanguage || course?.nativeLanguage,
+          targetLanguage,
+          nativeLanguage,
         }),
       });
       const data = await res.json();
@@ -297,7 +291,10 @@ export default function CourseDetailPage() {
                 {DIFFICULTY_LABEL[course.difficulty] ?? course.difficulty}
               </Badge>
               <Badge variant="outline" className="text-[10px]">
-                {course.targetLanguage.toUpperCase()}
+                {getTargetLangConfig(targetLanguage).name}
+              </Badge>
+              <Badge variant="outline" className="text-[10px]">
+                → {getNativeLangName(nativeLanguage)}
               </Badge>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-dojo-text-primary tracking-tight leading-none mb-3">
@@ -387,7 +384,7 @@ export default function CourseDetailPage() {
                     <div className="space-y-2">
                       {flatLessons
                         .filter((f) => f.levelIdx === levelIdx && f.unitIdx === unitIdx)
-                        .map((f, i) => (
+                        .map((f) => (
                           <div
                             key={f.lesson.id}
                             className="flex items-center gap-3 rounded-xl border border-dojo-border bg-dojo-surface/60 px-4 py-3"
