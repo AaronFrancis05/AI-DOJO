@@ -109,10 +109,14 @@ async function checkTemplateLang(course: typeof courses.$inferSelect, lang: stri
       const japaneseVocab = localizedVocab.filter((v) => JAPANESE_SCRIPT.test(v.targetText));
 
       let coverageIssue = '';
-      if (!locs.scenarioLoc) {
-        coverageIssue = 'scenario localization MISSING';
-      } else if (!locs.scenarioLoc.context) {
-        coverageIssue = 'scenario context is NULL (title-only row)';
+      // The base scenario is English, so only non-English targets must have a
+      // localization row with a real context (not just a title-only row).
+      if (lang !== 'en') {
+        if (!locs.scenarioLoc) {
+          coverageIssue = 'scenario localization MISSING';
+        } else if (!locs.scenarioLoc.context) {
+          coverageIssue = 'scenario context is NULL (title-only row)';
+        }
       }
 
       const parts: string[] = [];
