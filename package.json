@@ -8,9 +8,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --import tsx --test lib/auth/*.test.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx src/seed.ts"
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:seed": "tsx src/seed.ts",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
+    "docker:prod": "docker compose up --build -d",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.1",
@@ -32,6 +36,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fbx2gltf": "^0.9.7-p1",
+    "jose": "^6.2.8",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.24.0",
     "meshoptimizer": "^1.2.0",

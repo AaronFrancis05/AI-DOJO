@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { authClient } from '@/lib/auth/client';
+import { getAuthErrorMessage } from '@/lib/auth/errors';
 import { MailIcon, LoaderIcon, CheckCircleIcon } from './Icons';
 
 export default function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
@@ -25,9 +26,9 @@ export default function ForgotPasswordModal({ onClose }: { onClose: () => void }
       // Always show success, even on unknown email, to avoid leaking
       // which addresses are registered.
       if (!resetError || resetError.status === 404) setSent(true);
-      else setError('Something went wrong. Please try again.');
-    } catch {
-      setError('Network error. Please try again.');
+      else setError(getAuthErrorMessage(resetError, 'Something went wrong. Please try again.', 'reset'));
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'reset'));
     } finally {
       setLoading(false);
     }

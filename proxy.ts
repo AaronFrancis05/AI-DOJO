@@ -1,5 +1,6 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { appUrl, getAppOrigin } from '@/lib/auth/app-origin';
 import { auth } from '@/lib/auth/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const protectedMiddleware = auth.middleware({
   loginUrl: '/auth',
@@ -8,6 +9,14 @@ const protectedMiddleware = auth.middleware({
 const PUBLIC_REFRESH_PATHS = new Set(['/']);
 
 const authApiHandler = auth.handler();
+
+/** Rebuild the request URL on the public origin so Neon Auth middleware redirects stay routable. */
+function withPublicOrigin(request: NextRequest): NextRequest {
+  const publicOrigin = getAppOrigin();
+  const current = new URL(request.url);
+  if (current.origin === publicOrigin) return request;
+  return new NextRequest(new URL(current.pathname + current.search, publicOrigin), request);
+}
 
 async function checkSessionAndRedirect(request: NextRequest) {
   const cookieHeader = request.headers.get('cookie') || '';
@@ -29,7 +38,7 @@ async function checkSessionAndRedirect(request: NextRequest) {
     } catch { /* response body not JSON — treat as no session */ }
 
     if (data?.user) {
-      const redirectResponse = NextResponse.redirect(new URL('/home', request.url));
+      const redirectResponse = NextResponse.redirect(appUrl('/home'));
       for (const cookie of cookies) {
         redirectResponse.headers.append('Set-Cookie', cookie);
       }
@@ -48,7 +57,15 @@ async function checkSessionAndRedirect(request: NextRequest) {
 }
 
 export default async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const req = withPublicOrigin(request);
+  const { pathname, searchParams } = req.nextUrl;
+
+  // OAuth return sometimes lands on / with neon_auth_session_verifier — hand off to the exchange route.
+  if (searchParams.has('neon_auth_session_verifier')) {
+    return NextResponse.redirect(
+      appUrl(`/api/auth/oauth/callback?${searchParams.toString()}`),
+    );
+  }
 
   // Allow unauthenticated access to onboarding
   if (pathname.startsWith('/onboarding')) {
@@ -57,11 +74,11 @@ export default async function middleware(request: NextRequest) {
 
   // Public routes — redirect authenticated users to /home
   if (PUBLIC_REFRESH_PATHS.has(pathname)) {
-    return checkSessionAndRedirect(request);
+    return checkSessionAndRedirect(req);
   }
 
   // Everything else requires auth
-  return protectedMiddleware(request);
+  return protectedMiddleware(req);
 }
 
 export const config = {
