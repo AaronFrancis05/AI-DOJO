@@ -83,6 +83,12 @@ interface CourseProgressRow {
   currentLessonId: number | null;
 }
 
+interface UserPreferences {
+  nativeLanguage?: string;
+  preferredTargetLanguage?: string;
+  preferredMode?: string;
+}
+
 type LessonStatus = 'completed' | 'in-progress' | 'available' | 'locked';
 
 interface FlatLesson {
@@ -106,6 +112,7 @@ export default function CourseDetailPage() {
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [lessonProgress, setLessonProgress] = useState<LessonProgressRow[]>([]);
   const [courseProgress, setCourseProgress] = useState<CourseProgressRow | null>(null);
+  const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingLesson, setStartingLesson] = useState<number | null>(null);
 
@@ -115,9 +122,10 @@ export default function CourseDetailPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [courseRes, progressRes] = await Promise.all([
+        const [courseRes, progressRes, prefsRes] = await Promise.all([
           fetch(`/api/courses/${slug}`),
           fetch('/api/progress', { credentials: 'include' }),
+          fetch('/api/user/preferences', { credentials: 'include' }).catch(() => null),
         ]);
 
         const courseData = await courseRes.json();
@@ -127,11 +135,18 @@ export default function CourseDetailPage() {
         } catch {
           /* unauthenticated — no progress data */
         }
+        let prefsData: { preferences?: UserPreferences } | null = null;
+        try {
+          if (prefsRes?.ok) prefsData = await prefsRes.json();
+        } catch {
+          /* unauthenticated — no preferences */
+        }
 
         if (!cancelled) {
           if (courseData.success && courseData.course) {
             setCourse(courseData.course);
           }
+          setUserPrefs(prefsData?.preferences ?? null);
           if (Array.isArray(progressData.lessonProgress)) {
             setLessonProgress(progressData.lessonProgress);
           }
@@ -222,7 +237,7 @@ export default function CourseDetailPage() {
           scenarioId: lesson.scenarioId,
           lessonId: lesson.id,
           targetLanguage: course?.targetLanguage,
-          nativeLanguage: course?.nativeLanguage,
+          nativeLanguage: userPrefs?.nativeLanguage || course?.nativeLanguage,
         }),
       });
       const data = await res.json();

@@ -9,6 +9,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { inngest } from '../../../../lib/inngest/client';
+import type { AIProvider } from '../../../../lib/ai-providers';
 
 const SAFETY_CAP_TURN = 15;
 
@@ -51,6 +52,57 @@ async function dispatchAudioJob(jobId: number | null, conversationId: number, se
 }
 
 export const runtime = 'nodejs';
+
+type PhaseMessageKind = 'to-guided' | 'to-unguided' | 'to-evaluation' | 'celebration';
+
+const PHASE_MESSAGE_DESCRIPTION: Record<PhaseMessageKind, string> = {
+  'to-guided': 'the lesson is about to move from the vocabulary-drill phase into the guided roleplay phase',
+  'to-unguided': 'the lesson is about to move from the guided roleplay phase into full-immersion unguided practice',
+  'to-evaluation': 'the lesson is about to end and move into the final evaluation',
+  'celebration': 'the learner just mastered the whole scenario',
+};
+
+/**
+ * Generates the short phase-transition / celebration message in the learner's
+ * actual target language. The old version appended hardcoded Japanese phrases
+ * to every session regardless of the course language — that leaked Japanese
+ * into French, German, etc. lessons. Returns '' on any failure so callers can
+ * skip the message rather than emit wrong-language text.
+ */
+async function generateLocalizedPhaseMessage(
+  provider: AIProvider,
+  targetLanguage: string,
+  nativeLanguage: string,
+  charName: string,
+  kind: PhaseMessageKind,
+): Promise<string> {
+  const targetLangName = getTargetLangConfig(targetLanguage).name;
+  const nativeLangName = getNativeLangName(nativeLanguage);
+  const isSameLanguage = targetLanguage === nativeLanguage;
+  const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+  const description = PHASE_MESSAGE_DESCRIPTION[kind];
+
+  const instruction = isSameLanguage
+    ? `You are ${charName}. ${description}. Write ONE short, natural sentence in ${targetLangName} (no delimiters, no romaji, no translations, no explanations).`
+    : `You are ${charName}. ${description}. Write a brief message with two parts:
+1. An explanation line in ${nativeLangName}.
+2. One short sentence in ${targetLangName} wrapped in ⟦ ⟧ delimiters${showPhonetic ? ' with romaji in parentheses inside the delimiters' : ''}.
+Everything outside ⟦ ⟧ must be pure ${nativeLangName}; everything inside ⟦ ⟧ must be pure ${targetLangName}. Keep the whole message to 1-2 sentences.`;
+
+  try {
+    let text = '';
+    for await (const chunk of provider.generateStream(instruction, [])) {
+      text += chunk;
+    }
+    return text.trim();
+  } catch (err) {
+    console.warn(
+      '[STREAM CHAT] phase message generation failed, skipping:',
+      err instanceof Error ? err.message : String(err),
+    );
+    return '';
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -126,17 +178,37 @@ export async function POST(req: Request) {
     const isSessionStart = userRawInput === '__session_start__';
     const effectiveInput = isSessionStart ? '' : userRawInput;
 
+    // The base `phonetic` column stores Japanese romaji. Once vocab is
+    // localized into a non-Japanese target language that romaji is wrong, so
+    // only surface phonetics for genuinely Japanese-target lessons.
+    const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+    const displayVocab = (v: (typeof vocabRows)[number]) => {
+      const phoneticPart = showPhonetic && v.phonetic ? ` (${v.phonetic})` : '';
+      return `"${v.targetText}"${phoneticPart}`;
+    };
+
     const vocabBlock = vocabRows.length > 0
       ? `Key vocabulary for this lesson:\n${
           isSameLanguage
             ? vocabRows.map((v, i) => `  ${i + 1}. "${v.translation}"${v.usageTip ? ` — ${v.usageTip}` : ''}`).join('\n')
-            : vocabRows.map((v, i) => {
-                const hasPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic;
-                const phoneticPart = hasPhonetic && v.phonetic ? ` (${v.phonetic})` : '';
-                return `  ${i + 1}. "${v.targetText}"${phoneticPart} = "${v.translation}"`;
-              }).join('\n')
+            : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${v.translation}"`).join('\n')
         }`
       : '';
+
+    // Delimiter-format examples for the dual-language prompts. Built from the
+    // actual (already-localized) lesson vocabulary so they demonstrate the
+    // format in the real target language instead of hardcoded Japanese.
+    const icebreakerExample = vocabRows[0]
+      ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${vocabRows[0].translation}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
+      : `Example: In ${targetLangName}, we say ⟦${targetLangName} word (romaji)⟧ — it means 'the meaning'. Can you say ⟦${targetLangName} word (romaji)⟧?`;
+    const guidedExample = vocabRows[0]
+      ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${vocabRows[0].translation}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
+      : `Example: Now you try: ⟦${targetLangName} word (romaji)⟧`;
+    const unguidedExample = vocabRows.length >= 2
+      ? `Example: ⟦${displayVocab(vocabRows[0])}⟧ ⟦${displayVocab(vocabRows[1])}⟧？`
+      : vocabRows[0]
+        ? `Example: ⟦${displayVocab(vocabRows[0])}⟧`
+        : `Example: ⟦${targetLangName} text (romaji)⟧ ⟦${targetLangName} text (romaji)⟧？`;
 
     const goalsBlock = goals.map(g => {
       const done = completedSequenceOrders.includes(g.sequenceOrder);
@@ -189,7 +261,7 @@ ${icebreakerGreetingRule}
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span — the word/phrase itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
 
-Example: Let's learn a useful word. In Japanese, we say ⟦ありがとう (arigatou)⟧ — it means 'thank you'. Can you say ⟦ありがとう (arigatou)⟧?`;
+${icebreakerExample}`;
 
     const guidedRules = `
 ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}) in a ${targetLangName} language learning roleplay. You are also a language coach.
@@ -220,7 +292,7 @@ RULES FOR GUIDED PHASE:
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span — the roleplay line itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
 
-Example: The particle 'は' marks the topic, while 'が' marks the subject. Now you try: ⟦これはなんですか (kore wa nan desu ka)⟧？`;
+${guidedExample}`;
 
     const unguidedRules = `
 ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}) in a ${targetLangName} language learning roleplay. This is FULL IMMERSION mode.
@@ -250,7 +322,7 @@ RULES FOR UNGUIDED PHASE:
 ===== OUTPUT FORMAT (MANDATORY) =====
 Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is 100% ${targetLangName}, virtually all text should be inside ⟦ ⟧. Include romaji inside the delimiters: ⟦${targetLangName} text (romaji)⟧.
 
-Example: ⟦こんにちは (konnichiwa)⟧ ⟦お元気ですか (ogenki desu ka)⟧？`;
+${unguidedExample}`;
 
     // ── Same-language prompt variants (no dual-language, no delimiters) ──
     const sameLangIcebreakerGreetingRule = isSessionStart
@@ -796,25 +868,43 @@ RULES:
 
           // ── Phase transition announcement ──
           if (writeResult.newPhase !== currentPhase && !writeResult.shouldComplete) {
-            let transitionMsg = '';
-            const charName = currentScenario.aiCharacterName;
+            let transitionKind: PhaseMessageKind | null = null;
             if (currentPhase === 'icebreaker' && writeResult.newPhase === 'guided') {
-              transitionMsg = `\n\n${charName} says: Great job with the vocabulary! Now let's practice the full conversation. ⟦これから会話の練習を始めましょう (kore kara kaiwa no renshuu o hajimemashou)⟧`;
+              transitionKind = 'to-guided';
             } else if (currentPhase === 'guided' && writeResult.newPhase === 'unguided') {
-              transitionMsg = `\n\n${charName} says: Excellent progress! You're ready for full immersion. ⟦これからは日本語だけを使います (kore kara wa nihongo dake o tsukaimasu)⟧`;
+              transitionKind = 'to-unguided';
             } else if (currentPhase === 'unguided' && writeResult.newPhase === 'evaluation') {
-              transitionMsg = `\n\n${charName} says: The session is complete! Let me review how you did. ⟦セッションが終わりました。よくできました (sesshon ga owarimashita. yoku dekimashita)⟧`;
+              transitionKind = 'to-evaluation';
             }
-            if (transitionMsg) {
-              fullAiText += transitionMsg;
-              send(JSON.stringify({ type: 'token', text: transitionMsg }));
+            if (transitionKind) {
+              const transitionMsg = await generateLocalizedPhaseMessage(
+                provider,
+                targetLanguage,
+                nativeLanguage,
+                currentScenario.aiCharacterName,
+                transitionKind,
+              );
+              if (transitionMsg) {
+                const appended = `\n\n${transitionMsg}`;
+                fullAiText += appended;
+                send(JSON.stringify({ type: 'token', text: appended }));
+              }
             }
           }
 
           if (writeResult.isCelebration) {
-            const celebrationMsg = `\n\n🎉 Congratulations! You've mastered this scenario! 🎉 ⟦おめでとうございます！このシナリオをマスターしました (omedetou gozaimasu! kono shinario o masutaa shimashita)⟧`;
-            fullAiText += celebrationMsg;
-            send(JSON.stringify({ type: 'token', text: celebrationMsg }));
+            const celebrationMsg = await generateLocalizedPhaseMessage(
+              provider,
+              targetLanguage,
+              nativeLanguage,
+              currentScenario.aiCharacterName,
+              'celebration',
+            );
+            if (celebrationMsg) {
+              const appended = `\n\n🎉 ${celebrationMsg}`;
+              fullAiText += appended;
+              send(JSON.stringify({ type: 'token', text: appended }));
+            }
           }
 
           const responseCorrections = currentPhase === 'unguided' ? [] : (correctionItems ?? []);

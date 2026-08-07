@@ -189,7 +189,21 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       // Target-language word/phrase replaces the Japanese base targetText so
       // a French (or English, etc.) course drills the correct words.
       vocabRows = applyTargetLanguageVocab(vocabRows, targetVocabLoc);
+    } else if (targetLanguage && targetLanguage !== 'ja') {
+      // Loud, not silent: a non-Japanese target with no vocab localizations
+      // would otherwise drill the base Japanese words with no signal.
+      console.warn(
+        `[LOCALIZATION] Scenario ${scenarioId} has ${vocabRows.length} vocabulary item(s) but NO ${targetLanguage} ` +
+          `localizations — the lesson will drill the base Japanese text. Run: npm run db:localize -- --lang=${targetLanguage}`,
+      );
     }
+  }
+
+  if (currentScenario && !scenarioLocalized && nativeLanguage !== 'en') {
+    console.warn(
+      `[LOCALIZATION] Scenario ${scenarioId} has no ${nativeLanguage} scenario localization and native language is ` +
+        `not English — instructional text will fall back to English. Run: npm run db:localize -- --native-lang=${nativeLanguage}`,
+    );
   }
 
   return {

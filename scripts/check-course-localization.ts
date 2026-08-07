@@ -95,20 +95,36 @@ async function main(): Promise<void> {
     let localizedScenario = scenario;
     let localizedVocab = vocabRows;
     const targetLang = course.targetLanguage;
+    let scenarioLoc = null;
     if (scenario && targetLang) {
-      const { scenarioLoc, vocabLoc } = await loadTargetLocalizations(scenario.id, targetLang);
+      const locs = await loadTargetLocalizations(scenario.id, targetLang);
+      scenarioLoc = locs.scenarioLoc;
       if (scenarioLoc) localizedScenario = applyScenarioLocalization(scenario, scenarioLoc);
-      if (vocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(vocabRows, vocabLoc);
+      if (locs.vocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(vocabRows, locs.vocabLoc);
     }
 
     const japaneseVocab = localizedVocab.filter((v) => JAPANESE_SCRIPT.test(v.targetText));
     const japaneseContext = localizedScenario && JAPANESE_SCRIPT.test(localizedScenario.context ?? '');
 
-    if (japaneseVocab.length > 0 || japaneseContext) {
+    // Scenario-coverage guard: the base scenario is English, so a non-English
+    // target must have a localization row with a real context — not just a
+    // title-only row that silently falls back to English narration.
+    let coverageIssue = '';
+    if (targetLang !== 'en') {
+      if (!scenarioLoc) {
+        coverageIssue = 'scenario localization MISSING';
+      } else if (!scenarioLoc.context) {
+        coverageIssue = 'scenario context is NULL (title-only row)';
+      }
+    }
+
+    if (japaneseVocab.length > 0 || japaneseContext || coverageIssue) {
+      const parts: string[] = [];
+      if (japaneseVocab.length > 0) parts.push(`${japaneseVocab.length}/${localizedVocab.length} vocab items still Japanese`);
+      if (japaneseContext) parts.push('scenario context still Japanese');
+      if (coverageIssue) parts.push(coverageIssue);
       console.log(
-        `  [FAIL] ${course.slug} (${targetLang}): ` +
-          `${japaneseVocab.length}/${localizedVocab.length} vocab items still Japanese` +
-          `${japaneseContext ? ' AND scenario context still Japanese' : ''}`,
+        `  [FAIL] ${course.slug} (${targetLang}): ${parts.join('; ')}`,
       );
       if (japaneseVocab.length > 0) {
         console.log(`         Japanese words: ${japaneseVocab.map((v) => v.targetText).join(', ')}`);
