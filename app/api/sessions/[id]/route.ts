@@ -7,7 +7,6 @@ import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress
 import {
   getScenarioLocalization,
   getScenarioVocabLocalizations,
-  getTargetScenarioLocalization,
   getTargetVocabLocalizations,
   applyScenarioLocalization,
   applyTargetLanguageVocab,
@@ -178,12 +177,12 @@ export async function GET(
   const nativeLang = session.nativeLanguage ?? 'en';
   const targetLang = session.targetLanguage ?? 'ja';
   if (localizedScenario) {
-    const [nativeLoc, targetLoc] = await Promise.all([
-      getScenarioLocalization(localizedScenario.id, nativeLang),
-      getTargetScenarioLocalization(localizedScenario.id, targetLang),
-    ]);
+    // Native-language scenario text is the final state for the shared
+    // instructional fields (title/context/goals/character names). The base
+    // rows are English; applyScenarioLocalization never overwrites an
+    // existing value, so a missing native row falls back to English cleanly.
+    const nativeLoc = await getScenarioLocalization(localizedScenario.id, nativeLang);
     if (nativeLoc) localizedScenario = applyScenarioLocalization(localizedScenario, nativeLoc);
-    if (targetLoc) localizedScenario = applyScenarioLocalization(localizedScenario, targetLoc);
   }
   if (localizedVocab.length > 0) {
     const [nativeVocabLoc, targetVocabLoc] = await Promise.all([
