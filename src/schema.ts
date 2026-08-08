@@ -608,3 +608,68 @@ export const vocabularyEncountersRelations = relations(vocabularyEncounters, ({ 
   conversation: one(conversations, { fields: [vocabularyEncounters.conversationId], references: [conversations.id] }),
   vocabulary:   one(vocabulary,    { fields: [vocabularyEncounters.vocabularyId],   references: [vocabulary.id] }),
 }));
+
+// ── Messaging (human-to-human chat rooms with UgaJapa translation) ──────
+
+export const chatRooms = pgTable('chat_rooms', {
+  id:        serial('id').primaryKey(),
+  name:      varchar('name', { length: 150 }),                       // optional display name (group chats)
+  isGroup:   boolean('is_group').default(false).notNull(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const chatRoomMembers = pgTable('chat_room_members', {
+  id:                 serial('id').primaryKey(),
+  roomId:              integer('room_id').references(() => chatRooms.id, { onDelete: 'cascade' }).notNull(),
+  userId:              text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  preferredLanguage:   varchar('preferred_language', { length: 10 }), // overrides users.nativeLanguage as this member's translation target in this room
+  lastReadAt:          timestamp('last_read_at'),
+  joinedAt:            timestamp('joined_at').defaultNow().notNull(),
+}, (t) => ({
+  uqMember: uniqueIndex('uq_chat_room_member').on(t.roomId, t.userId),
+}));
+
+export const chatMessages = pgTable('chat_messages', {
+  id:             serial('id').primaryKey(),
+  roomId:         integer('room_id').references(() => chatRooms.id, { onDelete: 'cascade' }).notNull(),
+  senderId:       text('sender_id').references(() => users.id, { onDelete: 'set null' }),
+  body:           text('body').notNull(),                             // original text, as typed by the sender
+  sourceLanguage: varchar('source_language', { length: 10 }),          // detected/declared language of `body`
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+});
+
+// Cached per-target-language translations of a message, so a room with
+// several members reading in different languages only pays for each
+// (message, targetLanguage) translation once.
+export const chatMessageTranslations = pgTable('chat_message_translations', {
+  id:              serial('id').primaryKey(),
+  messageId:       integer('message_id').references(() => chatMessages.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).notNull(),
+  translatedText:  text('translated_text').notNull(),
+  qualityScore:    numeric('quality_score', { precision: 4, scale: 2 }),  // UgaJapa quality-scoring metadata, when available
+  provider:        varchar('provider', { length: 30 }).default('ugajapa').notNull(),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqTranslation: uniqueIndex('uq_chat_message_translation').on(t.messageId, t.targetLanguage),
+}));
+
+export const chatRoomsRelations = relations(chatRooms, ({ many }) => ({
+  members:   many(chatRoomMembers),
+  messages:  many(chatMessages),
+}));
+
+export const chatRoomMembersRelations = relations(chatRoomMembers, ({ one, many }) => ({
+  room: one(chatRooms, { fields: [chatRoomMembers.roomId], references: [chatRooms.id] }),
+  user: one(users,     { fields: [chatRoomMembers.userId], references: [users.id] }),
+}));
+
+export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => ({
+  room:         one(chatRooms,       { fields: [chatMessages.roomId],     references: [chatRooms.id] }),
+  sender:       one(users,           { fields: [chatMessages.senderId],   references: [users.id] }),
+  translations: many(chatMessageTranslations),
+}));
+
+export const chatMessageTranslationsRelations = relations(chatMessageTranslations, ({ one }) => ({
+  message: one(chatMessages, { fields: [chatMessageTranslations.messageId], references: [chatMessages.id] }),
+}));
