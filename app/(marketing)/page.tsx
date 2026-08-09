@@ -188,7 +188,7 @@ export default async function LandingPage() {
             <div className="animate-arena-rise arena-delay-2 order-2 w-full lg:order-2">
               <div className="relative overflow-hidden rounded-2xl border border-dojo-border bg-dojo-surface-raised shadow-[0_24px_80px_-24px_rgba(45,59,197,0.35)] sm:rounded-3xl">
                 {/* Scoreboard header bar */}
-                <div className="relative z-20 flex items-center justify-between gap-3 border-b border-dojo-border bg-dojo-canvas/70 px-3 py-2.5 backdrop-blur-xl sm:px-5 sm:py-3">
+                <div className="relative z-20 flex items-center justify-between gap-3 border-b border-white/10 bg-black/55 px-3 py-2.5 backdrop-blur-xl sm:px-5 sm:py-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="relative flex h-2 w-2 shrink-0">
                       <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-green-400 opacity-75" />

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
+import { useUser } from '@/lib/auth/user-context';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import {
   ArrowLeft,
@@ -105,8 +106,9 @@ export default function CourseDetailPage() {
   const slug = params.slug;
   const router = useRouter();
   const searchParams = useSearchParams();
-  const targetLanguage = searchParams.get('target') || 'ja';
-  const nativeLanguage = searchParams.get('native') ?? 'en';
+  const user = useUser();
+  const targetLanguage = searchParams.get('target') || user?.preferredTargetLanguage || 'ja';
+  const nativeLanguage = searchParams.get('native') || user?.nativeLanguage || 'en';
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [lessonProgress, setLessonProgress] = useState<LessonProgressRow[]>([]);
