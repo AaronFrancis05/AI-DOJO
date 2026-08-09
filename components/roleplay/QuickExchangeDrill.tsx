@@ -29,7 +29,6 @@ interface QuickExchangeDrillProps {
 export function QuickExchangeDrill({
   drills,
   targetLanguage,
-  nativeLanguage,
   characterName,
   accentColor,
   onComplete,
@@ -58,12 +57,12 @@ export function QuickExchangeDrill({
 
   const handlePlayPrompt = useCallback(async () => {
     setBusy(true);
-    await ttsSpeak(currentDrill.promptEn, getBCP47(nativeLanguage, 'tts'));
+    await ttsSpeak(currentDrill.promptEn, 'en-US');
     await speakWithVisemes(currentDrill.promptJa, bcp47).catch(() => ttsSpeak(currentDrill.promptJa, bcp47));
     setBusy(false);
     exchangeStartRef.current = Date.now();
     setPhase('listening');
-  }, [currentDrill, bcp47, nativeLanguage]);
+  }, [currentDrill, bcp47]);
 
   const hasAutoPlayed = useRef(false);
   useEffect(() => {
