@@ -108,7 +108,7 @@ export default function CourseDetailPage() {
   const searchParams = useSearchParams();
   const user = useUser();
   const targetLanguage = searchParams.get('target') || user?.preferredTargetLanguage || 'ja';
-  const nativeLanguage = searchParams.get('native') ?? user?.nativeLanguage ?? 'en';
+  const nativeLanguage = searchParams.get('native') || user?.nativeLanguage || 'en';
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [lessonProgress, setLessonProgress] = useState<LessonProgressRow[]>([]);
