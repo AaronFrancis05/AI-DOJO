@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/design-tokens';
 import { Avatar } from '@/components/ui/Avatar';
 import { langFlag, type ChatMessage } from '@/lib/chat-types';
-import { Play, Pause, Loader2 } from 'lucide-react';
+import { Play, Pause, Mic } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -146,7 +146,7 @@ export function MessageBubble({ message, showSender }: MessageBubbleProps) {
                 message.isMine ? 'text-white/80' : 'text-dojo-text-muted',
               )}
             >
-              <Loader2 className="h-3 w-3 animate-pulse" />
+              <Mic className="h-3 w-3" />
               {isTranslated ? 'Translated voice message' : 'Voice message'}
             </p>
           )}

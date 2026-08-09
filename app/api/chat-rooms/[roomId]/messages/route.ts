@@ -10,6 +10,14 @@ import { getAuthUser } from '../../../../../lib/auth/server';
 import { translateText, detectLanguageSafe, transcribeAudio } from '../../../../../lib/ugajapa';
 import { eq, and, gt, inArray } from 'drizzle-orm';
 
+const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
+const ALLOWED_AUDIO_TYPES = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/wav']);
+
+function normalizeAudioType(raw: string): string | null {
+  const base = (raw.split(';')[0] ?? '').trim().toLowerCase();
+  return ALLOWED_AUDIO_TYPES.has(base) ? base : null;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ roomId: string }> },
@@ -216,9 +224,16 @@ export async function POST(
     }
     const file = form.get('audio');
     if (file instanceof File) {
-      audioMimeType = file.type || null;
+      if (file.size > MAX_AUDIO_BYTES) {
+        return Response.json({ error: 'Voice message is too large' }, { status: 413 });
+      }
+      const safeType = normalizeAudioType(file.type || 'audio/webm');
+      if (!safeType) {
+        return Response.json({ error: 'Unsupported audio format' }, { status: 415 });
+      }
+      audioMimeType = safeType;
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const transcript = await transcribeAudio(bytes, file.type);
+      const transcript = await transcribeAudio(bytes, safeType);
 
       if (transcript.provider === 'ugajapa' && transcript.text) {
         text = transcript.text;
@@ -228,7 +243,7 @@ export async function POST(
       // Persist the clip as a data: URL (mirrors how TTS clips are stored —
       // the project has no object storage; base64 text keeps playback simple).
       const base64 = Buffer.from(bytes).toString('base64');
-      audioUrl = `data:${file.type || 'audio/webm'};base64,${base64}`;
+      audioUrl = `data:${safeType};base64,${base64}`;
 
       // Voice-only messages are still allowed when transcription fails, so the
       // sender can always record and the clip is never a blocker.
@@ -291,7 +306,6 @@ export async function POST(
       const targetLangs = Array.from(
         new Set(
           members
-            .filter((m) => m.nativeLanguage !== finalSourceLanguage)
             .map((m) => m.preferredLanguage ?? m.nativeLanguage ?? 'en')
             .filter(Boolean),
         ),

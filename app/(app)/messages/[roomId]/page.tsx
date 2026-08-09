@@ -159,16 +159,12 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
         createdAt: new Date().toISOString(),
       };
 
-      setMessages((prev) => {
-        const dedupe = (arr: ChatMessage[]) => {
-          const seen = new Set<number>(prev.map((m) => m.id));
-          return arr.filter((m) => !seen.has(m.id));
-        };
-        const next = [...prev, optimistic];
-        const deduped = dedupe(next);
-        lastSeenIdRef.current = deduped.length ? Math.max(deduped[deduped.length - 1].id, optimistic.id) : optimistic.id;
-        return deduped;
-      });
+      setMessages((prev) =>
+        prev.some((m) => m.id === optimistic.id)
+          ? prev
+          : [...prev, optimistic].sort((a, b) => a.id - b.id),
+      );
+      lastSeenIdRef.current = Math.max(lastSeenIdRef.current, optimistic.id);
       pinnedAtBottomRef.current = true;
       markRead();
     } catch {
@@ -219,6 +215,7 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
       const created = data.message as Partial<ChatMessage> | undefined;
       const realId = created?.id;
       if (realId) {
+        const serverAudioUrl = created.audioUrl ?? null;
         // Replace the optimistic bubble with the server row (which carries the
         // stored data: URL), then release the temporary object URL.
         const server: ChatMessage = {
@@ -230,7 +227,7 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
           sourceLanguage: created.sourceLanguage ?? null,
           translatedBody: created.body ?? optimistic.body,
           translationProvider: 'none',
-          audioUrl: created.audioUrl ?? optimistic.audioUrl,
+          audioUrl: serverAudioUrl ?? optimistic.audioUrl,
           audioMimeType: created.audioMimeType ?? optimistic.audioMimeType,
           audioDurationMs: created.audioDurationMs ?? optimistic.audioDurationMs,
           isMine: true,
@@ -238,12 +235,15 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
         };
         setMessages((prev) => prev.map((m) => (m.id === optimisticId ? server : m)));
         lastSeenIdRef.current = Math.max(lastSeenIdRef.current, realId);
+        // Only revoke once the bubble no longer points at the object URL. If the
+        // server row has no audio (or the request failed), the optimistic URL
+        // stays live until the page unmounts.
+        if (serverAudioUrl) URL.revokeObjectURL(optimisticUrl);
       }
     } catch {
       // leave the optimistic bubble; the next poll reconciles/dedupes ids
     } finally {
       setVoiceSending(false);
-      URL.revokeObjectURL(optimisticUrl);
     }
   }
 

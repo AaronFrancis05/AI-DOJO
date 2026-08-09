@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { cn } from '@/lib/design-tokens';
-import { Send, Mic, Square, PlayCircle, Loader2, X } from 'lucide-react';
+import { Send, Mic, Square, PlayCircle, PauseCircle, Loader2, X } from 'lucide-react';
 
 /** Voice clip captured by the recorder, ready to be sent. */
 export interface VoiceClip {
@@ -56,7 +56,12 @@ export function MessageComposer({ disabled, onSend, onSendVoice, voiceSending = 
   const [previewing, setPreviewing] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
 
-  const hasCapability = typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined';
+  // read-only snapshot — server returns false, client detects MediaRecorder
+  const hasCapability = useSyncExternalStore(
+    () => () => {},
+    () => typeof MediaRecorder !== 'undefined',
+    () => false,
+  );
 
   const canSend = value.trim().length > 0 && !disabled && !recording;
 
@@ -225,8 +230,10 @@ export function MessageComposer({ disabled, onSend, onSendVoice, voiceSending = 
               aria-label={previewing ? 'Pause preview' : 'Play preview'}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-dojo-accent text-white transition-colors hover:bg-dojo-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent/50"
             >
-              {previewing || voiceSending ? (
+              {voiceSending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : previewing ? (
+                <PauseCircle className="h-5 w-5" />
               ) : (
                 <PlayCircle className="h-5 w-5" />
               )}
