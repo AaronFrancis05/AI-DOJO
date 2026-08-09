@@ -12,6 +12,7 @@ import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
 import { NATIVE_LANGUAGES } from '@/lib/language';
 import { Sparkles, MessageSquare, Mic, User, BookOpen, Clock, CheckCircle2, LoaderIcon } from 'lucide-react';
 import { authClient } from '@/lib/auth/client';
+import { getAuthErrorMessage } from '@/lib/auth/errors';
 
 type StepComponent = React.ReactNode;
 
@@ -122,7 +123,9 @@ export default function OnboardingStepPage() {
     try {
       const { error: authError } = await authClient.signUp.email({ email, password, name });
       if (authError) {
-        setError(authError.message || 'Something went wrong');
+        setError(
+          getAuthErrorMessage(authError, 'Something went wrong. Please try again.', 'sign-up'),
+        );
         return;
       }
       setAccountCreated(true);
@@ -143,8 +146,8 @@ export default function OnboardingStepPage() {
         body: JSON.stringify(onboardingPayload),
       });
       router.push('/home');
-    } catch {
-      setError('Network error. Please try again.');
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'sign-up'));
     } finally {
       setSaving(false);
     }

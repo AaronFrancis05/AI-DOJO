@@ -64,7 +64,7 @@ async function main() {
   } else {
     console.log(`Migrating ${toMigrate.length} users...\n`);
 
-    const baseOrigin = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:3000`;
+    const baseOrigin = process.env.APP_ORIGIN || `http://localhost:3000`;
     const failed: Array<{ email: string; error: string }> = [];
 
     for (let i = 0; i < toMigrate.length; i++) {

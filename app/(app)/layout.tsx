@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { getAuthUserReadOnly } from '@/lib/auth/server';
+import { syncUser } from '@/lib/auth/sync-user';
 import { UserProvider } from '@/lib/auth/user-context';
 import { db } from '@/src/db';
 import { users } from '@/src/schema';
@@ -17,6 +18,12 @@ export default async function AppLayout({
   let user: import('@/lib/auth/user-context').UserContextValue | null = null;
 
   if (u?.id) {
+    await syncUser({
+      id: u.id,
+      email: u.email ?? '',
+      name: u.name ?? 'Learner',
+    }).catch((err) => console.error('[sync-user] failed', err));
+
     const [dbUser] = await db
       .select({
         name: users.name,
