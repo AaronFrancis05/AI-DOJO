@@ -61,7 +61,7 @@ export function RoomDetailsPanel({ room, myId, className }: RoomDetailsPanelProp
           </div>
           <p className="text-xs leading-relaxed text-dojo-text-muted">
             {room?.translationConfigured ? (
-              <>Messages are auto-translated via the UgaJapa engine so every member reads the chat in their own language.</>
+              <>Messages are auto-translated via the UgaJapa engine so every member reads the chat in their own language. Voice messages are transcribed and translated too.</>
             ) : (
               <>Translation is not configured — messages will appear in their original language.</>
             )}

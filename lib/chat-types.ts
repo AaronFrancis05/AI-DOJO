@@ -19,6 +19,7 @@ export interface ChatRoomLite {
     body: string;
     senderId: string | null;
     createdAt: string;
+    audioUrl?: string | null;
   } | null;
   unreadCount: number;
   createdAt: string;
@@ -46,11 +47,14 @@ export interface ChatMessage {
   senderId: string | null;
   senderName: string;
   senderAvatarSrc: string | null;
-  body: string;                       // original text, as typed by the sender
+  body: string;                       // original text, as typed (or transcribed) by the sender
   sourceLanguage: string | null;
   translatedBody: string;             // shown to the reader by default
   translationProvider: 'ugajapa' | 'none';
   qualityScore?: number | null;
+  audioUrl?: string | null;           // data: URL of a recorded voice clip (voice messages)
+  audioMimeType?: string | null;
+  audioDurationMs?: number | null;
   isMine: boolean;
   createdAt: string;
 }

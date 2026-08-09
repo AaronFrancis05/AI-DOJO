@@ -19,6 +19,7 @@ const UGAJAPA_END_PATHS = {
   translate: '/translate',
   detect: '/detect',
   languages: '/languages',
+  transcribe: '/transcribe',
 } as const;
 
 export function isUgaJapaConfigured(): boolean {
@@ -172,6 +173,85 @@ export async function detectLanguageSafe(text: string): Promise<UgaJapaDetectRes
   } catch {
     return null;
   }
+}
+
+export interface UgaJapaTranscribeResult {
+  text: string;
+  detectedLanguage: string | null;
+  confidence: number | null;
+  provider: string;
+}
+
+/**
+ * Speech-to-text for voice messages. Sends the recorded clip (audio bytes)
+ * to UgaJapa's Voice Engine (/transcribe) and returns the transcript plus
+ * the detected source language. Fails open: on any error the caller gets an
+ * empty transcript so the voice clip is still stored and played back.
+ */
+export async function transcribeAudio(
+  audio: Uint8Array,
+  mimeType?: string | null,
+): Promise<UgaJapaTranscribeResult> {
+  const fallback: UgaJapaTranscribeResult = {
+    text: '',
+    detectedLanguage: null,
+    confidence: null,
+    provider: 'none',
+  };
+
+  if (!isUgaJapaConfigured() || audio.length === 0) return fallback;
+
+  try {
+    const form = new FormData();
+    const ext = mimeToExt(mimeType);
+    form.append(
+      'audio',
+      new Blob([audio as BlobPart], { type: mimeType ?? 'audio/webm' }),
+      `voice.${ext}`,
+    );
+
+    const apiKey = process.env.UGAJAPA_API_KEY;
+    const res = await fetch(`${UGAJAPA_API_BASE}${UGAJAPA_END_PATHS.transcribe}`, {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey ?? '' },
+      body: form,
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`UgaJapa transcribe HTTP ${res.status}: ${text.slice(0, 200)}`);
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+    const text =
+      (data.text as string | null) ?? (data.transcript as string | null) ?? '';
+    const detected =
+      (data.detected_language as string | null) ??
+      (data.detectedSourceLanguage as string | null) ??
+      (data.language as string | null) ??
+      null;
+    const confidence = data.confidence != null ? Number(data.confidence) : null;
+
+    return {
+      text: String(text).trim(),
+      detectedLanguage: detected ? String(detected) : null,
+      confidence: Number.isFinite(confidence) ? confidence : null,
+      provider: 'ugajapa',
+    };
+  } catch (err) {
+    console.warn('[ugajapa] transcribe failed, storing clip without transcript:', err instanceof Error ? err.message : String(err));
+    return fallback;
+  }
+}
+
+function mimeToExt(mimeType?: string | null): string {
+  if (!mimeType) return 'webm';
+  if (mimeType.includes('mp4') || mimeType.includes('m4a')) return 'm4a';
+  if (mimeType.includes('ogg')) return 'ogg';
+  if (mimeType.includes('mp3')) return 'mp3';
+  if (mimeType.includes('wav')) return 'wav';
+  return 'webm';
 }
 
 /** Pick the first defined value from a set of candidate keys (defensive). */

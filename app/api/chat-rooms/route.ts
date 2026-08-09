@@ -63,7 +63,7 @@ export async function GET() {
   const [latestResult, unreadResult] = await Promise.all([
     db.execute(
       sql`
-        SELECT DISTINCT ON (room_id) id, room_id, sender_id, body, created_at
+        SELECT DISTINCT ON (room_id) id, room_id, sender_id, body, audio_url, created_at
         FROM chat_messages
         WHERE room_id IN (${roomIdList})
         ORDER BY room_id, created_at DESC, id DESC
@@ -138,6 +138,7 @@ export async function GET() {
               body: String(latest.body ?? ''),
               senderId: latestSenderId,
               createdAt,
+              audioUrl: (latest.audio_url as string | null) ?? null,
             }
           : null,
         unreadCount: unread,

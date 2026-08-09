@@ -631,12 +631,15 @@ export const chatRoomMembers = pgTable('chat_room_members', {
 }));
 
 export const chatMessages = pgTable('chat_messages', {
-  id:             serial('id').primaryKey(),
-  roomId:         integer('room_id').references(() => chatRooms.id, { onDelete: 'cascade' }).notNull(),
-  senderId:       text('sender_id').references(() => users.id, { onDelete: 'set null' }),
-  body:           text('body').notNull(),                             // original text, as typed by the sender
-  sourceLanguage: varchar('source_language', { length: 10 }),          // detected/declared language of `body`
-  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  id:                serial('id').primaryKey(),
+  roomId:            integer('room_id').references(() => chatRooms.id, { onDelete: 'cascade' }).notNull(),
+  senderId:          text('sender_id').references(() => users.id, { onDelete: 'set null' }),
+  body:              text('body').notNull(),                          // original text, as typed (or transcribed) by the sender
+  sourceLanguage:    varchar('source_language', { length: 10 }),       // detected/declared language of `body`
+  audioUrl:          text('audio_url'),                                // data: URL of the recorded voice clip (voice messages)
+  audioMimeType:     varchar('audio_mime_type', { length: 40 }),       // e.g. audio/webm;codecs=opus
+  audioDurationMs:   integer('audio_duration_ms'),                     // recorded clip length, for the player UI
+  createdAt:         timestamp('created_at').defaultNow().notNull(),
 });
 
 // Cached per-target-language translations of a message, so a room with
@@ -659,7 +662,7 @@ export const chatRoomsRelations = relations(chatRooms, ({ many }) => ({
   messages:  many(chatMessages),
 }));
 
-export const chatRoomMembersRelations = relations(chatRoomMembers, ({ one, many }) => ({
+export const chatRoomMembersRelations = relations(chatRoomMembers, ({ one }) => ({
   room: one(chatRooms, { fields: [chatRoomMembers.roomId], references: [chatRooms.id] }),
   user: one(users,     { fields: [chatRoomMembers.userId], references: [users.id] }),
 }));

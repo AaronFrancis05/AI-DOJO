@@ -13,7 +13,7 @@ import {
   type ChatRoomLite,
   type SearchUser,
 } from '@/lib/chat-types';
-import { MessageSquare, Search, PenSquare, Users, Loader2 } from 'lucide-react';
+import { MessageSquare, Search, PenSquare, Users, Loader2, Mic } from 'lucide-react';
 
 interface RoomListPaneProps {
   className?: string;
@@ -207,7 +207,8 @@ function RoomRow({
   onClick: () => void;
 }) {
   const isMine = room.lastMessage?.senderId === myId;
-  const preview = room.lastMessage?.body ?? 'No messages yet';
+  const isVoice = Boolean(room.lastMessage?.audioUrl);
+  const preview = isVoice ? 'Voice message' : (room.lastMessage?.body ?? 'No messages yet');
   const unread = room.unreadCount > 0;
 
   return (
@@ -247,6 +248,9 @@ function RoomRow({
           <div className="mt-0.5 flex items-center justify-between gap-2">
             <p className={cn('truncate text-xs', unread ? 'text-dojo-text-primary' : 'text-dojo-text-muted')}>
               {isMine ? 'You: ' : ''}
+              {isVoice && (
+                <Mic className="mr-1 inline h-3 w-3 align-[-1px] text-dojo-text-muted" />
+              )}
               {preview}
             </p>
             {unread && (

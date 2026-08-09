@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChatHeader } from '@/components/messages/ChatHeader';
 import { MessageBubble } from '@/components/messages/MessageBubble';
-import { MessageComposer } from '@/components/messages/MessageComposer';
+import { MessageComposer, type VoiceClip } from '@/components/messages/MessageComposer';
 import { RoomDetailsPanel } from '@/components/messages/RoomDetailsPanel';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
@@ -19,6 +19,7 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
   const [room, setRoom] = useState<ChatRoomDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [voiceSending, setVoiceSending] = useState(false);
   const lastSeenIdRef = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedAtBottomRef = useRef(true);
@@ -175,6 +176,77 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
     }
   }
 
+  async function handleSendVoice(clip: VoiceClip) {
+    if (roomId === null || Number.isNaN(roomId) || !user || voiceSending) return;
+    setVoiceSending(true);
+
+    // Show an optimistic voice bubble immediately with a local object URL.
+    const optimisticUrl = URL.createObjectURL(clip.blob);
+    const optimisticId = -Date.now();
+    const optimistic: ChatMessage = {
+      id: optimisticId,
+      senderId: user.id,
+      senderName: user.name,
+      senderAvatarSrc: user.avatarSrc ?? null,
+      body: '[Voice message]',
+      sourceLanguage: null,
+      translatedBody: '[Voice message]',
+      translationProvider: 'none',
+      audioUrl: optimisticUrl,
+      audioMimeType: clip.mimeType,
+      audioDurationMs: clip.durationMs,
+      isMine: true,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    pinnedAtBottomRef.current = true;
+
+    try {
+      const form = new FormData();
+      form.append('audio', clip.blob, `voice.${clip.mimeType.includes('mp4') ? 'm4a' : clip.mimeType.includes('ogg') ? 'ogg' : 'webm'}`);
+      form.append('durationMs', String(clip.durationMs));
+      form.append('text', '');
+
+      const res = await fetch(`/api/chat-rooms/${roomId}/messages`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      if (!data.success) throw new Error('Not success');
+      const created = data.message as Partial<ChatMessage> | undefined;
+      const realId = created?.id;
+      if (realId) {
+        // Replace the optimistic bubble with the server row (which carries the
+        // stored data: URL), then release the temporary object URL.
+        const server: ChatMessage = {
+          id: realId,
+          senderId: created.senderId ?? optimistic.senderId,
+          senderName: created.senderName ?? optimistic.senderName,
+          senderAvatarSrc: created.senderAvatarSrc ?? optimistic.senderAvatarSrc,
+          body: created.body ?? optimistic.body,
+          sourceLanguage: created.sourceLanguage ?? null,
+          translatedBody: created.body ?? optimistic.body,
+          translationProvider: 'none',
+          audioUrl: created.audioUrl ?? optimistic.audioUrl,
+          audioMimeType: created.audioMimeType ?? optimistic.audioMimeType,
+          audioDurationMs: created.audioDurationMs ?? optimistic.audioDurationMs,
+          isMine: true,
+          createdAt: created.createdAt ?? optimistic.createdAt,
+        };
+        setMessages((prev) => prev.map((m) => (m.id === optimisticId ? server : m)));
+        lastSeenIdRef.current = Math.max(lastSeenIdRef.current, realId);
+      }
+    } catch {
+      // leave the optimistic bubble; the next poll reconciles/dedupes ids
+    } finally {
+      setVoiceSending(false);
+      URL.revokeObjectURL(optimisticUrl);
+    }
+  }
+
   usePageTitle(room?.name ?? 'Messages');
 
   const isGroup = room?.isGroup ?? false;
@@ -227,7 +299,12 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
 
         {/* Composer */}
         <div className="shrink-0 border-t border-dojo-border bg-dojo-sidebar">
-          <MessageComposer disabled={loading} onSend={handleSend} />
+          <MessageComposer
+            disabled={loading}
+            onSend={handleSend}
+            onSendVoice={handleSendVoice}
+            voiceSending={voiceSending}
+          />
         </div>
       </div>
 

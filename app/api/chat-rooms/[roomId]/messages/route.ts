@@ -7,7 +7,7 @@ import {
   users,
 } from '../../../../../src/schema';
 import { getAuthUser } from '../../../../../lib/auth/server';
-import { translateText, detectLanguageSafe } from '../../../../../lib/ugajapa';
+import { translateText, detectLanguageSafe, transcribeAudio } from '../../../../../lib/ugajapa';
 import { eq, and, gt, inArray } from 'drizzle-orm';
 
 export async function GET(
@@ -59,6 +59,9 @@ export async function GET(
       senderId: chatMessages.senderId,
       body: chatMessages.body,
       sourceLanguage: chatMessages.sourceLanguage,
+      audioUrl: chatMessages.audioUrl,
+      audioMimeType: chatMessages.audioMimeType,
+      audioDurationMs: chatMessages.audioDurationMs,
       createdAt: chatMessages.createdAt,
       senderName: users.name,
       senderAvatar: users.avatarSrc,
@@ -93,24 +96,31 @@ export async function GET(
       if (!cached) {
         // Lazy translate on read (covers messages sent before the member joined,
         // or sent while UgaJapa was unreachable). onConflictDoNothing guards the
-        // race with the POST-time bulk translate.
-        const result = await translateText(row.body, myLanguage, row.sourceLanguage);
-        if (result.provider === 'ugajapa') {
+        // race with the POST-time bulk translate. Voice-only placeholders and
+        // the sender's own messages are never meaningful to translate.
+        const isMineLazy = row.senderId === user.id;
+        const placeholder = row.body === '[Voice message]';
+        const lazyResult = placeholder || isMineLazy
+          ? { translatedText: row.body, provider: 'none' as const }
+          : await translateText(row.body, myLanguage, row.sourceLanguage);
+
+        if (lazyResult.provider === 'ugajapa') {
           try {
             await db
               .insert(chatMessageTranslations)
               .values({
                 messageId: row.messageId,
                 targetLanguage: myLanguage,
-                translatedText: result.translatedText,
-                qualityScore: result.qualityScore != null ? String(result.qualityScore) : null,
-                provider: result.provider,
+                translatedText: lazyResult.translatedText,
+                qualityScore: lazyResult.qualityScore != null ? String(lazyResult.qualityScore) : null,
+                provider: lazyResult.provider,
               })
               .onConflictDoNothing();
           } catch (err) {
             console.warn('[chat-messages] failed to cache lazy translation', String(err));
           }
         }
+        // The sender reads their own transcript verbatim; others get the translation.
         return {
           id: row.messageId,
           senderId: row.senderId,
@@ -118,9 +128,14 @@ export async function GET(
           senderAvatarSrc: row.senderAvatar,
           body: row.body,
           sourceLanguage: row.sourceLanguage,
-          translatedBody: result.translatedText,
-          translationProvider: result.provider,
-          isMine: row.senderId === user.id,
+          translatedBody: isMineLazy ? row.body : lazyResult.translatedText,
+          translationProvider: lazyResult.provider === 'ugajapa' && !isMineLazy && lazyResult.translatedText !== row.body
+            ? 'ugajapa'
+            : 'none',
+          audioUrl: row.audioUrl,
+          audioMimeType: row.audioMimeType,
+          audioDurationMs: row.audioDurationMs,
+          isMine: isMineLazy,
           createdAt: row.createdAt,
         };
       }
@@ -144,6 +159,9 @@ export async function GET(
           ? (translatedBody === row.body ? 'none' : 'ugajapa')
           : 'none',
         qualityScore: quality,
+        audioUrl: row.audioUrl,
+        audioMimeType: row.audioMimeType,
+        audioDurationMs: row.audioDurationMs,
         isMine,
         createdAt: row.createdAt,
       };
@@ -168,8 +186,64 @@ export async function POST(
     return Response.json({ error: 'Invalid room ID' }, { status: 400 });
   }
 
-  const body = await req.json().catch(() => null);
-  const text = typeof body?.text === 'string' ? body.text.trim() : '';
+  const contentType = req.headers.get('content-type') ?? '';
+  const isForm = contentType.includes('multipart/form-data');
+
+  // Parse the request: text messages come as JSON, voice messages as multipart
+  // (audio file + durationMs).
+  let text = '';
+  let sourceLanguage: string | null = null;
+  let audioUrl: string | null = null;
+  let audioMimeType: string | null = null;
+  let audioDurationMs: number | null = null;
+
+  if (isForm) {
+    const form = await req.formData().catch(() => null);
+    if (!form) {
+      return Response.json({ error: 'Invalid request' }, { status: 400 });
+    }
+    const textField = form.get('text');
+    if (textField) text = String(textField).trim();
+    const langField = form.get('sourceLanguage');
+    if (langField) {
+      const v = String(langField).trim();
+      if (v) sourceLanguage = v;
+    }
+    const durField = form.get('durationMs');
+    if (durField) {
+      const d = Number(durField);
+      if (Number.isFinite(d)) audioDurationMs = Math.max(0, Math.round(d));
+    }
+    const file = form.get('audio');
+    if (file instanceof File) {
+      audioMimeType = file.type || null;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const transcript = await transcribeAudio(bytes, file.type);
+
+      if (transcript.provider === 'ugajapa' && transcript.text) {
+        text = transcript.text;
+        sourceLanguage = transcript.detectedLanguage ?? sourceLanguage ?? null;
+      }
+
+      // Persist the clip as a data: URL (mirrors how TTS clips are stored —
+      // the project has no object storage; base64 text keeps playback simple).
+      const base64 = Buffer.from(bytes).toString('base64');
+      audioUrl = `data:${file.type || 'audio/webm'};base64,${base64}`;
+
+      // Voice-only messages are still allowed when transcription fails, so the
+      // sender can always record and the clip is never a blocker.
+      if (!text) text = '[Voice message]';
+    }
+  } else {
+    const body = await req.json().catch(() => null);
+    if (body) {
+      if (typeof body.text === 'string') text = body.text.trim();
+      if (typeof body.sourceLanguage === 'string' && body.sourceLanguage.trim()) {
+        sourceLanguage = body.sourceLanguage.trim();
+      }
+    }
+  }
+
   if (!text || text.length > 4000) {
     return Response.json({ error: 'Message must be 1-4000 characters' }, { status: 400 });
   }
@@ -183,59 +257,66 @@ export async function POST(
   }
 
   // Resolve source language: caller-declared, else auto-detect (fails open to null).
-  const declaredSource =
-    typeof body?.sourceLanguage === 'string' && body.sourceLanguage.trim()
-      ? body.sourceLanguage.trim()
-      : null;
-  const detected = declaredSource ?? (await detectLanguageSafe(text))?.language ?? null;
-  const sourceLanguage = declaredSource ?? detected;
+  const detected = sourceLanguage ?? (await detectLanguageSafe(text))?.language ?? null;
+  const finalSourceLanguage = sourceLanguage ?? detected;
 
   const [created] = await db
     .insert(chatMessages)
-    .values({ roomId: id, senderId: user.id, body: text, sourceLanguage })
+    .values({
+      roomId: id,
+      senderId: user.id,
+      body: text,
+      sourceLanguage: finalSourceLanguage,
+      audioUrl,
+      audioMimeType,
+      audioDurationMs,
+    })
     .returning();
 
   // Eagerly translate into every OTHER member's language and cache it, so the
   // recipients' next poll returns pre-translated text. Dedupe by language so a
   // group room with several members reading the same language only pays once.
-  try {
-    const members = await db
-      .select({
-        preferredLanguage: chatRoomMembers.preferredLanguage,
-        nativeLanguage: users.nativeLanguage,
-      })
-      .from(chatRoomMembers)
-      .innerJoin(users, eq(chatRoomMembers.userId, users.id))
-      .where(eq(chatRoomMembers.roomId, id));
+  // Voice-only placeholders (transcription failed) are not translated.
+  if (text !== '[Voice message]') {
+    try {
+      const members = await db
+        .select({
+          preferredLanguage: chatRoomMembers.preferredLanguage,
+          nativeLanguage: users.nativeLanguage,
+        })
+        .from(chatRoomMembers)
+        .innerJoin(users, eq(chatRoomMembers.userId, users.id))
+        .where(eq(chatRoomMembers.roomId, id));
 
-    const targetLangs = Array.from(
-      new Set(
-        members
-          .filter((m) => m.nativeLanguage !== sourceLanguage)
-          .map((m) => m.preferredLanguage ?? m.nativeLanguage ?? 'en')
-          .filter(Boolean),
-      ),
-    ).filter((lang) => lang !== sourceLanguage);
+      const targetLangs = Array.from(
+        new Set(
+          members
+            .filter((m) => m.nativeLanguage !== finalSourceLanguage)
+            .map((m) => m.preferredLanguage ?? m.nativeLanguage ?? 'en')
+            .filter(Boolean),
+        ),
+      ).filter((lang) => lang !== finalSourceLanguage);
 
-    await Promise.all(
-      targetLangs.map(async (lang) => {
-        const result = await translateText(text, lang, sourceLanguage);
-        if (result.provider === 'ugajapa') {
-          await db
-            .insert(chatMessageTranslations)
-            .values({
-              messageId: created.id,
-              targetLanguage: lang,
-              translatedText: result.translatedText,
-              qualityScore: result.qualityScore != null ? String(result.qualityScore) : null,
-              provider: result.provider,
-            })
-            .onConflictDoNothing();
-        }
-      }),
-    );
-  } catch (err) {
-    console.warn('[chat] bulk translate failed:', err instanceof Error ? err.message : String(err));
+      await Promise.all(
+        targetLangs.map(async (lang) => {
+          const result = await translateText(text, lang, finalSourceLanguage);
+          if (result.provider === 'ugajapa') {
+            await db
+              .insert(chatMessageTranslations)
+              .values({
+                messageId: created.id,
+                targetLanguage: lang,
+                translatedText: result.translatedText,
+                qualityScore: result.qualityScore != null ? String(result.qualityScore) : null,
+                provider: result.provider,
+              })
+              .onConflictDoNothing();
+          }
+        }),
+      );
+    } catch (err) {
+      console.warn('[chat] bulk translate failed:', err instanceof Error ? err.message : String(err));
+    }
   }
 
   return Response.json({ success: true, message: created }, { status: 201 });
