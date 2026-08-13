@@ -7,8 +7,8 @@ interface CorrectionTip {
   correctionType: string;
   originalText: string;
   correctedText: string;
-  originalRomaji?: string | null;
-  correctedRomaji?: string | null;
+  originalPhonetic?: string | null;
+  correctedPhonetic?: string | null;
   explanation: string;
   severity: string;
 }
@@ -19,7 +19,7 @@ export interface TurnData {
   speaker: 'user' | 'ai';
   messageTarget: string;
   messageNative: string;
-  messageRomaji: string | null;
+  messagePhonetic: string | null;
   emotionTone?: string;
   gestureHint?: string;
   corrections?: CorrectionTip[];
@@ -133,8 +133,8 @@ export function ChatPanel({
 
                 <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
 
-                {turn.messageRomaji && !turn.pending && (
-                  <p className="mt-0.5 text-[11px] text-dojo-text-muted italic">{turn.messageRomaji}</p>
+                {turn.messagePhonetic && !turn.pending && (
+                  <p className="mt-0.5 text-[11px] text-dojo-text-muted italic">{turn.messagePhonetic}</p>
                 )}
 
                 {turn.messageNative && (
@@ -157,8 +157,8 @@ export function ChatPanel({
                             <span className="line-through text-dojo-text-muted">{tip.originalText}</span>
                             {' → '}
                             <span className="font-medium text-dojo-text-primary">{tip.correctedText}</span>
-                            {tip.correctedRomaji && (
-                              <span className="ml-1 italic text-dojo-text-muted">({tip.correctedRomaji})</span>
+                            {tip.correctedPhonetic && (
+                              <span className="ml-1 italic text-dojo-text-muted">({tip.correctedPhonetic})</span>
                             )}
                             <p className="text-dojo-text-muted/80 mt-0.5">{tip.explanation}</p>
                           </div>

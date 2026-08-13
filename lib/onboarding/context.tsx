@@ -9,6 +9,7 @@ export interface OnboardingState {
   preferredDomainName: string;
   preferredMode: string;
   ageRange: string;
+  targetLanguage: string;
   nativeLanguage: string;
   dailyGoalMinutes: number;
   completedSteps: string[];
@@ -20,6 +21,7 @@ type Action =
   | { type: 'SET_PREFERRED_DOMAIN'; payload: { id: number; name: string } }
   | { type: 'SET_PREFERRED_MODE'; payload: string }
   | { type: 'SET_AGE_RANGE'; payload: string }
+  | { type: 'SET_TARGET_LANGUAGE'; payload: string }
   | { type: 'SET_NATIVE_LANGUAGE'; payload: string }
   | { type: 'SET_DAILY_GOAL_MINUTES'; payload: number }
   | { type: 'COMPLETE_STEP'; payload: string };
@@ -31,6 +33,7 @@ const initialState: OnboardingState = {
   preferredDomainName: '',
   preferredMode: '',
   ageRange: '',
+  targetLanguage: 'ja',
   nativeLanguage: 'en',
   dailyGoalMinutes: 30,
   completedSteps: [],
@@ -48,6 +51,8 @@ function onboardingReducer(state: OnboardingState, action: Action): OnboardingSt
       return { ...state, preferredMode: action.payload };
     case 'SET_AGE_RANGE':
       return { ...state, ageRange: action.payload };
+    case 'SET_TARGET_LANGUAGE':
+      return { ...state, targetLanguage: action.payload };
     case 'SET_NATIVE_LANGUAGE':
       return { ...state, nativeLanguage: action.payload };
     case 'SET_DAILY_GOAL_MINUTES':

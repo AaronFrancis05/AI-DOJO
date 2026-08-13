@@ -35,6 +35,9 @@ export default async function AppLayout({
         streak: users.streak,
         avatarSrc: users.avatarSrc,
         dailyGoalMinutes: users.dailyGoalMinutes,
+        nativeLanguage: users.nativeLanguage,
+        preferredTargetLanguage: users.preferredTargetLanguage,
+        countryCode: users.countryCode,
         onboardingCompletedAt: users.onboardingCompletedAt,
       })
       .from(users)
@@ -58,6 +61,9 @@ export default async function AppLayout({
       avatarSrc: dbUser?.avatarSrc ?? null,
       avatarColor: '#2D3BC5',
       dailyGoalMinutes: dbUser?.dailyGoalMinutes ?? 30,
+      nativeLanguage: dbUser?.nativeLanguage ?? 'en',
+      preferredTargetLanguage: dbUser?.preferredTargetLanguage ?? 'ja',
+      countryCode: dbUser?.countryCode ?? null,
     };
   }
 

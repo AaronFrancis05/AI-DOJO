@@ -93,6 +93,7 @@ export async function speakWithVisemes(
   try {
     const response = await fetch('/api/tts', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: cleaned, lang, gender: currentVoiceGender }),
     });
@@ -241,6 +242,7 @@ async function speakAzureSSML(ssml: string): Promise<void> {
   try {
     const response = await fetch('/api/tts', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ssml }),
     });

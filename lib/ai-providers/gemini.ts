@@ -21,10 +21,16 @@ export function createGeminiProvider(): AIProvider {
 
     async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
       try {
-        const contents: GeminiMessage[] = history.map(t => ({
-          role: t.role === 'assistant' ? 'model' as const : 'user' as const,
-          parts: [{ text: t.content }],
-        }));
+        // Gemini rejects an empty `contents` array ("contents are required"),
+        // so when no history is supplied we still need a valid user turn. The
+        // systemInstruction carries the actual task; this placeholder is just
+        // a legal first message for the API.
+        const contents: GeminiMessage[] = history.length > 0
+          ? history.map(t => ({
+              role: t.role === 'assistant' ? 'model' as const : 'user' as const,
+              parts: [{ text: t.content }],
+            }))
+          : [{ role: 'user' as const, parts: [{ text: 'Generate the requested output described in the system instruction.' }] }];
 
         const response = await ai.models.generateContent({
           model: modelName,

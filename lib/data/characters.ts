@@ -33,7 +33,7 @@ function adaptDbCharacter(d: any): CharacterFixture {
 
 export async function getCharacters(): Promise<{ data: CharacterFixture[]; source: DataSource }> {
   try {
-    const res = await fetch('/api/characters');
+    const res = await fetch('/api/characters', { credentials: 'include' });
     const body = await res.json();
     if (body.success && body.characters.length > 0) {
       return { data: body.characters.map(adaptDbCharacter), source: 'live' };

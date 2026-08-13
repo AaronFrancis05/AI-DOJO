@@ -13,7 +13,7 @@ export type RecognizerCallbacks = {
 let activeCallbacks: RecognizerCallbacks | null = null;
 
 async function fetchToken(): Promise<{ token: string; region: string }> {
-  const res = await fetch('/api/speech/token');
+  const res = await fetch('/api/speech/token', { credentials: 'include' });
   if (!res.ok) throw new Error('Failed to fetch speech token');
   const data = await res.json();
   return { token: data.token, region: data.region };

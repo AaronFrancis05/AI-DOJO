@@ -12,6 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx src/seed.ts",
+    "db:localize": "tsx scripts/generate-scenario-localizations.ts",
+    "db:check-localization": "tsx scripts/check-course-localization.ts",
     "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
     "docker:prod": "docker compose up --build -d",
     "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down"
@@ -36,6 +38,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fbx2gltf": "^0.9.7-p1",
+    "inngest": "^4.14.0",
     "jose": "^6.2.8",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.24.0",

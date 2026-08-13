@@ -1,3 +1,5 @@
+import { TARGET_LANGUAGES } from '@/lib/language';
+
 export interface StepConfig {
   key: string;
   title: string;
@@ -15,6 +17,7 @@ export const ONBOARDING_STEPS: StepConfig[] = [
   { key: 'mode', title: 'How do you want to practice?', subtitle: 'Choose your preferred way to interact.' },
   { key: 'transition-2', title: 'You\'re almost set up!', subtitle: '', transition: true },
   { key: 'age', title: 'How old are you?', subtitle: 'We\'ll adjust content difficulty accordingly.', skippable: true },
+  { key: 'target-language', title: 'What language do you want to learn?', subtitle: 'This is the language you\'ll practise in every scenario.' },
   { key: 'native-language', title: 'What\'s your native language?', subtitle: 'This is the language you\'ll see translations in.' },
   { key: 'frequency', title: 'How often do you want to practice?', subtitle: 'Set your daily practice goal.' },
   { key: 'personalizing', title: 'Personalization in progress', subtitle: '', transition: true },
@@ -56,3 +59,11 @@ export const FREQUENCY_OPTIONS = [
   { value: 30, label: '30 min/day', description: 'Balanced daily habit.' },
   { value: 60, label: '60 min/day', description: 'Deep immersion for fast results.' },
 ];
+
+export const TARGET_LANGUAGE_OPTIONS = TARGET_LANGUAGES.map((l) => ({
+  value: l.code,
+  label: l.name,
+  nativeName: l.nativeName,
+  hasPhonetic: l.hasPhonetic,
+  ttsSupported: l.ttsSupported,
+}));

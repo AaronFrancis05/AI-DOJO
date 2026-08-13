@@ -28,6 +28,7 @@ export default function VoiceOnlyPage() {
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     submitTurnStream, sendGreeting,
+    pendingRetry, retryCorrection,
   } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
@@ -299,7 +300,7 @@ export default function VoiceOnlyPage() {
               <ConversationBubble
                 speaker="ai" name={charName} accentColor={charColor}
                 messageJp={streamingText ?? latestAi.messageTarget ?? latestAi.messageNative ?? ''}
-                messageRomaji={latestAi.messageRomaji ?? undefined}
+                messagePhonetic={latestAi.messagePhonetic ?? undefined}
                 messageEn={latestAi.messageNative ?? undefined}
               />
               <div className="flex items-center gap-2 px-1">
@@ -323,6 +324,8 @@ export default function VoiceOnlyPage() {
           <VoiceCoachPanel
             corrections={coachOpen ? lastCorrections : []}
             suggestedReplies={coachOpen ? suggestedReplies : []}
+            retryTarget={pendingRetry}
+            onRetry={() => { setCoachOpen(false); retryCorrection(); }}
             onDismiss={() => setCoachOpen(false)}
             onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}
           />
@@ -338,7 +341,7 @@ export default function VoiceOnlyPage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
+        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
         onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
       />
 

@@ -14,6 +14,9 @@ export interface UserContextValue {
   avatarSrc?: string | null;
   avatarColor?: string;
   dailyGoalMinutes?: number;
+  nativeLanguage?: string;
+  preferredTargetLanguage?: string;
+  countryCode?: string | null;
 }
 
 interface UserContextType {

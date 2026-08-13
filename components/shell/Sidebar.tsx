@@ -17,6 +17,7 @@ import { useCurrentAvatar } from '@/lib/auth/avatar-context';
 import {
   LayoutDashboard,
   Compass,
+  GraduationCap,
   BarChart3,
   Trophy,
   MessageSquare,
@@ -35,6 +36,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Home',      href: '/home',        icon: LayoutDashboard },
   { label: 'Hub',       href: '/hub',         icon: Compass },
+  { label: 'Courses',   href: '/courses',     icon: GraduationCap },
   { label: 'Sessions',  href: '/sessions',    icon: History },
   { label: 'Progress',  href: '/progress',    icon: BarChart3 },
   { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },

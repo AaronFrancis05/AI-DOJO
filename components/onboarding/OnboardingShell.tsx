@@ -70,6 +70,7 @@ const STEP_DISPLAY_KEYS: Record<string, string> = {
   mode: 'Mode',
   'transition-2': '',
   age: 'Age',
+  'target-language': 'Target Language',
   'native-language': 'Native Language',
   frequency: 'Frequency',
   personalizing: '',
@@ -84,7 +85,7 @@ export function OnboardingShell({ children, currentStep }: { children: React.Rea
 
   const stepKeys = [
     'level', 'social-proof', 'goal', 'transition-1', 'domain', 'mode',
-    'transition-2', 'age', 'native-language', 'frequency',
+    'transition-2', 'age', 'target-language', 'native-language', 'frequency',
     'personalizing', 'plan-ready', 'account',
   ];
   const currentIndex = stepKeys.indexOf(currentStep);

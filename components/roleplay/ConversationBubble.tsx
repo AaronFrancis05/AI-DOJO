@@ -8,7 +8,7 @@ interface ConversationBubbleProps {
   name: string;
   accentColor: string;
   messageJp: string;
-  messageRomaji?: string;
+  messagePhonetic?: string;
   messageEn?: string;
   emotionTone?: string;
   gestureHint?: string;
@@ -20,7 +20,7 @@ export function ConversationBubble({
   name,
   accentColor,
   messageJp,
-  messageRomaji,
+  messagePhonetic,
   messageEn,
   emotionTone,
   gestureHint,
@@ -71,17 +71,17 @@ export function ConversationBubble({
             {messageJp}
           </p>
           
-          {(messageRomaji || messageEn) && (
+          {(messagePhonetic || messageEn) && (
             <div className={cn(
               'mt-2 space-y-1 border-t pt-2 transition-opacity duration-300',
               isUser ? 'border-white/10' : 'border-dojo-border'
             )}>
-              {messageRomaji && (
+              {messagePhonetic && (
                 <p className={cn(
                   'text-[11px] italic leading-tight',
                   isUser ? 'text-white/80' : 'text-dojo-text-muted'
                 )}>
-                  {messageRomaji}
+                  {messagePhonetic}
                 </p>
               )}
               {messageEn && (

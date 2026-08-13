@@ -9,7 +9,7 @@ export interface TurnData {
   speaker: 'user' | 'ai';
   messageTarget: string;
   messageNative: string;
-  messageRomaji: string | null;
+  messagePhonetic: string | null;
   emotionTone?: string;
   gestureHint?: string;
   corrections?: any[];
@@ -18,6 +18,29 @@ export interface TurnData {
   audioUrl?: string | null;
   audioStatus?: string | null;
   receivedAt?: number;
+}
+
+export interface PendingRetry {
+  correctedText: string;
+  correctedPhonetic?: string | null;
+  originalText: string;
+  explanation: string;
+  severity: string;
+  suggestedReplies: string[];
+}
+
+function buildPendingRetry(analysis: any): PendingRetry | null {
+  const corrections = analysis?.corrections ?? [];
+  const first = corrections.find((c: any) => c.correctedText) ?? corrections[0];
+  if (!first?.correctedText) return null;
+  return {
+    correctedText: first.correctedText,
+    correctedPhonetic: first.correctedPhonetic ?? null,
+    originalText: first.originalText ?? '',
+    explanation: first.explanation ?? '',
+    severity: first.severity ?? 'minor',
+    suggestedReplies: analysis?.suggestedReplies ?? [],
+  };
 }
 
 export interface GoalData {
@@ -55,6 +78,9 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onComplete?: (analysis: any) => void;
   }) => Promise<void>;
   sendGreeting: (opts?: { onToken?: (t: string) => void }) => Promise<string>;
+  pendingRetry: PendingRetry | null;
+  retryCorrection: () => Promise<void>;
+  dismissRetry: () => void;
 }
 
 function cleanDisplay(text: string): string {
@@ -77,11 +103,12 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const nativeLanguageRef = useRef('en');
   const isRetryRef = useRef(false);
   const lastAiCompletedRef = useRef<number>(Date.now());
+  const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}`);
+        const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Session not found'); }
         const data = await res.json();
         setSession(data.session);
@@ -96,7 +123,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
           speaker: c.speaker,
           messageTarget: cleanDisplay(c.messageTarget ?? c.messageJp),
           messageNative: c.messageNative ?? c.messageEn,
-          messageRomaji: c.messageRomaji,
+          messagePhonetic: c.messagePhonetic,
           emotionTone: c.emotionTone,
           gestureHint: c.gestureHint,
           corrections: c.corrections ?? [],
@@ -128,6 +155,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const submitTurn = useCallback(async (input: string, responseTimeMs?: number) => {
     const res = await fetch('/api/chat/stream', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         sessionId,
@@ -157,7 +185,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     let optimisticId: number | null = null;
     if (trimmed !== '__session_start__') {
       optimisticId = Date.now();
-      setConversations(prev => [...prev, { id: optimisticId!, turnNo: prev.length + 1, speaker: 'user', messageTarget: trimmed, messageNative: '', messageRomaji: null, pending: true, receivedAt: Date.now() }]);
+      setConversations(prev => [...prev, { id: optimisticId!, turnNo: prev.length + 1, speaker: 'user', messageTarget: trimmed, messageNative: '', messagePhonetic: null, pending: true, receivedAt: Date.now() }]);
     }
 
     const rollback = () => {
@@ -167,6 +195,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     let res: Response;
     try {
       res = await fetch('/api/chat/stream', {
+        credentials: 'include',
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -178,11 +207,14 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       });
     } catch (e) {
       rollback();
+      isRetryRef.current = false;
       throw e;
     }
 
     if (!res.ok) {
       rollback();
+      isRetryRef.current = false;
+      setPendingRetry(null);
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || `Chat request failed (${res.status})`);
     }
@@ -219,6 +251,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             isRetryResponse = true;
             isRetryRef.current = true;
             finalAnalysis = payload.analysis;
+            setPendingRetry(buildPendingRetry(payload.analysis));
             options?.onRetry?.(payload.analysis);
             break;
           case 'done':
@@ -226,10 +259,13 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             isRetryRef.current = false;
             finalPhase = payload.phase;
             finalAnalysis = payload.analysis;
+            setPendingRetry(null);
             if (payload.celebration) options?.onCelebration?.();
             options?.onComplete?.(payload.analysis);
             break;
           case 'error':
+            isRetryRef.current = false;
+            setPendingRetry(null);
             rollback();
             throw new Error(payload.message || 'Stream error');
         }
@@ -246,7 +282,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
         messageTarget: finalAnalysis.messageTarget ?? trimmed,
         messageNative: finalAnalysis.messageNative ?? '',
-        messageRomaji: finalAnalysis.messageRomaji,
+        messagePhonetic: finalAnalysis.messagePhonetic,
         emotionTone: finalAnalysis.emotionTone,
         gestureHint: finalAnalysis.gestureHint,
         corrections: finalAnalysis.corrections ?? [],
@@ -265,7 +301,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     if (trimmed === '__session_start__') {
       setConversations(prev => [...prev, {
         id: Date.now(), turnNo: 0, speaker: 'ai' as const,
-        messageTarget: cleanDisplay(collectedAiText), messageNative: '', messageRomaji: null,
+        messageTarget: cleanDisplay(collectedAiText), messageNative: '', messagePhonetic: null,
         receivedAt: Date.now(),
       }]);
     } else {
@@ -273,7 +309,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
         messageTarget: finalAnalysis?.messageTarget ?? trimmed,
         messageNative: finalAnalysis?.messageNative ?? '',
-        messageRomaji: finalAnalysis?.messageRomaji,
+        messagePhonetic: finalAnalysis?.messagePhonetic,
         emotionTone: finalAnalysis?.emotionTone,
         gestureHint: finalAnalysis?.gestureHint,
         corrections: finalAnalysis?.corrections ?? [],
@@ -281,7 +317,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       };
       const aiTurn: TurnData = {
         id: Date.now() + 1, turnNo: conversations.length + 1, speaker: 'ai',
-        messageTarget: cleanDisplay(collectedAiText), messageNative: '', messageRomaji: null,
+        messageTarget: cleanDisplay(collectedAiText), messageNative: '', messagePhonetic: null,
         receivedAt: Date.now(),
       };
       setConversations(prev => {
@@ -311,10 +347,20 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     return fullText;
   }, [submitTurnStream]);
 
+  const retryCorrection = useCallback(async () => {
+    const target = pendingRetry?.correctedText;
+    if (!target) return;
+    setPendingRetry(null);
+    await submitTurnStream(target, { isRetry: true });
+  }, [pendingRetry, submitTurnStream]);
+
+  const dismissRetry = useCallback(() => setPendingRetry(null), []);
+
   return {
     session, scenario, situation, domain, character,
     goals, conversations, completedGoals, phase,
     loading, error, isActive, isCompleted,
     submitTurn, submitTurnStream, sendGreeting,
+    pendingRetry, retryCorrection, dismissRetry,
   };
 }

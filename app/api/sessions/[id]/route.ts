@@ -3,6 +3,14 @@ import { sessions, scenarios, conversations, corrections, evaluations, goalCompl
 import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
+import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
+import {
+  getScenarioLocalization,
+  getScenarioVocabLocalizations,
+  getTargetVocabLocalizations,
+  applyScenarioLocalization,
+  applyTargetLanguageVocab,
+} from '../../../../lib/localization';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
@@ -159,14 +167,46 @@ export async function GET(
     corrections: correctionsByConvId.get(conv.id) ?? [],
   }));
 
+  // Localize the scenario into the learner's NATIVE language so the
+  // icebreaker and chat screens show an explanation they can understand,
+  // then overlay any target-language content on top (mirrors analyze-turn).
+  // The base scenario rows are English; scenario_localizations hold the
+  // native-language instructional text.
+  let localizedScenario = scenario;
+  let localizedVocab = vocabItems;
+  const nativeLang = session.nativeLanguage ?? 'en';
+  const targetLang = session.targetLanguage ?? 'ja';
+  if (localizedScenario) {
+    // Native-language scenario text is the final state for the shared
+    // instructional fields (title/context/goals/character names). The base
+    // rows are English; applyScenarioLocalization never overwrites an
+    // existing value, so a missing native row falls back to English cleanly.
+    const nativeLoc = await getScenarioLocalization(localizedScenario.id, nativeLang);
+    if (nativeLoc) localizedScenario = applyScenarioLocalization(localizedScenario, nativeLoc);
+  }
+  if (localizedVocab.length > 0) {
+    const [nativeVocabLoc, targetVocabLoc] = await Promise.all([
+      getScenarioVocabLocalizations(localizedScenario!.id, nativeLang),
+      getTargetVocabLocalizations(localizedScenario!.id, targetLang),
+    ]);
+    if (nativeVocabLoc.size > 0) {
+      localizedVocab = localizedVocab.map((v) => {
+        const localized = nativeVocabLoc.get(v.id);
+        if (!localized) return v;
+        return { ...v, translation: localized.translation ?? v.translation, usageTip: localized.usageTip ?? v.usageTip };
+      });
+    }
+    if (targetVocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(localizedVocab, targetVocabLoc);
+  }
+
   return Response.json({
     success: true,
     session,
-    scenario: scenario ?? null,
+    scenario: localizedScenario ?? null,
     situation,
     domain: domainResult,
     character,
-    vocabulary: vocabItems,
+    vocabulary: localizedVocab,
     goals,
     conversations: conversationWithCorrections,
     evaluation: evaluationResult,
@@ -257,6 +297,21 @@ export async function PATCH(
   }
 
   await db.update(sessions).set(updateData).where(eq(sessions.id, sessionId));
+
+  // A curriculum lesson is complete when its linked session completes.
+  if (status === 'completed' && session.lessonId) {
+    try {
+      await recordLessonActivity({
+        userId: user.id,
+        lessonId: session.lessonId,
+        phaseKey: 'evaluation',
+        complete: true,
+        score: session.vocabularyScore ?? null,
+      });
+    } catch (err) {
+      console.error('[session-complete] failed to record lesson progress', { sessionId, lessonId: session.lessonId, error: String(err) });
+    }
+  }
 
   return Response.json({ success: true });
 }
