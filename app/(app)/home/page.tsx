@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
+
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -17,18 +17,10 @@ import { LiveBadge } from '@/components/ui/LiveBadge';
 import { HexBadge } from '@/components/ui/HexBadge';
 import { Button } from '@/components/ui/Button';
 import { useUser } from '@/lib/auth/user-context';
-import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
+
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
 
-const WelcomeBanner = dynamic(() => import('@/components/roleplay/avatar-variants/WelcomeBanner').then(m => ({ default: m.WelcomeBanner })), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-xl">
-      <div className="h-12 w-12 rounded-full bg-dojo-border" />
-    </div>
-  ),
-});
 import {
   ArrowRight,
   Flame,
@@ -149,7 +141,7 @@ function computeAchievements(sessions: SessionRecord[]) {
 export default function HomePage() {
   const router = useRouter();
   const user = useUser();
-  const currentAvatarModelUrl = useCurrentAvatarModel();
+  
   usePageTitle(`Okaeri, ${user?.name ?? 'Learner'}!`);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,15 +231,11 @@ export default function HomePage() {
             <div className="relative shrink-0">
               <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
               <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
-                {currentAvatarModelUrl ? (
-                  <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={user?.name} />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
-                      {user?.name?.[0] ?? '?'}
-                    </div>
-                  </div>
-                )}
+<div className="flex h-full w-full items-center justify-center">
+  <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
+    {user?.name?.[0] ?? '?'}
+  </div>
+</div>
               </div>
               <div className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
                 <Trophy className="h-5 w-5" />

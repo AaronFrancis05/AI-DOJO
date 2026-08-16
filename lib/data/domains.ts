@@ -22,9 +22,19 @@ function adaptDbDomain(d: Domain): DomainFixture {
 
 export async function getDomains(): Promise<{ data: DomainFixture[]; source: DataSource }> {
   try {
-    const res = await fetch('/api/domains');
+    const res = await fetch('/api/domains', { cache: 'no-store' });
+    if (!res.ok) {
+      throw new Error(`Domains API returned ${res.status}`);
+    }
+
+    const contentType = res.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      throw new Error(`Unexpected domains API response: ${text.slice(0, 200)}`);
+    }
+
     const body = await res.json();
-    if (body.success && body.domains.length > 0) {
+    if (body?.success && Array.isArray(body.domains) && body.domains.length > 0) {
       return { data: body.domains.map(adaptDbDomain), source: 'live' };
     }
   } catch (err) {

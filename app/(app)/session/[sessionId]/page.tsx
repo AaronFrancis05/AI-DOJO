@@ -76,15 +76,17 @@ export default function SessionChooserPage() {
       color: 'border-[#3FB27F] hover:bg-[#3FB27F]/10',
       iconColor: 'text-[#3FB27F]',
     },
-    {
-      key: 'avatar',
-      label: 'Avatar',
-      desc: 'Full avatar voice conversation with barge-in.',
-      icon: User,
-      href: `/session/${sessionId}/avatar`,
-      color: 'border-[#8B5CF6] hover:bg-[#8B5CF6]/10',
-      iconColor: 'text-[#8B5CF6]',
-    },
+{
+  key: 'avatar',
+  label: 'Avatar',
+  desc: 'Full avatar voice conversation with barge-in.',
+  icon: User,
+  href: session?.instanceId
+    ? `/session/${sessionId}/avatar?instance=${encodeURIComponent(session.instanceId)}`
+    : `/session/${sessionId}/avatar`,
+  color: 'border-[#8B5CF6] hover:bg-[#8B5CF6]/10',
+  iconColor: 'text-[#8B5CF6]',
+},
   ];
 
   return (

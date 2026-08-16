@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage } = body;
+  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, instanceId } = body;
 
   let resolvedScenarioId = scenarioId ? Number(scenarioId) : null;
 
@@ -163,39 +163,40 @@ Each item must be a single ${langName} word or short phrase that is directly rel
         }));
       }
 
-      const newScenario = await db.transaction(async (tx) => {
-        const [sc] = await tx.insert(scenarios).values({
-          title: situation.title,
-          context: situation.context,
-          businessType: domain?.name ?? 'General',
-          difficulty: situation.skillLevel,
-          domain: domain?.slug ?? 'daily_life',
-          aiCharacterName: charName,
-          aiCharacterRole: charRole,
-          userCharacterName: 'Learner',
-          userCharacterRole: 'Student',
-          learningGoals: situation.learningGoals,
-          situationId: numericSituationId,
-          displayOrder: situation.displayOrder,
-        }).returning();
+      // NOTE: neon-http driver doesn't support db.transaction() — these two
+      // inserts run sequentially instead. Not atomic: if the vocabulary
+      // insert fails, the scenario row still exists (harmless — it'll just
+      // have no vocab, same as if the AI vocab generation had returned
+      // nothing).
+      const [newScenario] = await db.insert(scenarios).values({
+        title: situation.title,
+        context: situation.context,
+        businessType: domain?.name ?? 'General',
+        difficulty: situation.skillLevel,
+        domain: domain?.slug ?? 'daily_life',
+        aiCharacterName: charName,
+        aiCharacterRole: charRole,
+        userCharacterName: 'Learner',
+        userCharacterRole: 'Student',
+        learningGoals: situation.learningGoals,
+        situationId: numericSituationId,
+        displayOrder: situation.displayOrder,
+      }).returning();
 
-        if (vocabRows.length > 0) {
-          await tx.insert(vocabulary).values(
-            vocabRows.map(v => ({
-              scenarioId: sc.id,
-              targetText: v.targetText,
-              romaji: v.romaji,
-              translation: v.translation,
-              languageCode: lang,
-              category: v.category,
-              usageTip: v.usageTip || null,
-              formalityLevel: v.formalityLevel,
-            })),
-          );
-        }
-
-        return sc;
-      });
+      if (vocabRows.length > 0) {
+        await db.insert(vocabulary).values(
+          vocabRows.map(v => ({
+            scenarioId: newScenario.id,
+            targetText: v.targetText,
+            romaji: v.romaji,
+            translation: v.translation,
+            languageCode: lang,
+            category: v.category,
+            usageTip: v.usageTip || null,
+            formalityLevel: v.formalityLevel,
+          })),
+        );
+      }
 
       resolvedScenarioId = newScenario.id;
     }
@@ -234,6 +235,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
     scenarioId: numericScenarioId,
     situationId: situationId ? Number(situationId) : scenario.situationId,
     characterId: characterId ? Number(characterId) : null,
+    instanceId: instanceId ?? null,
     behaviorMode: behaviorMode ?? 'standard',
     targetLanguage: targetLanguage ?? 'ja',
     nativeLanguage: nativeLanguage ?? 'en',

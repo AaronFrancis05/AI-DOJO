@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { MessageSquare, Volume2, User } from 'lucide-react';
 
 type SessionMode = 'chat' | 'voice' | 'avatar';
@@ -18,6 +18,8 @@ const TABS: { key: SessionMode; label: string; icon: typeof MessageSquare }[] = 
 
 export function SessionModeTabs({ sessionId, active }: SessionModeTabsProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
 
   return (
     <div className="flex items-center gap-0.5 rounded-lg border border-dojo-border bg-dojo-surface/80 p-0.5">
@@ -27,7 +29,7 @@ export function SessionModeTabs({ sessionId, active }: SessionModeTabsProps) {
           <button
             key={key}
             type="button"
-            onClick={() => router.push(`/session/${sessionId}/${key}`)}
+            onClick={() => router.push(queryString ? `/session/${sessionId}/${key}?${queryString}` : `/session/${sessionId}/${key}`)}
             className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
               isActive
                 ? 'bg-dojo-accent text-white shadow-sm'

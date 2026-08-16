@@ -119,6 +119,7 @@ export const sessions = pgTable('sessions', {
   scenarioId:      integer('scenario_id').references(() => scenarios.id).notNull(),
   situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
+  instanceId:      varchar('instance_id', { length: 255 }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
   phase:           varchar('phase', { length: 20 }).default('icebreaker').notNull(),
   icebreakerIndex: integer('icebreaker_index').default(0).notNull(),

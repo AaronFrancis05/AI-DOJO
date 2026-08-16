@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
+
 import { Card } from '@/components/ui/Card';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { SliderRow } from '@/components/ui/SliderRow';
@@ -17,14 +17,6 @@ import Link from 'next/link';
 import { ArrowLeft, Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 
-const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-dojo-surface animate-pulse">
-      <div className="h-12 w-12 rounded-full bg-dojo-border" />
-    </div>
-  ),
-});
 
 const tabs: Tab[] = [
   { id: 'avatar', label: 'My Avatar' },
@@ -88,13 +80,14 @@ export default function AvatarSettingsPage() {
             case 'avatar':
               return (
                 <div className="space-y-6">
-                  {/* Current avatar preview */}
+{/* Current avatar preview */}
                   <div className="flex flex-col items-center">
                     <div className="h-28 w-28 overflow-hidden rounded-full border-2 border-dojo-border">
-                      {selectedAvatar ? (
-                        <ProfilePortrait
-                          modelUrl={selectedAvatar.avatarUrl}
-                          userName={user?.name}
+                      {selectedAvatar?.thumbnailUrl && !selectedAvatar.thumbnailUrl.endsWith('.glb') ? (
+                        <img
+                          src={selectedAvatar.thumbnailUrl}
+                          alt={user?.name ?? 'Avatar'}
+                          className="h-full w-full object-cover"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center bg-dojo-surface text-dojo-text-muted">
@@ -189,7 +182,7 @@ export default function AvatarSettingsPage() {
                     <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">AI Character Voices</h4>
                     <div className="space-y-3">
                       {characters.map((char) => {
-                        const Icon = avatarIconMap[char.avatarIcon] ?? Smile;
+                        const Icon = avatarIconMap[char.avatarIcon ?? ''] ?? Smile;
                         return (
                           <div
                             key={char.id}

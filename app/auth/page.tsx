@@ -28,6 +28,8 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [userId, setUserId] = useState<string | undefined>();
+
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

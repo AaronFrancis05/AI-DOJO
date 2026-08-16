@@ -1,126 +1,24 @@
-/* ───────────────────────────────────────────────
-   Character fixtures — matches the live production
-   `characters` table roster as of July 2026.
-   Kept in sync with scripts/seed-domain-data.ts.
-   ─────────────────────────────────────────────── */
-
 export interface CharacterFixture {
   id: number;
   name: string;
   role: string;
-  personality: string;
-  avatarColor: string;
-  avatarIcon: string;
-  voiceType: string;
-  gender: string;
-  avatarModelUrl?: string | null;
-  defaultForDomain?: string;  // domain slug — resolved from defaultForDomainId
-  displayOrder: number;
+  personality?: string;
+  avatarColor?: string;
+  avatarIcon?: string;
+  voiceType?: string;
+  gender?: string;
+  avatarModelUrl?: string;
+  defaultForDomain?: string;
+  displayOrder?: number;
 }
 
 export const characters: CharacterFixture[] = [
-  {
-    id: 1,
-    name: 'Yuki Tanaka',
-    role: 'Friendly Shopkeeper / Waitress',
-    personality: 'Patient and encouraging',
-    avatarColor: '#2D3BC5',
-    avatarIcon: 'Smile',
-    voiceType: 'Warm, Female — Mid Pitch',
-    gender: 'female',
-    avatarModelUrl: '/ai-avatars/Yuki-Tanaka.glb',
-    defaultForDomain: 'restaurant',
-    displayOrder: 1,
-  },
-  {
-    id: 2,
-    name: 'Kenji Sato',
-    role: 'Business Executive / Hotel Manager',
-    personality: 'Professional yet warm',
-    avatarColor: '#D14343',
-    avatarIcon: 'UserCheck',
-    voiceType: 'Calm, Male — Low Pitch',
-    gender: 'male',
-    avatarModelUrl: '/ai-avatars/KenjiSato.glb',
-    defaultForDomain: 'hotel',
-    displayOrder: 2,
-  },
-  {
-    id: 3,
-    name: 'Miyuki Nakamura',
-    role: 'Customer Service / Nurse',
-    personality: 'Efficient and friendly',
-    avatarColor: '#2FAE66',
-    avatarIcon: 'Smile',
-    voiceType: 'Clear, Female — Mid-High Pitch',
-    gender: 'female',
-    avatarModelUrl: '/ai-avatars/Miyuki-Nakamura.glb',
-    defaultForDomain: 'hospital',
-    displayOrder: 3,
-  },
-  {
-    id: 4,
-    name: 'Takeshi Yamamoto',
-    role: 'Train Conductor / Police Officer',
-    personality: 'Serious but approachable',
-    avatarColor: '#E3A939',
-    avatarIcon: 'UserCheck',
-    voiceType: 'Authoritative, Male — Mid Pitch',
-    gender: 'male',
-    avatarModelUrl: '/ai-avatars/Takeshi-Yamamoto.glb',
-    defaultForDomain: 'travel',
-    displayOrder: 4,
-  },
-  {
-    id: 5,
-    name: 'Hana Kimura',
-    role: 'Fashion Assistant / Tour Guide',
-    personality: 'Friendly and cheerful',
-    avatarColor: '#9333EA',
-    avatarIcon: 'Star',
-    voiceType: 'Warm, Female — Mid Pitch',
-    gender: 'female',
-    avatarModelUrl: '/ai-avatars/Hana-Kimura.glb',
-    defaultForDomain: 'shopping',
-    displayOrder: 5,
-  },
-  {
-    id: 6,
-    name: 'Ryo Aoki',
-    role: 'Airline Staff / Hotel Concierge',
-    personality: 'Efficient and professional',
-    avatarColor: '#06B6D4',
-    avatarIcon: 'Headphones',
-    voiceType: 'Clear, Male — Mid Pitch',
-    gender: 'male',
-    avatarModelUrl: '/ai-avatars/Ryo-Aoki.glb',
-    defaultForDomain: 'airport',
-    displayOrder: 6,
-  },
-  {
-    id: 7,
-    name: 'Takashi Mori',
-    role: 'Business Executive / Corporate Professional',
-    personality: 'Punctual and professional',
-    avatarColor: '#2563EB',
-    avatarIcon: 'UserCheck',
-    voiceType: 'Calm, Male — Low Pitch',
-    gender: 'male',
-    avatarModelUrl: '/ai-avatars/Takashi-Mori.glb',
-    defaultForDomain: 'business',
-    displayOrder: 7,
-  },
-  {
-    id: 8,
-    name: 'Sakura Yamada',
-    role: 'Friendly Neighbour / Local Guide',
-    personality: 'Warm and approachable',
-    avatarColor: '#F59E0B',
-    avatarIcon: 'Smile',
-    voiceType: 'Warm, Female — Mid Pitch',
-    gender: 'female',
-    avatarModelUrl: '/ai-avatars/Sakura-Yamada.glb',
-    defaultForDomain: 'daily_life',
-    displayOrder: 8,
-  },
+  { id: 1, name: 'Yuki Tanaka', role: 'Friendly Shopkeeper / Waitress' },
+  { id: 2, name: 'Kenji Sato', role: 'Business Executive / Hotel Manager' },
+  { id: 3, name: 'Miyuki Nakamura', role: 'Customer Service / Nurse' },
+  { id: 4, name: 'Takeshi Yamamoto', role: 'Train Conductor / Police Officer' },
+  { id: 5, name: 'Hana Kimura', role: 'Fashion Assistant / Tour Guide' },
+  { id: 6, name: 'Ryo Aoki', role: 'Airline Staff / Hotel Concierge' },
+  { id: 7, name: 'Takashi Mori', role: 'Business Executive / Corporate Professional' },
+  { id: 8, name: 'Sakura Yamada', role: 'Friendly Neighbour / Local Guide' },
 ];
