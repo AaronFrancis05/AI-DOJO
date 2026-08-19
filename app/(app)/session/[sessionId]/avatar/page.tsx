@@ -12,7 +12,7 @@ import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
@@ -64,7 +64,8 @@ export default function AvatarModePage() {
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
-  }, [session]);
+    setVoiceGender(session?.voiceGender || character?.gender || 'Female');
+  }, [session, character]);
 
   useEffect(() => {
     if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {

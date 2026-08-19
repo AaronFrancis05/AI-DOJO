@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { setVoiceGender } from '@/lib/roleplay/tts';
 
 export interface TurnData {
   id: number;
@@ -111,6 +112,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Session not found'); }
         const data = await res.json();
+        setVoiceGender(data.session?.voiceGender || data.character?.gender || 'Female');
         setSession(data.session);
         setScenario(data.scenario);
         setSituation(data.situation);
