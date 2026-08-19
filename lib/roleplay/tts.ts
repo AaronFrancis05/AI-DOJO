@@ -39,7 +39,7 @@ export function setOnSpeakingChange(cb: SpeakingCallback | null): void {
 let currentVoiceGender: string = 'Female';
 
 export function setVoiceGender(gender: string): void {
-  currentVoiceGender = gender;
+  currentVoiceGender = gender?.trim() ? gender : 'Female';
 }
 
 function notifySpeaking(speaking: boolean): void {
