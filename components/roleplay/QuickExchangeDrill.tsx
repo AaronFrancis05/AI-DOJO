@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Mic, CheckCircle2, XCircle, ArrowRight, Volume2, RotateCcw, Shuffle } from 'lucide-react';
-import { speakWithVisemes, speak as ttsSpeak } from '@/lib/roleplay/tts';
+import { speakWithVisemes, speak as ttsSpeak, setVoiceGender } from '@/lib/roleplay/tts';
 import { getBCP47 } from '@/lib/language';
 
 interface QuickDrillItem {
@@ -21,6 +21,7 @@ interface QuickExchangeDrillProps {
   targetLanguage: string;
   characterName: string;
   accentColor: string;
+  voiceGender?: string | null;
   onComplete: () => void;
   onSubmitResponse: (text: string) => Promise<{ correct: boolean; feedback: string }>;
 }
@@ -30,6 +31,7 @@ export function QuickExchangeDrill({
   targetLanguage,
   characterName,
   accentColor,
+  voiceGender,
   onComplete,
   onSubmitResponse,
 }: QuickExchangeDrillProps) {
@@ -45,6 +47,10 @@ export function QuickExchangeDrill({
   const exchangeStartRef = useRef<number>(Date.now());
 
   const currentDrill = drills[drillIndex];
+
+  useEffect(() => {
+    if (voiceGender) setVoiceGender(voiceGender);
+  }, [voiceGender]);
 
   if (drills.length === 0) {
     return (

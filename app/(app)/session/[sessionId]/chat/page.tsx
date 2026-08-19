@@ -11,7 +11,7 @@ import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { getTargetLangConfig, getBCP47, getNativeLangBcp47 } from '@/lib/language';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { ArrowLeft, Info, Volume2 } from 'lucide-react';
@@ -46,7 +46,8 @@ export default function ChatOnlyPage() {
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
-  }, [session]);
+    setVoiceGender(session?.voiceGender || character?.gender || 'Female');
+  }, [session, character]);
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
