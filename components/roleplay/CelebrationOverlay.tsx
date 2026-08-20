@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import confetti from 'canvas-confetti';
-import { CheckCircle, Trophy, Sparkles, Zap, X, RotateCcw } from 'lucide-react';
+import { useEffect } from 'react';
+import { CheckCircle, Sparkles, Zap, X } from 'lucide-react';
+import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
 
-export type CelebrationVariant = 'scenario-mastery' | 'goal-complete' | 'level-up' | 'achievement-unlock' | 'needs-practice';
+// 'scenario-mastery' and 'needs-practice' are handled by the dedicated
+// LessonCompleteScreen / LessonIncompleteScreen full-screen results instead.
+export type CelebrationVariant = 'goal-complete' | 'level-up' | 'achievement-unlock';
 
 interface CelebrationOverlayProps {
   variant: CelebrationVariant;
@@ -16,44 +18,28 @@ interface CelebrationOverlayProps {
 }
 
 const variantIcons = {
-  'scenario-mastery': Trophy,
   'goal-complete': CheckCircle,
   'level-up': Zap,
   'achievement-unlock': Sparkles,
-  'needs-practice': RotateCcw,
 };
 
 export function CelebrationOverlay({ variant, title, subtitle, onDismiss, onRepeat, autoDismissMs }: CelebrationOverlayProps) {
-  const firedRef = useRef(false);
+  const { fireBurst } = useCelebrationConfetti();
 
   useEffect(() => {
-    if (firedRef.current) return;
-    firedRef.current = true;
-
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) return;
-
-    const isFull = variant === 'scenario-mastery' || variant === 'level-up';
-    if (isFull) {
-      confetti({ particleCount: 140, spread: 90, origin: { y: 0.4 }, colors: ['#F2A93B', '#4FD1C5', '#8FE2B5'] });
-    } else if (variant !== 'needs-practice') {
-      confetti({ particleCount: 40, spread: 55, origin: { y: 0.3 }, scalar: 0.7, colors: ['#4FD1C5', '#8FE2B5'] });
-    }
+    fireBurst(variant === 'level-up' ? 'full' : 'toast');
 
     if (autoDismissMs) {
       const t = setTimeout(onDismiss, autoDismissMs);
       return () => clearTimeout(t);
     }
-  }, [variant, autoDismissMs, onDismiss]);
+  }, [variant, autoDismissMs, onDismiss, fireBurst]);
 
-  const isModal = variant === 'scenario-mastery' || variant === 'level-up' || variant === 'needs-practice';
+  const isModal = variant === 'level-up';
   const Icon = variantIcons[variant] ?? Sparkles;
 
   if (isModal) {
-    const isNeedsPractice = variant === 'needs-practice';
-    const iconBg = isNeedsPractice
-      ? 'bg-gradient-to-br from-amber-500 to-orange-500'
-      : 'bg-gradient-to-br from-dojo-accent to-dojo-success';
+    const iconBg = 'bg-gradient-to-br from-dojo-accent to-dojo-success';
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">

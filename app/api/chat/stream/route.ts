@@ -1091,6 +1091,7 @@ RULES:
 
               const totalScore = finalVocabScore + blendedGrammar + finalFluencyScore + blendedCultural + finalTaskScore + blendedExpression;
               const xpGained = Math.round(totalScore * 2.5 + 25);
+              let newStreak: number | null = null;
 
               const [userRow] = await tx.select({
                 xp: users.xp, streak: users.streak, lastActiveDate: users.lastActiveDate,
@@ -1099,14 +1100,15 @@ RULES:
               if (userRow) {
                 const today = new Date().toISOString().slice(0, 10);
                 const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-                let newStreak = userRow.streak;
+                let streak = userRow.streak;
                 if (userRow.lastActiveDate === today) {
                   // same day
                 } else if (userRow.lastActiveDate === yesterday) {
-                  newStreak += 1;
+                  streak += 1;
                 } else {
-                  newStreak = 1;
+                  streak = 1;
                 }
+                newStreak = streak;
 
                 const newXp = userRow.xp + xpGained;
                 let newLevel: string;
@@ -1135,6 +1137,8 @@ RULES:
                 celebrationVariant,
                 compositeScore,
                 passed: isPassed,
+                xpGained,
+                newStreak,
                 aiConversationId: aiConversation?.id ?? null,
                 shouldComplete: shouldCompleteInner,
               };
@@ -1147,6 +1151,8 @@ RULES:
               celebrationVariant: 'scenario-mastery' as const,
               compositeScore: 0,
               passed: false,
+              xpGained: null as number | null,
+              newStreak: null as number | null,
               aiConversationId: aiConversation?.id ?? null,
               shouldComplete: shouldCompleteInner,
             };
@@ -1227,6 +1233,8 @@ RULES:
             celebrationVariant: writeResult.celebrationVariant,
             compositeScore: writeResult.compositeScore,
             passed: writeResult.passed,
+            xpGained: writeResult.xpGained,
+            newStreak: writeResult.newStreak,
             analysis: {
               messageTarget: analysis.messageTarget,
               messageNative: analysis.messageNative,

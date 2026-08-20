@@ -1,7 +1,7 @@
 import { db } from '../../../../src/db';
-import { sessions, scenarios, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabulary, situations, domains, characters } from '../../../../src/schema';
+import { sessions, scenarios, conversations, corrections, evaluations, goalCompletions, scenarioGoals, vocabulary, situations, domains, characters, vocabularyEncounters } from '../../../../src/schema';
 import { getAuthUser } from '../../../../lib/auth/server';
-import { eq, asc, inArray } from 'drizzle-orm';
+import { eq, asc, inArray, and, isNotNull, sql } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
 import {
@@ -50,6 +50,8 @@ export async function GET(
     conversationList,
     evaluationResult,
     goalCompletionList,
+    avgPronunciationScore,
+    newWordsCount,
   ] = await Promise.all([
     session.scenarioId
       ? (async (): Promise<ScenarioRow | null> => {
@@ -110,6 +112,25 @@ export async function GET(
       .from(goalCompletions)
       .innerJoin(scenarioGoals, eq(goalCompletions.scenarioGoalId, scenarioGoals.id))
       .where(eq(goalCompletions.sessionId, sessionId)),
+
+    // Real average pronunciation-assessment score for this session (Azure
+    // Speech SDK, populated per-turn in vocabularyEncounters). Null when the
+    // session never produced a voice pronunciation score (e.g. text-only).
+    db
+      .select({ value: sql<number | null>`avg(${vocabularyEncounters.accuracyScore})` })
+      .from(vocabularyEncounters)
+      .where(and(eq(vocabularyEncounters.sessionId, sessionId), isNotNull(vocabularyEncounters.accuracyScore)))
+      .then(r => {
+        const v = r[0]?.value;
+        return v == null ? null : Math.round(Number(v));
+      }),
+
+    // Distinct vocabulary items the learner used correctly this session.
+    db
+      .select({ value: sql<number>`count(distinct ${vocabularyEncounters.vocabularyId})` })
+      .from(vocabularyEncounters)
+      .where(and(eq(vocabularyEncounters.sessionId, sessionId), eq(vocabularyEncounters.usedCorrectly, true)))
+      .then(r => Number(r[0]?.value ?? 0)),
   ]);
 
   const [vocabItems, goals, domainResult] = await Promise.all([
@@ -211,6 +232,8 @@ export async function GET(
     conversations: conversationWithCorrections,
     evaluation: evaluationResult,
     goalCompletions: goalCompletionList,
+    avgPronunciationScore,
+    newWordsCount,
     avaturnSubdomain: process.env.NEXT_PUBLIC_AVATURN_SUBDOMAIN ?? null,
   });
 }
