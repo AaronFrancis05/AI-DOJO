@@ -187,6 +187,29 @@ export async function POST(req: Request) {
     const isSessionStart = userRawInput === '__session_start__';
     const effectiveInput = isSessionStart ? '' : userRawInput;
 
+    // ── Icebreaker vocab-word tracking (code-enforced, not prompt-only) ──
+    // icebreakerVocabIndex is the 1-based word currently being taught;
+    // icebreakerVocabAttempts counts how many teaching turns have been spent
+    // on it. Both are authoritative — the AI's "【VOCAB N】" marker only
+    // updates them after being parsed back out of its own response below.
+    const hasNoVocab = vocabRows.length === 0;
+    const isOrientation = currentPhase === 'orientation';
+    const currentVocabIndex = session.icebreakerVocabIndex ?? 1;
+    const currentVocabAttempts = session.icebreakerVocabAttempts ?? 0;
+    const isIcebreakerExhausted = currentPhase === 'icebreaker'
+      && !isSessionStart
+      && currentVocabIndex > vocabRows.length;
+
+    // The learner gets exactly one retry per word (two teaching turns total).
+    // Once that ceiling is hit, don't give the model another chance to loop —
+    // deterministically advance to the next word ourselves.
+    const shouldForceAdvanceVocab = currentPhase === 'icebreaker'
+      && !isSessionStart
+      && !isIcebreakerExhausted
+      && !hasNoVocab
+      && currentVocabAttempts >= 2;
+    const forcedNextVocabRow = shouldForceAdvanceVocab ? vocabRows[currentVocabIndex] : undefined;
+
     // The base `phonetic` column stores Japanese romaji. Once vocab is
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
@@ -210,6 +233,20 @@ export async function POST(req: Request) {
     const icebreakerExample = vocabRows[0]
       ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${vocabRows[0].translation}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
       : `Example: In ${targetLangName}, we say ⟦${targetLangName} word (romaji)⟧ — it means 'the meaning'. Can you say ⟦${targetLangName} word (romaji)⟧?`;
+
+    // Same formatting the model is asked to use for a fresh word, reused here
+    // to deterministically hand off to the next word when we bypass generation.
+    const buildWordIntro = (v: (typeof vocabRows)[number]) => isSameLanguage
+      ? `Now let's learn: "${v.translation}"${v.usageTip ? ` — ${v.usageTip}` : ''}. Can you say it?`
+      : `Let's learn another useful word. In ${targetLangName}, we say ⟦${displayVocab(v)}⟧ — it means '${v.translation}'. Can you say ⟦${displayVocab(v)}⟧?`;
+    const forcedAdvanceMessage = !shouldForceAdvanceVocab
+      ? null
+      : forcedNextVocabRow
+        ? `Good effort! Let's move on. 【VOCAB ${currentVocabIndex + 1}】 ${buildWordIntro(forcedNextVocabRow)}`
+        // Already on the last word — no next word to hand off to. Emit a
+        // one-past-the-end marker so the index-based icebreakerDone check
+        // below still advances the phase instead of looping forever.
+        : `Good effort! 【VOCAB ${currentVocabIndex + 1}】 That covers all the key vocabulary — let's put it into practice.`;
     const guidedExample = vocabRows[0]
       ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${vocabRows[0].translation}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
       : `Example: Now you try: ⟦${targetLangName} word (romaji)⟧`;
@@ -435,17 +472,6 @@ RULES:
 - STRICT NO-LOOP RETRY RULE: Never loop on retries. Move forward.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
-    // ── Pre-generation phase check: enforce icebreaker vocab cap ──
-    // The greeting (turn 1) teaches VOCAB 1. Each subsequent user response
-    // triggers the next VOCAB. Icebreaker ends when all vocab words are taught.
-    const totalIcebreakerTurns = vocabRows.length; // greeting + (N-1) user turns
-    const isIcebreakerExhausted = currentPhase === 'icebreaker'
-      && !isSessionStart
-      && currentTurnNo > totalIcebreakerTurns;
-
-    const hasNoVocab = vocabRows.length === 0;
-    const isOrientation = currentPhase === 'orientation';
-
     const streamSystemPrompt = isSameLanguage
       ? (isOrientation
           ? sameLangOrientationRules
@@ -479,17 +505,44 @@ RULES:
           let fullAiText = '';
 
           // Phase 1: Stream the AI reply text
-          for await (const chunk of provider.generateStream(streamSystemPrompt, [
-            ...conversationHistory,
-            { role: 'user', content: streamUserMsg },
-          ])) {
-            fullAiText += chunk;
-            send(JSON.stringify({ type: 'token', text: chunk }));
+          if (forcedAdvanceMessage) {
+            // The learner already used their one retry on this word. Don't
+            // give the model a chance to ask a third time — hand off to the
+            // next word ourselves so the loop can't recur.
+            fullAiText = forcedAdvanceMessage;
+            send(JSON.stringify({ type: 'token', text: fullAiText }));
+          } else {
+            for await (const chunk of provider.generateStream(streamSystemPrompt, [
+              ...conversationHistory,
+              { role: 'user', content: streamUserMsg },
+            ])) {
+              fullAiText += chunk;
+              send(JSON.stringify({ type: 'token', text: chunk }));
+            }
           }
 
           if (!fullAiText.trim()) {
             fullAiText = `I understand. Please continue with the conversation.`;
             send(JSON.stringify({ type: 'token', text: fullAiText }));
+          }
+
+          // Parse the "【VOCAB N】" marker back out of the reply (works for both
+          // a model-generated turn and our own forcedAdvanceMessage, since it
+          // carries the same marker) to keep icebreakerVocabIndex/Attempts
+          // authoritative instead of trusting the model to self-track.
+          let newVocabIndex = currentVocabIndex;
+          let newVocabAttempts = currentVocabAttempts;
+          if (currentPhase === 'icebreaker') {
+            const vocabMarkerMatch = fullAiText.match(/【VOCAB (\d+)】/);
+            if (vocabMarkerMatch) {
+              const parsedIndex = parseInt(vocabMarkerMatch[1], 10);
+              if (parsedIndex === currentVocabIndex) {
+                newVocabAttempts = currentVocabAttempts + 1;
+              } else {
+                newVocabIndex = parsedIndex;
+                newVocabAttempts = 1;
+              }
+            }
           }
 
           // Validate ⟦ ⟧ delimiter usage when languages differ
@@ -531,7 +584,7 @@ RULES:
               aiConversationId = aiConversation?.id ?? null;
 
               const icebreakerDoneInner = currentPhase === 'icebreaker'
-                ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
+                ? (vocabRows.length > 0 ? newVocabIndex > vocabRows.length : true)
                 : false;
               const newPhaseInner = nextPhase(currentPhase, { icebreakerDone: icebreakerDoneInner, allGoalsCovered: false });
 
@@ -541,6 +594,8 @@ RULES:
                 status: 'active',
                 lastActiveAt: new Date(),
                 stalledTurnCount: 0,
+                icebreakerVocabIndex: newVocabIndex,
+                icebreakerVocabAttempts: newVocabAttempts,
               }).where(eq(sessions.id, numericSessionId));
 
               return { newPhase: newPhaseInner, phaseChanged: newPhaseInner !== currentPhase };
@@ -792,7 +847,7 @@ RULES:
             const allGoalsCoveredInner = isStalled || isSafetyCapped || totalGoalsNow >= goals.length;
 
             const icebreakerDoneInner = currentPhase === 'icebreaker'
-              ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
+              ? (vocabRows.length > 0 ? newVocabIndex > vocabRows.length : true)
               : false;
             const newPhaseInner = nextPhase(currentPhase, {
               icebreakerDone: icebreakerDoneInner,
@@ -833,6 +888,8 @@ RULES:
               lastActiveAt: new Date(),
               runningScore: runningScoreInner,
               phase: shouldCompleteInner ? 'completed' : newPhaseInner,
+              icebreakerVocabIndex: newVocabIndex,
+              icebreakerVocabAttempts: newVocabAttempts,
               vocabularyScore: blendedVocab,
               grammarScore: blendedGrammar,
               fluencyScore: blendedFluency,
