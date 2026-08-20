@@ -12,12 +12,25 @@ import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
+import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
+import { LessonCompleteScreen } from '@/components/roleplay/LessonCompleteScreen';
+import { LessonIncompleteScreen } from '@/components/roleplay/LessonIncompleteScreen';
+import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-metrics';
+import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { ArrowLeft, Flag, Info, MessageSquare, Volume2, VolumeX, X } from 'lucide-react';
+
+interface CompletionResult {
+  passed: boolean;
+  compositeScore: number;
+  xpGained?: number;
+  newStreak?: number;
+}
 
 export default function AvatarModePage() {
   const params = useParams();
@@ -28,8 +41,11 @@ export default function AvatarModePage() {
     session, scenario, character, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
+    evaluation, avgPronunciationScore, newWordsCount,
     submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection,
+    phaseTransition, dismissPhaseTransition,
+    unacknowledgedCompletion, acknowledgeCompletion,
   } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
@@ -45,6 +61,9 @@ export default function AvatarModePage() {
   const [coachOpen, setCoachOpen] = useState(false);
   const [mobileMsgOpen, setMobileMsgOpen] = useState(false);
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
+  const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
+  const [aiTurnActive, setAiTurnActive] = useState(false);
+  const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
@@ -64,13 +83,28 @@ export default function AvatarModePage() {
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
-  }, [session]);
+    setVoiceGender(session?.voiceGender || character?.gender || 'Female');
+  }, [session, character]);
 
   useEffect(() => {
     if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
       navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
     }
   }, []);
+
+  useEffect(() => {
+    if (unacknowledgedCompletion && !completionResult) {
+      const source = evaluation ?? session ?? {};
+      const compositeScore = computeCompositeScore('completed', {
+        vocabularyScore: source.vocabularyScore ?? 0,
+        grammarScore: source.grammarScore ?? 0,
+        fluencyScore: source.fluencyScore ?? 0,
+        culturalScore: source.culturalScore ?? 0,
+        taskScore: source.taskScore ?? 0,
+      });
+      setCompletionResult({ passed: compositeScore >= 70, compositeScore });
+    }
+  }, [unacknowledgedCompletion, completionResult, session, evaluation]);
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
@@ -83,17 +117,14 @@ export default function AvatarModePage() {
         emotionSystemRef.current?.stopTalking?.();
       }
     });
-    return () => setOnSpeakingChange(null);
+    return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
-
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
 
   const handleFinalTranscript = useCallback(async (text: string) => {
     if (sendingRef.current || !text.trim()) return;
     sendingRef.current = true;
     setSending(true);
+    setAiTurnActive(true);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     emotionSystemRef.current?.startThinking();
     stopTts();
@@ -113,11 +144,14 @@ export default function AvatarModePage() {
           setSuggestedReplies(analysis.suggestedReplies ?? []);
           setCoachOpen(true);
         },
-        onCelebration: () => setCelebration({
-          variant: 'scenario-mastery',
-          title: 'Scenario Mastered!',
-          subtitle: `You've completed every goal in "${situation?.title ?? scenario?.title ?? 'this scenario'}".`,
-        }),
+        onCelebration: (info) => {
+          pendingCelebrationRef.current = {
+            passed: info?.passed ?? true,
+            compositeScore: info?.score ?? 0,
+            xpGained: info?.xpGained,
+            newStreak: info?.newStreak,
+          };
+        },
         onComplete: (analysis) => {
           const emo = emotionSystemRef.current;
           if (emo && analysis) {
@@ -128,14 +162,21 @@ export default function AvatarModePage() {
       setStreamingText(null);
 
       const cleaned = cleanDisplay(fullText);
-      if (!mutedRef.current && cleaned) {
-        speakMixedText(
-          cleaned,
-          getBCP47(targetLangRef.current, 'tts'),
-          getNativeLangBcp47(nativeLangRef.current),
-          phaseRef.current,
-        ).catch(() => {});
-      }
+      const speechPromise = !mutedRef.current && cleaned
+        ? speakMixedText(
+            cleaned,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          ).catch(() => {})
+        : Promise.resolve();
+      speechPromise.then(() => {
+        setAiTurnActive(false);
+        if (pendingCelebrationRef.current) {
+          setCompletionResult(pendingCelebrationRef.current);
+          pendingCelebrationRef.current = null;
+        }
+      });
 
       const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
       if (latestUser?.corrections?.length) {
@@ -145,6 +186,7 @@ export default function AvatarModePage() {
     } catch (e: any) {
       console.error(e);
       emotionSystemRef.current?.stopThinking();
+      setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -178,6 +220,12 @@ export default function AvatarModePage() {
 
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
+  const leaveSession = useCallback(async () => {
+    stopTts();
+    await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {});
+    router.push(`/sessions/${sessionId}/report`);
+  }, [sessionId, router]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -195,12 +243,18 @@ export default function AvatarModePage() {
     );
   }
 
+  const scenarioTitle = situation?.title ?? scenario?.title ?? 'this scenario';
+  const sessionMetrics = completionResult
+    ? buildSessionMetrics({ evaluation, session, avgPronunciationScore, newWordsCount, completedGoals, goals })
+    : null;
+  const whatWentWrong = sessionMetrics ? buildWhatWentWrong({ conversations, metrics: sessionMetrics }) : [];
+
   return (
     <div className="relative flex h-full flex-col bg-gradient-to-b from-[#0a0a1a] via-[#0d0d24] to-[#111128]">
       <EnvironmentBackdrop domainSlug={domain?.slug} />
       <div className="relative z-20 flex items-center justify-between px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
-          <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
+          <button onClick={() => { stopTts(); router.push('/home'); }} className="text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-dojo-text-primary">{scenario?.title ?? 'Avatar'}</span>
@@ -227,7 +281,8 @@ export default function AvatarModePage() {
       </div>
 
       <div className="flex-1 relative z-10 overflow-hidden flex items-stretch">
-        {conversations.length === 0 && phase === 'icebreaker' && !greetingSent && (
+        <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
+        {conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">
             <div className="text-center max-w-xs">
               <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center">
@@ -358,15 +413,46 @@ export default function AvatarModePage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
-        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+        onEnd={leaveSession}
+        onViewReport={() => { stopTts(); router.push(`/sessions/${sessionId}/report`); }}
       />
 
       {celebration && (
         <CelebrationOverlay
           {...celebration}
-          onDismiss={() => setCelebration(null)}
+          onDismiss={() => {
+            setCelebration(null);
+            acknowledgeCompletion();
+          }}
+          onRepeat={() => {
+            setCelebration(null);
+            acknowledgeCompletion();
+            router.push(`/session/${sessionId}`);
+          }}
         />
+      )}
+
+      {completionResult && sessionMetrics && (
+        completionResult.passed ? (
+          <LessonCompleteScreen
+            scenarioTitle={scenarioTitle}
+            metrics={sessionMetrics}
+            xpGained={completionResult.xpGained}
+            newStreak={completionResult.newStreak}
+            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
+          />
+        ) : (
+          <LessonIncompleteScreen
+            scenarioTitle={scenarioTitle}
+            compositeScore={completionResult.compositeScore}
+            metrics={sessionMetrics}
+            whatWentWrong={whatWentWrong}
+            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
+            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onLeave={() => { setCompletionResult(null); acknowledgeCompletion(); leaveSession(); }}
+          />
+        )
       )}
     </div>
   );

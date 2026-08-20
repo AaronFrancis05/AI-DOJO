@@ -7,6 +7,9 @@ import {
 import { appendSetCookies } from '@/lib/auth/cookies';
 import { auth, getConfig } from '@/lib/auth/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { eq } from 'drizzle-orm';
+import { db } from '@/src/db';
+import { users } from '@/src/schema';
 
 const builtin = auth.handler();
 
@@ -191,7 +194,25 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(appUrl('/auth?error=exchange_failed'));
   }
 
-  const response = NextResponse.redirect(appUrl('/onboarding'));
+// Onboarding is only for brand-new signups. If this account already exists,
+  // the user is returning (just signing in) and should go straight to the app.
+  let redirectTarget = '/onboarding';
+  try {
+    const sessionData = await builtinResponse.clone().json();
+    const email = sessionData?.user?.email as string | undefined;
+    if (email) {
+      const [existing] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      if (existing) redirectTarget = '/home';
+    }
+  } catch (err) {
+    console.error('[oauth] failed to resolve existing user', err instanceof Error ? err.message : String(err));
+  }
+
+  const response = NextResponse.redirect(appUrl(redirectTarget));
   appendSetCookies(response.headers, builtinResponse.headers);
   return response;
 }

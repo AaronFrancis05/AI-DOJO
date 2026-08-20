@@ -1,17 +1,17 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Volume2, User } from 'lucide-react';
+import { Volume2, User } from 'lucide-react';
+import { stop as stopTts } from '@/lib/roleplay/tts';
 
-type SessionMode = 'chat' | 'voice' | 'avatar';
+type SessionMode = 'voice' | 'avatar';
 
 interface SessionModeTabsProps {
   sessionId: number;
   active: SessionMode;
 }
 
-const TABS: { key: SessionMode; label: string; icon: typeof MessageSquare }[] = [
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
+const TABS: { key: SessionMode; label: string; icon: typeof Volume2 }[] = [
   { key: 'voice', label: 'Voice', icon: Volume2 },
   { key: 'avatar', label: 'Avatar', icon: User },
 ];
@@ -27,7 +27,7 @@ export function SessionModeTabs({ sessionId, active }: SessionModeTabsProps) {
           <button
             key={key}
             type="button"
-            onClick={() => router.push(`/session/${sessionId}/${key}`)}
+            onClick={() => { stopTts(); router.push(`/session/${sessionId}/${key}`); }}
             className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
               isActive
                 ? 'bg-dojo-accent text-white shadow-sm'

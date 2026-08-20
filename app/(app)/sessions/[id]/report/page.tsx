@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Avatar } from '@/components/ui/Avatar';
 import { sessionHistory } from '@/lib/data/sessions';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 
 interface DataRecord {
@@ -259,7 +260,7 @@ export default function SessionReportPage() {
                       }`}>
                         {(msg.messageTarget || msg.messageJp) && (
                           <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                            {msg.messageTarget ?? msg.messageJp}
+                            {cleanDisplay(msg.messageTarget ?? msg.messageJp)}
                           </p>
                         )}
                         {msg.messagePhonetic && (

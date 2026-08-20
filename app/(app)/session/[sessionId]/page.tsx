@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getTargetLangConfig } from '@/lib/language';
-import { ArrowLeft, MessageSquare, Volume2, User } from 'lucide-react';
+import { ArrowLeft, Volume2, User } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 
 export default function SessionChooserPage() {
@@ -59,15 +59,6 @@ export default function SessionChooserPage() {
 
   const modes = [
     {
-      key: 'chat',
-      label: 'Chat',
-      desc: 'Text-only conversation. Type your responses.',
-      icon: MessageSquare,
-      href: `/session/${sessionId}/chat`,
-      color: 'border-dojo-accent hover:bg-dojo-accent/10',
-      iconColor: 'text-dojo-accent',
-    },
-    {
       key: 'voice',
       label: 'Voice',
       desc: 'Speak your responses hands-free.',
@@ -100,7 +91,7 @@ export default function SessionChooserPage() {
 
       {/* Mode cards */}
       <div className="flex-1 flex items-center justify-center p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl w-full">
           {modes.map((mode) => {
             const Icon = mode.icon;
             return (

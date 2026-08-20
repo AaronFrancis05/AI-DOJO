@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Mic, CheckCircle2, XCircle, ArrowRight, Volume2 } from 'lucide-react';
-import { speakWithVisemes, speak as ttsSpeak } from '@/lib/roleplay/tts';
+import { speakWithVisemes, speak as ttsSpeak, setVoiceGender } from '@/lib/roleplay/tts';
 import { getBCP47 } from '@/lib/language';
 
 interface VocabWord {
@@ -18,6 +18,7 @@ interface IcebreakerDrillProps {
   wordIndex: number;
   vocabCount: number;
   targetLanguage: string;
+  voiceGender?: string | null;
   onAttempt: (vocabularyId: number, transcript: string, accuracyScore: number, attemptNumber: number) => Promise<{
     retry?: boolean;
     feedback?: string;
@@ -27,7 +28,7 @@ interface IcebreakerDrillProps {
 }
 
 export function IcebreakerDrill({
-  word, wordIndex, vocabCount, targetLanguage,
+  word, wordIndex, vocabCount, targetLanguage, voiceGender,
   onAttempt, onComplete,
 }: IcebreakerDrillProps) {
   const [phase, setPhase] = useState<'intro' | 'recording' | 'result' | 'retry'>('intro');
@@ -38,6 +39,10 @@ export function IcebreakerDrill({
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false);
   const bcp47 = getBCP47(targetLanguage, 'tts');
+
+  useEffect(() => {
+    if (voiceGender) setVoiceGender(voiceGender);
+  }, [voiceGender]);
 
   useEffect(() => {
     setPhase('intro');

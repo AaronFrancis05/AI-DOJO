@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig } from '@/lib/language';
+import { setVoiceGender } from '@/lib/roleplay/tts';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 
 export interface TurnData {
   id: number;
@@ -50,6 +52,12 @@ export interface GoalData {
   goalType: string;
 }
 
+export interface PhaseTransitionEvent {
+  fromPhase: string;
+  toPhase: string;
+  message: string;
+}
+
 export interface SessionState {
   session: any;
   scenario: any;
@@ -64,27 +72,32 @@ export interface SessionState {
   error: string;
   isActive: boolean;
   isCompleted: boolean;
+  phaseTransition: PhaseTransitionEvent | null;
+  unacknowledgedCompletion: boolean;
+  evaluation: any | null;
+  avgPronunciationScore: number | null;
+  newWordsCount: number | null;
 }
 
 export interface UseRoleplaySessionReturn extends SessionState {
   submitTurn: (input: string, responseTimeMs?: number) => Promise<void>;
   submitTurnStream: (input: string, options?: {
     isRetry?: boolean;
+    accuracyScore?: number;
     responseTimeMs?: number;
     onToken?: (text: string) => void;
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
-    onCelebration?: () => void;
+    onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
+    onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
     onComplete?: (analysis: any) => void;
   }) => Promise<void>;
   sendGreeting: (opts?: { onToken?: (t: string) => void }) => Promise<string>;
   pendingRetry: PendingRetry | null;
   retryCorrection: () => Promise<void>;
   dismissRetry: () => void;
-}
-
-function cleanDisplay(text: string): string {
-  return text.replace(/【[^】]*】/g, '').trim();
+  dismissPhaseTransition: () => void;
+  acknowledgeCompletion: () => Promise<void>;
 }
 
 export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn {
@@ -96,9 +109,14 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const [goals, setGoals] = useState<GoalData[]>([]);
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals, setCompletedGoals] = useState<number[]>([]);
-  const [phase, setPhase] = useState<string>('icebreaker');
+  const [phase, setPhase] = useState<string>('orientation');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [phaseTransition, setPhaseTransition] = useState<PhaseTransitionEvent | null>(null);
+  const [unacknowledgedCompletion, setUnacknowledgedCompletion] = useState(false);
+  const [evaluation, setEvaluation] = useState<any | null>(null);
+  const [avgPronunciationScore, setAvgPronunciationScore] = useState<number | null>(null);
+  const [newWordsCount, setNewWordsCount] = useState<number | null>(null);
   const targetLanguageRef = useRef('ja');
   const nativeLanguageRef = useRef('en');
   const isRetryRef = useRef(false);
@@ -111,13 +129,14 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
         if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Session not found'); }
         const data = await res.json();
+        setVoiceGender(data.session?.voiceGender || data.character?.gender || 'Female');
         setSession(data.session);
         setScenario(data.scenario);
         setSituation(data.situation);
         setDomain(data.domain);
         setCharacter(data.character);
         setGoals(data.goals ?? []);
-        setConversations((data.conversations ?? []).map((c: any) => ({
+        const convList: TurnData[] = (data.conversations ?? []).map((c: any) => ({
           id: c.id,
           turnNo: c.turnNo,
           speaker: c.speaker,
@@ -129,13 +148,49 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
           corrections: c.corrections ?? [],
           audioUrl: c.audioUrl,
           audioStatus: c.audioStatus,
-        })));
+        }));
+        setConversations(convList);
         if (data.goalCompletions) {
           setCompletedGoals(data.goalCompletions.map((gc: any) => gc.sequenceOrder));
         }
+        setEvaluation(data.evaluation ?? null);
+        setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
+        setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
         if (data.session?.targetLanguage) targetLanguageRef.current = data.session.targetLanguage;
         if (data.session?.nativeLanguage) nativeLanguageRef.current = data.session.nativeLanguage;
         if (data.session?.phase) setPhase(data.session.phase);
+
+        // Check if completion was unacknowledged
+        if (data.session?.status === 'completed' && !data.session?.completionAcknowledged) {
+          setUnacknowledgedCompletion(true);
+        }
+
+        // Reconnect / Recap gap calculation (> 5 minutes)
+        const lastActiveTime = data.session?.lastActiveAt ? new Date(data.session.lastActiveAt).getTime() : 0;
+        const gapMs = lastActiveTime ? Date.now() - lastActiveTime : 0;
+        if (gapMs > 5 * 60 * 1000 && data.session?.status === 'active' && data.session?.phase !== 'orientation') {
+          fetch(`/api/sessions/${sessionId}/recap`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'content-type': 'application/json' },
+          })
+            .then(r => r.json())
+            .then(body => {
+              if (body.recapNeeded && body.recapText) {
+                const recapTurn: TurnData = {
+                  id: Date.now(),
+                  turnNo: convList.length + 1,
+                  speaker: 'ai',
+                  messageTarget: cleanDisplay(body.recapText),
+                  messageNative: body.recapText,
+                  messagePhonetic: null,
+                  receivedAt: Date.now(),
+                };
+                setConversations(prev => [...prev, recapTurn]);
+              }
+            })
+            .catch(err => console.warn('[RECAP] failed to fetch recap:', err));
+        }
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -171,11 +226,13 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     input: string,
     options?: {
       isRetry?: boolean;
+      accuracyScore?: number;
       responseTimeMs?: number;
       onToken?: (text: string) => void;
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
-      onCelebration?: () => void;
+      onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
+      onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
       onComplete?: (analysis: any) => void;
     },
   ) => {
@@ -202,6 +259,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
           sessionId,
           userRawInput: trimmed,
           isRetryOfPreviousMistake: options?.isRetry ?? isRetryRef.current,
+          accuracyScore: options?.accuracyScore,
           responseTimeMs: options?.responseTimeMs ?? 0,
         }),
       });
@@ -247,6 +305,19 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             collectedAiText += payload.text;
             options?.onToken?.(collectedAiText);
             break;
+          case 'phase_transition':
+            setPhase(payload.toPhase);
+            options?.onPhaseChange?.(payload.toPhase);
+            {
+              const transitionData: PhaseTransitionEvent = {
+                fromPhase: payload.fromPhase,
+                toPhase: payload.toPhase,
+                message: payload.message ?? '',
+              };
+              setPhaseTransition(transitionData);
+              options?.onPhaseTransition?.(transitionData);
+            }
+            break;
           case 'retry':
             isRetryResponse = true;
             isRetryRef.current = true;
@@ -260,7 +331,15 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             finalPhase = payload.phase;
             finalAnalysis = payload.analysis;
             setPendingRetry(null);
-            if (payload.celebration) options?.onCelebration?.();
+            if (payload.celebration) {
+              options?.onCelebration?.({
+                variant: payload.celebrationVariant ?? (payload.passed === false ? 'needs-practice' : 'scenario-mastery'),
+                passed: payload.passed ?? true,
+                score: payload.compositeScore ?? 0,
+                xpGained: payload.xpGained,
+                newStreak: payload.newStreak,
+              });
+            }
             options?.onComplete?.(payload.analysis);
             break;
           case 'error':
@@ -336,6 +415,14 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
 
     if (finalAnalysis?.scenarioComplete) {
       setSession((p: any) => ({ ...p, status: 'completed' }));
+      fetch(`/api/sessions/${sessionId}`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+          setEvaluation(data.evaluation ?? null);
+          setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
+          setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
+        })
+        .catch(() => {});
     }
   }, [sessionId, phase, conversations.length]);
 
@@ -356,11 +443,26 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
 
   const dismissRetry = useCallback(() => setPendingRetry(null), []);
 
+  const dismissPhaseTransition = useCallback(() => setPhaseTransition(null), []);
+
+  const acknowledgeCompletion = useCallback(async () => {
+    setUnacknowledgedCompletion(false);
+    await fetch(`/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ completionAcknowledged: true }),
+    }).catch(() => {});
+  }, [sessionId]);
+
   return {
     session, scenario, situation, domain, character,
     goals, conversations, completedGoals, phase,
     loading, error, isActive, isCompleted,
+    phaseTransition, unacknowledgedCompletion,
+    evaluation, avgPronunciationScore, newWordsCount,
     submitTurn, submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection, dismissRetry,
+    dismissPhaseTransition, acknowledgeCompletion,
   };
 }
