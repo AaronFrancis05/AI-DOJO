@@ -582,21 +582,32 @@ RULES:
             send(JSON.stringify({ type: 'token', text: fullAiText }));
           }
 
-          // Parse the "【VOCAB N】" marker back out of the reply (works for both
-          // a model-generated turn and our own forcedAdvanceMessage, since it
-          // carries the same marker) to keep icebreakerVocabIndex/Attempts
-          // authoritative instead of trusting the model to self-track.
+          // Keep icebreakerVocabIndex/Attempts authoritative instead of trusting
+          // the model to self-track: advance state directly when we forced the
+          // turn ourselves, otherwise validate the "【VOCAB N】" marker the model
+          // was asked to emit before trusting it to move the index.
           let newVocabIndex = currentVocabIndex;
           let newVocabAttempts = currentVocabAttempts;
           if (currentPhase === 'icebreaker') {
-            const vocabMarkerMatch = fullAiText.match(/【VOCAB (\d+)】/);
-            if (vocabMarkerMatch) {
-              const parsedIndex = parseInt(vocabMarkerMatch[1], 10);
+            if (shouldForceAdvanceVocab) {
+              // We authored fullAiText ourselves (forcedAdvanceMessage) — advance
+              // state directly instead of round-tripping through the marker regex.
+              newVocabIndex = currentVocabIndex + 1;
+              newVocabAttempts = newVocabIndex <= vocabRows.length ? 1 : 0;
+            } else {
+              // Only trust a marker that matches the current word or steps to the
+              // very next one; a missing, malformed, or out-of-range value (e.g. the
+              // model hallucinating "【VOCAB 999】" or skipping ahead) can't be used to
+              // update the authoritative index, but must still count as a turn spent
+              // on the current word so the retry ceiling above still gets hit.
+              const parsedIndex = Number(fullAiText.match(/【VOCAB (\d+)】/)?.[1]);
               if (parsedIndex === currentVocabIndex) {
                 newVocabAttempts = currentVocabAttempts + 1;
-              } else {
+              } else if (parsedIndex === currentVocabIndex + 1 && parsedIndex <= vocabRows.length) {
                 newVocabIndex = parsedIndex;
                 newVocabAttempts = 1;
+              } else {
+                newVocabAttempts = currentVocabAttempts + 1;
               }
             }
           }
