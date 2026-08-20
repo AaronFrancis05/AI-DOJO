@@ -12,12 +12,7 @@ import {
 
 async function seed() {
   try {
-    const existingUsers = await db.select({ id: users.id }).from(users).limit(1);
-    if (existingUsers.length > 0) {
-      console.log('📦 Database already seeded — skipping.');
-      return;
-    }
-    console.log('🌱 Starting AI DOJO database seeding...');
+    console.log('🌱 Starting AI DOJO database seeding (idempotent — existing rows are preserved)...');
 
     // ================================================================
     // 1. USERS
@@ -28,20 +23,31 @@ async function seed() {
     // In production, users should register with their own passwords.
     const defaultPwHash = bcrypt.hashSync('changeme123', 10);
 
-    const insertedUsers = await db.insert(users).values([
+    const seedUsers = [
       { name: 'Lynnette', email: 'nangonzilynnette775@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 2400, xpToNext: 3000, tier: 'premium', streak: 12, consentToDataSharing: true },
       { name: 'Aaron', email: 'aarontaremwa8@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 1800, xpToNext: 2000, tier: 'premium', streak: 7, consentToDataSharing: true },
       { name: 'Desire', email: 'desirehope82@gmail.com', passwordHash: defaultPwHash, level: 'intermediate', xp: 5600, xpToNext: 8000, tier: 'premium', streak: 3, consentToDataSharing: true },
       { name: 'Derrick', email: 'alaxdero1@gmail.com', passwordHash: defaultPwHash, level: 'beginner', xp: 900, xpToNext: 1000, tier: 'free', streak: 0, consentToDataSharing: true },
-    ]).returning();
+    ];
 
-    const userMap = Object.fromEntries(insertedUsers.map(u => [u.name, u.id]));
+    const existingUserEmails = await db.select({ id: users.id, email: users.email }).from(users)
+      .where(inArray(users.email, seedUsers.map(u => u.email)));
+
+    const missingUsers = seedUsers.filter(u => !existingUserEmails.some(e => e.email === u.email));
+    const insertedUsers = missingUsers.length > 0
+      ? await db.insert(users).values(missingUsers).returning()
+      : [];
+
+    const userMap = Object.fromEntries(
+      [...existingUserEmails, ...insertedUsers]
+        .map(u => [u.name, u.id]),
+    );
 
     // ================================================================
     // 2. SCENARIOS (20 upgraded scenarios)
     // ================================================================
     console.log('Inserting 20 scenarios...');
-    const insertedScenarios = await db.insert(scenarios).values([
+    const seedScenarios = [
       {
         title: 'First Meeting & Self Introduction',
         context: 'A Ugandan learner arrives at a community welcome event in Tokyo and meets Hana, a cultural exchange coordinator. This initial encounter requires a proper self-introduction using Japanese etiquette: bowing, stating one\'s name, origin, and expressing the desire for a good relationship. First impressions matter deeply in Japanese culture, and using the correct set phrases signals respect and willingness to integrate.',
@@ -222,15 +228,25 @@ async function seed() {
         learningGoals: 'Express gratitude with osewa ni narimashita, use sabishii desu ne naturally, give a brief farewell message, close with otagai ni genki de / gokigen you',
         displayOrder: 20,
       },
-    ]).returning();
+    ];
 
-    const sIds = insertedScenarios.map(s => s.id);
+    const existingScenarioTitles = await db.select({ id: scenarios.id, title: scenarios.title }).from(scenarios)
+      .where(inArray(scenarios.title, seedScenarios.map(s => s.title)));
+
+    const missingScenarios = seedScenarios.filter(s => !existingScenarioTitles.some(e => e.title === s.title));
+    const insertedScenarios = missingScenarios.length > 0
+      ? await db.insert(scenarios).values(missingScenarios).returning()
+      : [];
+
+    const sIds = seedScenarios.map(s =>
+      [...existingScenarioTitles, ...insertedScenarios].find(e => e.title === s.title)!.id,
+    );
 
     // ================================================================
     // 3. VOCABULARY (5-8 items per scenario)
     // ================================================================
     console.log('Inserting vocabulary...');
-    await db.insert(vocabulary).values([
+    const seedVocabulary = [
       // Scenario 1: First Meeting
       { scenarioId: sIds[0], targetText: 'はじめまして', phonetic: 'Hajimemashite', translation: 'Nice to meet you (first meeting only)', category: 'greeting', usageTip: 'Only used the very first time you meet someone. Never used again with the same person.', formalityLevel: 'polite' },
       { scenarioId: sIds[0], targetText: 'わたしは___です', phonetic: 'Watashi wa ___ desu', translation: 'I am ___', category: 'self-introduction', usageTip: 'The standard self-introduction template. Say your name where ___ is, then bow slightly.', formalityLevel: 'polite' },
@@ -340,7 +356,18 @@ async function seed() {
       { scenarioId: sIds[19], targetText: 'さびしいですね', phonetic: 'Sabishii desu ne', translation: 'It\'s sad, isn\'t it?', category: 'farewell', usageTip: 'A natural empathetic response when someone is leaving. Shows emotional connection.', formalityLevel: 'polite' },
       { scenarioId: sIds[19], targetText: 'おたがいにげんきで', phonetic: 'Otagai ni genki de', translation: 'Take care of yourselves', category: 'farewell', usageTip: 'A warm closing phrase. Use when parting ways, especially for long separations.', formalityLevel: 'polite' },
       { scenarioId: sIds[19], targetText: 'いってらっしゃい', phonetic: 'Itterasshai', translation: 'Take care / Have a good one (said to someone leaving)', category: 'farewell', usageTip: 'Say this when someone leaves the office or home. Response: ittekimasu.', formalityLevel: 'polite' },
-    ]);
+    ];
+
+    const existingVocabulary = await db.select({ id: vocabulary.id, scenarioId: vocabulary.scenarioId, targetText: vocabulary.targetText, languageCode: vocabulary.languageCode })
+      .from(vocabulary)
+      .where(inArray(vocabulary.scenarioId, sIds));
+
+    const missingVocabulary = seedVocabulary.filter(v =>
+      !existingVocabulary.some(e => e.scenarioId === v.scenarioId && e.targetText === v.targetText && e.languageCode === v.languageCode),
+    );
+    if (missingVocabulary.length > 0) {
+      await db.insert(vocabulary).values(missingVocabulary);
+    }
 
     // ================================================================
     // 3b. LOCALIZATIONS (Luganda — demo-grade native-language UX)
@@ -388,7 +415,7 @@ async function seed() {
     // 4. SCENARIO GOALS (4-6 per scenario)
     // ================================================================
     console.log('Inserting scenario goals...');
-    await db.insert(scenarioGoals).values([
+    const seedScenarioGoals = [
       // Scenario 1: First Meeting
       { scenarioId: sIds[0], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Recognize and use "hajimemashite" as a first-meeting greeting', targetPhrase: 'はじめまして' },
       { scenarioId: sIds[0], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself using "watashi wa ___ desu" with own name', targetPhrase: 'わたしは___です' },
@@ -507,11 +534,29 @@ async function seed() {
       { scenarioId: sIds[19], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Say "otagai ni genki de" as a warm closing', targetPhrase: 'おたがいにげんきで' },
       { scenarioId: sIds[19], sequenceOrder: 4, goalType: 'vocabulary', goalText: 'Use "itterasshai" / "ittekimasu" pair appropriately', targetPhrase: 'いってらっしゃい' },
       { scenarioId: sIds[19], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Deliver a complete and heartfelt farewell speech', targetPhrase: null },
-    ]);
+    ];
+
+    const existingGoals = await db.select({ id: scenarioGoals.id, scenarioId: scenarioGoals.scenarioId, sequenceOrder: scenarioGoals.sequenceOrder })
+      .from(scenarioGoals)
+      .where(inArray(scenarioGoals.scenarioId, sIds));
+
+    const missingGoals = seedScenarioGoals.filter(g =>
+      !existingGoals.some(e => e.scenarioId === g.scenarioId && e.sequenceOrder === g.sequenceOrder),
+    );
+    if (missingGoals.length > 0) {
+      await db.insert(scenarioGoals).values(missingGoals);
+    }
 
     // ================================================================
     // 5. EXAMPLE SESSIONS with full data
+    //    Only created when the demo users themselves were newly seeded,
+    //    so re-running never attaches fake history to real accounts.
     // ================================================================
+    const allDemoUsersNew = ['Lynnette', 'Aaron', 'Desire', 'Derrick'].every(n =>
+      insertedUsers.some(u => u.name === n),
+    );
+
+    if (allDemoUsersNew) {
     console.log('Inserting example sessions and conversation data...');
 
     // Session 1: Lynnette plays Scenario 1 (First Meeting)
@@ -911,6 +956,7 @@ const [s1Row] = await db.insert(sessions).values({
       { sessionId: s2Row.id, conversationId: s2Turn1User[0].id, vocabularyId: s2Vocab[0].id, usedCorrectly: true },
       { sessionId: s2Row.id, conversationId: s2Turn1User[0].id, vocabularyId: s2Vocab[1].id, usedCorrectly: true },
     ]);
+    }
 
     console.log('Inserting localizations (English-first sample)...');
     await db.insert(scenarioLocalizations).values([{
