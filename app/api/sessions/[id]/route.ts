@@ -136,10 +136,12 @@ export async function GET(
   const [vocabItems, goals, domainResult] = await Promise.all([
     scenario
       ? (async (): Promise<VocabRow[]> => {
-          const k = cacheKeys.vocabulary(scenario.id);
+          const lang = session.targetLanguage ?? 'ja';
+          const k = cacheKeys.vocabulary(scenario.id, lang);
           const c = await cacheGet<VocabRow[]>(k);
           if (c) return c;
-          const r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenario.id));
+          const languages = lang === 'ja' ? ['ja'] : ['ja', lang];
+          const r = await db.select().from(vocabulary).where(and(eq(vocabulary.scenarioId, scenario.id), inArray(vocabulary.languageCode, languages)));
           await cacheSet(k, r, TTL.VOCABULARY);
           return r;
         })()

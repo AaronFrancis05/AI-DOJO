@@ -17,6 +17,7 @@ import {
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
+import { sanitizeStreamedChunk, createStreamTextSanitizer } from '../../../../lib/roleplay/stream-sanitizer';
 import { inngest } from '../../../../lib/inngest/client';
 import type { AIProvider } from '../../../../lib/ai-providers';
 
@@ -121,34 +122,48 @@ function icebreakerPhrase(langCode: string, key: IcebreakerPhraseKey): string {
 }
 
 /**
+ * Languages whose writing system does not separate words with spaces (CJK,
+ * Thai, Khmer, Burmese, Lao). For these there is no word boundary to enforce,
+ * so phrase matching falls back to raw substring containment.
+ */
+const SPACE_DELIMITED_LANGUAGES = new Set([
+  'en', 'fr', 'de', 'es', 'ru', 'ar', 'sw', 'lg', 'pt', 'it', 'nl', 'tr', 'pl',
+  'uk', 'el', 'he', 'fa', 'hi', 'bn', 'ur', 'ko', 'vi', 'tl', 'ms', 'id',
+]);
+
+/**
  * Lightweight lexical check for whether the learner's raw input contains the
  * word currently being drilled (its target text, romaji phonetic, or meaning).
  * Used to steer the model past a word the learner has already produced, so the
  * AI doesn't loop back and ask them to repeat it.
+ *
+ * Matching rules:
+ * - Exact match always counts.
+ * - For space-delimited languages, a phrase match must appear as a standalone
+ *   token, so a partial input like "bon" never matches "bonjour" (and the user
+ *   typing "bonjour" never counts as producing the word "bon").
+ * - Non-space-delimited scripts fall back to substring containment; reverse
+ *   containment is never used.
  */
 function userAttemptsVocabWord(
   input: string,
   v: { targetText: string; phonetic: string | null; translation: string },
+  targetLanguage: string,
 ): boolean {
   const norm = (s: string) => s.toLowerCase().trim().replace(/[.,!?;:'"()\[\]⟦⟧【】]/g, '');
   const clean = norm(input);
   if (!clean) return false;
   const haystacks = [v.targetText, v.phonetic ?? '', v.translation].map(norm).filter(Boolean);
-  return haystacks.some(h => clean === h || clean.includes(h) || h.includes(clean));
-}
 
-/**
- * Strips internal scaffolding from streamed AI text before it reaches the
- * learner: the 【VOCAB N】 bookkeeping marker and any leaked meta labels like
- * "TEACHER:" or "[Turn 3]". The raw fullAiText (with markers) is still kept
- * for engine-side state parsing below.
- */
-function sanitizeStreamedChunk(text: string): string {
-  return text
-    .replace(/【[^】]*】/g, '')
-    .replace(/^(?:TEACHER|STUDENT|COACH|ASSISTANT|AI|SYSTEM)\s*:\s*/im, '')
-    .replace(/\[Turn\s*\d+\]\s*/g, '')
-    .replace(/ {2,}/g, ' ');
+  if (!SPACE_DELIMITED_LANGUAGES.has(targetLanguage)) {
+    return haystacks.some(h => clean === h || clean.includes(h));
+  }
+
+  return haystacks.some(h => {
+    if (clean === h) return true;
+    const escaped = h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'u').test(clean);
+  });
 }
 
 /**
@@ -307,6 +322,7 @@ export async function POST(req: Request) {
         phonetic: currentVocabRow.phonetic,
         translation: isSameLanguage ? currentVocabRow.translation : '',
       },
+      targetLanguage,
     );
 
     // The base `phonetic` column stores Japanese romaji. Once vocab is
@@ -619,6 +635,7 @@ RULES:
         try {
           const provider = await getAIProvider();
           let fullAiText = '';
+          const streamSanitizer = createStreamTextSanitizer();
 
           // Phase 1: Stream the AI reply text
           if (forcedAdvanceMessage) {
@@ -626,20 +643,26 @@ RULES:
             // give the model a chance to ask a third time — hand off to the
             // next word ourselves so the loop can't recur.
             fullAiText = forcedAdvanceMessage;
-            send(JSON.stringify({ type: 'token', text: sanitizeStreamedChunk(fullAiText) }));
+            const text = streamSanitizer.push(fullAiText) + streamSanitizer.flush();
+            if (text) send(JSON.stringify({ type: 'token', text }));
           } else {
             for await (const chunk of provider.generateStream(streamSystemPrompt, [
               ...conversationHistory,
               { role: 'user', content: streamUserMsg },
             ])) {
               fullAiText += chunk;
-              send(JSON.stringify({ type: 'token', text: sanitizeStreamedChunk(chunk) }));
+              const delta = streamSanitizer.push(chunk);
+              if (delta) send(JSON.stringify({ type: 'token', text: delta }));
             }
           }
 
           if (!fullAiText.trim()) {
             fullAiText = `I understand. Please continue with the conversation.`;
-            send(JSON.stringify({ type: 'token', text: sanitizeStreamedChunk(fullAiText) }));
+            const text = streamSanitizer.push(fullAiText) + streamSanitizer.flush();
+            if (text) send(JSON.stringify({ type: 'token', text }));
+          } else {
+            const tail = streamSanitizer.flush();
+            if (tail) send(JSON.stringify({ type: 'token', text: tail }));
           }
 
           // Keep icebreakerVocabIndex/Attempts authoritative instead of trusting
@@ -762,7 +785,7 @@ RULES:
 
             send(JSON.stringify({
               type: 'done',
-              fullText: fullAiText,
+              fullText: sanitizeStreamedChunk(fullAiText),
               phase: sessionStartPhase,
               analysis: { corrections: [], suggestedReplies: [] },
             }));
@@ -1202,7 +1225,7 @@ RULES:
               type: 'phase_transition',
               fromPhase: currentPhase,
               toPhase: writeResult.newPhase,
-              message: transitionMsg,
+              message: sanitizeStreamedChunk(transitionMsg),
             }));
           }
 
@@ -1226,7 +1249,7 @@ RULES:
           // ── Send final event ──
           send(JSON.stringify({
             type: 'done',
-            fullText: fullAiText,
+            fullText: sanitizeStreamedChunk(fullAiText),
             phase: writeResult.newPhase,
             runningScore: writeResult.runningScore,
             celebration: writeResult.isCelebration,

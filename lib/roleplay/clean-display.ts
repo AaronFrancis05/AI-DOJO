@@ -7,8 +7,8 @@
 export function cleanDisplay(text: string): string {
   if (!text) return '';
   return text
-    .replace(/【[^】]*】/g, '')
-    .replace(/^(?:TEACHER|STUDENT|COACH|ASSISTANT|AI|SYSTEM)\s*:\s*/im, '')
+    .replace(/【VOCAB\s+\d+】/g, '')
+    .replace(/^(?:TEACHER|STUDENT|COACH|ASSISTANT|AI|SYSTEM)\s*:\s*/gim, '')
     .replace(/\[Turn\s*\d+\]\s*/g, '')
     .replace(/ {2,}/g, ' ')
     .trim();

@@ -107,7 +107,7 @@ export default function ChatOnlyPage() {
     try {
       await submitTurnStream(text, {
         responseTimeMs,
-        onToken: (t) => setStreamingText(t ? t.replace(/【[^】]*】/g, '').trim() : null),
+        onToken: (t) => setStreamingText(t ? t.replace(/【VOCAB\s+\d+】/g, '').trim() : null),
         onRetry: (analysis) => {
           setSuggestedReplies(analysis.suggestedReplies ?? []);
         },

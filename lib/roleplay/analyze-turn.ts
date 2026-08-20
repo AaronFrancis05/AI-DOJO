@@ -8,7 +8,7 @@ import {
   goalCompletions,
   vocabulary,
 } from '../../src/schema';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, inArray } from 'drizzle-orm';
 import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
 import { getAIProvider, type ChatTurn } from '../ai-providers';
 import { getTargetLangConfig, getNativeLangName } from '../language';
@@ -77,14 +77,20 @@ Return a JSON array of ${neededCount} objects strictly matching this format:
       // Reject description-like or clearly broken targetText entries (e.g. a
       // full sentence "A polite expression used when..." instead of an actual
       // word/phrase) so the icebreaker never drills garbage. A real word or
-      // short phrase stays under ~6 words and contains no sentence punctuation.
+      // short phrase stays under ~6 words and contains no sentence punctuation
+      // (including CJK sentence-final marks). Translations must be non-empty —
+      // a whitespace-only translation would otherwise be persisted and drilled.
       const looksLikeWordOrPhrase = (t: string) => {
         const text = String(t).trim();
         if (!text) return false;
-        if (/[.!?;]$/.test(text)) return false;
+        if (/[.!?;。！？]$/.test(text)) return false;
         return text.split(/\s+/).length <= 6;
       };
-      const validItems = items.filter(item => item && item.targetText && looksLikeWordOrPhrase(item.targetText));
+      const validItems = items.filter(item => {
+        if (!item || !item.targetText) return false;
+        if (!looksLikeWordOrPhrase(item.targetText)) return false;
+        return Boolean(String(item.translation || '').trim());
+      });
       if (validItems.length > 0) {
         const inserted = await db.insert(vocabulary).values(
           validItems.slice(0, neededCount).map((item) => ({
@@ -99,7 +105,7 @@ Return a JSON array of ${neededCount} objects strictly matching this format:
         ).returning();
 
         const combined = [...existingVocab, ...inserted];
-        await cacheSet(cacheKeys.vocabulary(scenario.id), combined, TTL.VOCABULARY);
+        await cacheSet(cacheKeys.vocabulary(scenario.id, targetLanguage), combined, TTL.VOCABULARY);
         return combined;
       }
     }
@@ -203,10 +209,17 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
 
   let vocabRows = currentPhase === 'orientation' || currentPhase === 'icebreaker' || currentPhase === 'guided'
     ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {
-        const k = cacheKeys.vocabulary(scenarioId);
+        const k = cacheKeys.vocabulary(scenarioId, targetLanguage);
         const c = await cacheGet<typeof vocabulary.$inferSelect[]>(k);
         if (c && c.length >= MAX_ICEBREAKER_VOCAB) return c;
-        let r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenarioId)).orderBy(vocabulary.id);
+        // The canonical vocabulary rows are the Japanese seed ones ('ja'); a
+        // target-language session sees those plus any rows already generated
+        // for its own language. Other languages' generated rows are excluded so
+        // a French session's AI-generated words never leak into a Japanese one.
+        const languages = targetLanguage === 'ja' ? ['ja'] : ['ja', targetLanguage];
+        let r = await db.select().from(vocabulary)
+          .where(and(eq(vocabulary.scenarioId, scenarioId), inArray(vocabulary.languageCode, languages)))
+          .orderBy(vocabulary.id);
         if (r.length < MAX_ICEBREAKER_VOCAB && currentScenario) {
           r = await generateAndPersistMissingVocabulary(currentScenario, r, targetLanguage, nativeLanguage);
         }
