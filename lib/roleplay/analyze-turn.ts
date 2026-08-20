@@ -10,7 +10,8 @@ import {
 } from '../../src/schema';
 import { eq, and, asc } from 'drizzle-orm';
 import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
-import type { ChatTurn } from '../ai-providers';
+import { getAIProvider, type ChatTurn } from '../ai-providers';
+import { getTargetLangConfig, getNativeLangName } from '../language';
 import type { SessionPhase } from './phase-engine';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../cache';
 import {
@@ -28,6 +29,67 @@ type SessionRow = typeof sessions.$inferSelect;
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
 type GoalRow = typeof scenarioGoals.$inferSelect;
+
+async function generateAndPersistMissingVocabulary(
+  scenario: ScenarioRow,
+  existingVocab: typeof vocabulary.$inferSelect[],
+  targetLanguage: string,
+  nativeLanguage: string,
+): Promise<typeof vocabulary.$inferSelect[]> {
+  const neededCount = MAX_ICEBREAKER_VOCAB - existingVocab.length;
+  if (neededCount <= 0) return existingVocab;
+
+  const targetLangName = getTargetLangConfig(targetLanguage).name;
+  const nativeLangName = getNativeLangName(nativeLanguage);
+  const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+
+  try {
+    const provider = await getAIProvider();
+    const prompt = `Generate exactly ${neededCount} essential vocabulary words or short phrases for a language learner in the following roleplay scenario.
+
+Scenario Title: ${scenario.title}
+Context/Setting: ${scenario.context}
+Learning Goals: ${scenario.learningGoals}
+Target Language: ${targetLangName}
+Native Language: ${nativeLangName}
+Existing words (do not duplicate): ${existingVocab.map(v => v.targetText).join(', ') || 'None'}
+
+Return a JSON array of ${neededCount} objects strictly matching this format:
+[
+  {
+    "targetText": "Word or short phrase in ${targetLangName}",
+    "phonetic": ${showPhonetic ? '"Phonetic romaji pronunciation"' : 'null'},
+    "translation": "Meaning in ${nativeLangName}",
+    "category": "greeting|phrase|noun|verb",
+    "usageTip": "Short practical tip for using this in the scenario"
+  }
+]`;
+
+    const raw = await provider.generateJSON(prompt, []);
+    const items = JSON.parse(raw);
+    if (Array.isArray(items) && items.length > 0) {
+      const inserted = await db.insert(vocabulary).values(
+        items.slice(0, neededCount).map((item: any) => ({
+          scenarioId: scenario.id,
+          targetText: String(item.targetText || '').trim(),
+          phonetic: item.phonetic ? String(item.phonetic).trim() : null,
+          translation: String(item.translation || '').trim(),
+          languageCode: targetLanguage,
+          category: item.category ? String(item.category).trim() : 'phrase',
+          usageTip: item.usageTip ? String(item.usageTip).trim() : null,
+        }))
+      ).returning();
+
+      const combined = [...existingVocab, ...inserted];
+      await cacheSet(cacheKeys.vocabulary(scenario.id), combined, TTL.VOCABULARY);
+      return combined;
+    }
+  } catch (err) {
+    console.error('[VOCABULARY GENERATION] Failed to generate missing vocabulary:', err);
+  }
+
+  return existingVocab;
+}
 
 export interface SessionTurnData {
   session: SessionRow;
@@ -120,18 +182,21 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
   const isSameLanguage = targetLanguage === nativeLanguage;
   const currentPhase = session.phase as SessionPhase;
 
-  let vocabRows = currentPhase === 'icebreaker' || currentPhase === 'guided'
+  let vocabRows = currentPhase === 'orientation' || currentPhase === 'icebreaker' || currentPhase === 'guided'
     ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {
         const k = cacheKeys.vocabulary(scenarioId);
         const c = await cacheGet<typeof vocabulary.$inferSelect[]>(k);
-        if (c) return c;
-        const r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenarioId)).orderBy(vocabulary.id);
+        if (c && c.length >= MAX_ICEBREAKER_VOCAB) return c;
+        let r = await db.select().from(vocabulary).where(eq(vocabulary.scenarioId, scenarioId)).orderBy(vocabulary.id);
+        if (r.length < MAX_ICEBREAKER_VOCAB && currentScenario) {
+          r = await generateAndPersistMissingVocabulary(currentScenario, r, targetLanguage, nativeLanguage);
+        }
         await cacheSet(k, r, TTL.VOCABULARY);
         return r;
       })()
     : [];
 
-  if (currentPhase === 'icebreaker' && vocabRows.length > MAX_ICEBREAKER_VOCAB) {
+  if ((currentPhase === 'icebreaker' || currentPhase === 'orientation') && vocabRows.length > MAX_ICEBREAKER_VOCAB) {
     vocabRows = vocabRows.slice(0, MAX_ICEBREAKER_VOCAB);
   }
 

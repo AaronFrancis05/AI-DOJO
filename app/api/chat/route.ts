@@ -5,11 +5,18 @@ import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import type { ChatTurn } from '../../../lib/ai-providers';
 import { AIProviderError, AIQuotaError, AIModelError } from '../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../lib/language';
-import { nextPhase, UNGUIDED_MISTAKE_PENALTY, UNGUIDED_ENGLISH_PENALTY } from '../../../lib/roleplay/phase-engine';
+import {
+  nextPhase,
+  computeCompositeScore,
+  PRONUNCIATION_PASS_THRESHOLD,
+  PASSING_SCORE_THRESHOLD,
+  STALL_THRESHOLD,
+  SAFETY_CAP_TURN,
+  UNGUIDED_MISTAKE_PENALTY,
+  UNGUIDED_ENGLISH_PENALTY,
+} from '../../../lib/roleplay/phase-engine';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../lib/auth/server';
-
-const SAFETY_CAP_TURN = 15;
 
 export async function POST(req: Request) {
   try {
@@ -258,14 +265,18 @@ export async function POST(req: Request) {
       const goalsCompleted = mlPipelineOutput.goalsAddressedThisTurn?.filter(
         seqOrder => !completedSequenceOrders.includes(seqOrder)
       ).length ?? 0;
+      const newStalledTurnCount = goalsCompleted > 0 ? 0 : ((freshSession.stalledTurnCount ?? 0) + 1);
+      const isStalled = (currentPhase === 'guided' || currentPhase === 'unguided')
+        && newStalledTurnCount >= STALL_THRESHOLD;
+      const isSafetyCapped = currentTurnNo >= SAFETY_CAP_TURN;
       const totalGoalsNow = completedSequenceOrders.length + goalsCompleted;
-      const allGoalsCovered = totalGoalsNow >= goals.length;
+      const allGoalsCovered = isStalled || isSafetyCapped || totalGoalsNow >= goals.length;
 
       const newPhase = nextPhase(currentPhase, {
         icebreakerDone: false,
         allGoalsCovered,
       });
-      const shouldComplete = mlPipelineOutput.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN;
+      const shouldComplete = mlPipelineOutput.scenarioComplete || (currentPhase === 'unguided' && (allGoalsCovered || isSafetyCapped));
 
       const currentVocabScore = freshSession.vocabularyScore ?? 0;
       const currentGrammarScore = freshSession.grammarScore ?? 0;
@@ -286,6 +297,8 @@ export async function POST(req: Request) {
       const updateData: Record<string, any> = {
         totalTurns: currentTurnNo,
         runningScore,
+        stalledTurnCount: newStalledTurnCount,
+        lastActiveAt: new Date(),
         phase: shouldComplete ? 'completed' : newPhase,
         vocabularyScore: blendedVocab,
         grammarScore: blendedGrammar,
