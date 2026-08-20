@@ -176,10 +176,12 @@ export const sessions = pgTable('sessions', {
   situationId:     integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
-  phase:           varchar('phase', { length: 20 }).default('icebreaker').notNull(),
+  phase:           varchar('phase', { length: 20 }).default('orientation').notNull(),
   icebreakerIndex: integer('icebreaker_index').default(0).notNull(),
   runningScore:    integer('running_score').default(100).notNull(),
   pendingRetryCorrectionId: integer('pending_retry_correction_id'),
+  stalledTurnCount: integer('stalled_turn_count').default(0).notNull(),
+  completionAcknowledged: boolean('completion_acknowledged').default(false).notNull(),
   targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
@@ -196,6 +198,7 @@ export const sessions = pgTable('sessions', {
   voiceGender:     varchar('voice_gender', { length: 10 }).default('female').notNull(),
   expressionAppropriatenessScore: integer('expression_appropriateness_score'),
   startedAt:       timestamp('started_at').defaultNow().notNull(),
+  lastActiveAt:    timestamp('last_active_at').defaultNow().notNull(),
   completedAt:     timestamp('completed_at'),
 });
 

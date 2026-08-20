@@ -273,6 +273,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
     situationId: situationId ? Number(situationId) : scenario.situationId,
     characterId: characterId ? Number(characterId) : null,
     behaviorMode: behaviorMode ?? 'standard',
+    phase: 'orientation',
     targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? 'ja',
     nativeLanguage: nativeLanguage ?? profile?.nativeLanguage ?? 'en',
     voiceGender,

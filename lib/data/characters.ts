@@ -4,17 +4,6 @@ import type { DataSource } from './result';
 export { fixtureCharacters as characters };
 export type { CharacterFixture };
 
-const domainIdToSlug: Record<number, string> = {
-  1: 'restaurant',
-  2: 'hotel',
-  3: 'airport',
-  4: 'hospital',
-  5: 'shopping',
-  6: 'business',
-  7: 'travel',
-  8: 'daily_life',
-};
-
 function adaptDbCharacter(d: any): CharacterFixture {
   return {
     id: d.id,
@@ -26,7 +15,7 @@ function adaptDbCharacter(d: any): CharacterFixture {
     voiceType: d.voiceType,
     gender: d.gender ?? 'female',
     avatarModelUrl: d.avatarModelUrl ?? undefined,
-    defaultForDomain: d.defaultForDomainId != null ? domainIdToSlug[d.defaultForDomainId] : undefined,
+    defaultForDomain: d.defaultForDomain ?? undefined,
     displayOrder: d.displayOrder ?? 0,
   };
 }

@@ -280,6 +280,13 @@ export async function PATCH(
     updateData.avatarEnabled = body.avatarEnabled;
   }
 
+  if (body.completionAcknowledged !== undefined) {
+    if (typeof body.completionAcknowledged !== 'boolean') {
+      return Response.json({ error: 'completionAcknowledged must be a boolean' }, { status: 400 });
+    }
+    updateData.completionAcknowledged = body.completionAcknowledged;
+  }
+
   if (status) {
     if (!['active', 'paused', 'completed'].includes(status)) {
       return Response.json({ error: 'Invalid status value' }, { status: 400 });
@@ -291,6 +298,8 @@ export async function PATCH(
       updateData.completedAt = null;
     }
   }
+
+  updateData.lastActiveAt = new Date();
 
   if (Object.keys(updateData).length === 0) {
     return Response.json({ error: 'No valid fields to update' }, { status: 400 });

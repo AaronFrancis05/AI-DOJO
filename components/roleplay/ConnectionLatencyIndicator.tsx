@@ -10,24 +10,27 @@ interface ConnectionLatencyIndicatorProps {
   className?: string;
 }
 
-const STATUS_CONFIG: Record<ConnectionStatus, { label: string; bg: string; dot: string; text: string }> = {
+const STATUS_CONFIG: Record<ConnectionStatus, { label: string; bg: string; border: string; dot: string; text: string }> = {
   good: {
     label: 'Good — real-time',
-    bg: 'bg-dojo-surface bg-opacity-80',
-    dot: 'bg-[#3FB27F]',
-    text: 'text-[#8FE2B5]',
+    bg: 'bg-dojo-success/10',
+    border: 'border-dojo-success/30',
+    dot: 'bg-dojo-success',
+    text: 'text-dojo-success',
   },
   degraded: {
     label: 'Degraded — slight delay',
-    bg: 'bg-[#2A2210]',
-    dot: 'bg-[#F2A93B]',
-    text: 'text-[#F2CE8C]',
+    bg: 'bg-dojo-warning/10',
+    border: 'border-dojo-warning/30',
+    dot: 'bg-dojo-warning',
+    text: 'text-dojo-warning',
   },
   offline: {
     label: 'Offline — try voice',
-    bg: 'bg-[#2A1416]',
-    dot: 'bg-[#E5484D]',
-    text: 'text-[#F0A0A3]',
+    bg: 'bg-dojo-danger/10',
+    border: 'border-dojo-danger/30',
+    dot: 'bg-dojo-danger',
+    text: 'text-dojo-danger',
   },
 };
 
@@ -40,13 +43,12 @@ export function ConnectionLatencyIndicator({
 
   return (
     <div
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${config.bg} ${className}`}
-      style={{ borderColor: status === 'good' ? '#3FB27F' : status === 'degraded' ? '#F2A93B' : '#E5484D' }}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${config.bg} ${config.border} ${className}`}
     >
       <span className={`h-2 w-2 rounded-full ${config.dot} ${status === 'degraded' ? 'animate-pulse' : ''}`} />
       <span className={`text-[11px] font-semibold ${config.text}`}>{config.label}</span>
       {estimatedLatency !== undefined && (
-        <span className="text-[10px] text-white/40 font-mono">{estimatedLatency}ms</span>
+        <span className="text-[10px] text-dojo-text-muted font-mono">{estimatedLatency}ms</span>
       )}
     </div>
   );

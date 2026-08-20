@@ -52,5 +52,6 @@ inngest-dev.log
 
 #context
 /context/**/**
+/context/**
 ui-registry.md
 MEMORY.md

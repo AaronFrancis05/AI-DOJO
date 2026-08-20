@@ -63,6 +63,16 @@ function SpeakingWave({ active }: { active: boolean }) {
   );
 }
 
+function WaveformIcon() {
+  return (
+    <span className="flex items-end gap-[1px] h-4 opacity-60">
+      {[6, 10, 14, 10, 6].map((h, i) => (
+        <span key={i} className="w-[2px] rounded-full bg-dojo-accent" style={{ height: `${h}px` }} />
+      ))}
+    </span>
+  );
+}
+
 export function ChatPanel({
   conversations, charName, charColor, avatarMode,
   onSend, onReplay,
@@ -72,6 +82,7 @@ export function ChatPanel({
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrolledAway, setScrolledAway] = useState(false);
+  const [activeTab, setActiveTab] = useState<'all' | 'key' | 'notes'>('all');
 
   useEffect(() => {
     if (!scrolledAway) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -85,68 +96,120 @@ export function ChatPanel({
     if (!atBottom && !scrolledAway) setScrolledAway(true);
   }, [scrolledAway]);
 
+  const tabs = [
+    { key: 'all' as const, label: 'All' },
+    { key: 'key' as const, label: 'Key Phrases' },
+    { key: 'notes' as const, label: 'Notes' },
+  ];
+
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto no-scrollbar px-4 py-3 space-y-3 overscroll-contain">
+      {/* Filter tabs */}
+      <div className="flex items-center gap-1 px-4 sm:px-6 py-2 border-b border-dojo-border/30 shrink-0">
+        {tabs.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+              activeTab === key
+                ? 'bg-dojo-accent text-white'
+                : 'text-dojo-text-muted hover:text-dojo-text-primary hover:bg-white/5'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto no-scrollbar px-4 sm:px-6 py-4 space-y-4 overscroll-contain">
         {conversations.map((turn) => {
           const isAi = turn.speaker === 'ai';
           const isLatestAi = isAi && turn.id === Math.max(...conversations.filter(c => c.speaker === 'ai').map(c => c.id), -1);
+          const timestamp = turn.receivedAt
+            ? new Date(turn.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : null;
 
           return (
-            <div key={turn.id} className={`flex ${!isAi ? 'justify-end' : 'justify-start'} ${turn.pending ? 'opacity-60' : ''}`}>
+            <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} ${turn.pending ? 'opacity-60' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+              {/* Avatar badge */}
               <div
-                className={`max-w-[85%] rounded-xl px-3.5 py-2.5 ${
-                  isAi
-                    ? 'bg-dojo-surface-raised/90 border border-dojo-border'
-                    : turn.failed
-                      ? 'bg-dojo-danger/10 border border-dojo-danger/30'
-                      : 'bg-dojo-accent/20 border border-dojo-accent/30'
-                }`}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                style={{ backgroundColor: isAi ? charColor : turn.failed ? '#DC2626' : '#6366f1' }}
               >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span
-                    className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: isAi ? charColor : turn.failed ? '#DC2626' : '#2D3BC5' }}
-                  >
-                    {isAi ? charName[0] : 'U'}
-                  </span>
-                  <span className="text-[11px] font-semibold text-dojo-text-primary">
+                {isAi ? charName[0] : 'U'}
+              </div>
+
+              <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
+                {/* Name + timestamp header */}
+                <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <span className="text-xs font-semibold text-dojo-text-primary">
                     {isAi ? charName : 'You'}
                   </span>
+                  {timestamp && (
+                    <span className="text-[10px] text-dojo-text-muted/60">{timestamp}</span>
+                  )}
                   {turn.failed && (
-                    <span className="text-[10px] text-dojo-danger font-medium">Failed to send</span>
+                    <span className="text-[10px] text-dojo-danger font-medium">Failed</span>
                   )}
-                  {isAi && isLatestAi && (
-                    <SpeakingWave active={avatarMode === 'talking'} />
-                  )}
-                  <div className="ml-auto flex items-center gap-1">
-                    {isAi && (
-                      <CopyButton text={turn.messageTarget} />
-                    )}
-                    {isAi && (
-                      <button onClick={() => onReplay(turn)}>
-                        <Volume2 className="h-3 w-3 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
-                      </button>
-                    )}
-                  </div>
                 </div>
 
-                <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                {/* Message bubble */}
+                <div
+                  className={`relative overflow-hidden px-4 py-3 shadow-lg transition-all duration-200 ${
+                    isAi
+                      ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 backdrop-blur-md'
+                      : turn.failed
+                        ? 'rounded-2xl rounded-tr-sm bg-dojo-danger/10 border border-dojo-danger/30'
+                        : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'
+                  }`}
+                >
+                  <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
 
-                {turn.messagePhonetic && !turn.pending && (
-                  <p className="mt-0.5 text-[11px] text-dojo-text-muted italic">{turn.messagePhonetic}</p>
+                  {turn.messagePhonetic && !turn.pending && (
+                    <p className="mt-1 text-[11px] text-dojo-text-muted italic leading-relaxed">{turn.messagePhonetic}</p>
+                  )}
+
+                  {turn.messageNative && (
+                    <p className="mt-1 text-[11px] text-dojo-text-muted leading-relaxed">{turn.messageNative}</p>
+                  )}
+
+                  {/* Waveform icon for AI messages */}
+                  {isAi && (
+                    <div className="absolute top-3 right-3">
+                      <WaveformIcon />
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons for AI messages */}
+                {isAi && (
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    <button
+                      onClick={() => onReplay(turn)}
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+                    >
+                      <Volume2 className="h-3 w-3" />
+                    </button>
+                    <CopyButton text={turn.messageTarget} />
+                    {isLatestAi && <SpeakingWave active={avatarMode === 'talking'} />}
+                  </div>
                 )}
 
-                {turn.messageNative && (
-                  <p className="mt-0.5 text-[11px] text-dojo-text-muted">{turn.messageNative}</p>
+                {/* Delivery check for user messages */}
+                {!isAi && !turn.failed && !turn.pending && (
+                  <div className="flex items-center gap-1 mt-0.5 px-1">
+                    <Check className="h-3 w-3 text-dojo-accent" />
+                  </div>
                 )}
 
+                {/* Corrections */}
                 {turn.corrections && turn.corrections.length > 0 && !turn.pending && phase !== 'unguided' && (
-                  <div className="mt-2 space-y-1.5 border-t border-dojo-border/40 pt-2">
+                  <div className="mt-2 w-full space-y-1.5 rounded-xl bg-dojo-surface/60 border border-dojo-border/40 px-3 py-2">
                     {turn.corrections.map((tip, i) => (
                       <div key={i} className="text-[11px] leading-relaxed">
                         <div className="flex items-start gap-1.5">
-                          <span className={`shrink-0 mt-0.5 inline-block h-3.5 w-3.5 rounded-full text-[8px] font-bold text-center leading-[14px] ${
+                          <span className={`shrink-0 mt-0.5 inline-block h-4 w-4 rounded-full text-[8px] font-bold text-center leading-4 ${
                             tip.severity === 'major' ? 'bg-dojo-danger/20 text-dojo-danger' :
                             tip.severity === 'moderate' ? 'bg-dojo-warning/20 text-dojo-warning' :
                             'bg-dojo-accent/20 text-dojo-accent'
@@ -167,48 +230,44 @@ export function ChatPanel({
                     ))}
                   </div>
                 )}
-
-                {turn.receivedAt && (
-                  <p className="mt-1 text-[10px] text-dojo-text-muted/60">
-                    {new Date(turn.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                )}
               </div>
             </div>
           );
         })}
 
         {streamingText && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-dojo-surface-raised/90 border border-dojo-border">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span
-                  className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white shrink-0"
-                  style={{ backgroundColor: charColor }}
-                >
-                  {charName[0]}
-                </span>
-                <span className="text-[11px] font-semibold text-dojo-text-primary">{charName}</span>
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+              style={{ backgroundColor: charColor }}
+            >
+              {charName[0]}
+            </div>
+            <div className="flex max-w-[80%] flex-col items-start">
+              <div className="flex items-center gap-2 px-1 mb-1">
+                <span className="text-xs font-semibold text-dojo-text-primary">{charName}</span>
                 <SpeakingWave active={true} />
               </div>
-              <p className="text-sm text-dojo-text-primary leading-relaxed">
-                {streamingText}
-                <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse" />
-              </p>
+              <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 backdrop-blur-md px-4 py-3 shadow-lg">
+                <p className="text-sm text-dojo-text-primary leading-relaxed">
+                  {streamingText}
+                  <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
+                </p>
+              </div>
             </div>
           </div>
         )}
 
         {suggestedReplies && suggestedReplies.length > 0 && !sending && conversations.length > 0 && (
-          <div className="px-1">
-            <p className="text-[11px] text-dojo-text-muted mb-2 font-medium">You can say:</p>
+          <div className="px-1 pt-2">
+            <p className="text-[11px] text-dojo-text-muted mb-2 font-semibold uppercase tracking-wider">Suggested replies</p>
             <div className="flex flex-wrap gap-2">
               {suggestedReplies.map((reply, i) => (
                 <button
                   key={i}
                   onClick={() => onSend(reply)}
                   disabled={sending || !isActive}
-                  className="rounded-full border border-dojo-border bg-dojo-surface-raised/80 px-3 py-1.5 text-xs text-dojo-text-primary hover:border-dojo-accent transition-colors disabled:opacity-40"
+                  className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-4 py-2 text-xs font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 transition-all duration-200 disabled:opacity-40"
                 >
                   {reply}
                 </button>
@@ -244,11 +303,14 @@ function CopyButton({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <button onClick={handleCopy}>
+    <button
+      onClick={handleCopy}
+      className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
+    >
       {copied ? (
         <Check className="h-3 w-3 text-dojo-success transition-colors" />
       ) : (
-        <Copy className="h-3 w-3 text-dojo-text-muted hover:text-dojo-text-primary transition-colors" />
+        <Copy className="h-3 w-3" />
       )}
     </button>
   );

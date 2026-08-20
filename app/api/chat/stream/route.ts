@@ -4,14 +4,21 @@ import { sessions, conversations, corrections, evaluations, goalCompletions, use
 import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
-import { nextPhase, UNGUIDED_MISTAKE_PENALTY, UNGUIDED_ENGLISH_PENALTY } from '../../../../lib/roleplay/phase-engine';
+import {
+  nextPhase,
+  computeCompositeScore,
+  PRONUNCIATION_PASS_THRESHOLD,
+  PASSING_SCORE_THRESHOLD,
+  STALL_THRESHOLD,
+  SAFETY_CAP_TURN,
+  UNGUIDED_MISTAKE_PENALTY,
+  UNGUIDED_ENGLISH_PENALTY,
+} from '../../../../lib/roleplay/phase-engine';
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { inngest } from '../../../../lib/inngest/client';
 import type { AIProvider } from '../../../../lib/ai-providers';
-
-const SAFETY_CAP_TURN = 15;
 
 async function enqueueAudioJob(
   conversationId: number,
@@ -53,9 +60,10 @@ async function dispatchAudioJob(jobId: number | null, conversationId: number, se
 
 export const runtime = 'nodejs';
 
-type PhaseMessageKind = 'to-guided' | 'to-unguided' | 'to-evaluation' | 'celebration';
+type PhaseMessageKind = 'to-icebreaker' | 'to-guided' | 'to-unguided' | 'to-evaluation' | 'celebration';
 
 const PHASE_MESSAGE_DESCRIPTION: Record<PhaseMessageKind, string> = {
+  'to-icebreaker': 'the lesson is moving from orientation into the icebreaker vocabulary drill',
   'to-guided': 'the lesson is about to move from the vocabulary-drill phase into the guided roleplay phase',
   'to-unguided': 'the lesson is about to move from the guided roleplay phase into full-immersion unguided practice',
   'to-evaluation': 'the lesson is about to end and move into the final evaluation',
@@ -121,6 +129,7 @@ export async function POST(req: Request) {
     const rawSessionId = body.sessionId;
     const rawUserInput = body.userRawInput;
     const isRetryOfPreviousMistake = body.isRetryOfPreviousMistake === true;
+    const accuracyScore = typeof body.accuracyScore === 'number' ? body.accuracyScore : null;
     const responseTimeMs = typeof body.responseTimeMs === 'number' ? body.responseTimeMs : null;
 
     if (!rawSessionId || !rawUserInput) {
@@ -231,6 +240,38 @@ Learning goals: ${situationLearningGoals}
 =====================`;
 
     // ── Phase-specific prompts ──
+    const orientationRules = `
+ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
+PHASE: ORIENTATION — Welcome the learner warmly, introduce yourself, and plainly explain what this practice session is about.
+
+${scenarioContextBlock}
+
+Goals to cover in this session:
+${goalsBlock}
+
+RULES FOR ORIENTATION:
+- PURE ${nativeLangName}: Write your entire response in friendly, natural ${nativeLangName}. Do NOT use delimiters, romaji, or foreign script.
+- Introduce yourself by name (${currentScenario.aiCharacterName}) and role (${currentScenario.aiCharacterRole}).
+- Plainly explain what the session is about (setting, scenario goal: "${scenarioTitle}", and what role the learner plays).
+- Mention that you will first drill a few key vocabulary words together before moving into the live roleplay.
+- Keep the message concise, clear, and encouraging (2–3 sentences max).`;
+
+    const sameLangOrientationRules = `
+ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
+PHASE: ORIENTATION — Welcome the learner warmly, introduce yourself, and plainly explain what this practice session is about.
+
+${scenarioContextBlock}
+
+Goals to cover in this session:
+${goalsBlock}
+
+RULES FOR ORIENTATION:
+- Speak naturally in ${targetLangName}.
+- Introduce yourself by name (${currentScenario.aiCharacterName}) and role (${currentScenario.aiCharacterRole}).
+- Plainly explain what the session is about (setting, scenario goal: "${scenarioTitle}", and what role the learner plays).
+- Mention that you will first drill a few key vocabulary words together before moving into the live roleplay.
+- Keep the message concise, clear, and encouraging (2–3 sentences max).`;
+
     const icebreakerGreetingRule = isSessionStart
       ? `- This is the FIRST message of the session: begin by greeting the student in ${nativeLangName} and explaining what the scenario is about, using the title and setting above.`
       : `- Do NOT greet the student again — you already greeted them at the start of this session. Continue directly with teaching/practicing the current vocabulary word. Do not restate the scenario setting either; that was already covered.`;
@@ -255,6 +296,7 @@ ${icebreakerGreetingRule}
 - After the student attempts a word, give very brief feedback (5 words max) in ${nativeLangName} on their attempt, then introduce the next word.
 - Mark the vocabulary word you are currently teaching by saying "【VOCAB N】" at the start of your teaching turn, where N is the word number (1-based).
 - If this is the session-start turn (see rule above), start teaching word 1 right after your one-time greeting. On every later turn, skip straight to introducing/reviewing the current word — no greeting.
+- STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase once and it is still not completely clean, do NOT ask them to repeat it a second time. Acknowledge their effort, provide the correct pronunciation/phrase for reference, and smoothly move to the next word. Never loop more than once on any item.
 - CRITICAL: Never teach vocabulary unrelated to this scenario. Stay on-topic. Use ONLY the listed scenario vocabulary.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
@@ -276,7 +318,6 @@ Goals remaining:
 ${goalsBlock}
 
 RULES FOR GUIDED PHASE:
-- TURN LIMIT: You have a maximum of 8 turns (responses) for this guided phase. You MUST drive the conversation efficiently toward completing ALL remaining learning goals within these 8 turns. Do not waste turns on repetition.
 - Stay in character as ${currentScenario.aiCharacterName} at ALL times. Every response must feel like it belongs to this specific scenario.
 - Do NOT greet the student at every turn — you already greeted them at the start of the session. Jump straight into the roleplay dialogue.
 - LANGUAGE SEPARATION: Every response has TWO strictly separated parts:
@@ -287,6 +328,7 @@ RULES FOR GUIDED PHASE:
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the scenario setting above. Do not generate generic phrases that ignore the situation.
+- STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase/sentence once and it's still not clean, do not ask them to repeat it again. Comment briefly, acknowledge effort, give the correct reference, and move the session forward.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
@@ -307,7 +349,6 @@ Goals remaining:
 ${goalsBlock}
 
 RULES FOR UNGUIDED PHASE:
-- TURN LIMIT: You have a maximum of 8 turns (responses) for this unguided phase. Drive the conversation efficiently to cover all remaining goals within these 8 turns.
 - FULL IMMERSION: Reply entirely in ${targetLangName}. Do NOT use ${nativeLangName} for any reason.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
 - Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
@@ -317,6 +358,7 @@ RULES FOR UNGUIDED PHASE:
 - Keep responses to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the specific scenario setting. Never resort to generic greetings or phrases that ignore the situation.
+- STRICT NO-LOOP RETRY RULE: If the learner has already attempted a phrase once, do not ask them to repeat it. Move the conversation forward naturally.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
@@ -346,6 +388,7 @@ ${sameLangIcebreakerGreetingRule}
 - Do NOT cover multiple words at once. One word per turn.
 - After the student attempts a word, give brief feedback, then introduce the next word.
 - Mark the vocabulary word by saying "【VOCAB N】" at the start of your teaching turn.
+- STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word once and it's still not clean, do not ask them to repeat it again. Comment briefly and move forward.
 - Speak naturally in ${targetLangName}. No delimiters, no romaji, no language switching.`;
 
     const sameLangGuidedRules = `
@@ -368,6 +411,7 @@ RULES:
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - Drive the conversation forward naturally toward completing the remaining goals.
 - CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.
+- STRICT NO-LOOP RETRY RULE: Never loop more than once on the same mistake. Acknowledge and move forward.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     const sameLangUnguidedRules = `
@@ -388,6 +432,7 @@ RULES:
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
 - CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.
+- STRICT NO-LOOP RETRY RULE: Never loop on retries. Move forward.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     // ── Pre-generation phase check: enforce icebreaker vocab cap ──
@@ -399,13 +444,19 @@ RULES:
       && currentTurnNo > totalIcebreakerTurns;
 
     const hasNoVocab = vocabRows.length === 0;
+    const isOrientation = currentPhase === 'orientation';
+
     const streamSystemPrompt = isSameLanguage
-      ? (currentPhase === 'icebreaker'
-          ? (isIcebreakerExhausted || hasNoVocab ? sameLangGuidedRules : sameLangIcebreakerRules)
-          : (currentPhase === 'guided' ? sameLangGuidedRules : sameLangUnguidedRules))
-      : (currentPhase === 'icebreaker'
-          ? (isIcebreakerExhausted || hasNoVocab ? guidedRules : icebreakerRules)
-          : (currentPhase === 'guided' ? guidedRules : unguidedRules));
+      ? (isOrientation
+          ? sameLangOrientationRules
+          : currentPhase === 'icebreaker'
+            ? (isIcebreakerExhausted || hasNoVocab ? sameLangGuidedRules : sameLangIcebreakerRules)
+            : (currentPhase === 'guided' ? sameLangGuidedRules : sameLangUnguidedRules))
+      : (isOrientation
+          ? orientationRules
+          : currentPhase === 'icebreaker'
+            ? (isIcebreakerExhausted || hasNoVocab ? guidedRules : icebreakerRules)
+            : (currentPhase === 'guided' ? guidedRules : unguidedRules));
 
     const streamUserMsg = isSessionStart
       ? `[SESSION START] The student is ready to begin. This is the first turn.`
@@ -452,9 +503,9 @@ RULES:
           }
 
           // Phase 2: Analyze the user's turn (skip for session start greeting)
-            if (isSessionStart) {
+          if (isSessionStart) {
             let aiConversationId: number | null = null;
-            const { newPhase: sessionStartPhase } = await withSessionLock(numericSessionId, async (tx) => {
+            const { newPhase: sessionStartPhase, phaseChanged } = await withSessionLock(numericSessionId, async (tx) => {
               const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
               if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
 
@@ -488,9 +539,11 @@ RULES:
                 phase: newPhaseInner,
                 totalTurns: currentTurnNo,
                 status: 'active',
+                lastActiveAt: new Date(),
+                stalledTurnCount: 0,
               }).where(eq(sessions.id, numericSessionId));
 
-              return { newPhase: newPhaseInner };
+              return { newPhase: newPhaseInner, phaseChanged: newPhaseInner !== currentPhase };
             });
 
             if (aiConversationId) {
@@ -506,14 +559,23 @@ RULES:
               await dispatchAudioJob(jobId, aiConversationId, numericSessionId);
             }
 
+            if (phaseChanged) {
               send(JSON.stringify({
-                type: 'done',
-                fullText: fullAiText,
-                phase: sessionStartPhase,
-                analysis: { corrections: [], suggestedReplies: [] },
+                type: 'phase_transition',
+                fromPhase: currentPhase,
+                toPhase: sessionStartPhase,
+                message: '',
               }));
-              try { controller.close(); } catch {}
-              return;
+            }
+
+            send(JSON.stringify({
+              type: 'done',
+              fullText: fullAiText,
+              phase: sessionStartPhase,
+              analysis: { corrections: [], suggestedReplies: [] },
+            }));
+            try { controller.close(); } catch {}
+            return;
           }
 
           const analysis = await analyzeTurn({
@@ -524,13 +586,23 @@ RULES:
           });
 
           const correctionItems = analysis.corrections ?? [];
-          const hasCorrections = correctionItems.length > 0 && correctionItems.some(c => c.correctedText);
+          const hasLowPronunciation = accuracyScore !== null && accuracyScore < PRONUNCIATION_PASS_THRESHOLD;
+          if (hasLowPronunciation && !correctionItems.some(c => c.correctionType === 'pronunciation')) {
+            correctionItems.unshift({
+              correctionType: 'pronunciation',
+              originalText: userRawInput,
+              correctedText: userRawInput,
+              explanation: `Pronunciation score was ${accuracyScore}% (target: ${PRONUNCIATION_PASS_THRESHOLD}%+). Let's practice saying this once more.`,
+              severity: 'minor',
+            });
+          }
+          const hasCorrections = (correctionItems.length > 0 && correctionItems.some(c => c.correctedText)) || hasLowPronunciation;
 
-          // ── Guided phase: retry gate ──
+          // ── Phase-agnostic retry gate (bounded to exactly 1 retry) ──
           let pendingRetryCorrectionId: number | null = null;
           let retryEarlyExit = false;
 
-          if (currentPhase === 'guided' && hasCorrections) {
+          if (hasCorrections && currentPhase !== 'orientation') {
             const prevPendingId = session.pendingRetryCorrectionId;
 
             if (prevPendingId && isRetryOfPreviousMistake) {
@@ -542,6 +614,7 @@ RULES:
                 }
                 await tx.update(sessions).set({
                   pendingRetryCorrectionId: null,
+                  lastActiveAt: new Date(),
                 }).where(eq(sessions.id, numericSessionId));
               });
             } else if (!prevPendingId && !isRetryOfPreviousMistake) {
@@ -589,6 +662,7 @@ RULES:
                   if (newPendingId) {
                     await tx.update(sessions).set({
                       pendingRetryCorrectionId: newPendingId,
+                      lastActiveAt: new Date(),
                     }).where(eq(sessions.id, numericSessionId));
                   }
 
@@ -710,10 +784,12 @@ RULES:
             const goalsCompleted = analysis.goalsAddressedThisTurn?.filter(
               seqOrder => !completedSequenceOrders.includes(seqOrder)
             ).length ?? 0;
+            const newStalledTurnCount = goalsCompleted > 0 ? 0 : ((freshSession.stalledTurnCount ?? 0) + 1);
+            const isStalled = (currentPhase === 'guided' || currentPhase === 'unguided')
+              && newStalledTurnCount >= STALL_THRESHOLD;
+            const isSafetyCapped = currentTurnNo >= SAFETY_CAP_TURN;
             const totalGoalsNow = completedSequenceOrders.length + goalsCompleted;
-            const maxPhaseTurnsReached = (currentPhase === 'guided' || currentPhase === 'unguided')
-              && freshPhaseTurnCount >= 8;
-            const allGoalsCoveredInner = maxPhaseTurnsReached || totalGoalsNow >= goals.length;
+            const allGoalsCoveredInner = isStalled || isSafetyCapped || totalGoalsNow >= goals.length;
 
             const icebreakerDoneInner = currentPhase === 'icebreaker'
               ? (vocabRows.length > 0 ? currentTurnNo >= vocabRows.length : true)
@@ -722,7 +798,8 @@ RULES:
               icebreakerDone: icebreakerDoneInner,
               allGoalsCovered: allGoalsCoveredInner,
             });
-            const shouldCompleteInner = currentPhase !== 'icebreaker' && (analysis.scenarioComplete || currentTurnNo >= SAFETY_CAP_TURN);
+            const shouldCompleteInner = currentPhase !== 'orientation' && currentPhase !== 'icebreaker'
+              && (analysis.scenarioComplete || (currentPhase === 'unguided' && (allGoalsCoveredInner || isSafetyCapped)));
 
             let newPhaseTurnCount = freshPhaseTurnCount;
             if (newPhaseInner !== currentPhase) {
@@ -752,6 +829,8 @@ RULES:
             const updateData: Record<string, unknown> = {
               totalTurns: currentTurnNo,
               phaseTurnCount: newPhaseTurnCount,
+              stalledTurnCount: newStalledTurnCount,
+              lastActiveAt: new Date(),
               runningScore: runningScoreInner,
               phase: shouldCompleteInner ? 'completed' : newPhaseInner,
               vocabularyScore: blendedVocab,
@@ -793,6 +872,17 @@ RULES:
               const finalVocabScore = Math.round((blendedVocab + icebreakerPassRate) / 2);
               const finalFluencyScore = Math.round((blendedFluency + runningScoreInner) / 2);
               const finalTaskScore = Math.round((blendedTask + runningScoreInner) / 2);
+
+              const compositeScore = computeCompositeScore('completed', {
+                vocabularyScore: finalVocabScore,
+                grammarScore: blendedGrammar,
+                fluencyScore: finalFluencyScore,
+                culturalScore: blendedCultural,
+                taskScore: finalTaskScore,
+                expressionAppropriatenessScore: blendedExpression,
+              });
+              const isPassed = compositeScore >= PASSING_SCORE_THRESHOLD;
+              const celebrationVariant: 'scenario-mastery' | 'needs-practice' = isPassed ? 'scenario-mastery' : 'needs-practice';
 
               await tx.insert(evaluations).values({
                 sessionId: numericSessionId,
@@ -843,12 +933,26 @@ RULES:
                   streak: newStreak, lastActiveDate: today,
                 }).where(eq(users.id, user.id));
               }
+
+              return {
+                newPhase: newPhaseInner,
+                runningScore: runningScoreInner,
+                isCelebration: isCelebrationInner || shouldCompleteInner,
+                celebrationVariant,
+                compositeScore,
+                passed: isPassed,
+                aiConversationId: aiConversation?.id ?? null,
+                shouldComplete: shouldCompleteInner,
+              };
             }
 
             return {
               newPhase: newPhaseInner,
               runningScore: runningScoreInner,
               isCelebration: isCelebrationInner,
+              celebrationVariant: 'scenario-mastery' as const,
+              compositeScore: 0,
+              passed: false,
               aiConversationId: aiConversation?.id ?? null,
               shouldComplete: shouldCompleteInner,
             };
@@ -866,18 +970,21 @@ RULES:
             );
           }
 
-          // ── Phase transition announcement ──
+          // ── Phase transition announcement & SSE event broadcast ──
           if (writeResult.newPhase !== currentPhase && !writeResult.shouldComplete) {
             let transitionKind: PhaseMessageKind | null = null;
-            if (currentPhase === 'icebreaker' && writeResult.newPhase === 'guided') {
+            if (currentPhase === 'orientation' && writeResult.newPhase === 'icebreaker') {
+              transitionKind = 'to-icebreaker';
+            } else if (currentPhase === 'icebreaker' && writeResult.newPhase === 'guided') {
               transitionKind = 'to-guided';
             } else if (currentPhase === 'guided' && writeResult.newPhase === 'unguided') {
               transitionKind = 'to-unguided';
             } else if (currentPhase === 'unguided' && writeResult.newPhase === 'evaluation') {
               transitionKind = 'to-evaluation';
             }
+            let transitionMsg = '';
             if (transitionKind) {
-              const transitionMsg = await generateLocalizedPhaseMessage(
+              transitionMsg = await generateLocalizedPhaseMessage(
                 provider,
                 targetLanguage,
                 nativeLanguage,
@@ -890,6 +997,13 @@ RULES:
                 send(JSON.stringify({ type: 'token', text: appended }));
               }
             }
+
+            send(JSON.stringify({
+              type: 'phase_transition',
+              fromPhase: currentPhase,
+              toPhase: writeResult.newPhase,
+              message: transitionMsg,
+            }));
           }
 
           if (writeResult.isCelebration) {
@@ -916,6 +1030,9 @@ RULES:
             phase: writeResult.newPhase,
             runningScore: writeResult.runningScore,
             celebration: writeResult.isCelebration,
+            celebrationVariant: writeResult.celebrationVariant,
+            compositeScore: writeResult.compositeScore,
+            passed: writeResult.passed,
             analysis: {
               messageTarget: analysis.messageTarget,
               messageNative: analysis.messageNative,
