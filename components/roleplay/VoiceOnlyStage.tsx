@@ -3,13 +3,12 @@
 interface VoiceOnlyStageProps {
   name: string;
   accentColor: string;
-  portraitSrc?: string;
   mode: 'idle' | 'listening' | 'talking';
   role?: string;
   volumeLevel?: number;
 }
 
-export function VoiceOnlyStage({ name, accentColor, portraitSrc, mode, role, volumeLevel = 0 }: VoiceOnlyStageProps) {
+export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 }: VoiceOnlyStageProps) {
   const orbSize = 80;
   const svgSize = 240;
   const center = svgSize / 2;
@@ -97,11 +96,6 @@ export function VoiceOnlyStage({ name, accentColor, portraitSrc, mode, role, vol
                 </linearGradient>
               </>
             )}
-            {portraitSrc && (
-              <clipPath id="orb-clip">
-                <circle cx={center} cy={center} r="36" />
-              </clipPath>
-            )}
           </defs>
 
           {/* Outer decorative ring */}
@@ -143,23 +137,10 @@ export function VoiceOnlyStage({ name, accentColor, portraitSrc, mode, role, vol
             )}
           </circle>
 
-          {/* Character portrait or initial in center */}
-          {portraitSrc ? (
-            <image
-              href={portraitSrc}
-              x={center - 36}
-              y={center - 36}
-              width="72"
-              height="72"
-              preserveAspectRatio="xMidYMid slice"
-              clipPath="url(#orb-clip)"
-              opacity="0.95"
-            />
-          ) : (
-            <text x={center} y={center + 1} textAnchor="middle" dominantBaseline="central" fill="white" fontSize="20" fontWeight="700" opacity="0.9">
-              {name[0]}
-            </text>
-          )}
+          {/* Character initial in center */}
+          <text x={center} y={center + 1} textAnchor="middle" dominantBaseline="central" fill="white" fontSize="20" fontWeight="700" opacity="0.9">
+            {name[0]}
+          </text>
 
           {/* Waveform bars (talking mode) */}
           {mode === 'talking' && (

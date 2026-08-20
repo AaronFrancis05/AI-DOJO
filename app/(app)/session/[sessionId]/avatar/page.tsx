@@ -7,7 +7,6 @@ import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { AvatarViewport3D } from '@/components/roleplay/AvatarViewport3D';
 import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
-import { getPhaseMeta } from '@/lib/roleplay/phase-ui';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
@@ -63,6 +62,8 @@ export default function AvatarModePage() {
   const [mobileMsgOpen, setMobileMsgOpen] = useState(false);
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
+  const [aiTurnActive, setAiTurnActive] = useState(false);
+  const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
@@ -116,13 +117,14 @@ export default function AvatarModePage() {
         emotionSystemRef.current?.stopTalking?.();
       }
     });
-    return () => setOnSpeakingChange(null);
+    return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
 
   const handleFinalTranscript = useCallback(async (text: string) => {
     if (sendingRef.current || !text.trim()) return;
     sendingRef.current = true;
     setSending(true);
+    setAiTurnActive(true);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     emotionSystemRef.current?.startThinking();
     stopTts();
@@ -143,12 +145,12 @@ export default function AvatarModePage() {
           setCoachOpen(true);
         },
         onCelebration: (info) => {
-          setCompletionResult({
+          pendingCelebrationRef.current = {
             passed: info?.passed ?? true,
             compositeScore: info?.score ?? 0,
             xpGained: info?.xpGained,
             newStreak: info?.newStreak,
-          });
+          };
         },
         onComplete: (analysis) => {
           const emo = emotionSystemRef.current;
@@ -160,14 +162,21 @@ export default function AvatarModePage() {
       setStreamingText(null);
 
       const cleaned = cleanDisplay(fullText);
-      if (!mutedRef.current && cleaned) {
-        speakMixedText(
-          cleaned,
-          getBCP47(targetLangRef.current, 'tts'),
-          getNativeLangBcp47(nativeLangRef.current),
-          phaseRef.current,
-        ).catch(() => {});
-      }
+      const speechPromise = !mutedRef.current && cleaned
+        ? speakMixedText(
+            cleaned,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          ).catch(() => {})
+        : Promise.resolve();
+      speechPromise.then(() => {
+        setAiTurnActive(false);
+        if (pendingCelebrationRef.current) {
+          setCompletionResult(pendingCelebrationRef.current);
+          pendingCelebrationRef.current = null;
+        }
+      });
 
       const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
       if (latestUser?.corrections?.length) {
@@ -177,6 +186,7 @@ export default function AvatarModePage() {
     } catch (e: any) {
       console.error(e);
       emotionSystemRef.current?.stopThinking();
+      setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -211,6 +221,7 @@ export default function AvatarModePage() {
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
   const leaveSession = useCallback(async () => {
+    stopTts();
     await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {});
     router.push(`/sessions/${sessionId}/report`);
   }, [sessionId, router]);
@@ -243,7 +254,7 @@ export default function AvatarModePage() {
       <EnvironmentBackdrop domainSlug={domain?.slug} />
       <div className="relative z-20 flex items-center justify-between px-4 py-3 shrink-0">
         <div className="flex items-center gap-2">
-          <button onClick={() => router.push('/home')} className="text-dojo-text-muted hover:text-dojo-text-primary">
+          <button onClick={() => { stopTts(); router.push('/home'); }} className="text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <span className="text-sm font-semibold text-dojo-text-primary">{scenario?.title ?? 'Avatar'}</span>
@@ -270,7 +281,7 @@ export default function AvatarModePage() {
       </div>
 
       <div className="flex-1 relative z-10 overflow-hidden flex items-stretch">
-        <PhaseTransitionCard transition={phaseTransition} onDismiss={dismissPhaseTransition} />
+        <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
         {conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
           <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#050B14]/90 backdrop-blur-sm px-6">
             <div className="text-center max-w-xs">
@@ -311,7 +322,7 @@ export default function AvatarModePage() {
         )}
 
         <div className="flex-1 flex items-center justify-center relative">
-          <AvatarViewport3D name={charName} accentColor={charColor} portraitSrc={getPhaseMeta(phase).portraitSrc} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; if (speakingRef.current) sys.startTalking?.(); }} />
+          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; if (speakingRef.current) sys.startTalking?.(); }} />
         </div>
 
         {/* Desktop side panel */}
@@ -319,7 +330,7 @@ export default function AvatarModePage() {
           {latestAiConvo && (
             <div className="space-y-2">
               <ConversationBubble
-                speaker="ai" name={charName} accentColor={charColor} portraitSrc={getPhaseMeta(phase).portraitSrc}
+                speaker="ai" name={charName} accentColor={charColor}
                 messageJp={streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
                 messagePhonetic={latestAiConvo.messagePhonetic ?? undefined}
                 messageEn={latestAiConvo.messageNative ?? undefined}
@@ -403,7 +414,7 @@ export default function AvatarModePage() {
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
         onEnd={leaveSession}
-        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+        onViewReport={() => { stopTts(); router.push(`/sessions/${sessionId}/report`); }}
       />
 
       {celebration && (

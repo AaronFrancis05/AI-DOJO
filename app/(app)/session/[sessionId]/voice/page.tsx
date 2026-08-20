@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
-import { getPhaseMeta } from '@/lib/roleplay/phase-ui';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
@@ -25,7 +24,7 @@ import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { cn } from '@/lib/design-tokens';
 import {
-  ArrowLeft, Info, Keyboard, Mic, Volume2, VolumeX,
+  ArrowLeft, Info, Mic, Volume2, VolumeX,
   MessageSquare, X, Send, Clock, Globe, CheckCircle2, Circle,
   ChevronUp, Lightbulb,
 } from 'lucide-react';
@@ -73,6 +72,8 @@ export default function VoiceOnlyPage() {
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
+  const [aiTurnActive, setAiTurnActive] = useState(false);
+  const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -115,6 +116,7 @@ export default function VoiceOnlyPage() {
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
   const leaveSession = useCallback(async () => {
+    stopTts();
     await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {});
     router.push(`/sessions/${sessionId}/report`);
   }, [sessionId, router]);
@@ -141,7 +143,7 @@ export default function VoiceOnlyPage() {
       setAvatarMode(speaking ? 'talking' : 'idle');
       if (!speaking) lastAiCompletedRef.current = Date.now();
     });
-    return () => setOnSpeakingChange(null);
+    return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
 
   useEffect(() => {
@@ -162,6 +164,7 @@ export default function VoiceOnlyPage() {
     if (sendingRef.current || !text.trim()) return;
     sendingRef.current = true;
     setSending(true);
+    setAiTurnActive(true);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     stopTts();
     resetStreamingTts();
@@ -181,25 +184,32 @@ export default function VoiceOnlyPage() {
           setCoachOpen(true);
         },
         onCelebration: (info) => {
-          setCompletionResult({
+          pendingCelebrationRef.current = {
             passed: info?.passed ?? true,
             compositeScore: info?.score ?? 0,
             xpGained: info?.xpGained,
             newStreak: info?.newStreak,
-          });
+          };
         },
       });
       setStreamingText(null);
 
       const cleaned = cleanDisplay(fullText);
-      if (!mutedRef.current && cleaned) {
-        speakMixedText(
-          cleaned,
-          getBCP47(targetLangRef.current, 'tts'),
-          getNativeLangBcp47(nativeLangRef.current),
-          phaseRef.current,
-        ).catch(() => {});
-      }
+      const speechPromise = !mutedRef.current && cleaned
+        ? speakMixedText(
+            cleaned,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          ).catch(() => {})
+        : Promise.resolve();
+      speechPromise.then(() => {
+        setAiTurnActive(false);
+        if (pendingCelebrationRef.current) {
+          setCompletionResult(pendingCelebrationRef.current);
+          pendingCelebrationRef.current = null;
+        }
+      });
 
       const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
       if (latestUser?.corrections?.length) {
@@ -208,6 +218,7 @@ export default function VoiceOnlyPage() {
       }
     } catch (e: any) {
       console.error(e);
+      setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -274,7 +285,7 @@ export default function VoiceOnlyPage() {
       {/* ── Top Header Bar ── */}
       <div className="relative z-20 flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-b border-dojo-border/60 shrink-0 backdrop-blur-md bg-dojo-surface/50">
         <div className="flex items-center gap-2 min-w-0">
-          <button onClick={() => router.push('/home')} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
+          <button onClick={() => { stopTts(); router.push('/home'); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
             <ArrowLeft className="h-4 w-4" />
             <span className="text-sm font-medium hidden sm:inline">End Session</span>
           </button>
@@ -324,7 +335,7 @@ export default function VoiceOnlyPage() {
       <div className="flex-1 relative z-10 overflow-hidden flex">
         {/* Left: Voice Stage */}
         <div className="flex-1 relative flex flex-col">
-          <PhaseTransitionCard transition={phaseTransition} onDismiss={dismissPhaseTransition} />
+          <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
 {/* Greeting overlay */}
           {conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6">
@@ -385,7 +396,6 @@ export default function VoiceOnlyPage() {
           <VoiceOnlyStage
             name={charName}
             accentColor={charColor}
-            portraitSrc={getPhaseMeta(phase).portraitSrc}
             mode={avatarMode}
             role={charRole}
             volumeLevel={voice.volumeLevel}
@@ -444,10 +454,10 @@ export default function VoiceOnlyPage() {
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center gap-3 mb-2">
                 <div
-                  className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white shadow-md"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-md"
                   style={{ backgroundColor: charColor }}
                 >
-                  <img src={getPhaseMeta(phase).portraitSrc} alt={charName} className="h-full w-full object-cover" />
+                  {charName[0]}
                 </div>
                 <div>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{charName}</p>
@@ -528,13 +538,13 @@ export default function VoiceOnlyPage() {
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => router.push(`/session/${sessionId}/chat`)}
+                  onClick={() => setChatOpen(true)}
                   className="tap-target flex h-12 w-12 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border/60 text-dojo-text-muted hover:text-dojo-text-primary hover:border-dojo-border transition-all duration-200"
-                  aria-label="Switch to text chat"
+                  aria-label="Open chat panel"
                 >
-                  <Keyboard className="h-5 w-5" />
+                  <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Type</span>
+                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Chat</span>
               </div>
             </div>
           </div>
@@ -598,7 +608,7 @@ export default function VoiceOnlyPage() {
                     style={{ backgroundColor: isAi ? charColor : '#6366f1' }}
                   >
                     {isAi ? (
-                      <img src={getPhaseMeta(phase).portraitSrc} alt={charName} className="h-full w-full object-cover" />
+                      charName[0]
                     ) : (
                       'U'
                     )}
@@ -647,8 +657,8 @@ export default function VoiceOnlyPage() {
             })}
             {streamingText && chatTab !== 'notes' && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
-                  <img src={getPhaseMeta(phase).portraitSrc} alt={charName} className="h-full w-full object-cover" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
+                  {charName[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
                   <div className="flex items-center gap-2 px-1 mb-1">
@@ -773,7 +783,7 @@ export default function VoiceOnlyPage() {
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
         onEnd={leaveSession}
-        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+        onViewReport={() => { stopTts(); router.push(`/sessions/${sessionId}/report`); }}
       />
 
       {celebration && (
