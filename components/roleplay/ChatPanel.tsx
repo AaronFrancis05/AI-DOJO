@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Volume2, Copy, Check, ChevronDown } from 'lucide-react';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 
 interface CorrectionTip {
   correctionType: string;
@@ -129,6 +130,7 @@ export function ChatPanel({
           const timestamp = turn.receivedAt
             ? new Date(turn.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : null;
+          const displayText = cleanDisplay(turn.messageTarget);
 
           return (
             <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} ${turn.pending ? 'opacity-60' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
@@ -164,7 +166,7 @@ export function ChatPanel({
                         : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'
                   }`}
                 >
-                  <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                  <p className="text-sm text-dojo-text-primary leading-relaxed">{displayText}</p>
 
                   {turn.messagePhonetic && !turn.pending && (
                     <p className="mt-1 text-[11px] text-dojo-text-muted italic leading-relaxed">{turn.messagePhonetic}</p>
@@ -191,7 +193,7 @@ export function ChatPanel({
                     >
                       <Volume2 className="h-3 w-3" />
                     </button>
-                    <CopyButton text={turn.messageTarget} />
+                    <CopyButton text={displayText} />
                     {isLatestAi && <SpeakingWave active={avatarMode === 'talking'} />}
                   </div>
                 )}

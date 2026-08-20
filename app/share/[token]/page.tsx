@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { ArrowLeft, Lock } from 'lucide-react';
 
 export default function SharedSessionPage() {
@@ -187,7 +188,7 @@ export default function SharedSessionPage() {
                         }`}>
                           {msg.messageTarget && (
                             <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                              {msg.messageTarget}
+                              {cleanDisplay(msg.messageTarget)}
                             </p>
                           )}
                           {(msg.messagePhonetic || msg.messageNative) && (

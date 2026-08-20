@@ -12,6 +12,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import { getTargetLangConfig, getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
@@ -132,7 +133,7 @@ export default function ChatOnlyPage() {
   const handleReplay = useCallback((turn: any) => {
     if (muted) return;
     unlockAudio();
-    const t = turn.messageTarget || turn.messageNative;
+    const t = cleanDisplay(turn.messageTarget || turn.messageNative);
     if (!t) return;
     const bcp47 = getBCP47(targetLanguage, 'tts');
     speakMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
