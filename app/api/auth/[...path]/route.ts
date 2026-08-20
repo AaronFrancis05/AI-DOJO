@@ -1,24 +1,17 @@
+import {
+  appUrl,
+  getAppOrigin,
+  normalizeAuthRedirectUrl,
+  withVerifiedRequestOrigin,
+} from '@/lib/auth/app-origin';
+import { appendSetCookies } from '@/lib/auth/cookies';
 import { auth, getConfig } from '@/lib/auth/server';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { users } from '@/src/schema';
 
 const builtin = auth.handler();
-
-function rewriteSetCookieForLocalDomain(cookie: string): string {
-  const needsSecure = /__Secure-/.test(cookie);
-  const isChallengeCookie = cookie.includes('session_challange');
-  let cleaned = cookie
-    .replace(/;\s*Domain\s*=[^;]+/gi, '')
-    .replace(/;\s*SameSite\s*=[^;]+/gi, '');
-  if (!needsSecure) {
-    cleaned = cleaned.replace(/;\s*Secure/gi, '');
-  }
-  const sameSite = isChallengeCookie ? 'None' : 'Lax';
-  return cleaned + `; SameSite=${sameSite}; Path=/`;
-}
 
 async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
   const { baseUrl } = getConfig();
@@ -37,6 +30,7 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
     .filter(c => c.startsWith('__Secure-neon-auth'))
     .join('; ');
   if (neonCookies) headers.set('cookie', neonCookies);
+  headers.set('origin', getAppOrigin());
   headers.set('x-neon-auth-middleware', 'true');
 
   let upstream: Response;
@@ -49,25 +43,16 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
     });
   } catch (err) {
     console.error('[oauth-init] fetch failed', { url: upstreamUrl, error: String(err) });
-    return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
+    return NextResponse.redirect(appUrl('/auth?error=init_failed'));
   }
 
   if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');
     console.error('[oauth-init] upstream error', { status: upstream.status, bodyPreview: text.slice(0, 100) });
-    return NextResponse.redirect(new URL('/auth?error=init_failed', request.url));
+    return NextResponse.redirect(appUrl('/auth?error=init_failed'));
   }
 
   const responseHeaders = new Headers(upstream.headers);
-
-  const setCookies = responseHeaders.getSetCookie();
-  if (setCookies.length > 0) {
-    responseHeaders.delete('Set-Cookie');
-    for (const cookie of setCookies) {
-      responseHeaders.append('Set-Cookie', cookie);
-      responseHeaders.append('Set-Cookie', rewriteSetCookieForLocalDomain(cookie));
-    }
-  }
 
   return new Response(upstream.body, {
     status: upstream.status,
@@ -76,7 +61,7 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
   });
 }
 
-async function proxyToUpstream(request: NextRequest, path: string, options?: { redirect?: 'follow' | 'error' | 'manual' }) {
+async function proxyToUpstream(request: Request, path: string, options?: { redirect?: 'follow' | 'error' | 'manual' }) {
   const { baseUrl } = getConfig();
   const upstreamUrl = `${baseUrl}/${path}${new URL(request.url).search}`;
 
@@ -94,7 +79,7 @@ async function proxyToUpstream(request: NextRequest, path: string, options?: { r
     .filter(c => c.startsWith('__Secure-neon-auth'))
     .join('; ');
   if (neonCookies) headers.set('cookie', neonCookies);
-  headers.set('origin', new URL(request.url).origin);
+  headers.set('origin', request.headers.get('origin') || getAppOrigin());
   headers.set('x-neon-auth-middleware', 'true');
 
   const body = request.method === 'POST' ? await request.text().catch(() => undefined) : undefined;
@@ -125,98 +110,78 @@ async function proxyToUpstream(request: NextRequest, path: string, options?: { r
     );
   }
 
-  const responseHeaders = new Headers(upstream.headers);
-
-  const setCookies = responseHeaders.getSetCookie();
-  if (setCookies.length > 0) {
-    responseHeaders.delete('Set-Cookie');
-    for (const cookie of setCookies) {
-      responseHeaders.append('Set-Cookie', cookie);
-      const localCopy = rewriteSetCookieForLocalDomain(cookie);
-      responseHeaders.append('Set-Cookie', localCopy);
-    }
-  }
-
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: responseHeaders,
+    headers: upstream.headers,
   });
 }
 
 async function proxyGoogleInitRedirect(request: NextRequest) {
-  const requestUrl = new URL(request.url);
-  const origin = requestUrl.origin;
-
+  const origin = getAppOrigin();
   const cookieHeader = request.headers.get('cookie') || '';
 
   const syntheticRequest = new Request(new URL('/api/auth/sign-in/social', origin), {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'origin': origin,
-      'cookie': cookieHeader,
+      origin,
+      cookie: cookieHeader,
       'user-agent': request.headers.get('user-agent') || '',
-      'referer': request.headers.get('referer') || '',
+      referer: request.headers.get('referer') || '',
     },
     body: JSON.stringify({
       provider: 'google',
+      // Relative callback; Neon resolves against the Origin we send (public site URL).
       callbackURL: '/api/auth/oauth/callback',
     }),
   });
 
-  const proxyResponse = await proxyToUpstream(syntheticRequest as any, 'sign-in/social', { redirect: 'manual' });
+  const proxyResponse = await proxyToUpstream(syntheticRequest, 'sign-in/social', { redirect: 'manual' });
 
   const location = proxyResponse.headers.get('Location');
   if (location) {
-    const response = NextResponse.redirect(location);
-    for (const cookie of proxyResponse.headers.getSetCookie()) {
-      response.headers.append('Set-Cookie', cookie);
-    }
+    const response = NextResponse.redirect(normalizeAuthRedirectUrl(location));
+    appendSetCookies(response.headers, proxyResponse.headers);
     return response;
   }
 
-  let body: any;
+  let body: { url?: unknown };
   try {
-    body = await proxyResponse.clone().json();
+    body = await proxyResponse.clone().json() as { url?: unknown };
   } catch {
     console.error('[google-init] failed to parse upstream response');
-    return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
+    return NextResponse.redirect(appUrl('/auth?error=no_oauth_url'));
   }
 
-  const url = body?.url;
+  const url = typeof body.url === 'string' ? body.url : null;
   if (!url) {
     console.error('[google-init] no url in upstream JSON', { body });
-    return NextResponse.redirect(new URL('/auth?error=no_oauth_url', request.url));
+    return NextResponse.redirect(appUrl('/auth?error=no_oauth_url'));
   }
 
-  const response = NextResponse.redirect(url);
-  for (const cookie of proxyResponse.headers.getSetCookie()) {
-    response.headers.append('Set-Cookie', cookie);
-  }
+  const response = NextResponse.redirect(normalizeAuthRedirectUrl(url));
+  appendSetCookies(response.headers, proxyResponse.headers);
   return response;
 }
 
 async function handleOAuthExchange(request: NextRequest) {
   const url = new URL(request.url);
   const verifier = url.searchParams.get('neon_auth_session_verifier');
-  console.log('[oauth] callback received', { verifier: verifier?.slice(0, 20), path: url.pathname });
 
   if (!verifier) {
-    console.log('[oauth] no verifier found, redirecting to /auth');
-    return NextResponse.redirect(new URL('/auth?error=no_verifier', request.url));
+    return NextResponse.redirect(appUrl('/auth?error=no_verifier'));
   }
 
-  // Route through the SDK's built-in handler that processes get-session.
-  // This goes through handleAuthProxyRequest which:
-  //   1. Tries trySessionCache() (misses — no session_data yet on OAuth callback)
-  //   2. Calls handleAuthRequest() → upstream GET /get-session with verifier
-  //   3. Calls handleAuthResponse() → prepareResponseHeaders() + mintSessionDataFromResponse()
-  //   4. mintSessionDataFromResponse() calls mintSessionDataCookie() → session_data cookie minted
-  //
-  // This ensures the session_data cache cookie is created on successful OAuth login,
-  // avoiding the fragile 3-second upstream timeout on subsequent session checks.
-  const builtinResponse = await builtin.GET!(request, {
+  // The SDK derives the OAuth exchange URL from request.url. This is the only
+  // request URL rewritten to the browser-reachable origin.
+  const headers = new Headers(request.headers);
+  headers.set('origin', getAppOrigin());
+  const publicRequest = new NextRequest(
+    new URL(url.pathname + url.search, getAppOrigin()),
+    { method: 'GET', headers },
+  );
+  const builtinResponse = await builtin.GET!(publicRequest, {
     params: Promise.resolve({ path: ['get-session'] }),
   });
 
@@ -226,17 +191,10 @@ async function handleOAuthExchange(request: NextRequest) {
       status: builtinResponse.status,
       bodyPreview: body.slice(0, 100),
     });
-    return NextResponse.redirect(new URL('/auth?error=exchange_failed', request.url));
+    return NextResponse.redirect(appUrl('/auth?error=exchange_failed'));
   }
 
-  const responseHeaders = new Headers(builtinResponse.headers);
-
-  console.log('[oauth] session cookies from builtin handler', {
-    count: builtinResponse.headers.getSetCookie().length,
-    names: builtinResponse.headers.getSetCookie().map((c) => c.split('=')[0]),
-  });
-
-  // Onboarding is only for brand-new signups. If this account already exists,
+// Onboarding is only for brand-new signups. If this account already exists,
   // the user is returning (just signing in) and should go straight to the app.
   let redirectTarget = '/onboarding';
   try {
@@ -254,15 +212,9 @@ async function handleOAuthExchange(request: NextRequest) {
     console.error('[oauth] failed to resolve existing user', err instanceof Error ? err.message : String(err));
   }
 
-  // Set cookies on the response
-  const setCookies = builtinResponse.headers.getSetCookie();
-  for (const cookie of setCookies) {
-    responseHeaders.append('Set-Cookie', cookie);
-  }
-
-  responseHeaders.set('Location', redirectTarget);
-
-  return new Response(null, { status: 302, headers: responseHeaders });
+  const response = NextResponse.redirect(appUrl(redirectTarget));
+  appendSetCookies(response.headers, builtinResponse.headers);
+  return response;
 }
 
 async function handleGET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
@@ -287,37 +239,33 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
 
 async function handlePOST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');
+  let verifiedRequest: NextRequest;
+  try {
+    verifiedRequest = new NextRequest(withVerifiedRequestOrigin(request));
+  } catch {
+    return NextResponse.json({ error: 'Invalid Origin' }, { status: 403 });
+  }
 
   if (path === 'sign-in/social') {
-    return proxyToUpstream(request, path);
+    return proxyToUpstream(verifiedRequest, path);
   }
 
-  if (path === 'sign-out') {
-    console.log('[sign-out] request received', {
-      referer: request.headers.get('referer'),
-      userAgent: request.headers.get('user-agent')?.slice(0, 80),
-      timestamp: Date.now(),
-      method: request.method,
-      hasCookie: !!request.headers.get('cookie'),
-    });
-  }
-
-  const response = await builtin.POST!(request, { params });
+  const response = await builtin.POST!(verifiedRequest, { params });
 
   if (!response.ok || response.status !== 200) return response;
 
   const cloned = response.clone();
-  let body: any;
+  let body: { url?: unknown };
   try {
-    body = await cloned.json();
+    body = await cloned.json() as { url?: unknown };
   } catch {
     return response;
   }
 
-  const oauthUrl = body?.url;
+  const oauthUrl = typeof body.url === 'string' ? body.url : null;
   if (!oauthUrl) return response;
 
-  const proxyUrl = `${new URL(request.url).origin}/api/auth`;
+  const proxyUrl = `${getAppOrigin()}/api/auth`;
   const modifiedUrl = oauthUrl.replace(
     /https?:\/\/[^/]+\/neondb\/auth/g,
     proxyUrl,

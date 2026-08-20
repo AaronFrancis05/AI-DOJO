@@ -1,0 +1,23 @@
+# Development image for AI DOJO (hot reload via volume mounts)
+# Neon / Upstash / AI providers remain external (configure via .env).
+
+ARG NODE_VERSION=22-bookworm-slim
+
+FROM node:${NODE_VERSION}
+
+WORKDIR /app
+
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+# Reliable file watching on Docker Desktop (macOS / Windows)
+ENV WATCHPACK_POLLING=true
+ENV CHOKIDAR_USEPOLLING=true
+
+COPY package.json package-lock.json ./
+
+RUN npm ci --no-audit --no-fund
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]

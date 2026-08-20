@@ -1,4 +1,5 @@
 import { db } from '../../../src/db';
+import { dbPool } from '../../../src/db-pool';
 import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
@@ -184,7 +185,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
         }));
       }
 
-      const newScenario = await db.transaction(async (tx) => {
+      const newScenario = await dbPool.transaction(async (tx) => {
         const [sc] = await tx.insert(scenarios).values({
           title: situation.title,
           context: situation.context,

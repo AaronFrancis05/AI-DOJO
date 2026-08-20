@@ -1,0 +1,46 @@
+# Dependencies & build output
+node_modules
+.next
+out
+build
+coverage
+
+# Git / editor
+.git
+.gitignore
+.idea
+.vscode
+*.swp
+*.swo
+
+# Env & local secrets (runtime uses compose env_file)
+.env
+.env.*
+!.env.example
+
+# Docs & local agent context (not needed in image)
+*.md
+!README.md
+.agents
+context
+MEMORY.md
+ui-registry.md
+dev-log.txt
+agent-transcripts
+
+# Large / non-Linux artifacts not needed at runtime
+fbx2gltf.exe
+backups
+tsconfig.tsbuildinfo
+
+# Source animation binaries (runtime uses .glb)
+public/**/*.fbx
+public/**/*.fbm
+public/**/*.FBX
+
+# Package manager noise
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+pnpm-lock.yaml

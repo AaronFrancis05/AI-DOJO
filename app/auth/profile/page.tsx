@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
+import { getAuthErrorMessage } from '@/lib/auth/errors';
 import PasswordInput from '@/components/PasswordInput';
 import { UserIcon, LoaderIcon, AlertCircleIcon, CheckCircleIcon, LogOutIcon } from '@/components/Icons';
 import NavBar from '@/components/NavBar';
@@ -57,13 +58,13 @@ export default function ProfilePage() {
     try {
       const { error } = await authClient.updateUser({ name });
       if (error) {
-        setProfileError(error.message || 'Update failed');
+        setProfileError(getAuthErrorMessage(error, 'Update failed', 'profile'));
         return;
       }
       await refreshUser();
       setProfileMessage('Profile updated.');
-    } catch {
-      setProfileError('Network error. Please try again.');
+    } catch (err) {
+      setProfileError(getAuthErrorMessage(err, 'Network error. Please try again.', 'profile'));
     } finally {
       setSavingProfile(false);
     }
@@ -81,14 +82,14 @@ export default function ProfilePage() {
         revokeOtherSessions: true,
       });
       if (error) {
-        setPasswordError(error.message || 'Could not change password');
+        setPasswordError(getAuthErrorMessage(error, 'Could not change password', 'profile'));
         return;
       }
       setCurrentPassword('');
       setNewPassword('');
       setPasswordMessage('Password changed. Other devices have been signed out.');
-    } catch {
-      setPasswordError('Network error. Please try again.');
+    } catch (err) {
+      setPasswordError(getAuthErrorMessage(err, 'Network error. Please try again.', 'profile'));
     } finally {
       setChangingPassword(false);
     }
