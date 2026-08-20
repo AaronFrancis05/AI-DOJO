@@ -3,12 +3,13 @@
 interface VoiceOnlyStageProps {
   name: string;
   accentColor: string;
+  portraitSrc?: string;
   mode: 'idle' | 'listening' | 'talking';
   role?: string;
   volumeLevel?: number;
 }
 
-export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 }: VoiceOnlyStageProps) {
+export function VoiceOnlyStage({ name, accentColor, portraitSrc, mode, role, volumeLevel = 0 }: VoiceOnlyStageProps) {
   const orbSize = 80;
   const svgSize = 240;
   const center = svgSize / 2;
@@ -86,15 +87,20 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
                     <animate attributeName="stopOpacity" values="0.1;0.2;0.1" dur="0.5s" repeatCount="indefinite" begin="0.15s" />
                   </stop>
                 </linearGradient>
-                <linearGradient id="bar5" x1="0" y1="0" x2="0" y2="1">
+<linearGradient id="bar5" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={accentColor} stopOpacity="0.9">
                     <animate attributeName="stopOpacity" values="0.3;0.7;0.3" dur="0.9s" repeatCount="indefinite" begin="0.3s" />
                   </stop>
                   <stop offset="100%" stopColor={accentColor} stopOpacity="0.3">
-                    <animate attributeName="stopOpacity" values="0.1;0.2;0.1" dur="0.9s" repeatCount="indefinite" begin="0.3s" />
+                    <animate attributeName="stopOpacity" values="0.1;0.2;0.1" dur="0.9s" repeatCount="indefinite" begin="0.1s" />
                   </stop>
                 </linearGradient>
               </>
+            )}
+            {portraitSrc && (
+              <clipPath id="orb-clip">
+                <circle cx={center} cy={center} r="36" />
+              </clipPath>
             )}
           </defs>
 
@@ -137,10 +143,23 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
             )}
           </circle>
 
-          {/* Character initial in center */}
-          <text x={center} y={center + 1} textAnchor="middle" dominantBaseline="central" fill="white" fontSize="20" fontWeight="700" opacity="0.9">
-            {name[0]}
-          </text>
+          {/* Character portrait or initial in center */}
+          {portraitSrc ? (
+            <image
+              href={portraitSrc}
+              x={center - 36}
+              y={center - 36}
+              width="72"
+              height="72"
+              preserveAspectRatio="xMidYMid slice"
+              clipPath="url(#orb-clip)"
+              opacity="0.95"
+            />
+          ) : (
+            <text x={center} y={center + 1} textAnchor="middle" dominantBaseline="central" fill="white" fontSize="20" fontWeight="700" opacity="0.9">
+              {name[0]}
+            </text>
+          )}
 
           {/* Waveform bars (talking mode) */}
           {mode === 'talking' && (

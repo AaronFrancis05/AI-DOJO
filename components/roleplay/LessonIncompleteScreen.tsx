@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Frown, Lightbulb, XCircle, Heart, RotateCcw, ArrowRight, LogOut, Target, MessagesSquare, Mic, Star } from 'lucide-react';
+import { Frown, Lightbulb, AlertCircle, XCircle, RotateCcw, ArrowRight, LogOut, Target, MessagesSquare, Mic, Star } from 'lucide-react';
 import { prefersReducedMotion } from '@/lib/hooks/useCelebrationConfetti';
 import type { SessionMetrics } from '@/lib/roleplay/session-metrics';
 
@@ -15,11 +15,11 @@ interface LessonIncompleteScreenProps {
   onLeave: () => void;
 }
 
-const BAR_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; barClass: string }> = [
-  { key: 'accuracy', label: 'Accuracy', icon: Target, barClass: 'bg-dojo-danger' },
-  { key: 'fluency', label: 'Fluency', icon: MessagesSquare, barClass: 'bg-dojo-accent' },
-  { key: 'pronunciation', label: 'Pronunciation', icon: Mic, barClass: 'bg-dojo-evaluation' },
-  { key: 'vocabulary', label: 'Vocabulary', icon: Star, barClass: 'bg-dojo-streak' },
+const BAR_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; barClass: string; iconClass: string }> = [
+  { key: 'accuracy', label: 'Accuracy', icon: Target, barClass: 'bg-dojo-danger', iconClass: 'text-dojo-danger' },
+  { key: 'fluency', label: 'Fluency', icon: MessagesSquare, barClass: 'bg-dojo-accent', iconClass: 'text-dojo-accent' },
+  { key: 'pronunciation', label: 'Pronunciation', icon: Mic, barClass: 'bg-dojo-evaluation', iconClass: 'text-dojo-evaluation' },
+  { key: 'vocabulary', label: 'Vocabulary', icon: Star, barClass: 'bg-dojo-streak', iconClass: 'text-dojo-streak' },
 ];
 
 const RING_RADIUS = 54;
@@ -59,7 +59,16 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
           <p className="mt-1 text-xs text-dojo-text-muted/70">{scenarioTitle}</p>
         </div>
 
-        <div className="relative mt-6 flex items-center justify-center">
+        <div className="mt-6 flex items-center justify-center">
+          <img
+            src="/characters/lesson-incomplete.png"
+            alt=""
+            className="h-32 w-32 rounded-full object-cover shadow-2xl"
+            style={{ boxShadow: '0 0 0 4px rgba(209,67,67,0.5), 0 0 32px rgba(209,67,67,0.3)' }}
+          />
+        </div>
+
+        <div className="relative mt-4 flex items-center justify-center">
           <svg width="140" height="140" viewBox="0 0 120 120" className="-rotate-90">
             <circle cx="60" cy="60" r={RING_RADIUS} fill="none" stroke="var(--color-border)" strokeWidth="10" />
             <circle
@@ -77,7 +86,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
         </div>
 
         <div className="mt-2 flex items-start gap-2 rounded-xl border border-dojo-border bg-dojo-surface-raised/80 px-4 py-3">
-          <Lightbulb className="h-4 w-4 shrink-0 text-dojo-warning mt-0.5" />
+          <AlertCircle className="h-4 w-4 shrink-0 text-dojo-danger mt-0.5" />
           <div>
             <p className="text-sm font-bold text-dojo-text-primary">You&apos;re close!</p>
             <p className="text-xs text-dojo-text-muted">Review the weak areas and try again to improve your score.</p>
@@ -87,7 +96,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
         <div className="mt-4 rounded-2xl border border-dojo-border bg-dojo-surface-raised/80 p-4">
           <p className="mb-3 text-xs font-bold uppercase tracking-wider text-dojo-text-muted">Performance Breakdown</p>
           <div className="space-y-3">
-            {BAR_ROWS.map(({ key, label, icon: Icon, barClass }) => {
+            {BAR_ROWS.map(({ key, label, icon: Icon, barClass, iconClass }) => {
               const value = metrics[key];
               if (value === null || value === undefined) return null;
               const pct = Math.max(0, Math.min(100, value as number));
@@ -95,7 +104,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
                 <div key={key}>
                   <div className="mb-1 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Icon className="h-3.5 w-3.5 text-dojo-text-muted" />
+                      <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
                       <span className="text-xs text-dojo-text-primary">{label}</span>
                     </div>
                     <span className="text-xs font-bold text-dojo-text-primary">{pct}%</span>
@@ -126,8 +135,8 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
           </div>
         )}
 
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-dojo-success/20 bg-dojo-success/10 px-4 py-3">
-          <Heart className="h-4 w-4 shrink-0 text-dojo-success" />
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-dojo-warning/20 bg-dojo-warning/10 px-4 py-3">
+          <Lightbulb className="h-4 w-4 shrink-0 text-dojo-warning" />
           <div>
             <p className="text-sm font-bold text-dojo-text-primary">Mistakes help you grow!</p>
             <p className="text-[11px] text-dojo-text-muted">Review, practice, and you&apos;ll do even better next time.</p>

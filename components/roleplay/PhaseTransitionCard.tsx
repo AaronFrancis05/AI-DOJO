@@ -49,11 +49,19 @@ export function PhaseTransitionCard({ transition, onDismiss, autoDismissMs = 300
         </button>
 
         <div className="relative z-10 flex flex-col items-center gap-4">
-          <div
-            className={`flex h-16 w-16 items-center justify-center rounded-full ${reduced ? '' : 'animate-glow-pulse'}`}
-            style={{ backgroundColor: `${meta.hex}26`, boxShadow: `0 0 32px ${meta.hex}40` }}
-          >
-            <Icon className="h-8 w-8" style={{ color: meta.hex }} />
+          <div className={`relative h-24 w-24 rounded-full ${reduced ? '' : 'animate-glow-pulse'}`}>
+            <img
+              src={meta.portraitSrc}
+              alt=""
+              className="h-24 w-24 rounded-full object-cover shadow-xl"
+              style={{ boxShadow: `0 0 0 3px ${meta.hex}80, 0 0 28px ${meta.hex}55` }}
+            />
+            <div
+              className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-dojo-surface-raised"
+              style={{ backgroundColor: meta.hex }}
+            >
+              <Icon className="h-4 w-4 text-white" />
+            </div>
           </div>
 
           <div>

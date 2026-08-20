@@ -7,6 +7,7 @@ interface ConversationBubbleProps {
   speaker: 'user' | 'ai';
   name: string;
   accentColor: string;
+  portraitSrc?: string;
   messageJp: string;
   messagePhonetic?: string;
   messageEn?: string;
@@ -19,6 +20,7 @@ export function ConversationBubble({
   speaker,
   name,
   accentColor,
+  portraitSrc,
   messageJp,
   messagePhonetic,
   messageEn,
@@ -36,10 +38,10 @@ export function ConversationBubble({
     )}>
       {/* Avatar Circle */}
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm ring-1 ring-white/10"
+        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-sm ring-1 ring-white/10"
         style={{ backgroundColor: accentColor }}
       >
-        {name[0]}
+        {isUser ? name[0] : portraitSrc ? <img src={portraitSrc} alt={name} className="h-full w-full object-cover" /> : name[0]}
       </div>
 
       <div className={cn(

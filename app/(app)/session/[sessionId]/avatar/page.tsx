@@ -7,6 +7,7 @@ import { ConversationBubble } from '@/components/roleplay/ConversationBubble';
 import { AvatarViewport3D } from '@/components/roleplay/AvatarViewport3D';
 import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
+import { getPhaseMeta } from '@/lib/roleplay/phase-ui';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
@@ -310,7 +311,7 @@ export default function AvatarModePage() {
         )}
 
         <div className="flex-1 flex items-center justify-center relative">
-          <AvatarViewport3D name={charName} accentColor={charColor} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; if (speakingRef.current) sys.startTalking?.(); }} />
+          <AvatarViewport3D name={charName} accentColor={charColor} portraitSrc={getPhaseMeta(phase).portraitSrc} mode={avatarMode} modelUrl={avatarModelUrl} cameraMode="front" onSystemReady={(sys) => { emotionSystemRef.current = sys; if (speakingRef.current) sys.startTalking?.(); }} />
         </div>
 
         {/* Desktop side panel */}
@@ -318,7 +319,7 @@ export default function AvatarModePage() {
           {latestAiConvo && (
             <div className="space-y-2">
               <ConversationBubble
-                speaker="ai" name={charName} accentColor={charColor}
+                speaker="ai" name={charName} accentColor={charColor} portraitSrc={getPhaseMeta(phase).portraitSrc}
                 messageJp={streamingText ?? latestAiConvo.messageTarget ?? latestAiConvo.messageNative ?? ''}
                 messagePhonetic={latestAiConvo.messagePhonetic ?? undefined}
                 messageEn={latestAiConvo.messageNative ?? undefined}

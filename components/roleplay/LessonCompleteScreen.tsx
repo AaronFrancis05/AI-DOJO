@@ -14,11 +14,11 @@ interface LessonCompleteScreenProps {
   onRepeat: () => void;
 }
 
-const METRIC_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target }> = [
-  { key: 'accuracy', label: 'Accuracy', icon: Target },
-  { key: 'fluency', label: 'Fluency', icon: MessagesSquare },
-  { key: 'pronunciation', label: 'Pronunciation', icon: Mic },
-  { key: 'vocabulary', label: 'Vocabulary', icon: Star },
+const METRIC_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; iconClass: string; iconBgClass: string }> = [
+  { key: 'accuracy', label: 'Accuracy', icon: Target, iconClass: 'text-dojo-danger', iconBgClass: 'bg-dojo-danger/15' },
+  { key: 'fluency', label: 'Fluency', icon: MessagesSquare, iconClass: 'text-dojo-accent', iconBgClass: 'bg-dojo-accent/15' },
+  { key: 'pronunciation', label: 'Pronunciation', icon: Mic, iconClass: 'text-dojo-evaluation', iconBgClass: 'bg-dojo-evaluation/15' },
+  { key: 'vocabulary', label: 'Vocabulary', icon: Star, iconClass: 'text-dojo-streak', iconBgClass: 'bg-dojo-streak/15' },
 ];
 
 export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStreak, onContinue, onRepeat }: LessonCompleteScreenProps) {
@@ -48,13 +48,26 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
           <p className="mt-1 text-xs text-dojo-text-muted">{scenarioTitle}</p>
         </div>
 
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <div className="flex items-center gap-2 rounded-xl border border-dojo-streak/30 bg-dojo-streak/10 px-4 py-2.5">
-            <ShieldCheck className="h-5 w-5 text-dojo-streak" />
-            <span className="text-sm font-bold text-dojo-text-primary">Excellent Work!</span>
+        <div className="relative mt-6 flex items-center justify-center">
+          <img
+            src="/characters/lesson-complete.png"
+            alt=""
+            className={`h-36 w-36 rounded-full object-cover shadow-2xl ${reduced ? '' : 'animate-glow-pulse'}`}
+            style={{ boxShadow: '0 0 0 4px rgba(240,169,59,0.5), 0 0 40px rgba(240,169,59,0.35)' }}
+          />
+        </div>
+
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-dojo-streak/15 ring-1 ring-dojo-streak/30">
+              <ShieldCheck className="h-7 w-7 text-dojo-streak" />
+            </div>
+            <span className="rounded-full bg-dojo-accent px-4 py-1 text-xs font-bold text-white shadow-md">
+              Excellent Work!
+            </span>
           </div>
           {typeof xpGained === 'number' && (
-            <div className="flex flex-col items-center rounded-xl border border-dojo-border bg-dojo-surface-raised px-4 py-2">
+            <div className="flex flex-col items-center rounded-xl border border-dojo-border bg-dojo-surface-raised px-6 py-2">
               <span className="text-lg font-extrabold text-dojo-streak">+{xpGained} XP</span>
               <span className="text-[10px] text-dojo-text-muted">Experience Earned</span>
             </div>
@@ -64,13 +77,13 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
         <div className="mt-6 rounded-2xl border border-dojo-border bg-dojo-surface-raised/80 p-4">
           <p className="mb-3 text-xs font-bold uppercase tracking-wider text-dojo-text-muted">Your Performance</p>
           <div className="space-y-3">
-            {METRIC_ROWS.map(({ key, label, icon: Icon }) => {
+            {METRIC_ROWS.map(({ key, label, icon: Icon, iconClass, iconBgClass }) => {
               const value = metrics[key];
               if (value === null || value === undefined) return null;
               return (
                 <div key={key} className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-dojo-success/15">
-                    <Icon className="h-4 w-4 text-dojo-success" />
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconBgClass}`}>
+                    <Icon className={`h-4 w-4 ${iconClass}`} />
                   </div>
                   <div className="flex-1">
                     <p className="text-xs text-dojo-text-muted">{label}</p>

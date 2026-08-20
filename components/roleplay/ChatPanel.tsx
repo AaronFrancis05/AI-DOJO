@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Volume2, Copy, Check, ChevronDown } from 'lucide-react';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { getPhaseMeta } from '@/lib/roleplay/phase-ui';
 
 interface CorrectionTip {
   correctionType: string;
@@ -80,6 +81,7 @@ export function ChatPanel({
   sending, isActive, targetName, suggestedReplies, phase,
   streamingText,
 }: ChatPanelProps) {
+  const aiPortrait = getPhaseMeta(phase ?? 'orientation').portraitSrc;
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrolledAway, setScrolledAway] = useState(false);
@@ -136,10 +138,18 @@ export function ChatPanel({
             <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} ${turn.pending ? 'opacity-60' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
               {/* Avatar badge */}
               <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                className={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10 ${
+                  isAi ? '' : ''
+                }`}
                 style={{ backgroundColor: isAi ? charColor : turn.failed ? '#DC2626' : '#6366f1' }}
               >
-                {isAi ? charName[0] : 'U'}
+                {isAi && aiPortrait ? (
+                  <img src={aiPortrait} alt={charName} className="h-full w-full object-cover" />
+                ) : isAi ? (
+                  charName[0]
+                ) : (
+                  'U'
+                )}
               </div>
 
               <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
@@ -240,10 +250,14 @@ export function ChatPanel({
         {streamingText && (
           <div className="flex items-start gap-3">
             <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+              className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
               style={{ backgroundColor: charColor }}
             >
-              {charName[0]}
+              {aiPortrait ? (
+                <img src={aiPortrait} alt={charName} className="h-full w-full object-cover" />
+              ) : (
+                charName[0]
+              )}
             </div>
             <div className="flex max-w-[80%] flex-col items-start">
               <div className="flex items-center gap-2 px-1 mb-1">

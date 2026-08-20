@@ -12,6 +12,7 @@ export interface PhaseMeta {
   hex: string;
   badgeClass: string;
   glowClass: string;
+  portraitSrc: string;
 }
 
 export const PHASE_ORDER: SessionPhaseKey[] = ['orientation', 'icebreaker', 'guided', 'unguided', 'evaluation', 'completed'];
@@ -27,6 +28,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#0EA5E9',
     badgeClass: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
     glowClass: 'from-sky-500/25 via-sky-500/5 to-transparent',
+    portraitSrc: '/characters/phase-orientation.png',
   },
   icebreaker: {
     key: 'icebreaker',
@@ -35,9 +37,10 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     title: 'Icebreaker Phase',
     description: "Let's break the ice and get comfortable together.",
     icon: MessagesSquare,
-    hex: '#2D3BC5',
-    badgeClass: 'bg-dojo-accent/20 text-dojo-accent border-dojo-accent/30',
-    glowClass: 'from-dojo-accent/25 via-dojo-accent/5 to-transparent',
+    hex: '#D946EF',
+    badgeClass: 'bg-dojo-icebreaker/20 text-dojo-icebreaker border-dojo-icebreaker/30',
+    glowClass: 'from-dojo-icebreaker/25 via-dojo-icebreaker/5 to-transparent',
+    portraitSrc: '/characters/phase-icebreaker.png',
   },
   guided: {
     key: 'guided',
@@ -49,6 +52,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#16A34A',
     badgeClass: 'bg-dojo-success/20 text-dojo-success border-dojo-success/30',
     glowClass: 'from-dojo-success/25 via-dojo-success/5 to-transparent',
+    portraitSrc: '/characters/phase-guided.png',
   },
   unguided: {
     key: 'unguided',
@@ -60,6 +64,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#D97706',
     badgeClass: 'bg-dojo-warning/20 text-dojo-warning border-dojo-warning/30',
     glowClass: 'from-dojo-warning/25 via-dojo-warning/5 to-transparent',
+    portraitSrc: '/characters/phase-unguided.png',
   },
   evaluation: {
     key: 'evaluation',
@@ -68,9 +73,10 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     title: 'Evaluation Phase',
     description: "Let's see how you did.",
     icon: ClipboardCheck,
-    hex: '#8B5CF6',
-    badgeClass: 'bg-dojo-evaluation/20 text-dojo-evaluation border-dojo-evaluation/30',
-    glowClass: 'from-dojo-evaluation/25 via-dojo-evaluation/5 to-transparent',
+    hex: '#3B82F6',
+    badgeClass: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    glowClass: 'from-blue-500/25 via-blue-500/5 to-transparent',
+    portraitSrc: '/characters/phase-evaluation.png',
   },
   completed: {
     key: 'completed',
@@ -82,6 +88,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#F0A93B',
     badgeClass: 'bg-dojo-streak/20 text-dojo-streak border-dojo-streak/30',
     glowClass: 'from-dojo-streak/25 via-dojo-streak/5 to-transparent',
+    portraitSrc: '/characters/phase-completed.png',
   },
 };
 

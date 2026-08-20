@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
+import { getPhaseMeta } from '@/lib/roleplay/phase-ui';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
@@ -384,6 +385,7 @@ export default function VoiceOnlyPage() {
           <VoiceOnlyStage
             name={charName}
             accentColor={charColor}
+            portraitSrc={getPhaseMeta(phase).portraitSrc}
             mode={avatarMode}
             role={charRole}
             volumeLevel={voice.volumeLevel}
@@ -442,10 +444,10 @@ export default function VoiceOnlyPage() {
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center gap-3 mb-2">
                 <div
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-md"
+                  className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white shadow-md"
                   style={{ backgroundColor: charColor }}
                 >
-                  {charName[0]}
+                  <img src={getPhaseMeta(phase).portraitSrc} alt={charName} className="h-full w-full object-cover" />
                 </div>
                 <div>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{charName}</p>
@@ -592,10 +594,14 @@ export default function VoiceOnlyPage() {
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                   <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
                     style={{ backgroundColor: isAi ? charColor : '#6366f1' }}
                   >
-                    {isAi ? charName[0] : 'U'}
+                    {isAi ? (
+                      <img src={getPhaseMeta(phase).portraitSrc} alt={charName} className="h-full w-full object-cover" />
+                    ) : (
+                      'U'
+                    )}
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -641,8 +647,8 @@ export default function VoiceOnlyPage() {
             })}
             {streamingText && chatTab !== 'notes' && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
-                  {charName[0]}
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
+                  <img src={getPhaseMeta(phase).portraitSrc} alt={charName} className="h-full w-full object-cover" />
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
                   <div className="flex items-center gap-2 px-1 mb-1">

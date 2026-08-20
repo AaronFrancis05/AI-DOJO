@@ -21,6 +21,7 @@ html {
   --color-danger: #DC2626;
   --color-streak: #EA580C;
   --color-evaluation: #8B5CF6;
+  --color-icebreaker: #D946EF;
   --color-text-primary: #0F172A;
   --color-text-muted: #64748B;
 
@@ -44,6 +45,7 @@ html {
   --color-danger: #D14343;
   --color-streak: #F0A93B;
   --color-evaluation: #8B5CF6;
+  --color-icebreaker: #D946EF;
   --color-text-primary: #F4F4F8;
   --color-text-muted: #8A93A8;
   color-scheme: dark;
@@ -69,6 +71,7 @@ html {
   --color-dojo-danger: var(--color-danger);
   --color-dojo-streak: var(--color-streak);
   --color-dojo-evaluation: var(--color-evaluation);
+  --color-dojo-icebreaker: var(--color-icebreaker);
   --color-dojo-text-primary: var(--color-text-primary);
   --color-dojo-text-muted: var(--color-text-muted);
 }
