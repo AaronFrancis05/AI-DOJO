@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { getAuthUserReadOnly } from '@/lib/auth/server';
 import { UserProvider } from '@/lib/auth/user-context';
@@ -31,16 +30,10 @@ export default async function AppLayout({
         nativeLanguage: users.nativeLanguage,
         preferredTargetLanguage: users.preferredTargetLanguage,
         countryCode: users.countryCode,
-        onboardingCompletedAt: users.onboardingCompletedAt,
       })
       .from(users)
       .where(eq(users.id, u.id))
       .limit(1);
-
-    // Redirect to onboarding if the user hasn't completed it yet
-    if (dbUser && !dbUser.onboardingCompletedAt) {
-      redirect('/onboarding/level');
-    }
 
     user = {
       id: u.id,

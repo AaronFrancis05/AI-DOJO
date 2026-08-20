@@ -14,14 +14,27 @@ import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
+import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
+import { LessonCompleteScreen } from '@/components/roleplay/LessonCompleteScreen';
+import { LessonIncompleteScreen } from '@/components/roleplay/LessonIncompleteScreen';
+import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-metrics';
+import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { cn } from '@/lib/design-tokens';
 import {
-  ArrowLeft, Info, Keyboard, Mic, Volume2, VolumeX,
+  ArrowLeft, Info, Mic, Volume2, VolumeX,
   MessageSquare, X, Send, Clock, Globe, CheckCircle2, Circle,
   ChevronUp, Lightbulb,
 } from 'lucide-react';
+
+interface CompletionResult {
+  passed: boolean;
+  compositeScore: number;
+  xpGained?: number;
+  newStreak?: number;
+}
 
 export default function VoiceOnlyPage() {
   const params = useParams();
@@ -32,6 +45,7 @@ export default function VoiceOnlyPage() {
     session, scenario, character, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
+    evaluation, avgPronunciationScore, newWordsCount,
     submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection,
     phaseTransition, dismissPhaseTransition,
@@ -57,6 +71,9 @@ export default function VoiceOnlyPage() {
   const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
+  const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
+  const [aiTurnActive, setAiTurnActive] = useState(false);
+  const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const { status: connectionStatus } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -98,6 +115,12 @@ export default function VoiceOnlyPage() {
 
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
+  const leaveSession = useCallback(async () => {
+    stopTts();
+    await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {});
+    router.push(`/sessions/${sessionId}/report`);
+  }, [sessionId, router]);
+
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
@@ -120,30 +143,28 @@ export default function VoiceOnlyPage() {
       setAvatarMode(speaking ? 'talking' : 'idle');
       if (!speaking) lastAiCompletedRef.current = Date.now();
     });
-    return () => setOnSpeakingChange(null);
+    return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
 
   useEffect(() => {
-    if (unacknowledgedCompletion && !celebration) {
-      const isPassed = (session?.vocabularyScore ?? 0) >= 70;
-      setCelebration({
-        variant: isPassed ? 'scenario-mastery' : 'needs-practice',
-        title: isPassed ? 'Scenario Mastered!' : 'Needs Another Attempt',
-        subtitle: isPassed
-          ? `You've completed every goal in "${situation?.title ?? scenario?.title ?? 'this scenario'}".`
-          : `Good effort! Review your feedback or try again to master this scenario.`,
+    if (unacknowledgedCompletion && !completionResult) {
+      const source = evaluation ?? session ?? {};
+      const compositeScore = computeCompositeScore('completed', {
+        vocabularyScore: source.vocabularyScore ?? 0,
+        grammarScore: source.grammarScore ?? 0,
+        fluencyScore: source.fluencyScore ?? 0,
+        culturalScore: source.culturalScore ?? 0,
+        taskScore: source.taskScore ?? 0,
       });
+      setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
-  }, [unacknowledgedCompletion, celebration, session, situation, scenario]);
-
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
+  }, [unacknowledgedCompletion, completionResult, session, evaluation]);
 
   const handleUserUtterance = useCallback(async (text: string) => {
     if (sendingRef.current || !text.trim()) return;
     sendingRef.current = true;
     setSending(true);
+    setAiTurnActive(true);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     stopTts();
     resetStreamingTts();
@@ -163,28 +184,32 @@ export default function VoiceOnlyPage() {
           setCoachOpen(true);
         },
         onCelebration: (info) => {
-          const variant = (info?.variant as CelebrationVariant) ?? 'scenario-mastery';
-          const passed = info?.passed ?? true;
-          setCelebration({
-            variant,
-            title: passed ? 'Scenario Mastered!' : 'Keep Practicing!',
-            subtitle: passed
-              ? `You've completed every goal in "${situation?.title ?? scenario?.title ?? 'this scenario'}".`
-              : `You've finished this attempt with score ${info?.score ?? 0}. Review your report or try again!`,
-          });
+          pendingCelebrationRef.current = {
+            passed: info?.passed ?? true,
+            compositeScore: info?.score ?? 0,
+            xpGained: info?.xpGained,
+            newStreak: info?.newStreak,
+          };
         },
       });
       setStreamingText(null);
 
       const cleaned = cleanDisplay(fullText);
-      if (!mutedRef.current && cleaned) {
-        speakMixedText(
-          cleaned,
-          getBCP47(targetLangRef.current, 'tts'),
-          getNativeLangBcp47(nativeLangRef.current),
-          phaseRef.current,
-        ).catch(() => {});
-      }
+      const speechPromise = !mutedRef.current && cleaned
+        ? speakMixedText(
+            cleaned,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          ).catch(() => {})
+        : Promise.resolve();
+      speechPromise.then(() => {
+        setAiTurnActive(false);
+        if (pendingCelebrationRef.current) {
+          setCompletionResult(pendingCelebrationRef.current);
+          pendingCelebrationRef.current = null;
+        }
+      });
 
       const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
       if (latestUser?.corrections?.length) {
@@ -193,11 +218,12 @@ export default function VoiceOnlyPage() {
       }
     } catch (e: any) {
       console.error(e);
+      setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [submitTurnStream, conversations, situation, scenario]);
+  }, [submitTurnStream, conversations]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -246,6 +272,12 @@ export default function VoiceOnlyPage() {
     );
   }
 
+  const scenarioTitle = situation?.title ?? scenario?.title ?? 'this scenario';
+  const sessionMetrics = completionResult
+    ? buildSessionMetrics({ evaluation, session, avgPronunciationScore, newWordsCount, completedGoals, goals })
+    : null;
+  const whatWentWrong = sessionMetrics ? buildWhatWentWrong({ conversations, metrics: sessionMetrics }) : [];
+
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       <EnvironmentBackdrop domainSlug={domain?.slug} />
@@ -253,7 +285,7 @@ export default function VoiceOnlyPage() {
       {/* ── Top Header Bar ── */}
       <div className="relative z-20 flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-b border-dojo-border/60 shrink-0 backdrop-blur-md bg-dojo-surface/50">
         <div className="flex items-center gap-2 min-w-0">
-          <button onClick={() => router.push('/home')} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
+          <button onClick={() => { stopTts(); router.push('/home'); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
             <ArrowLeft className="h-4 w-4" />
             <span className="text-sm font-medium hidden sm:inline">End Session</span>
           </button>
@@ -300,22 +332,10 @@ export default function VoiceOnlyPage() {
       </div>
 
       {/* ── Main Content Area ── */}
-      {phaseTransition && (
-        <div className="bg-dojo-accent/15 border-b border-dojo-accent/30 px-4 py-2 flex items-center justify-between text-xs text-dojo-accent animate-in slide-in-from-top-2 duration-200 z-20">
-          <span className="font-semibold">
-            {phaseTransition.toPhase === 'icebreaker' ? '✨ Orientation complete! Moving into vocabulary drill...' :
-             phaseTransition.toPhase === 'guided' ? '🎯 Moving into Guided Roleplay...' :
-             phaseTransition.toPhase === 'unguided' ? '⚡ Starting Full-Immersion Free Practice...' :
-             `Phase transition: ${phaseTransition.toPhase}`}
-          </span>
-          <button onClick={dismissPhaseTransition} className="text-dojo-accent/70 hover:text-dojo-accent p-1">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
       <div className="flex-1 relative z-10 overflow-hidden flex">
         {/* Left: Voice Stage */}
         <div className="flex-1 relative flex flex-col">
+          <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
 {/* Greeting overlay */}
           {conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6">
@@ -518,13 +538,13 @@ export default function VoiceOnlyPage() {
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => router.push(`/session/${sessionId}/chat`)}
+                  onClick={() => setChatOpen(true)}
                   className="tap-target flex h-12 w-12 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border/60 text-dojo-text-muted hover:text-dojo-text-primary hover:border-dojo-border transition-all duration-200"
-                  aria-label="Switch to text chat"
+                  aria-label="Open chat panel"
                 >
-                  <Keyboard className="h-5 w-5" />
+                  <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Type</span>
+                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Chat</span>
               </div>
             </div>
           </div>
@@ -584,10 +604,14 @@ export default function VoiceOnlyPage() {
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                   <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
                     style={{ backgroundColor: isAi ? charColor : '#6366f1' }}
                   >
-                    {isAi ? charName[0] : 'U'}
+                    {isAi ? (
+                      charName[0]
+                    ) : (
+                      'U'
+                    )}
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -758,8 +782,8 @@ export default function VoiceOnlyPage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={async () => { await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {}); router.push(`/sessions/${sessionId}/report`); }}
-        onViewReport={() => router.push(`/sessions/${sessionId}/report`)}
+        onEnd={leaveSession}
+        onViewReport={() => { stopTts(); router.push(`/sessions/${sessionId}/report`); }}
       />
 
       {celebration && (
@@ -775,6 +799,29 @@ export default function VoiceOnlyPage() {
             router.push(`/session/${sessionId}`);
           }}
         />
+      )}
+
+      {completionResult && sessionMetrics && (
+        completionResult.passed ? (
+          <LessonCompleteScreen
+            scenarioTitle={scenarioTitle}
+            metrics={sessionMetrics}
+            xpGained={completionResult.xpGained}
+            newStreak={completionResult.newStreak}
+            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
+          />
+        ) : (
+          <LessonIncompleteScreen
+            scenarioTitle={scenarioTitle}
+            compositeScore={completionResult.compositeScore}
+            metrics={sessionMetrics}
+            whatWentWrong={whatWentWrong}
+            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
+            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onLeave={() => { setCompletionResult(null); acknowledgeCompletion(); leaveSession(); }}
+          />
+        )
       )}
     </div>
   );

@@ -36,7 +36,7 @@ export function ConversationBubble({
     )}>
       {/* Avatar Circle */}
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm ring-1 ring-white/10"
+        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-sm ring-1 ring-white/10"
         style={{ backgroundColor: accentColor }}
       >
         {name[0]}

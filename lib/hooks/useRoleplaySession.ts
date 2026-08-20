@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig } from '@/lib/language';
 import { setVoiceGender } from '@/lib/roleplay/tts';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 
 export interface TurnData {
   id: number;
@@ -73,6 +74,9 @@ export interface SessionState {
   isCompleted: boolean;
   phaseTransition: PhaseTransitionEvent | null;
   unacknowledgedCompletion: boolean;
+  evaluation: any | null;
+  avgPronunciationScore: number | null;
+  newWordsCount: number | null;
 }
 
 export interface UseRoleplaySessionReturn extends SessionState {
@@ -85,7 +89,7 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
     onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
-    onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number }) => void;
+    onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
     onComplete?: (analysis: any) => void;
   }) => Promise<void>;
   sendGreeting: (opts?: { onToken?: (t: string) => void }) => Promise<string>;
@@ -94,10 +98,6 @@ export interface UseRoleplaySessionReturn extends SessionState {
   dismissRetry: () => void;
   dismissPhaseTransition: () => void;
   acknowledgeCompletion: () => Promise<void>;
-}
-
-function cleanDisplay(text: string): string {
-  return text.replace(/【[^】]*】/g, '').trim();
 }
 
 export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn {
@@ -114,6 +114,9 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const [error, setError] = useState('');
   const [phaseTransition, setPhaseTransition] = useState<PhaseTransitionEvent | null>(null);
   const [unacknowledgedCompletion, setUnacknowledgedCompletion] = useState(false);
+  const [evaluation, setEvaluation] = useState<any | null>(null);
+  const [avgPronunciationScore, setAvgPronunciationScore] = useState<number | null>(null);
+  const [newWordsCount, setNewWordsCount] = useState<number | null>(null);
   const targetLanguageRef = useRef('ja');
   const nativeLanguageRef = useRef('en');
   const isRetryRef = useRef(false);
@@ -150,6 +153,9 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         if (data.goalCompletions) {
           setCompletedGoals(data.goalCompletions.map((gc: any) => gc.sequenceOrder));
         }
+        setEvaluation(data.evaluation ?? null);
+        setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
+        setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
         if (data.session?.targetLanguage) targetLanguageRef.current = data.session.targetLanguage;
         if (data.session?.nativeLanguage) nativeLanguageRef.current = data.session.nativeLanguage;
         if (data.session?.phase) setPhase(data.session.phase);
@@ -226,7 +232,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
       onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
-      onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number }) => void;
+      onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
       onComplete?: (analysis: any) => void;
     },
   ) => {
@@ -330,6 +336,8 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
                 variant: payload.celebrationVariant ?? (payload.passed === false ? 'needs-practice' : 'scenario-mastery'),
                 passed: payload.passed ?? true,
                 score: payload.compositeScore ?? 0,
+                xpGained: payload.xpGained,
+                newStreak: payload.newStreak,
               });
             }
             options?.onComplete?.(payload.analysis);
@@ -407,6 +415,14 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
 
     if (finalAnalysis?.scenarioComplete) {
       setSession((p: any) => ({ ...p, status: 'completed' }));
+      fetch(`/api/sessions/${sessionId}`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+          setEvaluation(data.evaluation ?? null);
+          setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
+          setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
+        })
+        .catch(() => {});
     }
   }, [sessionId, phase, conversations.length]);
 
@@ -444,6 +460,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     goals, conversations, completedGoals, phase,
     loading, error, isActive, isCompleted,
     phaseTransition, unacknowledgedCompletion,
+    evaluation, avgPronunciationScore, newWordsCount,
     submitTurn, submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection, dismissRetry,
     dismissPhaseTransition, acknowledgeCompletion,

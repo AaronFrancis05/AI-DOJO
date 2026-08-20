@@ -127,7 +127,6 @@ export function AvatarViewport3D({
 }: {
   name: string;
   accentColor: string;
-  portraitSrc?: string;
   mode?: AvatarMode;
   emotion?: string;
   gesture?: string;
@@ -154,12 +153,12 @@ export function AvatarViewport3D({
   if (!webglSupported) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-gradient-to-b from-dojo-surface to-dojo-canvas rounded-lg">
-        <div
-          className="flex h-24 w-24 items-center justify-center rounded-full text-3xl font-bold text-white shadow-lg"
-          style={{ backgroundColor: accentColor }}
-        >
-          {name[0]}
-        </div>
+          <div
+            className="flex h-24 w-24 items-center justify-center rounded-full text-3xl font-bold text-white shadow-lg"
+            style={{ backgroundColor: accentColor }}
+          >
+            {name[0]}
+          </div>
       </div>
     );
   }

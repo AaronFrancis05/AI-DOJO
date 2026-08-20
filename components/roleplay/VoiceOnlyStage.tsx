@@ -86,12 +86,12 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
                     <animate attributeName="stopOpacity" values="0.1;0.2;0.1" dur="0.5s" repeatCount="indefinite" begin="0.15s" />
                   </stop>
                 </linearGradient>
-                <linearGradient id="bar5" x1="0" y1="0" x2="0" y2="1">
+<linearGradient id="bar5" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={accentColor} stopOpacity="0.9">
                     <animate attributeName="stopOpacity" values="0.3;0.7;0.3" dur="0.9s" repeatCount="indefinite" begin="0.3s" />
                   </stop>
                   <stop offset="100%" stopColor={accentColor} stopOpacity="0.3">
-                    <animate attributeName="stopOpacity" values="0.1;0.2;0.1" dur="0.9s" repeatCount="indefinite" begin="0.3s" />
+                    <animate attributeName="stopOpacity" values="0.1;0.2;0.1" dur="0.9s" repeatCount="indefinite" begin="0.1s" />
                   </stop>
                 </linearGradient>
               </>
