@@ -16,6 +16,7 @@ import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { cn } from '@/lib/design-tokens';
 import {
   ArrowLeft, Info, Keyboard, Mic, Volume2, VolumeX,
@@ -135,10 +136,6 @@ export default function VoiceOnlyPage() {
       });
     }
   }, [unacknowledgedCompletion, celebration, session, situation, scenario]);
-
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
 
   const handleUserUtterance = useCallback(async (text: string) => {
     if (sendingRef.current || !text.trim()) return;

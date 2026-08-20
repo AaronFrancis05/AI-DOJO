@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getBCP47, getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig } from '@/lib/language';
 import { setVoiceGender } from '@/lib/roleplay/tts';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 
 export interface TurnData {
   id: number;
@@ -94,10 +95,6 @@ export interface UseRoleplaySessionReturn extends SessionState {
   dismissRetry: () => void;
   dismissPhaseTransition: () => void;
   acknowledgeCompletion: () => Promise<void>;
-}
-
-function cleanDisplay(text: string): string {
-  return text.replace(/【[^】]*】/g, '').trim();
 }
 
 export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn {

@@ -17,6 +17,7 @@ import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
+import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { ArrowLeft, Flag, Info, MessageSquare, Volume2, VolumeX, X } from 'lucide-react';
 
 export default function AvatarModePage() {
@@ -101,10 +102,6 @@ export default function AvatarModePage() {
     });
     return () => setOnSpeakingChange(null);
   }, []);
-
-  function cleanDisplay(text: string): string {
-    return text.replace(/【[^】]*】/g, '').trim();
-  }
 
   const handleFinalTranscript = useCallback(async (text: string) => {
     if (sendingRef.current || !text.trim()) return;

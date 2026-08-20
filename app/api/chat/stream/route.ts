@@ -121,6 +121,37 @@ function icebreakerPhrase(langCode: string, key: IcebreakerPhraseKey): string {
 }
 
 /**
+ * Lightweight lexical check for whether the learner's raw input contains the
+ * word currently being drilled (its target text, romaji phonetic, or meaning).
+ * Used to steer the model past a word the learner has already produced, so the
+ * AI doesn't loop back and ask them to repeat it.
+ */
+function userAttemptsVocabWord(
+  input: string,
+  v: { targetText: string; phonetic: string | null; translation: string },
+): boolean {
+  const norm = (s: string) => s.toLowerCase().trim().replace(/[.,!?;:'"()\[\]⟦⟧【】]/g, '');
+  const clean = norm(input);
+  if (!clean) return false;
+  const haystacks = [v.targetText, v.phonetic ?? '', v.translation].map(norm).filter(Boolean);
+  return haystacks.some(h => clean === h || clean.includes(h) || h.includes(clean));
+}
+
+/**
+ * Strips internal scaffolding from streamed AI text before it reaches the
+ * learner: the 【VOCAB N】 bookkeeping marker and any leaked meta labels like
+ * "TEACHER:" or "[Turn 3]". The raw fullAiText (with markers) is still kept
+ * for engine-side state parsing below.
+ */
+function sanitizeStreamedChunk(text: string): string {
+  return text
+    .replace(/【[^】]*】/g, '')
+    .replace(/^(?:TEACHER|STUDENT|COACH|ASSISTANT|AI|SYSTEM)\s*:\s*/im, '')
+    .replace(/\[Turn\s*\d+\]\s*/g, '')
+    .replace(/ {2,}/g, ' ');
+}
+
+/**
  * Generates the short phase-transition / celebration message in the learner's
  * actual target language. The old version appended hardcoded Japanese phrases
  * to every session regardless of the course language — that leaked Japanese
@@ -260,6 +291,24 @@ export async function POST(req: Request) {
       && currentVocabAttempts >= 2;
     const forcedNextVocabRow = shouldForceAdvanceVocab ? vocabRows[currentVocabIndex] : undefined;
 
+    // Deterministic signal for the icebreaker phase: did the learner's last
+    // message already contain the word we are currently teaching? When true we
+    // steer the model to move on, and (after analysis below) advance the index
+    // ourselves instead of trusting a "【VOCAB N】" marker the model might re-emit
+    // to loop back. For cross-language lessons only the target-language word /
+    // romaji counts — repeating the native meaning is not "saying the word".
+    const currentVocabRow = (currentPhase === 'icebreaker' && !isSessionStart && currentVocabIndex <= vocabRows.length)
+      ? vocabRows[currentVocabIndex - 1]
+      : undefined;
+    const userProducedCurrentWord = !!currentVocabRow && userAttemptsVocabWord(
+      effectiveInput,
+      {
+        targetText: currentVocabRow.targetText,
+        phonetic: currentVocabRow.phonetic,
+        translation: isSameLanguage ? currentVocabRow.translation : '',
+      },
+    );
+
     // The base `phonetic` column stores Japanese romaji. Once vocab is
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
@@ -390,7 +439,9 @@ ${icebreakerGreetingRule}
 - Mark the vocabulary word you are currently teaching by saying "【VOCAB N】" at the start of your teaching turn, where N is the word number (1-based).
 - If this is the session-start turn (see rule above), start teaching word 1 right after your one-time greeting. On every later turn, skip straight to introducing/reviewing the current word — no greeting.
 - STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase once and it is still not completely clean, do NOT ask them to repeat it a second time. Acknowledge their effort, provide the correct pronunciation/phrase for reference, and smoothly move to the next word. Never loop more than once on any item.
+- NEVER RE-TEACH A MASTERED WORD: If the student's message already contains the current vocabulary word (they said it correctly), do NOT ask them to say it again. Give a very short acknowledgment and immediately introduce the next word.
 - CRITICAL: Never teach vocabulary unrelated to this scenario. Stay on-topic. Use ONLY the listed scenario vocabulary.
+- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward — acknowledge, then teach the next word. Never stall on the same word. Aim to complete the lesson session naturally and on time.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
@@ -413,15 +464,17 @@ ${goalsBlock}
 RULES FOR GUIDED PHASE:
 - Stay in character as ${currentScenario.aiCharacterName} at ALL times. Every response must feel like it belongs to this specific scenario.
 - Do NOT greet the student at every turn — you already greeted them at the start of the session. Jump straight into the roleplay dialogue.
+- THE GUIDED PHASE IS WHERE COACHING HAPPENS: This is the only phase where you give explanations, corrections, and guidance. Keep the EXPLANATION / CORRECTION / GUIDANCE part short (one sentence of coaching max) — never lecture at length.
 - LANGUAGE SEPARATION: Every response has TWO strictly separated parts:
-   1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it.
-   2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario.
+   1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it. Keep it to a single short sentence.
+   2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario. This is the main body of your reply.
 - Switch between the two cleanly — don't mix languages in the same sentence.
 - Always include romaji in parentheses after any ${targetLangName} text.
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the scenario setting above. Do not generate generic phrases that ignore the situation.
 - STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase/sentence once and it's still not clean, do not ask them to repeat it again. Comment briefly, acknowledge effort, give the correct reference, and move the session forward.
+- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
@@ -443,6 +496,7 @@ ${goalsBlock}
 
 RULES FOR UNGUIDED PHASE:
 - FULL IMMERSION: Reply entirely in ${targetLangName}. Do NOT use ${nativeLangName} for any reason.
+- STRICTLY ROLEPLAY, NO COACHING: This phase is pure in-character dialogue. Do NOT give explanations, corrections, feedback, or vocabulary reviews — the guided phase is over. Just act the scene.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
 - Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Always include romaji in parentheses after every ${targetLangName} sentence.
@@ -452,6 +506,7 @@ RULES FOR UNGUIDED PHASE:
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the specific scenario setting. Never resort to generic greetings or phrases that ignore the situation.
 - STRICT NO-LOOP RETRY RULE: If the learner has already attempted a phrase once, do not ask them to repeat it. Move the conversation forward naturally.
+- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward completing the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
@@ -505,6 +560,7 @@ RULES:
 - Drive the conversation forward naturally toward completing the remaining goals.
 - CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.
 - STRICT NO-LOOP RETRY RULE: Never loop more than once on the same mistake. Acknowledge and move forward.
+- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward completing the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     const sameLangUnguidedRules = `
@@ -518,6 +574,7 @@ Goals remaining:
 ${goalsBlock}
 
 RULES:
+- STRICTLY ROLEPLAY, NO COACHING: This phase is pure in-character dialogue. Do NOT give explanations, corrections, feedback, or vocabulary reviews — the guided phase is over. Just act the scene.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
 - Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
 - Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
@@ -526,6 +583,7 @@ RULES:
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
 - CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.
 - STRICT NO-LOOP RETRY RULE: Never loop on retries. Move forward.
+- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward completing the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
 
     const streamSystemPrompt = isSameLanguage
@@ -542,7 +600,9 @@ RULES:
 
     const streamUserMsg = isSessionStart
       ? `[SESSION START] The student is ready to begin. This is the first turn.`
-      : `[Turn ${currentTurnNo}] The student says: "${effectiveInput}"`;
+      : userProducedCurrentWord
+        ? `[Turn ${currentTurnNo}] The student says: "${effectiveInput}" — and that message ALREADY contains the exact vocabulary word you are currently teaching (word ${currentVocabIndex}). The learner has produced it correctly. Do NOT ask them to repeat it. Acknowledge very briefly (max 5 words) and immediately move on to the next word.`
+        : `[Turn ${currentTurnNo}] The student says: "${effectiveInput}"`;
 
     // ── Build SSE response stream ──
     const encoder = new TextEncoder();
@@ -566,20 +626,20 @@ RULES:
             // give the model a chance to ask a third time — hand off to the
             // next word ourselves so the loop can't recur.
             fullAiText = forcedAdvanceMessage;
-            send(JSON.stringify({ type: 'token', text: fullAiText }));
+            send(JSON.stringify({ type: 'token', text: sanitizeStreamedChunk(fullAiText) }));
           } else {
             for await (const chunk of provider.generateStream(streamSystemPrompt, [
               ...conversationHistory,
               { role: 'user', content: streamUserMsg },
             ])) {
               fullAiText += chunk;
-              send(JSON.stringify({ type: 'token', text: chunk }));
+              send(JSON.stringify({ type: 'token', text: sanitizeStreamedChunk(chunk) }));
             }
           }
 
           if (!fullAiText.trim()) {
             fullAiText = `I understand. Please continue with the conversation.`;
-            send(JSON.stringify({ type: 'token', text: fullAiText }));
+            send(JSON.stringify({ type: 'token', text: sanitizeStreamedChunk(fullAiText) }));
           }
 
           // Keep icebreakerVocabIndex/Attempts authoritative instead of trusting
@@ -592,6 +652,16 @@ RULES:
             if (shouldForceAdvanceVocab) {
               // We authored fullAiText ourselves (forcedAdvanceMessage) — advance
               // state directly instead of round-tripping through the marker regex.
+              newVocabIndex = currentVocabIndex + 1;
+              newVocabAttempts = newVocabIndex <= vocabRows.length ? 1 : 0;
+            } else if (userProducedCurrentWord) {
+              // The learner's last message already contained the current word, so
+              // they've produced it. Advance deterministically instead of waiting
+              // for the model to re-emit a "【VOCAB N+1】" marker — and if the model
+              // still loops back and repeats the same word, the next turn starts
+              // on the new index so the loop can't recur. If the analyzer below
+              // flags a real error on this turn, the retry gate returns early and
+              // this advance is never persisted.
               newVocabIndex = currentVocabIndex + 1;
               newVocabAttempts = newVocabIndex <= vocabRows.length ? 1 : 0;
             } else {
@@ -1116,7 +1186,7 @@ RULES:
                 transitionKind,
               );
               if (transitionMsg) {
-                const appended = `\n\n${transitionMsg}`;
+                const appended = `\n\n${sanitizeStreamedChunk(transitionMsg)}`;
                 fullAiText += appended;
                 send(JSON.stringify({ type: 'token', text: appended }));
               }
@@ -1139,7 +1209,7 @@ RULES:
               'celebration',
             );
             if (celebrationMsg) {
-              const appended = `\n\n🎉 ${celebrationMsg}`;
+              const appended = `\n\n🎉 ${sanitizeStreamedChunk(celebrationMsg)}`;
               fullAiText += appended;
               send(JSON.stringify({ type: 'token', text: appended }));
             }

@@ -66,23 +66,42 @@ Return a JSON array of ${neededCount} objects strictly matching this format:
 ]`;
 
     const raw = await provider.generateJSON(prompt, []);
-    const items = JSON.parse(raw);
+    const items = JSON.parse(raw) as Array<{
+      targetText?: string;
+      phonetic?: string | null;
+      translation?: string;
+      category?: string;
+      usageTip?: string | null;
+    }>;
     if (Array.isArray(items) && items.length > 0) {
-      const inserted = await db.insert(vocabulary).values(
-        items.slice(0, neededCount).map((item: any) => ({
-          scenarioId: scenario.id,
-          targetText: String(item.targetText || '').trim(),
-          phonetic: item.phonetic ? String(item.phonetic).trim() : null,
-          translation: String(item.translation || '').trim(),
-          languageCode: targetLanguage,
-          category: item.category ? String(item.category).trim() : 'phrase',
-          usageTip: item.usageTip ? String(item.usageTip).trim() : null,
-        }))
-      ).returning();
+      // Reject description-like or clearly broken targetText entries (e.g. a
+      // full sentence "A polite expression used when..." instead of an actual
+      // word/phrase) so the icebreaker never drills garbage. A real word or
+      // short phrase stays under ~6 words and contains no sentence punctuation.
+      const looksLikeWordOrPhrase = (t: string) => {
+        const text = String(t).trim();
+        if (!text) return false;
+        if (/[.!?;]$/.test(text)) return false;
+        return text.split(/\s+/).length <= 6;
+      };
+      const validItems = items.filter(item => item && item.targetText && looksLikeWordOrPhrase(item.targetText));
+      if (validItems.length > 0) {
+        const inserted = await db.insert(vocabulary).values(
+          validItems.slice(0, neededCount).map((item) => ({
+            scenarioId: scenario.id,
+            targetText: String(item.targetText || '').trim(),
+            phonetic: item.phonetic ? String(item.phonetic).trim() : null,
+            translation: String(item.translation || '').trim(),
+            languageCode: targetLanguage,
+            category: item.category ? String(item.category).trim() : 'phrase',
+            usageTip: item.usageTip ? String(item.usageTip).trim() : null,
+          }))
+        ).returning();
 
-      const combined = [...existingVocab, ...inserted];
-      await cacheSet(cacheKeys.vocabulary(scenario.id), combined, TTL.VOCABULARY);
-      return combined;
+        const combined = [...existingVocab, ...inserted];
+        await cacheSet(cacheKeys.vocabulary(scenario.id), combined, TTL.VOCABULARY);
+        return combined;
+      }
     }
   } catch (err) {
     console.error('[VOCABULARY GENERATION] Failed to generate missing vocabulary:', err);
@@ -254,6 +273,16 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       // Target-language word/phrase replaces the Japanese base targetText so
       // a French (or English, etc.) course drills the correct words.
       vocabRows = applyTargetLanguageVocab(vocabRows, targetVocabLoc);
+    } else if (targetLanguage === 'en') {
+      // The base vocabulary rows are Japanese but their `translation` column
+      // is English (the seed's meaning). For an English-target course with no
+      // curated 'en' localizations, drill the English translation directly
+      // instead of falling back to the Japanese base text.
+      vocabRows = vocabRows.map((v) => ({
+        ...v,
+        targetText: v.translation,
+        usageTip: v.usageTip,
+      }));
     } else if (targetLanguage && targetLanguage !== 'ja') {
       // Loud, not silent: a non-Japanese target with no vocab localizations
       // would otherwise drill the base Japanese words with no signal.
