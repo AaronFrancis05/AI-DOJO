@@ -178,6 +178,8 @@ export const sessions = pgTable('sessions', {
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
   phase:           varchar('phase', { length: 20 }).default('orientation').notNull(),
   icebreakerIndex: integer('icebreaker_index').default(0).notNull(),
+  icebreakerVocabIndex:    integer('icebreaker_vocab_index').default(1).notNull(),
+  icebreakerVocabAttempts: integer('icebreaker_vocab_attempts').default(0).notNull(),
   runningScore:    integer('running_score').default(100).notNull(),
   pendingRetryCorrectionId: integer('pending_retry_correction_id'),
   stalledTurnCount: integer('stalled_turn_count').default(0).notNull(),
