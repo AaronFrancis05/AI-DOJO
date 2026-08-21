@@ -234,7 +234,19 @@ export class LipSync {
         sum += v * v;
       }
       const rms = Math.sqrt(sum / this._audioData.length);
-      this.targetMouthOpen = Math.min(0.46, Math.max(0, (rms - 0.012) * 3.2));
+      const fromAnalyser = Math.min(0.46, Math.max(0, (rms - 0.012) * 3.2));
+      if (fromAnalyser > 0.02) {
+        this.targetMouthOpen = fromAnalyser;
+      } else {
+        // audio is supposedly playing but the Web Audio graph is silent (e.g.
+        // browser speechSynthesis fallback, which never routes through the
+        // ttsAnalyser). Drive a synthetic talking pattern so the mouth moves
+        // instead of freezing shut mid-utterance.
+        const t = performance.now() * 0.001;
+        const wave =
+          Math.abs(Math.sin(t * 9.5)) * 0.7 + Math.abs(Math.sin(t * 5.3 + 1.3)) * 0.3;
+        this.targetMouthOpen = 0.06 + wave * 0.40;
+      }
     } else if (speakingActive && !analyser) {
       const t = performance.now() * 0.001;
       const wave =
@@ -285,21 +297,32 @@ export class LipSync {
       if (idx !== undefined) influences[idx] = 0;
     });
 
-    if ([1, 2, 9, 11].includes(realVisemeId) && visemeAA !== undefined) {
+    // Azure viseme IDs (from the TTS route, forwarded unchanged):
+    //   0=silence, 1=ae/ax/ah, 2=aa, 3=ao, 4=ey/eh/uh, 5=er, 6=iy/ih, 7=w/uw,
+    //   8=ow, 9=aw, 10=oy, 11=ay, 12=h, 13=r, 14=l, 15=s/z, 16=sh/ch, 17=th/dh,
+    //   18=f/v, 19=d/t/n, 20=k/g, 21=p/b/m.
+    // Vowels/open sounds map to an open mouth shape; consonants (13-21) must NOT
+    // be forced into a vowel shape. Consonants still push the jaw slightly so the
+    // mouth visibly moves with speech, while 21 (bilabial p/b/m) stays closed.
+    const CLOSED_CONSONANTS = [13, 14, 15, 16, 17, 18, 19, 20, 21];
+
+    if (CLOSED_CONSONANTS.includes(realVisemeId)) {
+      if (jawFallback !== undefined) {
+        influences[jawFallback] = Math.min(1.0, this.currentMouthOpen * 0.5);
+      }
+    } else if ([1, 2, 9, 11].includes(realVisemeId) && visemeAA !== undefined) {
       influences[visemeAA] = Math.min(1.0, this.currentMouthOpen);
     } else if ([3, 8, 10].includes(realVisemeId) && visemeO !== undefined) {
       influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
-    } else if ([4, 5, 18].includes(realVisemeId) && visemeE !== undefined) {
+    } else if ([4, 5].includes(realVisemeId) && visemeE !== undefined) {
       influences[visemeE] = Math.min(1.0, this.currentMouthOpen);
-    } else if ([6, 14, 15, 16, 17, 19, 21].includes(realVisemeId) && visemeI !== undefined) {
+    } else if (realVisemeId === 6 && visemeI !== undefined) {
       influences[visemeI] = Math.min(1.0, this.currentMouthOpen);
-    } else if ([7, 13].includes(realVisemeId) && visemeU !== undefined) {
+    } else if (realVisemeId === 7 && visemeU !== undefined) {
       influences[visemeU] = Math.min(1.0, this.currentMouthOpen);
     } else if (realVisemeId === 12 && (jawFallback !== undefined || visemeAA !== undefined)) {
       const idx = jawFallback ?? visemeAA!;
       influences[idx] = Math.min(1.0, this.currentMouthOpen);
-    } else if (realVisemeId === 20) {
-      // Bilabial closure (p, b, m) - keep mouth closed
     } else if (visemeAA !== undefined && visemeO !== undefined) {
       influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
       influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);

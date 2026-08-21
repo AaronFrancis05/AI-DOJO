@@ -334,10 +334,23 @@ export async function POST(req: Request) {
       return `"${v.targetText}"${phoneticPart}`;
     };
 
+    // Same-language lessons (e.g. an English course for an English speaker)
+    // need the ACTUAL phrase shown next to its meaning — the phrase lives in
+    // `targetText` while `translation` holds the native-language description.
+    // An 'en' course with no curated vocab localizations overwrites targetText
+    // to equal the translation, so guard against printing the same string twice.
+    const sameLangWordLine = (v: (typeof vocabRows)[number]): string => {
+      const phrase = String(v.targetText || '').trim();
+      const meaning = String(v.translation || '').trim();
+      const distinct = phrase && meaning && phrase.toLowerCase() !== meaning.toLowerCase();
+      const core = distinct ? `"${phrase}" — ${meaning}` : (phrase || meaning);
+      return v.usageTip ? `${core} — ${v.usageTip}` : core;
+    };
+
     const vocabBlock = vocabRows.length > 0
       ? `Key vocabulary for this lesson:\n${
           isSameLanguage
-            ? vocabRows.map((v, i) => `  ${i + 1}. "${v.translation}"${v.usageTip ? ` — ${v.usageTip}` : ''}`).join('\n')
+            ? vocabRows.map((v, i) => `  ${i + 1}. ${sameLangWordLine(v)}`).join('\n')
             : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${v.translation}"`).join('\n')
         }`
       : '';
@@ -358,7 +371,7 @@ export async function POST(req: Request) {
     // ⟦ ⟧-wrapped target-language word for a cross-language one.
     const forcedAdvanceLang = isSameLanguage ? targetLanguage : nativeLanguage;
     const buildWordIntro = (v: (typeof vocabRows)[number]) => isSameLanguage
-      ? `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ${v.translation}${v.usageTip ? ` — ${v.usageTip}` : ''} ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')}`
+      ? `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ${sameLangWordLine(v)} ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')}`
       : `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ⟦${displayVocab(v)}⟧ — ${icebreakerPhrase(forcedAdvanceLang, 'means')} "${v.translation}". ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')} ⟦${displayVocab(v)}⟧`;
     const forcedAdvanceMessage = !shouldForceAdvanceVocab
       ? null
@@ -456,6 +469,7 @@ ${icebreakerGreetingRule}
 - If this is the session-start turn (see rule above), start teaching word 1 right after your one-time greeting. On every later turn, skip straight to introducing/reviewing the current word — no greeting.
 - STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase once and it is still not completely clean, do NOT ask them to repeat it a second time. Acknowledge their effort, provide the correct pronunciation/phrase for reference, and smoothly move to the next word. Never loop more than once on any item.
 - NEVER RE-TEACH A MASTERED WORD: If the student's message already contains the current vocabulary word (they said it correctly), do NOT ask them to say it again. Give a very short acknowledgment and immediately introduce the next word.
+- NEVER REVERT TO AN EARLIER WORD: If the student seems confused or asks what the word was, restate the CURRENT word only (the one you are on now). Never go back and re-teach a word you already covered — each word gets exactly one teaching turn, then you move forward.
 - CRITICAL: Never teach vocabulary unrelated to this scenario. Stay on-topic. Use ONLY the listed scenario vocabulary.
 - GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward — acknowledge, then teach the next word. Never stall on the same word. Aim to complete the lesson session naturally and on time.
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
@@ -553,6 +567,7 @@ ${sameLangIcebreakerGreetingRule}
 - After the student attempts a word, give brief feedback, then introduce the next word.
 - Mark the vocabulary word by saying "【VOCAB N】" at the start of your teaching turn.
 - STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word once and it's still not clean, do not ask them to repeat it again. Comment briefly and move forward.
+- NEVER REVERT TO AN EARLIER WORD: If the student seems confused or asks what the word was, restate the CURRENT word only. Never go back and re-teach a word you already covered.
 - Speak naturally in ${targetLangName}. No delimiters, no romaji, no language switching.`;
 
     const sameLangGuidedRules = `
