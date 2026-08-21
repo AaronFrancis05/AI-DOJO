@@ -28,6 +28,11 @@ let azureStopCallback: (() => void) | null = null;
 
 let currentGeneration = 0;
 let sharedAudioCtx: AudioContext | null = null;
+let ttsAnalyser: AnalyserNode | null = null;
+
+export function getTtsAnalyser(): AnalyserNode | null {
+  return ttsAnalyser;
+}
 
 export type SpeakingCallback = (speaking: boolean) => void;
 let onSpeakingChange: SpeakingCallback | null = null;
@@ -49,6 +54,12 @@ function notifySpeaking(speaking: boolean): void {
 function getAudioContext(): AudioContext {
   if (!sharedAudioCtx) {
     sharedAudioCtx = new AudioContext();
+    try {
+      ttsAnalyser = sharedAudioCtx.createAnalyser();
+      ttsAnalyser.fftSize = 1024;
+      ttsAnalyser.smoothingTimeConstant = 0.4;
+      ttsAnalyser.connect(sharedAudioCtx.destination);
+    } catch {}
   }
   return sharedAudioCtx;
 }
@@ -119,7 +130,11 @@ export async function speakWithVisemes(
 
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audioCtx.destination);
+    if (ttsAnalyser) {
+      source.connect(ttsAnalyser);
+    } else {
+      source.connect(audioCtx.destination);
+    }
     source.start(0);
 
     isAzureSpeaking = true;
@@ -268,7 +283,11 @@ async function speakAzureSSML(ssml: string): Promise<void> {
 
     const source = audioCtx.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audioCtx.destination);
+    if (ttsAnalyser) {
+      source.connect(ttsAnalyser);
+    } else {
+      source.connect(audioCtx.destination);
+    }
     source.start(0);
 
     isAzureSpeaking = true;

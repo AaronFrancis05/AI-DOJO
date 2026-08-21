@@ -140,7 +140,18 @@ export function AvatarViewport3D({
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
 
+  const activeModelUrl = modelUrl || '/ai-avatars/models/female_jp.glb';
+
   useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
+
+  // Safety timer so the viewport is guaranteed to show even if camera auto-framing calculation takes extra frames
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFramed(true);
+      onFramed?.();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [onFramed]);
 
   if (webglSupported === null) {
     return (
@@ -163,15 +174,13 @@ export function AvatarViewport3D({
     );
   }
 
-  if (!modelUrl) return null;
-
   return (
     <div className="relative h-full w-full">
       <DevOverlay />
       <AvatarErrorBoundary>
-        <div className={`h-full w-full transition-opacity duration-200 ${framed ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`h-full w-full transition-opacity duration-300 ${framed ? 'opacity-100' : 'opacity-80'}`}>
           <ThreeScene
-            modelUrl={modelUrl}
+            modelUrl={activeModelUrl}
             mode={mode}
             emotion={emotion}
             gesture={gesture}
