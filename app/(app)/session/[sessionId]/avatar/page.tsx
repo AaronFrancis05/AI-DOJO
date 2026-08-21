@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { AvatarViewport3D } from '@/components/roleplay/AvatarViewport3D';
+import { AvatarViewport3D, DEFAULT_AVATAR_MODEL_URL } from '@/components/roleplay/AvatarViewport3D';
 import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
@@ -68,17 +68,23 @@ export default function AvatarModePage() {
   const [chatInput, setChatInput] = useState('');
   const [tipsOpen, setTipsOpen] = useState(false);
   const [chatTab, setChatTab] = useState<'all' | 'key' | 'notes'>('all');
-  const [sessionStartTime] = useState(Date.now());
+  const [sessionStartTime] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
   const [aiTurnActive, setAiTurnActive] = useState(false);
   const pendingCelebrationRef = useRef<CompletionResult | null>(null);
-  const lastAiCompletedRef = useRef<number>(Date.now());
+  const lastAiCompletedRef = useRef<number>(0);
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (lastAiCompletedRef.current === 0) {
+      lastAiCompletedRef.current = Date.now();
+    }
+  }, []);
 
   const speakingRef = useRef(false);
   const mutedRef = useRef(false);
@@ -90,7 +96,7 @@ export default function AvatarModePage() {
   const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const charRole = character?.role ?? scenario?.aiCharacterRole ?? undefined;
-  const avatarModelUrl = character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? '/ai-avatars/models/female_jp.glb';
+  const avatarModelUrl = character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
 
   // Session timer
   useEffect(() => {
@@ -105,6 +111,7 @@ export default function AvatarModePage() {
 
   // Auto-scroll chat panel
   useEffect(() => {
+    if (!chatOpen) return;
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversations, chatOpen]);
 
@@ -119,10 +126,16 @@ export default function AvatarModePage() {
 
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
-  const leaveSession = useCallback(async () => {
+  const leaveSession = useCallback(async (redirectTo?: string) => {
     stopTts();
-    await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {});
-    router.push(`/sessions/${sessionId}/report`);
+    await fetch(`/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'completed' }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {});
+    router.push(redirectTo || `/sessions/${sessionId}/report`);
   }, [sessionId, router]);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
@@ -311,11 +324,11 @@ export default function AvatarModePage() {
       {/* ── Top Header Bar ── */}
       <div className="relative z-20 flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-b border-dojo-border/60 shrink-0 backdrop-blur-md bg-dojo-surface/50">
         <div className="flex items-center gap-2 min-w-0">
-          <button onClick={() => { stopTts(); router.push('/home'); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
+          <button onClick={() => { leaveSession('/home'); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
             <ArrowLeft className="h-4 w-4" />
             <span className="text-sm font-medium hidden sm:inline">End Session</span>
           </button>
-          <span className="text-sm font-bold text-dojo-text-primary tracking-tight truncate max-w-[10rem] sm:max-w-xs">{scenario?.title ?? 'Avatar Session'}</span>
+          <span className="text-sm font-bold text-dojo-text-primary tracking-tight truncate max-w-40 sm:max-w-xs">{scenario?.title ?? 'Avatar Session'}</span>
           <PhaseIndicator phase={phase} />
         </div>
         <div className="flex items-center gap-2">
@@ -370,7 +383,7 @@ export default function AvatarModePage() {
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
                   <Volume2 className="h-8 w-8 text-dojo-accent" />
                 </div>
-                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {charName}</h2>
+                <h2 className="text-lg font-bold leading-none text-dojo-text-primary mb-2">Start conversation with {charName}</h2>
                 <p className="text-sm text-dojo-text-muted mb-6 leading-relaxed">
                   You&apos;ll practice {langLabel} through realistic role-play scenarios.
                 </p>
@@ -438,7 +451,7 @@ export default function AvatarModePage() {
           {voice.partialTranscript && (
             <div className="absolute bottom-44 left-0 right-0 flex justify-center z-10 px-4">
               <div className="flex items-start gap-2 rounded-xl bg-dojo-surface/85 backdrop-blur-md border border-dojo-border/70 px-4 py-2.5 max-w-md shadow-lg">
-                <Mic className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
+                <Mic className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-1" />
                 <p className="text-sm text-dojo-text-primary/90 italic leading-relaxed">{voice.partialTranscript}</p>
               </div>
             </div>
@@ -453,16 +466,19 @@ export default function AvatarModePage() {
               </div>
               {/* Progress bar */}
               <div className="flex gap-1 mb-3">
-                {(goals ?? []).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`h-1 flex-1 rounded-full ${i < (completedGoals?.length ?? 0) ? 'bg-dojo-accent' : 'bg-dojo-border/50'}`}
-                  />
-                ))}
+                {(goals ?? []).map((goal, i) => {
+                  const done = (completedGoals ?? []).includes(goal.sequenceOrder);
+                  return (
+                    <div
+                      key={i}
+                      className={`h-1 flex-1 rounded-full ${done ? 'bg-dojo-accent' : 'bg-dojo-border/50'}`}
+                    />
+                  );
+                })}
                 {(!goals || goals.length === 0) && <div className="h-1 flex-1 rounded-full bg-dojo-border/50" />}
               </div>
               {/* Goal checklist */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {(goals ?? []).slice(0, 3).map((goal, i) => {
                   const done = (completedGoals ?? []).includes(goal.sequenceOrder);
                   return (
@@ -494,13 +510,13 @@ export default function AvatarModePage() {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{charName}</p>
-                  {charRole && <p className="text-[11px] text-dojo-text-muted mt-0.5">{charRole}</p>}
+                  {charRole && <p className="text-[11px] text-dojo-text-muted mt-1">{charRole}</p>}
                 </div>
               </div>
               {character?.personalityTraits && character.personalityTraits.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {character.personalityTraits.slice(0, 3).map((trait: string, i: number) => (
-                    <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-0.5 text-[10px] text-dojo-text-muted font-medium">
+                    <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-1 text-[10px] text-dojo-text-muted font-medium">
                       {trait}
                     </span>
                   ))}
@@ -584,7 +600,7 @@ export default function AvatarModePage() {
         </div>
 
         {/* ── Slide-out Chat Panel (left side) ── */}
-        <div className={`absolute top-0 left-0 bottom-0 z-30 w-80 max-w-[85vw] sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-r border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute top-0 left-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-r border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border/60 shrink-0">
             <div className="flex items-center gap-2">
@@ -594,6 +610,7 @@ export default function AvatarModePage() {
             <button
               type="button"
               onClick={() => setChatOpen(false)}
+              aria-label="Close conversation panel"
               className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-dojo-border/20 text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
             >
               <X className="h-4 w-4" />
@@ -656,7 +673,7 @@ export default function AvatarModePage() {
                       {turn.messagePhonetic && (
                         <p className="mt-1 text-[11px] text-dojo-text-muted italic">{turn.messagePhonetic}</p>
                       )}
-                      {!isAi && turn.corrections && turn.corrections.length > 0 && chatTab !== 'notes' && (
+                      {!isAi && turn.corrections && turn.corrections.length > 0 && (
                         <div className="mt-2 border-t border-dojo-border/30 pt-2 space-y-1">
                           {turn.corrections.map((c, i) => (
                             <p key={i} className="text-[11px] text-dojo-text-muted leading-relaxed">
@@ -670,13 +687,13 @@ export default function AvatarModePage() {
                     </div>
                     {isAi && (
                       <div className="flex items-center gap-2 mt-1 px-1">
-                        <button onClick={() => handleReplay(turn)} className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors">
+                        <button onClick={() => handleReplay(turn)} aria-label="Replay audio message" className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors">
                           <Volume2 className="h-3 w-3" />
                         </button>
                       </div>
                     )}
                     {!isAi && (
-                      <div className="flex items-center gap-1 mt-0.5 px-1">
+                      <div className="flex items-center gap-1 mt-1 px-1">
                         <span className="text-[10px] text-dojo-accent">✓ Delivered</span>
                       </div>
                     )}
@@ -707,7 +724,7 @@ export default function AvatarModePage() {
 
           {/* Chat input */}
           <div className="shrink-0 border-t border-dojo-border/60 px-4 py-3">
-            <div className="flex items-center gap-2 rounded-xl bg-dojo-surface-raised/80 border border-dojo-border/60 px-3 py-1 focus-within:border-dojo-accent/40 transition-colors">
+            <div className="flex items-center gap-2 rounded-xl bg-dojo-surface-raised/80 border border-dojo-border/60 px-4 py-2 focus-within:border-dojo-accent/40 transition-colors">
               <input
                 type="text"
                 value={chatInput}
@@ -715,11 +732,12 @@ export default function AvatarModePage() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
                 placeholder="Type a message..."
                 disabled={!isActive || sending}
-                className="flex-1 bg-transparent border-none px-1 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+                className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
               />
               <button
                 onClick={handleChatSend}
                 disabled={!chatInput.trim() || !isActive || sending}
+                aria-label="Send text message"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-dojo-accent text-white disabled:opacity-30 hover:opacity-90 active:scale-95 transition-all"
               >
                 <Send className="h-4 w-4" />
@@ -727,15 +745,15 @@ export default function AvatarModePage() {
             </div>
             {suggestedReplies.length > 0 && chatTab !== 'notes' && (
               <div className="mt-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted mb-1.5">You could say</p>
-                <div className="flex flex-wrap gap-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted mb-2">You could say</p>
+                <div className="flex flex-wrap gap-2">
                   {suggestedReplies.map((r, i) => (
                     <button
                       key={i}
                       type="button"
                       disabled={!isActive || sending}
                       onClick={() => handleUserUtterance(r)}
-                      className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-3 py-1.5 text-[11px] font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 active:scale-95 disabled:opacity-40 transition-all duration-200"
+                      className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-3 py-2 text-[11px] font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 active:scale-95 disabled:opacity-40 transition-all duration-200"
                     >
                       {r}
                     </button>
