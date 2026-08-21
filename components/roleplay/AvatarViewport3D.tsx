@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Environment, ContactShadows } from '@react-three/drei';
 import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
@@ -121,6 +121,8 @@ function detectWebGLSupport(): boolean {
   } catch { return false; }
 }
 
+export const DEFAULT_AVATAR_MODEL_URL = '/ai-avatars/models/female_jp.glb';
+
 /* ── Exported component ──────────────────────────── */
 export function AvatarViewport3D({
   name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed, freezeOnIdle, onSystemReady,
@@ -140,7 +142,30 @@ export function AvatarViewport3D({
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
 
+  const activeModelUrl = modelUrl || DEFAULT_AVATAR_MODEL_URL;
+
+  const onFramedRef = useRef(onFramed);
+  useEffect(() => {
+    onFramedRef.current = onFramed;
+  }, [onFramed]);
+
+  const framedRef = useRef(framed);
+  useEffect(() => {
+    framedRef.current = framed;
+  }, [framed]);
+
   useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
+
+  // Safety timer so the viewport is guaranteed to show even if camera auto-framing calculation takes extra frames
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!framedRef.current) {
+        setFramed(true);
+        onFramedRef.current?.();
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   if (webglSupported === null) {
     return (
@@ -163,15 +188,13 @@ export function AvatarViewport3D({
     );
   }
 
-  if (!modelUrl) return null;
-
   return (
     <div className="relative h-full w-full">
       <DevOverlay />
       <AvatarErrorBoundary>
-        <div className={`h-full w-full transition-opacity duration-200 ${framed ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`h-full w-full transition-opacity duration-300 ${framed ? 'opacity-100' : 'opacity-80'}`}>
           <ThreeScene
-            modelUrl={modelUrl}
+            modelUrl={activeModelUrl}
             mode={mode}
             emotion={emotion}
             gesture={gesture}
@@ -181,7 +204,7 @@ export function AvatarViewport3D({
             onSystemReady={onSystemReady}
             onFramed={() => {
               setFramed(true);
-              onFramed?.();
+              onFramedRef.current?.();
             }}
           />
         </div>

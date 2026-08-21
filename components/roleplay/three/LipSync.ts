@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getCurrentViseme } from '@/lib/roleplay/tts';
+import { getCurrentViseme, getTtsAnalyser, isSpeaking } from '@/lib/roleplay/tts';
 
 const MOUTH_SHAPES = ['aa', 'ih', 'oh'];
 const LERP_SPEED = 24;
@@ -215,7 +215,8 @@ export class LipSync {
 
   update(delta: number): void {
     const dt = delta || 0.016;
-    const analyser = this._externalAnalyser || this._analyser;
+    const analyser = this._externalAnalyser || this._analyser || getTtsAnalyser();
+    const speakingActive = this.playing || isSpeaking();
 
     const realVisemeId = this._resolveVisemeId();
     const hasViseme = realVisemeId >= 0;
@@ -223,7 +224,10 @@ export class LipSync {
     if (hasViseme) {
       this.playing = true;
       this.targetMouthOpen = 0.35;
-    } else if (this.playing && analyser && this._audioData) {
+    } else if (speakingActive && analyser) {
+      if (!this._audioData) {
+        this._audioData = new Uint8Array(analyser.fftSize) as unknown as Uint8Array<ArrayBuffer>;
+      }
       analyser.getByteTimeDomainData(this._audioData);
       let sum = 0;
       for (let i = 0; i < this._audioData.length; i++) {
@@ -232,7 +236,7 @@ export class LipSync {
       }
       const rms = Math.sqrt(sum / this._audioData.length);
       this.targetMouthOpen = Math.min(0.46, Math.max(0, (rms - 0.012) * 3.2));
-    } else if (this.playing && !analyser) {
+    } else if (speakingActive && !analyser) {
       const t = performance.now() * 0.001;
       const wave =
         Math.abs(Math.sin(t * 9.5)) * 0.7 + Math.abs(Math.sin(t * 5.3 + 1.3)) * 0.3;
