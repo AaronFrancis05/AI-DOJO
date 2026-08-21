@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { getCurrentViseme, getTtsAnalyser, isSpeaking } from '@/lib/roleplay/tts';
 
-const MOUTH_SHAPES = ['aa', 'ih', 'oh'];
 const LERP_SPEED = 24;
 
 const VISEME_TARGETS = [
@@ -165,7 +164,7 @@ export class LipSync {
     const dict = faceMesh.morphTargetDictionary;
     const influences = faceMesh.morphTargetInfluences;
     if (!dict || !influences) return;
-    MOUTH_SHAPES.forEach((m) => {
+    VISEME_TARGETS.forEach((m) => {
       const idx = dict[m];
       if (idx !== undefined) influences[idx] = 0;
     });
@@ -219,7 +218,7 @@ export class LipSync {
     const speakingActive = this.playing || isSpeaking();
 
     const realVisemeId = this._resolveVisemeId();
-    const hasViseme = realVisemeId >= 0;
+    const hasViseme = realVisemeId > 0;
 
     if (hasViseme) {
       this.playing = true;
@@ -286,21 +285,28 @@ export class LipSync {
       if (idx !== undefined) influences[idx] = 0;
     });
 
-    if (realVisemeId === 2 && visemeAA !== undefined) {
+    if ([1, 2, 9, 11].includes(realVisemeId) && visemeAA !== undefined) {
       influences[visemeAA] = Math.min(1.0, this.currentMouthOpen);
-    } else if (realVisemeId === 3 && visemeO !== undefined) {
+    } else if ([3, 8, 10].includes(realVisemeId) && visemeO !== undefined) {
       influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
-    } else if (realVisemeId === 4 && visemeE !== undefined) {
+    } else if ([4, 5, 18].includes(realVisemeId) && visemeE !== undefined) {
       influences[visemeE] = Math.min(1.0, this.currentMouthOpen);
-    } else if (realVisemeId === 6 && visemeI !== undefined) {
+    } else if ([6, 14, 15, 16, 17, 19, 21].includes(realVisemeId) && visemeI !== undefined) {
       influences[visemeI] = Math.min(1.0, this.currentMouthOpen);
-    } else if (realVisemeId === 7 && visemeU !== undefined) {
+    } else if ([7, 13].includes(realVisemeId) && visemeU !== undefined) {
       influences[visemeU] = Math.min(1.0, this.currentMouthOpen);
-    } else if (realVisemeId === 8 && visemeO !== undefined) {
-      influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 12 && (jawFallback !== undefined || visemeAA !== undefined)) {
+      const idx = jawFallback ?? visemeAA!;
+      influences[idx] = Math.min(1.0, this.currentMouthOpen);
+    } else if (realVisemeId === 20) {
+      // Bilabial closure (p, b, m) - keep mouth closed
     } else if (visemeAA !== undefined && visemeO !== undefined) {
       influences[visemeAA] = Math.min(1.0, this.currentMouthOpen * 0.85);
       influences[visemeO] = Math.min(1.0, this.currentMouthOpen * 0.15);
+    } else if (visemeAA !== undefined) {
+      influences[visemeAA] = Math.min(1.0, this.currentMouthOpen);
+    } else if (visemeO !== undefined) {
+      influences[visemeO] = Math.min(1.0, this.currentMouthOpen);
     } else if (jawFallback !== undefined) {
       influences[jawFallback] = Math.min(1.0, this.currentMouthOpen);
     }
