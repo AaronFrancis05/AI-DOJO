@@ -241,8 +241,18 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
   const path = (await params).path.join('/');
   let verifiedRequest: NextRequest;
   try {
-    verifiedRequest = new NextRequest(withVerifiedRequestOrigin(request));
-  } catch {
+    const verified = withVerifiedRequestOrigin(request);
+    // Already a NextRequest when the Origin header matched (the common case) —
+    // re-wrapping an existing NextRequest in `new NextRequest(...)` throws
+    // ("Cannot read private member #state...") in this Next.js version.
+    verifiedRequest = verified instanceof NextRequest ? verified : new NextRequest(verified);
+  } catch (err) {
+    console.error('[auth-proxy] Origin check failed', {
+      path,
+      origin: request.headers.get('origin'),
+      appOrigin: getAppOrigin(),
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Invalid Origin' }, { status: 403 });
   }
 
@@ -251,6 +261,14 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const response = await builtin.POST!(verifiedRequest, { params });
+
+  if (path === 'sign-out' && (!response.ok || response.status >= 400)) {
+    const bodyPreview = await response.clone().text().catch(() => '');
+    console.error('[auth-proxy] sign-out upstream error', {
+      status: response.status,
+      bodyPreview: bodyPreview.slice(0, 300),
+    });
+  }
 
   if (!response.ok || response.status !== 200) return response;
 

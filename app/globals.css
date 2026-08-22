@@ -8,22 +8,22 @@ html {
 }
 
 :root {
-  /* Light mode (default) */
-  --color-canvas: #F8FAFC;
-  --color-sidebar: #F1F5F9;
-  --color-surface: #FFFFFF;
-  --color-surface-raised: #F8FAFC;
-  --color-border: #E2E8F0;
-  --color-accent: #2D3BC5;
-  --color-accent-soft: #E0E7FF;
+  /* Light mode (default) — warm cream / red-lacquer palette */
+  --color-canvas: #F5F0E6;
+  --color-sidebar: #EFE8D8;
+  --color-surface: #FAF6EE;
+  --color-surface-raised: #FFFFFF;
+  --color-border: #E3D9C4;
+  --color-accent: #C1392B;
+  --color-accent-soft: #F5DAD3;
   --color-success: #16A34A;
   --color-warning: #D97706;
   --color-danger: #DC2626;
   --color-streak: #EA580C;
   --color-evaluation: #8B5CF6;
   --color-icebreaker: #D946EF;
-  --color-text-primary: #0F172A;
-  --color-text-muted: #64748B;
+  --color-text-primary: #221A14;
+  --color-text-muted: #6B6153;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -33,21 +33,21 @@ html {
 }
 
 .dark {
-  --color-canvas: #050B14;
-  --color-sidebar: #010A18;
-  --color-surface: #0B1526;
-  --color-surface-raised: #111D33;
-  --color-border: #1C2A42;
-  --color-accent: #2D3BC5;
-  --color-accent-soft: #191359;
+  --color-canvas: #1B1512;
+  --color-sidebar: #130F0C;
+  --color-surface: #241C17;
+  --color-surface-raised: #2C2119;
+  --color-border: #3C2E24;
+  --color-accent: #DD5B47;
+  --color-accent-soft: #472922;
   --color-success: #2FAE66;
   --color-warning: #E3A939;
   --color-danger: #D14343;
   --color-streak: #F0A93B;
   --color-evaluation: #8B5CF6;
   --color-icebreaker: #D946EF;
-  --color-text-primary: #F4F4F8;
-  --color-text-muted: #8A93A8;
+  --color-text-primary: #F5F0E6;
+  --color-text-muted: #A99C8B;
   color-scheme: dark;
 }
 
@@ -57,6 +57,7 @@ html {
   --color-foreground: var(--color-text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-playfair);
 
   /* AI DOJO custom tokens */
   --color-dojo-canvas: var(--color-canvas);

@@ -1,24 +1,24 @@
 /* ───────────────────────────────────────────────
    AI DOJO — Design Tokens & Utility
-   Sampled directly from mockup v4
+   Mirrors app/globals.css `.dark` values
    Use Tailwind CSS class names for styling;
    these exports provide runtime values when needed (e.g. inline style for gradients).
    ─────────────────────────────────────────────── */
 
 export const colors = {
-  canvas:        '#050B14',
-  sidebar:       '#010A18',
-  surface:       '#0B1526',
-  surfaceRaised: '#111D33',
-  border:        '#1C2A42',
-  accent:        '#2D3BC5',
-  accentSoft:    '#191359',
+  canvas:        '#1B1512',
+  sidebar:       '#130F0C',
+  surface:       '#241C17',
+  surfaceRaised: '#2C2119',
+  border:        '#3C2E24',
+  accent:        '#DD5B47',
+  accentSoft:    '#472922',
   success:       '#2FAE66',
   warning:       '#E3A939',
   danger:        '#D14343',
   streak:        '#F0A93B',
-  textPrimary:   '#F4F4F8',
-  textMuted:     '#8A93A8',
+  textPrimary:   '#F5F0E6',
+  textMuted:     '#A99C8B',
   /* Voice interface tokens — one accent per active party */
   listening:     '#F2A93B',
   aiSpeaking:    '#4FD1C5',
