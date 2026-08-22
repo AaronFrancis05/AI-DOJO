@@ -4,7 +4,8 @@ import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
 import type { ChatTurn } from '@/lib/ai-providers';
 
 const MAX_GUEST_TURNS = 5;
-const MAX_TRYOUTS_PER_IP_PER_HOUR = 5;
+// 6 requests per session (greeting + 5 turns) × 5 sessions/hour = 30
+const MAX_TRYOUTS_PER_IP_PER_HOUR = 30;
 
 interface GuestTurn {
   speaker: 'user' | 'ai';
