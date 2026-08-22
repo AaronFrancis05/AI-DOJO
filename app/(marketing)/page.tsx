@@ -330,7 +330,7 @@ export default async function LandingPage() {
 
           {/* ── TRY IT OUT PANEL ── */}
           <div className="animate-arena-rise arena-delay-3 mt-10 sm:mt-12">
-            <TryoutPanel scenarios={domains.slice(0, 5).map((d) => d.name)} />
+            <TryoutPanel />
           </div>
 
           {/* ── TRUSTED BY STRIP ── */}

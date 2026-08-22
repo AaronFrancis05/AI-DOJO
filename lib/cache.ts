@@ -10,6 +10,7 @@ SESSION: 60,         // 1 min (session state changes often)
   SITUATION: 3600,     // 1 hr
   CHARACTER: 3600,     // 1 hr
   DOMAIN: 3600,        // 1 hr
+  TRYOUT_RATE_LIMIT: 3600, // 1 hr window for guest tryout throttling
 } as const;
 
 let redis: Redis | null = null;
@@ -71,6 +72,7 @@ export const cacheKeys = {
   situationLocalization: (situationId: number, lang: string) => key('situation-loc', situationId, lang),
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
+  tryoutRateLimit: (ip: string) => key('tryout-rate-limit', ip),
 };
 
 export { TTL };

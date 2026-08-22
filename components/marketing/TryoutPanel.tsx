@@ -2,16 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { TARGET_LANGUAGES } from '@/lib/language';
+import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '@/lib/language';
 import { ChevronRightIcon } from '@/components/Icons';
 
-interface TryoutPanelProps {
-  scenarios: string[];
-}
-
-export function TryoutPanel({ scenarios }: TryoutPanelProps) {
-  const [languageCode, setLanguageCode] = useState(TARGET_LANGUAGES[0]?.code ?? '');
-  const [scenarioName, setScenarioName] = useState(scenarios[0] ?? '');
+export function TryoutPanel() {
+  const [targetLanguage, setTargetLanguage] = useState(TARGET_LANGUAGES[0]?.code ?? '');
+  const [nativeLanguage, setNativeLanguage] = useState(NATIVE_LANGUAGES[0]?.code ?? '');
 
   return (
     <div className="rounded-2xl border border-dojo-border bg-dojo-surface-raised p-6 shadow-sm sm:p-8">
@@ -27,8 +23,8 @@ export function TryoutPanel({ scenarios }: TryoutPanelProps) {
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-wider text-dojo-text-muted">I want to learn</span>
           <select
-            value={languageCode}
-            onChange={(e) => setLanguageCode(e.target.value)}
+            value={targetLanguage}
+            onChange={(e) => setTargetLanguage(e.target.value)}
             className="mt-2 w-full rounded-xl border border-dojo-border bg-dojo-surface px-4 py-3 text-sm font-medium text-dojo-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
           >
             {TARGET_LANGUAGES.map((lang) => (
@@ -40,22 +36,22 @@ export function TryoutPanel({ scenarios }: TryoutPanelProps) {
         </label>
 
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wider text-dojo-text-muted">Scenario</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-dojo-text-muted">I speak</span>
           <select
-            value={scenarioName}
-            onChange={(e) => setScenarioName(e.target.value)}
+            value={nativeLanguage}
+            onChange={(e) => setNativeLanguage(e.target.value)}
             className="mt-2 w-full rounded-xl border border-dojo-border bg-dojo-surface px-4 py-3 text-sm font-medium text-dojo-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
           >
-            {scenarios.map((scenario) => (
-              <option key={scenario} value={scenario}>
-                {scenario}
+            {NATIVE_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.name}
               </option>
             ))}
           </select>
         </label>
 
         <Link
-          href={`/auth?lang=${languageCode}&scenario=${encodeURIComponent(scenarioName)}`}
+          href={`/tryout?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`}
           className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
         >
           Start Tryout

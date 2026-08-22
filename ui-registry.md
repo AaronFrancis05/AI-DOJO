@@ -49,7 +49,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 |-----------|-------|-------|
 | `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar |
 | `DemoVideoDialog` | — | Fullscreen modal with custom video controls, triggered from the hero |
-| `TryoutPanel` | `scenarios: {icon, name}[]` | Client-side language/scenario picker preview on the hero; pulls languages from `lib/language.ts` `TARGET_LANGUAGES`, links to `/auth` with the selection as query params (no anonymous session exists) |
+| `TryoutPanel` | — | Client-side target/native language picker on the hero; pulls target languages from `lib/language.ts` `TARGET_LANGUAGES` and native languages from `NATIVE_LANGUAGES`. Links to `/tryout?targetLanguage=..&nativeLanguage=..`, which runs a real (unauthenticated, client-local) guest roleplay preview — see `app/tryout/`, `app/api/tryout/turn/route.ts`, `lib/hooks/useGuestRoleplaySession.ts`. On preview completion the user is prompted to sign up via `/auth?targetLanguage=..&nativeLanguage=..`, which prefills those preferences and skips onboarding |
 
 ## App Shell (`/components/shell/`)
 | Component | Notes |

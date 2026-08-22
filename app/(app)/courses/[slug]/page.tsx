@@ -440,7 +440,7 @@ export default function CourseDetailPage() {
                                 loading={startingLesson === f.lesson.id}
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
-                                Review
+                                Try Again
                               </Button>
                             ) : f.status === 'locked' ? (
                               <span className="shrink-0 px-3 py-1.5 text-xs font-semibold text-dojo-text-muted/50">
