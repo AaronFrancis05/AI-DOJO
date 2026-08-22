@@ -2,6 +2,7 @@ import { db } from '../../../../src/db';
 import { withSessionLock } from '../../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, goalCompletions, users, vocabularyEncounters, audioJobs } from '../../../../src/schema';
 import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
+import { buildIdentityAndGuardBlock } from '../../../../lib/ai-engine';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
 import {
@@ -329,9 +330,14 @@ export async function POST(req: Request) {
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
     const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+    // Defense-in-depth: legacy seed content teaches fill-in-the-blank templates
+    // ("わたしは___です"). Substitute the learner's real profile name so a blank
+    // never reaches the model or the learner as an unresolved artifact.
+    const resolveBlank = (text: string) =>
+      turnData.learnerName ? text.replace(/___/g, turnData.learnerName) : text;
     const displayVocab = (v: (typeof vocabRows)[number]) => {
-      const phoneticPart = showPhonetic && v.phonetic ? ` (${v.phonetic})` : '';
-      return `"${v.targetText}"${phoneticPart}`;
+      const phoneticPart = showPhonetic && v.phonetic ? ` (${resolveBlank(v.phonetic)})` : '';
+      return `"${resolveBlank(v.targetText)}"${phoneticPart}`;
     };
 
     // Same-language lessons (e.g. an English course for an English speaker)
@@ -340,27 +346,33 @@ export async function POST(req: Request) {
     // An 'en' course with no curated vocab localizations overwrites targetText
     // to equal the translation, so guard against printing the same string twice.
     const sameLangWordLine = (v: (typeof vocabRows)[number]): string => {
-      const phrase = String(v.targetText || '').trim();
-      const meaning = String(v.translation || '').trim();
+      const phrase = resolveBlank(String(v.targetText || '').trim());
+      const meaning = resolveBlank(String(v.translation || '').trim());
       const distinct = phrase && meaning && phrase.toLowerCase() !== meaning.toLowerCase();
       const core = distinct ? `"${phrase}" — ${meaning}` : (phrase || meaning);
-      return v.usageTip ? `${core} — ${v.usageTip}` : core;
+      const tip = v.usageTip ? resolveBlank(v.usageTip) : null;
+      return tip ? `${core} — ${tip}` : core;
     };
 
     const vocabBlock = vocabRows.length > 0
       ? `Key vocabulary for this lesson:\n${
           isSameLanguage
             ? vocabRows.map((v, i) => `  ${i + 1}. ${sameLangWordLine(v)}`).join('\n')
-            : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${v.translation}"`).join('\n')
+            : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${resolveBlank(v.translation)}"`).join('\n')
         }`
       : '';
 
     // Delimiter-format examples for the dual-language prompts. Built from the
     // actual (already-localized) lesson vocabulary so they demonstrate the
     // format in the real target language instead of hardcoded Japanese.
+    // Phonetic glosses ("romaji") are only reliable for Japanese — see
+    // showPhonetic above — so every mention of them below is gated on it to
+    // stop the model inventing ad hoc, often-garbled phonetics for other
+    // target languages.
+    const phoneticParen = showPhonetic ? ' (romaji)' : '';
     const icebreakerExample = vocabRows[0]
-      ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${vocabRows[0].translation}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
-      : `Example: In ${targetLangName}, we say ⟦${targetLangName} word (romaji)⟧ — it means 'the meaning'. Can you say ⟦${targetLangName} word (romaji)⟧?`;
+      ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${resolveBlank(vocabRows[0].translation)}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
+      : `Example: In ${targetLangName}, we say ⟦${targetLangName} word${phoneticParen}⟧ — it means 'the meaning'. Can you say ⟦${targetLangName} word${phoneticParen}⟧?`;
 
     // Deterministically hands off to the next word when we bypass generation
     // (see shouldForceAdvanceVocab below). This text goes straight to the
@@ -382,18 +394,18 @@ export async function POST(req: Request) {
         // below still advances the phase instead of looping forever.
         : `${icebreakerPhrase(forcedAdvanceLang, 'ack')} 【VOCAB ${currentVocabIndex + 1}】 ${icebreakerPhrase(forcedAdvanceLang, 'allDone')}`;
     const guidedExample = vocabRows[0]
-      ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${vocabRows[0].translation}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
-      : `Example: Now you try: ⟦${targetLangName} word (romaji)⟧`;
+      ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${resolveBlank(vocabRows[0].translation)}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
+      : `Example: Now you try: ⟦${targetLangName} word${phoneticParen}⟧`;
     const unguidedExample = vocabRows.length >= 2
       ? `Example: ⟦${displayVocab(vocabRows[0])}⟧ ⟦${displayVocab(vocabRows[1])}⟧？`
       : vocabRows[0]
         ? `Example: ⟦${displayVocab(vocabRows[0])}⟧`
-        : `Example: ⟦${targetLangName} text (romaji)⟧ ⟦${targetLangName} text (romaji)⟧？`;
+        : `Example: ⟦${targetLangName} text${phoneticParen}⟧ ⟦${targetLangName} text${phoneticParen}⟧？`;
 
     const goalsBlock = goals.map(g => {
       const done = completedSequenceOrders.includes(g.sequenceOrder);
       const status = done ? '[COVERED]' : '[PENDING]';
-      return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${g.goalText}`;
+      return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${resolveBlank(g.goalText)}`;
     }).join('\n');
 
     const modeInstruction = behaviorMode === 'trouble'
@@ -403,12 +415,15 @@ export async function POST(req: Request) {
     const scenarioTitle = turnData.scenarioLocalized
       ? currentScenario.title
       : (situationResult?.title ?? currentScenario.title);
+    const identityAndGuardBlock = buildIdentityAndGuardBlock(turnData.learnerName, turnData.learnerCountry);
     const scenarioContextBlock = `
 ===== SCENARIO =====
 Title: ${scenarioTitle}
 Setting: ${situationContext}
 Learning goals: ${situationLearningGoals}
-=====================`;
+=====================
+
+${identityAndGuardBlock}`;
 
     // ── Phase-specific prompts ──
     const orientationRules = `
@@ -459,10 +474,10 @@ Rules for icebreaker phase:
 - STRICT VOCAB LIMIT: You have EXACTLY ${vocabRows.length} vocabulary word(s) listed above. Teach ONLY these words and in this exact order. Do NOT create, invent, or add any words beyond this list. If the student says something unrelated, acknowledge it briefly and return to the current word.
 - BREVITY: Keep your entire response to 2-3 sentences max. Do not give long explanations.
 ${icebreakerGreetingRule}
-- For each word: say the ${targetLangName} word (with romaji in parentheses), then clearly say its ${nativeLangName} meaning.
+- For each word: say the ${targetLangName} word${showPhonetic ? ' (with romaji in parentheses)' : ''}, then clearly say its ${nativeLangName} meaning.
 - After introducing a word, ask the student to repeat it back to you.
 - Keep your tone encouraging and supportive — the student is a beginner.
-- Use a mix of ${nativeLangName} for explanations and ${targetLangName} (with romaji) for the vocabulary itself.
+- Use a mix of ${nativeLangName} for explanations and ${targetLangName}${showPhonetic ? ' (with romaji)' : ''} for the vocabulary itself.${showPhonetic ? '' : `\n- Do NOT invent a phonetic/pronunciation transliteration for ${targetLangName} text — none is provided for this language, so any such gloss you produce will be unreliable and inconsistent. Present the word as-is.`}
 - Do NOT cover multiple words at once. One word per turn.
 - After the student attempts a word, give very brief feedback (5 words max) in ${nativeLangName} on their attempt, then introduce the next word.
 - Mark the vocabulary word you are currently teaching by saying "【VOCAB N】" at the start of your teaching turn, where N is the word number (1-based).
@@ -475,7 +490,7 @@ ${icebreakerGreetingRule}
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
-Wrap every ${targetLangName} span — the word/phrase itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
+Wrap every ${targetLangName} span${showPhonetic ? ' — the word/phrase itself plus its romaji in parentheses —' : ''} in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName}${showPhonetic ? ' (+ romaji)' : ''}. Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
 
 ${icebreakerExample}`;
 
@@ -499,7 +514,7 @@ RULES FOR GUIDED PHASE:
    1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it. Keep it to a single short sentence.
    2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario. This is the main body of your reply.
 - Switch between the two cleanly — don't mix languages in the same sentence.
-- Always include romaji in parentheses after any ${targetLangName} text.
+${showPhonetic ? `- Always include romaji in parentheses after any ${targetLangName} text.` : `- Do NOT invent a phonetic/pronunciation transliteration for ${targetLangName} text — none is provided for this language, so any such gloss you produce will be unreliable and inconsistent. Write the ${targetLangName} text as-is with no parenthetical pronunciation guide.`}
 - Keep the overall response to 1–3 sentences typically.
 - Do NOT include any JSON, markdown, ratings, or meta text.
 - CRITICAL: Every response must be grounded in the scenario setting above. Do not generate generic phrases that ignore the situation.
@@ -508,7 +523,7 @@ RULES FOR GUIDED PHASE:
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
-Wrap every ${targetLangName} span — the roleplay line itself plus its romaji in parentheses — in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName} (+ romaji). Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
+Wrap every ${targetLangName} span${showPhonetic ? ' — the roleplay line itself plus its romaji in parentheses —' : ''} in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName}${showPhonetic ? ' (+ romaji)' : ''}. Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
 
 ${guidedExample}`;
 
@@ -529,7 +544,7 @@ RULES FOR UNGUIDED PHASE:
 - STRICTLY ROLEPLAY, NO COACHING: This phase is pure in-character dialogue. Do NOT give explanations, corrections, feedback, or vocabulary reviews — the guided phase is over. Just act the scene.
 - Stay in character as ${currentScenario.aiCharacterName} at all times.
 - Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
-- Always include romaji in parentheses after every ${targetLangName} sentence.
+${showPhonetic ? `- Always include romaji in parentheses after every ${targetLangName} sentence.` : `- Do NOT invent a phonetic/pronunciation transliteration for ${targetLangName} text — none is provided for this language, so any such gloss you produce will be unreliable and inconsistent. Write the ${targetLangName} text as-is with no parenthetical pronunciation guide.`}
 - Keep responses natural, conversational, and in-character — driven entirely by the scenario setting above.
 - Drive the conversation toward completing the remaining goals naturally within the scenario.
 - Keep responses to 1–3 sentences typically.
@@ -540,7 +555,7 @@ RULES FOR UNGUIDED PHASE:
 - When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
 
 ===== OUTPUT FORMAT (MANDATORY) =====
-Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is 100% ${targetLangName}, virtually all text should be inside ⟦ ⟧. Include romaji inside the delimiters: ⟦${targetLangName} text (romaji)⟧.
+Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is 100% ${targetLangName}, virtually all text should be inside ⟦ ⟧.${showPhonetic ? ` Include romaji inside the delimiters: ⟦${targetLangName} text (romaji)⟧.` : ''}
 
 ${unguidedExample}`;
 
@@ -679,6 +694,10 @@ RULES:
             const tail = streamSanitizer.flush();
             if (tail) send(JSON.stringify({ type: 'token', text: tail }));
           }
+
+          // Let the client start TTS as soon as the reply text is ready,
+          // without waiting for the analysis/phase-transition round-trips.
+          send(JSON.stringify({ type: 'text_done', fullText: sanitizeStreamedChunk(fullAiText) }));
 
           // Keep icebreakerVocabIndex/Attempts authoritative instead of trusting
           // the model to self-track: advance state directly when we forced the
@@ -889,12 +908,45 @@ RULES:
                   ).returning({ id: corrections.id });
 
                   const newPendingId = inserted[0]?.id ?? null;
-                  if (newPendingId) {
-                    await tx.update(sessions).set({
-                      pendingRetryCorrectionId: newPendingId,
-                      lastActiveAt: new Date(),
-                    }).where(eq(sessions.id, numericSessionId));
+
+                  // A turn can correctly address a goal / produce the current
+                  // vocab word AND separately contain an unrelated correctable
+                  // mistake. Without this, that progress was silently dropped
+                  // when this branch returns early below — completedSequenceOrders
+                  // and icebreakerVocabIndex would never reflect it, so the
+                  // already-mastered goal/word gets re-taught on a later turn.
+                  if (analysis.goalsAddressedThisTurn?.length > 0) {
+                    const goalsMap = new Map(goals.map(g => [g.sequenceOrder, g.id]));
+                    const seen = new Set<number>();
+                    const completionRows = analysis.goalsAddressedThisTurn
+                      .filter(seqOrder => goalsMap.has(seqOrder))
+                      .filter(seqOrder => !completedSequenceOrders.includes(seqOrder))
+                      .filter(seqOrder => {
+                        if (seen.has(seqOrder)) return false;
+                        seen.add(seqOrder);
+                        return true;
+                      })
+                      .map(seqOrder => ({
+                        sessionId: numericSessionId,
+                        conversationId: userConversation.id,
+                        scenarioGoalId: goalsMap.get(seqOrder)!,
+                        achieved: true,
+                        evidenceNote: `Addressed in turn ${currentTurnNo}: "${userRawInput.substring(0, 80)}"`,
+                      }));
+                    if (completionRows.length > 0) {
+                      await tx.insert(goalCompletions).values(completionRows);
+                    }
                   }
+
+                  const sessionUpdate: Record<string, unknown> = {
+                    pendingRetryCorrectionId: newPendingId,
+                    lastActiveAt: new Date(),
+                  };
+                  if (currentPhase === 'icebreaker') {
+                    sessionUpdate.icebreakerVocabIndex = newVocabIndex;
+                    sessionUpdate.icebreakerVocabAttempts = newVocabAttempts;
+                  }
+                  await tx.update(sessions).set(sessionUpdate).where(eq(sessions.id, numericSessionId));
 
                   return { newPendingRetryId: newPendingId, userConvId: userConversation.id };
                 });

@@ -3,6 +3,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { getAuthUserReadOnly } from '@/lib/auth/server';
 import { NavActions } from '@/components/marketing/NavActions';
+import { TryoutPanel } from '@/components/marketing/TryoutPanel';
+import { Avatar } from '@/components/ui/Avatar';
 
 import {
   MicIcon,
@@ -13,11 +15,9 @@ import {
   ShoppingIcon,
   EducationIcon,
   DailyLifeIcon,
-  MoreComingIcon,
-  CheckmarkIcon,
-  ClockIcon,
+  UsersIcon,
+  ChatIcon,
   GlobeIcon,
-  ScenariosIcon,
   LightningIcon,
   ChartIcon,
   StarIcon,
@@ -36,68 +36,59 @@ const domainIconMap: Record<string, React.FC<{ className?: string }>> = {
 };
 
 const domains = [
-  { icon: 'Restaurant', name: 'Restaurant', you: 'Guest', ai: 'Server', desc: 'Practice ordering food, making reservations...', count: '20+ Situations', image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80', gradientFrom: '#D14343', gradientTo: '#7A1F1F' },
-  { icon: 'Travel', name: 'Travel', you: 'Traveler', ai: 'Desk Clerk', desc: 'Airports, hotels, directions...', count: '18+ Situations', image: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&q=80', gradientFrom: '#06B6D4', gradientTo: '#035B6B' },
-  { icon: 'Business', name: 'Business', you: 'Professional', ai: 'Client', desc: 'Meetings, presentations, negotiations...', count: '16+ Situations', image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&q=80', gradientFrom: '#2563EB', gradientTo: '#0F337A' },
-  { icon: 'Healthcare', name: 'Healthcare', you: 'Patient', ai: 'Doctor', desc: 'Doctor visits, pharmacy, emergencies...', count: '16+ Situations', image: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&q=80', gradientFrom: '#E3A939', gradientTo: '#7A5715' },
-  { icon: 'Shopping', name: 'Shopping', you: 'Shopper', ai: 'Clerk', desc: 'Ask for help, compare items...', count: '16+ Situations', image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&q=80', gradientFrom: '#9333EA', gradientTo: '#4A117A' },
-  { icon: 'Education', name: 'Education', you: 'Student', ai: 'Teacher', desc: 'School life, teachers, classmates...', count: '12+ Situations', image: 'https://images.unsplash.com/photo-1523050854058-8df90110c7f1?w=800&q=80', gradientFrom: '#2FAE66', gradientTo: '#145A33' },
-  { icon: 'Daily Life', name: 'Daily Life', you: 'Neighbor', ai: 'Friend', desc: 'Small talks, hobbies, family...', count: '20+ Situations', image: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80', gradientFrom: '#F59E0B', gradientTo: '#7A4F06' },
+  { icon: 'Restaurant', name: 'Restaurant', desc: 'Order food, make reservations, and talk with confidence.', count: '20+ Situations', image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80' },
+  { icon: 'Travel', name: 'Travel', desc: 'Ask for directions, book hotels, and navigate with ease.', count: '18+ Situations', image: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&q=80' },
+  { icon: 'Business', name: 'Business', desc: 'Lead meetings, pitch ideas, and close deals.', count: '16+ Situations', image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800&q=80' },
+  { icon: 'Healthcare', name: 'Healthcare', desc: 'Talk with doctors, pharmacists, and medical staff.', count: '16+ Situations', image: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=800&q=80' },
+  { icon: 'Shopping', name: 'Shopping', desc: 'Ask for help, compare items, and shop like a local.', count: '16+ Situations', image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&q=80' },
+  { icon: 'Education', name: 'Education', desc: 'School life, teachers, and classmates.', count: '12+ Situations', image: 'https://images.unsplash.com/photo-1523050854058-8df90110c7f1?w=800&q=80' },
+  { icon: 'Daily Life', name: 'Daily Life', desc: 'Small talk, hobbies, and family.', count: '20+ Situations', image: 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80' },
 ];
 
-const stats = [
-  { icon: 'Checkmark', value: '98%', label: 'Satisfaction Rate' },
-  { icon: 'Clock', value: '24/7', label: 'AI Support' },
-  { icon: 'Globe', value: '20+', label: 'Languages Supported' },
-  { icon: 'Scenarios', value: '8+', label: 'Realistic Scenarios' },
+const heroFeatures = [
+  { icon: 'Globe', label: '30+ languages, 100+ scenarios' },
+  { icon: 'Users', label: 'Free to use — no card, no catch' },
+  { icon: 'Lightning', label: 'Start your first conversation in under a minute' },
 ];
 
-const statIconMap: Record<string, React.FC<{ className?: string }>> = {
-  Checkmark: CheckmarkIcon,
-  Clock: ClockIcon,
+const heroIconMap: Record<string, React.FC<{ className?: string }>> = {
   Globe: GlobeIcon,
-  Scenarios: ScenariosIcon,
-};
-
-const features = [
-  { icon: 'Globe', label: '8+ Realistic Domains' },
-  { icon: 'Mic', label: 'Real-time Voice Chat' },
-  { icon: 'Lightning', label: 'Instant Feedback' },
-  { icon: 'Chart', label: 'Track Progress' },
-];
-
-const featureIconMap: Record<string, React.FC<{ className?: string }>> = {
-  Globe: GlobeIcon,
-  Mic: MicIcon,
-  Lightning: LightningIcon,
-  Chart: ChartIcon,
-};
-
-const rounds = [
-  {
-    icon: 'Mic',
-    title: 'You Speak',
-    body: 'Step into a real-world scenario and talk to your AI character — by voice or by chat. The character answers in character, and the scene keeps moving.',
-  },
-  {
-    icon: 'Chart',
-    title: 'You Get Scored',
-    body: 'Accuracy, vocabulary, fluency, and cultural fit are scored against the scene, with instant feedback on every line you deliver.',
-  },
-  {
-    icon: 'Lightning',
-    title: 'You Level Up',
-    body: 'Review your session report, track progress across domains, and come back for the next match. Confidence compounds every session.',
-  },
-];
-
-const roundIconMap: Record<string, React.FC<{ className?: string }>> = {
-  Mic: MicIcon,
-  Chart: ChartIcon,
+  Users: UsersIcon,
   Lightning: LightningIcon,
 };
 
-const navLinks = ['Scenarios', 'Partners', 'Get Started'];
+const whyChoose = [
+  { icon: 'Users', title: 'Realistic AI Partners', body: 'Talk with AI characters that understand context and respond naturally.' },
+  { icon: 'Chat', title: 'Immersive Scenarios', body: 'Practice in real-world situations that mirror daily life.' },
+  { icon: 'Lightning', title: 'Instant Feedback', body: 'Get AI feedback on your pronunciation, grammar, and fluency.' },
+  { icon: 'Chart', title: 'Track Your Progress', body: 'Earn XP, build streaks, and watch your skills improve over time.' },
+  { icon: 'Globe', title: 'Any Language', body: 'Learn 30+ languages with culturally aware AI characters.' },
+];
+
+const whyChooseIconMap: Record<string, React.FC<{ className?: string }>> = {
+  Users: UsersIcon,
+  Chat: ChatIcon,
+  Lightning: LightningIcon,
+  Chart: ChartIcon,
+  Globe: GlobeIcon,
+};
+
+const steps = [
+  { title: 'Choose a scenario', body: 'Pick a real-world situation and your target language.' },
+  { title: 'Talk with AI', body: 'Have natural conversations with your AI partner.' },
+  { title: 'Get feedback', body: 'Receive instant feedback and suggestions to improve.' },
+  { title: 'Track & improve', body: 'Track your progress and level up your skills.' },
+];
+
+const testimonials = [
+  { quote: 'AI-Dojo helped me practice Japanese before my trip to Tokyo. The conversations felt so real and boosted my confidence!', name: 'Sarah K.', role: 'Traveler' },
+  { quote: 'The feedback on pronunciation is spot on. I can see my progress every day and the scenarios are super practical.', name: 'David M.', role: 'Business Professional' },
+  { quote: 'I love how I can practice anytime, anywhere. It’s like having a personal language coach in my pocket.', name: 'Aisha R.', role: 'Student' },
+];
+
+const partners = ['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'];
+
+const navLinks = ['Scenarios', 'Partners', 'How It Works'];
 
 export default async function LandingPage() {
   const user = await getAuthUserReadOnly();
@@ -120,7 +111,7 @@ export default async function LandingPage() {
 
           <div className="hidden items-center gap-8 md:flex">
             {navLinks.map((link) => {
-              const href = link === 'Scenarios' ? '#scenarios' : link === 'Partners' ? '#partners' : '#cta';
+              const href = link === 'Scenarios' ? '#scenarios' : link === 'Partners' ? '#partners' : '#how';
               return (
                 <Link
                   key={link}
@@ -139,54 +130,75 @@ export default async function LandingPage() {
 
       {/* ── HERO SECTION ── */}
       <section className="relative overflow-hidden">
-        {/* Ambient arena glow */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-40 flex justify-center">
-          <div className="h-[34rem] w-[60rem] rounded-full bg-dojo-accent/15 blur-[120px]" />
+        {/* Faint kanji watermark */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-10 top-0 select-none font-display text-[26rem] leading-none text-dojo-text-primary/[0.04]"
+        >
+          道
         </div>
+
+        {/* Ink-wash pagoda illustration, bottom-left */}
+        <img
+          src="/landing/house.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-0 left-0 hidden w-56 select-none opacity-70 sm:block lg:w-72"
+        />
 
         <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-16 sm:px-6 sm:pt-20 sm:pb-20 lg:pt-24">
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
             {/* LEFT COLUMN */}
             <div className="order-1 lg:order-1">
-              <h1 className="animate-arena-rise text-3xl font-bold leading-tight tracking-tight text-balance sm:text-4xl lg:text-5xl xl:text-6xl">
-                <span className="block text-dojo-text-primary">Speak Any Language</span>
-                <span className="block text-dojo-text-primary">As If You Were</span>
-                <span className="block decoration-dojo-accent decoration-4 underline underline-offset-4">
-                  Really There
-                </span>
-              </h1>
-
-              <p className="animate-arena-rise arena-delay-1 mt-5 max-w-xl text-base leading-relaxed text-dojo-text-muted sm:text-lg">
-                Practice real-world conversations with AI characters in immersive scenarios.
-                Get instant feedback and improve faster through roleplay.
+              <p className="animate-arena-rise text-xs font-bold uppercase tracking-[0.2em] text-dojo-accent">
+                Practice. Speak. Progress.
               </p>
 
-              <div className="animate-arena-rise arena-delay-2 mt-8 flex flex-wrap items-center gap-3 sm:mt-10 sm:gap-4">
-                <Link
-                  href="/auth"
-                  className="rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:px-7"
-                >
-                  Start Free &mdash; No Card
-                </Link>
-                <DemoVideoDialog />
-              </div>
+              <h1 className="animate-arena-rise arena-delay-1 mt-4 font-display text-5xl font-bold leading-none tracking-tight text-dojo-text-primary sm:text-6xl lg:text-7xl">
+                AI&#8209;DOJO
+              </h1>
 
-              <div className="animate-arena-rise arena-delay-3 mt-7 flex flex-wrap gap-x-6 gap-y-3 sm:mt-8">
-                {features.map((pill) => {
-                  const Icon = featureIconMap[pill.icon];
+              <p className="animate-arena-rise arena-delay-2 mt-4 max-w-xl font-display text-xl italic leading-snug text-dojo-text-muted sm:text-2xl">
+                Before you step onto the mat, let us show you who you are.
+              </p>
+
+              <p className="animate-arena-rise arena-delay-2 mt-5 max-w-xl text-base leading-relaxed text-dojo-text-muted sm:text-lg">
+                Step into real-world conversations with AI characters. Practice any language in
+                immersive roleplay scenarios and get better&mdash;faster.
+              </p>
+
+              <div className="animate-arena-rise arena-delay-3 mt-7 space-y-2.5">
+                {heroFeatures.map((item) => {
+                  const Icon = heroIconMap[item.icon];
                   return (
-                    <div key={pill.label} className="flex items-center gap-2 text-sm text-dojo-text-muted">
-                      {Icon && <Icon className="h-4 w-4 text-dojo-accent" />}
-                      {pill.label}
+                    <div key={item.label} className="flex items-center gap-2.5 text-sm text-dojo-text-muted">
+                      {Icon && <Icon className="h-4 w-4 shrink-0 text-dojo-accent" />}
+                      {item.label}
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="animate-arena-rise arena-delay-3 mt-8 flex flex-wrap items-center gap-3 sm:mt-9 sm:gap-5">
+                <Link
+                  href="/auth"
+                  className="rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent sm:px-7"
+                >
+                  Start Free Now
+                </Link>
+                <Link
+                  href="#scenarios"
+                  className="text-sm font-semibold text-dojo-text-primary underline decoration-dojo-accent decoration-2 underline-offset-4 transition-colors hover:text-dojo-accent"
+                >
+                  Explore Scenarios
+                </Link>
+                <DemoVideoDialog />
               </div>
             </div>
 
             {/* RIGHT COLUMN — Live session demo card, framed as a broadcast */}
             <div className="animate-arena-rise arena-delay-2 order-2 w-full lg:order-2">
-              <div className="relative overflow-hidden rounded-2xl border border-dojo-border bg-dojo-surface-raised shadow-[0_24px_80px_-24px_rgba(45,59,197,0.35)] sm:rounded-3xl">
+              <div className="relative overflow-hidden rounded-2xl border border-dojo-border bg-dojo-surface-raised shadow-[0_24px_80px_-24px_rgba(193,57,43,0.35)] sm:rounded-3xl">
                 {/* Scoreboard header bar */}
                 <div className="relative z-20 flex items-center justify-between gap-3 border-b border-white/10 bg-black/55 px-3 py-2.5 backdrop-blur-xl sm:px-5 sm:py-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -258,7 +270,7 @@ export default async function LandingPage() {
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-white/10 sm:h-2.5">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-dojo-accent to-indigo-300"
+                            className="h-full rounded-full bg-gradient-to-r from-dojo-accent to-orange-300"
                             style={{ width: '72%' }}
                           />
                         </div>
@@ -271,7 +283,7 @@ export default async function LandingPage() {
                         {/* Mic button (decorative) */}
                         <span
                           aria-hidden="true"
-                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-dojo-accent shadow-[0_0_24px_rgba(45,59,197,0.55)] sm:h-14 sm:w-14"
+                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-dojo-accent shadow-[0_0_24px_rgba(193,57,43,0.55)] sm:h-14 sm:w-14"
                         >
                           <MicIcon className="h-5 w-5 text-white sm:h-6 sm:w-6" />
                         </span>
@@ -281,7 +293,7 @@ export default async function LandingPage() {
                           {[6,10,14,18,12,8,6,12,20,16,10,6,8,14,18,10].map((h,i)=>(
                             <span
                               key={i}
-                              className="w-0.5 animate-pulse rounded-full bg-indigo-300/90 sm:w-1"
+                              className="w-0.5 animate-pulse rounded-full bg-orange-300/90 sm:w-1"
                               style={{
                                 height: `${h}px`,
                                 animationDelay: `${i * 0.08}s`,
@@ -315,126 +327,167 @@ export default async function LandingPage() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* ── SCOREBOARD — STATS ROW ── */}
-      <section aria-label="AI DOJO by the numbers" className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 sm:pb-20">
-        <div className="overflow-hidden rounded-2xl border border-dojo-border bg-dojo-surface-raised">
-          <div className="grid grid-cols-2 gap-px bg-dojo-border sm:grid-cols-4">
-            {stats.map((stat) => {
-              const Icon = statIconMap[stat.icon];
-              return (
-                <div key={stat.label} className="flex flex-col items-center justify-center gap-2 bg-dojo-canvas px-4 py-8 text-center sm:py-10">
-                  <div className="text-dojo-accent">
-                    {Icon && <Icon className="h-5 w-5 sm:h-6 sm:w-6" />}
-                  </div>
-                  <div className="text-xl font-bold tabular-nums text-dojo-text-primary sm:text-2xl">{stat.value}</div>
-                  <div className="text-xs text-dojo-text-muted sm:text-sm">{stat.label}</div>
-                </div>
-              );
-            })}
+          {/* ── TRY IT OUT PANEL ── */}
+          <div className="animate-arena-rise arena-delay-3 mt-10 sm:mt-12">
+            <TryoutPanel />
           </div>
-        </div>
-      </section>
 
-      {/* ── SCENARIOS — MATCH CARDS ── */}
-      <section id="scenarios" className="scroll-mt-16 border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-2xl font-bold text-dojo-text-primary sm:text-3xl">Pick Your Arena</h2>
-            <p className="mt-3 text-sm text-dojo-text-muted sm:text-base">
-              Eight real-world domains, each with a dozen-plus situations. Choose your match and step in.
+          {/* ── TRUSTED BY STRIP ── */}
+          <div className="animate-arena-rise arena-delay-4 mt-12 border-t border-dojo-border pt-8 sm:mt-14">
+            <p className="text-center text-xs font-semibold uppercase tracking-widest text-dojo-text-muted">
+              Trusted by learners &amp; teams worldwide
             </p>
-          </div>
-
-          <div className="mt-10 grid grid-cols-2 gap-3 sm:mt-12 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-            {domains.map((domain) => {
-              const Icon = domainIconMap[domain.icon];
-              return (
-                <div
-                  key={domain.name}
-                  className="group relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface-raised p-4 transition-colors hover:border-dojo-accent/50 sm:p-5"
-                >
-                  {/* Background Image */}
-                  <div className="absolute inset-0 -z-0">
-                    <img
-                      src={domain.image}
-                      alt=""
-                      className="h-full w-full object-cover opacity-50 transition-all duration-500 group-hover:scale-110 group-hover:opacity-60"
-                      loading="lazy"
-                    />
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        background: `linear-gradient(135deg, ${domain.gradientFrom}dd, ${domain.gradientTo}ee)`,
-                      }}
-                    />
-                  </div>
-                  <div className="relative z-10">
-                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 backdrop-blur-md border border-white/20 sm:h-12 sm:w-12">
-                      {Icon && <Icon className="h-5 w-5 text-white sm:h-6 sm:w-6" />}
-                    </div>
-                    <div className="text-sm font-semibold text-white sm:text-base">{domain.name}</div>
-                    <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/80 sm:mt-1.5">{domain.desc}</div>
-                    <div className="mt-2 text-[10px] font-medium text-white/60 sm:mt-3">{domain.count}</div>
-
-                    {/* Matchup lineup */}
-                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/15 pt-2.5">
-                      <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-white/90">
-                        You &middot; {domain.you}
-                      </span>
-                      <span className="shrink-0 text-[10px] font-bold text-white/40">VS</span>
-                      <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-white/90">
-                        {domain.ai} &middot; AI
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* More Coming Card */}
-            <div className="group rounded-xl border border-dashed border-dojo-border bg-dojo-surface-raised/50 p-4 transition-colors hover:border-dojo-accent/30 sm:p-5">
-              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-gray-500/15 sm:h-12 sm:w-12">
-                <MoreComingIcon className="h-5 w-5 text-gray-400 sm:h-6 sm:w-6" />
-              </div>
-              <div className="text-sm font-semibold text-dojo-text-primary sm:text-base">More Coming</div>
-              <div className="mt-1 text-xs leading-relaxed text-dojo-text-muted sm:mt-1.5">New scenarios added regularly</div>
-              <div className="mt-2 text-[10px] font-medium text-dojo-text-muted sm:mt-3">Stay tuned</div>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+              {partners.map((name) => (
+                <span key={name} className="text-sm font-semibold tracking-wide text-dojo-text-muted">
+                  {name}
+                </span>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── HOW IT WORKS — THREE ROUNDS ── */}
-      <section id="how" className="scroll-mt-16 py-16 sm:py-20">
+      {/* ── WHY LEARNERS CHOOSE AI-DOJO ── */}
+      <section className="border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-2xl font-bold text-dojo-text-primary sm:text-3xl">Every Session Is a Match</h2>
-            <p className="mt-3 text-sm text-dojo-text-muted sm:text-base">
-              Three rounds, one loop: you speak, the arena scores you, you level up.
-            </p>
-          </div>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-dojo-accent">
+            Why Learners Choose AI-Dojo
+          </p>
+          <h2 className="mt-3 text-center font-display text-2xl font-bold text-dojo-text-primary sm:text-3xl">
+            Real conversations. Real progress.
+          </h2>
 
-          <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-3 sm:gap-6">
-            {rounds.map((round, index) => {
-              const Icon = roundIconMap[round.icon];
+          <div className="mt-10 grid grid-cols-2 gap-8 sm:mt-12 sm:grid-cols-3 lg:grid-cols-5">
+            {whyChoose.map((item) => {
+              const Icon = whyChooseIconMap[item.icon];
               return (
-                <div key={round.title} className="rounded-2xl border border-dojo-border bg-dojo-surface-raised p-6 sm:p-8">
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-full border border-dojo-border bg-dojo-surface px-3 py-1 text-xs font-bold uppercase tracking-widest text-dojo-text-primary">
-                      Round {index + 1}
-                    </span>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-dojo-accent-soft text-dojo-accent">
-                      {Icon && <Icon className="h-5 w-5" />}
-                    </div>
+                <div key={item.title} className="flex flex-col items-center text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-dojo-accent-soft text-dojo-accent">
+                    {Icon && <Icon className="h-6 w-6" />}
                   </div>
-                  <h3 className="mt-5 text-lg font-bold text-dojo-text-primary sm:text-xl">{round.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">{round.body}</p>
+                  <h3 className="mt-4 text-sm font-bold text-dojo-text-primary">{item.title}</h3>
+                  <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">{item.body}</p>
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SCENARIOS ── */}
+      <section id="scenarios" className="scroll-mt-16 py-16 sm:py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-dojo-accent">Explore Popular Scenarios</p>
+              <h2 className="mt-3 font-display text-2xl font-bold text-dojo-text-primary sm:text-3xl">
+                Practice what matters to you
+              </h2>
+            </div>
+            <Link
+              href="/auth"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-dojo-border px-5 py-2.5 text-sm font-semibold text-dojo-text-primary transition-colors hover:border-dojo-accent/50 hover:text-dojo-accent"
+            >
+              View all scenarios
+              <ChevronRightIcon className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="mt-10 grid grid-cols-2 gap-4 sm:mt-12 sm:grid-cols-3 lg:grid-cols-5">
+            {domains.slice(0, 5).map((domain) => {
+              const Icon = domainIconMap[domain.icon];
+              return (
+                <div
+                  key={domain.name}
+                  className="group overflow-hidden rounded-2xl border border-dojo-border bg-dojo-surface-raised transition-colors hover:border-dojo-accent/50"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden">
+                    <img
+                      src={domain.image}
+                      alt=""
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      loading="lazy"
+                    />
+                    <div className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-md">
+                      {Icon && <Icon className="h-4 w-4" />}
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <div className="text-sm font-bold text-dojo-text-primary">{domain.name}</div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-dojo-text-muted">{domain.desc}</p>
+                    <div className="mt-3 text-xs font-semibold text-dojo-accent">{domain.count} &rarr;</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section id="how" className="scroll-mt-16 relative overflow-hidden border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
+        <img
+          src="/landing/banboo.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-6 bottom-0 hidden w-72 select-none opacity-80 lg:block xl:w-80"
+        />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-dojo-accent">How It Works</p>
+          <h2 className="mt-3 text-center font-display text-2xl font-bold text-dojo-text-primary sm:text-3xl">
+            Simple steps to fluency
+          </h2>
+
+          <div className="relative mt-12 grid grid-cols-2 gap-y-10 sm:mt-14 lg:grid-cols-4 lg:gap-y-0">
+            <div
+              aria-hidden="true"
+              className="absolute left-[12.5%] right-[12.5%] top-6 hidden h-px bg-dojo-border lg:block"
+            />
+            {steps.map((step, index) => (
+              <div key={step.title} className="relative flex flex-col items-center px-2 text-center">
+                <span className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full border border-dojo-border bg-dojo-surface-raised font-display text-lg font-bold text-dojo-accent">
+                  {index + 1}
+                </span>
+                <h3 className="mt-4 text-sm font-bold text-dojo-text-primary">{step.title}</h3>
+                <p className="mt-2 max-w-[14rem] text-xs leading-relaxed text-dojo-text-muted">{step.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── TESTIMONIALS ── */}
+      <section className="py-16 sm:py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-dojo-accent">Loved by Learners</p>
+              <h2 className="mt-3 font-display text-2xl font-bold text-dojo-text-primary sm:text-3xl">
+                Hear from our community
+              </h2>
+            </div>
+          </div>
+
+          <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-3 sm:gap-6">
+            {testimonials.map((t) => (
+              <div key={t.name} className="rounded-2xl border border-dojo-border bg-dojo-surface-raised p-6">
+                <div className="flex gap-0.5 text-dojo-warning">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <StarIcon key={i} className="h-4 w-4" />
+                  ))}
+                </div>
+                <p className="mt-4 text-sm leading-relaxed text-dojo-text-primary">&ldquo;{t.quote}&rdquo;</p>
+                <div className="mt-5 flex items-center gap-3">
+                  <Avatar name={t.name} size="sm" />
+                  <div>
+                    <div className="text-sm font-semibold text-dojo-text-primary">{t.name}</div>
+                    <div className="text-xs text-dojo-text-muted">{t.role}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -442,7 +495,7 @@ export default async function LandingPage() {
       {/* ── PARTNERS SECTION ── */}
       <section id="partners" className="scroll-mt-16 border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20 overflow-hidden">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <h2 className="text-center text-2xl font-bold text-dojo-text-primary sm:text-3xl">Our Partners</h2>
+          <h2 className="text-center font-display text-2xl font-bold text-dojo-text-primary sm:text-3xl">Our Partners</h2>
           <p className="mt-3 text-center text-sm text-dojo-text-muted sm:text-base">
             Trusted by leading institutions and innovators
           </p>
@@ -450,7 +503,7 @@ export default async function LandingPage() {
           <div className="mt-10 relative">
             <div className="flex overflow-hidden">
               <div className="flex animate-marquee gap-16 sm:gap-24 items-center">
-                {['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
+                {partners.map((name) => (
                   <div key={name} className="flex shrink-0 items-center gap-3">
                     <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
                       <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
@@ -458,7 +511,7 @@ export default async function LandingPage() {
                     <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
                   </div>
                 ))}
-                <div aria-hidden="true" className="flex gap-16 sm:gap-24">{['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'].map((name) => (
+                <div aria-hidden="true" className="flex gap-16 sm:gap-24">{partners.map((name) => (
                   <div key={`${name}-dup`} className="flex shrink-0 items-center gap-3">
                     <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
                       <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
@@ -473,25 +526,42 @@ export default async function LandingPage() {
       </section>
 
       {/* ── BOTTOM CTA BANNER ── */}
-      <section id="cta" className="scroll-mt-16 mx-4 my-16 max-w-7xl rounded-2xl border border-dojo-accent/30 bg-dojo-surface-raised px-6 py-12 shadow-[0_24px_80px_-32px_rgba(45,59,197,0.45)] sm:mx-6 sm:px-10 sm:py-14 lg:mx-auto sm:my-20">
-        <div className="flex flex-col items-center justify-between gap-6 text-center sm:flex-row sm:text-left">
-          <div>
-            <h2 className="text-xl font-bold text-dojo-text-primary sm:text-2xl">Your Match Is Waiting</h2>
+      <section id="cta" className="scroll-mt-16 relative mx-4 my-16 max-w-7xl overflow-hidden rounded-2xl border border-dojo-accent/30 bg-dojo-surface-raised shadow-[0_24px_80px_-32px_rgba(193,57,43,0.35)] sm:mx-6 lg:mx-auto sm:my-20">
+        <img
+          src="/landing/dojo-gate.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-6 left-0 hidden w-48 select-none opacity-90 sm:block lg:w-60"
+        />
+
+        <div className="relative flex flex-col items-center justify-between gap-6 px-6 py-12 text-center sm:flex-row sm:px-10 sm:py-14 sm:text-left sm:pl-56 lg:pl-64">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -left-8 -top-8 select-none font-display text-9xl leading-none text-dojo-accent/10"
+          >
+            道
+          </div>
+          <div className="relative">
+            <h2 className="font-display text-xl font-bold text-dojo-text-primary sm:text-2xl">Ready to start your journey?</h2>
             <p className="mt-2 text-sm text-dojo-text-muted sm:text-base">
-              Join learners improving their speaking skills with AI. Step into the arena &mdash; free.
+              Join thousands of learners improving their speaking skills with AI-Dojo.
             </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-dojo-text-muted sm:justify-start">
+              <span>Free to start</span>
+              <span>No credit card</span>
+              <span>Start in under a minute</span>
+            </div>
           </div>
           <Link
             href="/auth"
-            className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:px-8"
+            className="relative inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent sm:px-8"
           >
-            Start Free Now
+            Get Started Free
             <ChevronRightIcon className="h-4 w-4" />
           </Link>
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
       <footer className="border-t border-dojo-border bg-dojo-surface/60">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
@@ -501,7 +571,7 @@ export default async function LandingPage() {
                 <span>🥋 AI DOJO</span>
               </Link>
               <p className="mt-3 text-sm leading-relaxed text-dojo-text-muted max-w-xs">
-                Immersive language role-play training powered by AI. Practice real-world conversations and improve faster.
+                AI-powered language roleplay training. Practice real conversations. Anywhere, anytime.
               </p>
             </div>
 
@@ -511,6 +581,7 @@ export default async function LandingPage() {
               <ul className="mt-4 space-y-3">
                 <li><Link href="#scenarios" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Scenarios</Link></li>
                 <li><Link href="#partners" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Partners</Link></li>
+                <li><Link href="#how" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">How It Works</Link></li>
                 <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Get Started</Link></li>
               </ul>
             </div>

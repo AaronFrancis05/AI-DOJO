@@ -1,14 +1,65 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { db } from './db';
 import bcrypt from 'bcryptjs';
 import { eq, inArray, sql } from 'drizzle-orm';
 import {
-  users, scenarios, vocabulary, scenarioGoals,
+  users, scenarios, situations, domains, vocabulary, scenarioGoals,
   sessions, conversations, corrections, evaluations,
   goalCompletions, vocabularyEncounters,
-  scenarioLocalizations, vocabularyLocalizations,
+  scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
+  scenarioGoalLocalizations,
   countries, scenarioSettings,
   courses, courseLevels, units, lessons, lessonPhases,
 } from './schema';
+
+interface ScenarioLocFixtureRow {
+  scenario: string;
+  languageCode: string;
+  title: string | null;
+  context: string | null;
+  learningGoals: string | null;
+  aiCharacterName: string | null;
+  aiCharacterRole: string | null;
+  userCharacterName: string | null;
+  userCharacterRole: string | null;
+}
+
+interface SituationLocFixtureRow {
+  domainSlug: string;
+  situation: string;
+  languageCode: string;
+  title: string | null;
+  context: string | null;
+  learningGoals: string | null;
+  focusPills: string | null;
+}
+
+interface VocabLocFixtureRow {
+  scenario: string;
+  targetText: string;
+  languageCode: string;
+  translation: string | null;
+  usageTip: string | null;
+}
+
+interface GoalLocFixtureRow {
+  scenario: string;
+  sequenceOrder: number;
+  baseGoalText: string;
+  languageCode: string;
+  goalText: string | null;
+  targetPhrase: string | null;
+}
+
+interface LocalizationFixture {
+  version: number;
+  counts: { scenarios: number; situations: number; vocabulary: number; goals: number };
+  scenarioLocalizations: ScenarioLocFixtureRow[];
+  situationLocalizations: SituationLocFixtureRow[];
+  vocabularyLocalizations: VocabLocFixtureRow[];
+  scenarioGoalLocalizations: GoalLocFixtureRow[];
+}
 
 async function seed() {
   try {
@@ -54,7 +105,7 @@ async function seed() {
         businessType: 'Social / Language Learning', difficulty: 'beginner', domain: 'social',
         aiCharacterName: 'Hana', aiCharacterRole: 'Cultural exchange coordinator at Tokyo International Centre',
         userCharacterName: 'Sarah', userCharacterRole: 'Ugandan learner attending her first community welcome event in Tokyo',
-        learningGoals: 'Master hajimemashite, watashi wa ___ desu structure, yoroshiku onegaishimasu, and polite self-introduction flow',
+        learningGoals: 'Master hajimemashite, the "watashi wa Sarah desu" self-introduction pattern, yoroshiku onegaishimasu, and polite self-introduction flow',
         displayOrder: 1,
       },
       {
@@ -63,7 +114,7 @@ async function seed() {
         businessType: 'Shopping / Daily Life', difficulty: 'beginner', domain: 'shopping',
         aiCharacterName: 'Sato', aiCharacterRole: 'Lawson convenience store clerk in Tokyo',
         userCharacterName: 'Grace', userCharacterRole: 'Ugandan learner stopping for a snack at a Japanese konbini',
-        learningGoals: 'Understand irasshaimase, use ___ o kudasai to request items, confirm quantity with counter words, complete a polite purchase',
+        learningGoals: 'Understand irasshaimase, use "onigiri o kudasai" to request items, confirm quantity with counter words, complete a polite purchase',
         displayOrder: 2,
       },
       {
@@ -72,7 +123,7 @@ async function seed() {
         businessType: 'Navigation / Daily Life', difficulty: 'beginner', domain: 'transport',
         aiCharacterName: 'Watanabe', aiCharacterRole: 'Helpful passerby on a street in Shinjuku',
         userCharacterName: 'David', userCharacterRole: 'Ugandan learner lost in Shinjuku looking for the train station',
-        learningGoals: 'Use sumimasen to get attention, ask ___ wa doko desu ka, understand directional words like migi/hidari/massugu, close with arigatou gozaimasu',
+        learningGoals: 'Use sumimasen to get attention, ask "eki wa doko desu ka", understand directional words like migi/hidari/massugu, close with arigatou gozaimasu',
         displayOrder: 3,
       },
       {
@@ -81,7 +132,7 @@ async function seed() {
         businessType: 'Healthcare / Daily Life', difficulty: 'beginner', domain: 'healthcare',
         aiCharacterName: 'Nurse Yamada', aiCharacterRole: 'Receptionist and triage nurse at Sakura Clinic in Osaka',
         userCharacterName: 'Faith', userCharacterRole: 'Ugandan learner feeling unwell and visiting a clinic in Osaka',
-        learningGoals: 'Describe symptoms with ___ ga itai desu / netsu ga arimasu, understand dou shimashita ka, respond to health questions, complete registration',
+        learningGoals: 'Describe symptoms with "nodo ga itai desu" / "netsu ga arimasu", understand dou shimashita ka, respond to health questions, complete registration',
         displayOrder: 4,
       },
       {
@@ -90,7 +141,7 @@ async function seed() {
         businessType: 'Food & Dining / Daily Life', difficulty: 'beginner', domain: 'daily_life',
         aiCharacterName: 'Server Tanaka', aiCharacterRole: 'Waitstaff at Sakura Izakaya in Osaka',
         userCharacterName: 'Michael', userCharacterRole: 'Ugandan learner dining at a Japanese izakaya for the first time',
-        learningGoals: 'Use ___ o onegaishimasu / ___ o kudasai to order, understand osusume wa nan desu ka, say itadakimasu before eating, thank the staff',
+        learningGoals: 'Use "ramen o onegaishimasu" / "biiru o kudasai" to order, understand osusume wa nan desu ka, say itadakimasu before eating, thank the staff',
         displayOrder: 5,
       },
       {
@@ -99,7 +150,7 @@ async function seed() {
         businessType: 'Shopping / Daily Life', difficulty: 'beginner', domain: 'shopping',
         aiCharacterName: 'Staff Nakamura', aiCharacterRole: 'Supermarket employee at Life Supermarket in Tokyo',
         userCharacterName: 'Esther', userCharacterRole: 'Ugandan learner shopping for groceries at a Japanese supermarket',
-        learningGoals: 'Ask ___ wa doko desu ka for item locations, understand price inquiries, handle checkout and payment phrases, use common food vocabulary',
+        learningGoals: 'Ask "pan wa doko desu ka" for item locations, understand price inquiries, handle checkout and payment phrases, use common food vocabulary',
         displayOrder: 6,
       },
       {
@@ -108,7 +159,7 @@ async function seed() {
         businessType: 'Transport / Daily Life', difficulty: 'beginner', domain: 'transport',
         aiCharacterName: 'Station Staff Kimura', aiCharacterRole: 'JR station attendant at Tokyo Station',
         userCharacterName: 'James', userCharacterRole: 'Ugandan learner buying a train ticket from Tokyo to Yokohama',
-        learningGoals: 'State destination using ___ made onegaishimasu, understand fare and ticket type questions, ask about platform (nanbansen), confirm departure time',
+        learningGoals: 'State destination using "Yokohama made onegaishimasu", understand fare and ticket type questions, ask about platform (nanbansen), confirm departure time',
         displayOrder: 7,
       },
       {
@@ -117,7 +168,7 @@ async function seed() {
         businessType: 'Accommodation / Daily Life', difficulty: 'beginner', domain: 'services',
         aiCharacterName: 'Receptionist Fujita', aiCharacterRole: 'Front desk receptionist at Kyoto Business Hotel',
         userCharacterName: 'Peter', userCharacterRole: 'Ugandan traveller checking into a hotel in Kyoto for two nights',
-        learningGoals: 'Confirm reservation with yoyaku shite imasu, state duration (___ haku), understand key and breakfast information, use polite check-in phrases',
+        learningGoals: 'Confirm reservation with yoyaku shite imasu, state duration (nihaku), understand key and breakfast information, use polite check-in phrases',
         displayOrder: 8,
       },
       {
@@ -246,17 +297,27 @@ async function seed() {
     // 3. VOCABULARY (5-8 items per scenario)
     // ================================================================
     console.log('Inserting vocabulary...');
-    const seedVocabulary = [
+    interface SeedVocabularyRow {
+      scenarioId: number;
+      targetText: string;
+      phonetic: string;
+      translation: string;
+      category: string;
+      usageTip: string;
+      formalityLevel: string;
+      languageCode?: string;
+    }
+    const seedVocabulary: SeedVocabularyRow[] = [
       // Scenario 1: First Meeting
       { scenarioId: sIds[0], targetText: 'はじめまして', phonetic: 'Hajimemashite', translation: 'Nice to meet you (first meeting only)', category: 'greeting', usageTip: 'Only used the very first time you meet someone. Never used again with the same person.', formalityLevel: 'polite' },
-      { scenarioId: sIds[0], targetText: 'わたしは___です', phonetic: 'Watashi wa ___ desu', translation: 'I am ___', category: 'self-introduction', usageTip: 'The standard self-introduction template. Say your name where ___ is, then bow slightly.', formalityLevel: 'polite' },
+      { scenarioId: sIds[0], targetText: 'わたしはサラです', phonetic: 'Watashi wa Sarah desu', translation: 'I am Sarah', category: 'self-introduction', usageTip: 'The standard self-introduction pattern with your own name in place of Sarah. Bow slightly after saying it.', formalityLevel: 'polite' },
       { scenarioId: sIds[0], targetText: 'よろしくおねがいします', phonetic: 'Yoroshiku onegaishimasu', translation: 'Pleased to meet you / I look forward to your kindness', category: 'greeting', usageTip: 'The all-purpose closer for introductions. It expresses gratitude in advance for the relationship.', formalityLevel: 'polite' },
       { scenarioId: sIds[0], targetText: 'ウガンダからきました', phonetic: 'Uganda kara kimashita', translation: 'I came from Uganda', category: 'origin', usageTip: 'Use this to state where you are from. Replaces kara with other country names.', formalityLevel: 'polite' },
       { scenarioId: sIds[0], targetText: 'おなまえはなんですか', phonetic: 'O-namae wa nan desu ka', translation: 'What is your name?', category: 'question', usageTip: 'The polite way to ask someone\'s name. The o- prefix makes it respectful.', formalityLevel: 'polite' },
       { scenarioId: sIds[0], targetText: 'どうぞよろしく', phonetic: 'Douzo yoroshiku', translation: 'Pleased to meet you (casual)', category: 'greeting', usageTip: 'A slightly less formal version of yoroshiku onegaishimasu. Fine for social settings.', formalityLevel: 'casual' },
       // Scenario 2: Konbini
       { scenarioId: sIds[1], targetText: 'いらっしゃいませ', phonetic: 'Irasshaimase', translation: 'Welcome to the store', category: 'greeting', usageTip: 'You will hear this everywhere. No need to respond — just smile or nod.', formalityLevel: 'polite' },
-      { scenarioId: sIds[1], targetText: '___をください', phonetic: '___ o kudasai', translation: 'Please give me ___', category: 'request', usageTip: 'The simplest way to order or request an item. Replace ___ with what you want.', formalityLevel: 'polite' },
+      { scenarioId: sIds[1], targetText: 'おにぎりをください', phonetic: 'Onigiri o kudasai', translation: 'Please give me an onigiri (rice ball)', category: 'request', usageTip: 'The simplest way to order or request an item. Swap onigiri for anything you want.', formalityLevel: 'polite' },
       { scenarioId: sIds[1], targetText: 'おみず', phonetic: 'O-mizu', translation: 'Water', category: 'food-drink', usageTip: 'Add o- to mizu for politeness. Omizu kudasai is a natural way to ask for water.', formalityLevel: 'polite' },
       { scenarioId: sIds[1], targetText: 'いっぽん', phonetic: 'Ippon', translation: 'One (bottle/counted item)', category: 'counter', usageTip: 'Japanese uses counters. -hon/-pon/-bon is for long cylindrical items like bottles and pens.', formalityLevel: 'polite' },
       { scenarioId: sIds[1], targetText: 'いくらですか', phonetic: 'Ikura desu ka', translation: 'How much is it?', category: 'question', usageTip: 'Essential for any purchase. Point at the item and say this if you cannot see a price tag.', formalityLevel: 'polite' },
@@ -266,33 +327,33 @@ async function seed() {
       { scenarioId: sIds[2], targetText: 'えきはどこですか', phonetic: 'Eki wa doko desu ka', translation: 'Where is the station?', category: 'question', usageTip: 'Template: replace eki (station) with any destination name.', formalityLevel: 'polite' },
       { scenarioId: sIds[2], targetText: 'みぎ', phonetic: 'Migi', translation: 'Right', category: 'direction', usageTip: 'One of the three key directional words. Practise with: migi (right), hidari (left), massugu (straight).', formalityLevel: 'neutral' },
       { scenarioId: sIds[2], targetText: 'まっすぐ', phonetic: 'Massugu', translation: 'Straight ahead', category: 'direction', usageTip: 'Combine with: massugu itte kudasai (please go straight).', formalityLevel: 'neutral' },
-      { scenarioId: sIds[2], targetText: '___までどのくらいですか', phonetic: '___ made dono kurai desu ka', translation: 'How far is it to ___?', category: 'question', usageTip: 'Use this to ask about distance or time to a destination.', formalityLevel: 'polite' },
+      { scenarioId: sIds[2], targetText: 'えきまでどのくらいですか', phonetic: 'Eki made dono kurai desu ka', translation: 'How far is it to the station?', category: 'question', usageTip: 'Put any destination before made to ask about the distance or time to it.', formalityLevel: 'polite' },
       // Scenario 4: Medical Clinic
       { scenarioId: sIds[3], targetText: 'どうしましたか', phonetic: 'Dou shimashita ka', translation: 'What is wrong? / What happened?', category: 'medical', usageTip: 'The standard question a doctor or nurse will ask when you arrive.', formalityLevel: 'polite' },
-      { scenarioId: sIds[3], targetText: 'ねつがあります', phonetic: 'Netsu ga arimasu', translation: 'I have a fever', category: 'medical', usageTip: 'Use this pattern: ___ ga arimasu (I have ___). Replace netsu with other symptoms.', formalityLevel: 'polite' },
-      { scenarioId: sIds[3], targetText: 'のどがいたいです', phonetic: 'Nodo ga itai desu', translation: 'My throat hurts', category: 'medical', usageTip: 'Body part + ga itai desu = my ___ hurts. Extremely useful template.', formalityLevel: 'polite' },
+      { scenarioId: sIds[3], targetText: 'ねつがあります', phonetic: 'Netsu ga arimasu', translation: 'I have a fever', category: 'medical', usageTip: 'Use this pattern: netsu ga arimasu (I have a fever). Swap netsu for other symptoms like zutsuu (headache).', formalityLevel: 'polite' },
+      { scenarioId: sIds[3], targetText: 'のどがいたいです', phonetic: 'Nodo ga itai desu', translation: 'My throat hurts', category: 'medical', usageTip: 'Atama ga itai desu means my head hurts. Swap atama for any body part that hurts.', formalityLevel: 'polite' },
       { scenarioId: sIds[3], targetText: 'くすり', phonetic: 'Kusuri', translation: 'Medicine', category: 'medical', usageTip: 'Used in: kusuri o kudasai (please give me medicine).', formalityLevel: 'neutral' },
       { scenarioId: sIds[3], targetText: 'かぜをひきました', phonetic: 'Kaze o hikimashita', translation: 'I caught a cold', category: 'medical', usageTip: 'The natural way to say you have a cold. Doctors will understand immediately.', formalityLevel: 'polite' },
       // Scenario 5: Restaurant
       { scenarioId: sIds[4], targetText: 'おすすめはなんですか', phonetic: 'Osusume wa nan desu ka', translation: 'What do you recommend?', category: 'dining', usageTip: 'Great for izakaya or restaurants where you want guidance from the staff.', formalityLevel: 'polite' },
-      { scenarioId: sIds[4], targetText: '___をください', phonetic: '___ o kudasai', translation: 'Please give me ___', category: 'ordering', usageTip: 'The most common ordering phrase in restaurants. Polite and direct.', formalityLevel: 'polite' },
+      { scenarioId: sIds[4], targetText: 'ビールをください', phonetic: 'Biiru o kudasai', translation: 'Please give me a beer', category: 'ordering', usageTip: 'The most common ordering phrase in restaurants. Swap biiru for anything on the menu.', formalityLevel: 'polite' },
       { scenarioId: sIds[4], targetText: 'いただきます', phonetic: 'Itadakimasu', translation: 'I humbly receive (said before eating)', category: 'etiquette', usageTip: 'Always say this before the first bite. It expresses gratitude for the food and everyone involved.', formalityLevel: 'polite' },
       { scenarioId: sIds[4], targetText: 'おいしいです', phonetic: 'Oishii desu', translation: 'It is delicious', category: 'dining', usageTip: 'A simple compliment the cook or server will appreciate. Oishii alone is fine too.', formalityLevel: 'polite' },
       { scenarioId: sIds[4], targetText: 'ごちそうさまでした', phonetic: 'Gochisousama deshita', translation: 'Thank you for the meal (after eating)', category: 'etiquette', usageTip: 'Say this when leaving the restaurant or finishing the meal. Staff will often respond with a smile.', formalityLevel: 'polite' },
       // Scenario 6: Supermarket
-      { scenarioId: sIds[5], targetText: '___はどこですか', phonetic: '___ wa doko desu ka', translation: 'Where is ___?', category: 'question', usageTip: 'Replace ___ with the item you need. Point at a sign or shelf for extra clarity.', formalityLevel: 'polite' },
+      { scenarioId: sIds[5], targetText: 'おにくはどこですか', phonetic: 'Oniku wa doko desu ka', translation: 'Where is the meat?', category: 'question', usageTip: 'Swap oniku for any item you need. Point at a sign or shelf for extra clarity.', formalityLevel: 'polite' },
       { scenarioId: sIds[5], targetText: 'いくらですか', phonetic: 'Ikura desu ka', translation: 'How much is it?', category: 'shopping', usageTip: 'Point at the price tag or item. Works anywhere.', formalityLevel: 'polite' },
       { scenarioId: sIds[5], targetText: 'ふくろはいりますか', phonetic: 'Fukuro wa irimasu ka', translation: 'Do you need a bag?', category: 'shopping', usageTip: 'The cashier will ask this. Say hai (yes) or iie (no). Bring your own to save ¥3-5.', formalityLevel: 'polite' },
       { scenarioId: sIds[5], targetText: 'かしこまりました', phonetic: 'Kashikomarimashita', translation: 'Certainly / Understood', category: 'polite-expression', usageTip: 'Staff often say this. It means "certainly" — more formal than wakarimashita.', formalityLevel: 'polite' },
       { scenarioId: sIds[5], targetText: 'おかいけい', phonetic: 'O-kaikei', translation: 'Checkout / Bill', category: 'shopping', usageTip: 'You can say o-kaikei onegaishimasu to ask for the bill at a restaurant too.', formalityLevel: 'polite' },
       // Scenario 7: Train Station
-      { scenarioId: sIds[6], targetText: '___までおねがいします', phonetic: '___ made onegaishimasu', translation: 'To ___, please (buying a ticket)', category: 'transport', usageTip: 'Say the destination + made + onegaishimasu. Staff will tell you the fare.', formalityLevel: 'polite' },
-      { scenarioId: sIds[6], targetText: 'なんばんせん', phonetic: 'Nanbansen', translation: 'What platform number?', category: 'transport', usageTip: 'Ask: ___ wa nanbansen desu ka (what platform for ___?). Critical for train stations.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[6], targetText: 'よこはままでおねがいします', phonetic: 'Yokohama made onegaishimasu', translation: 'To Yokohama, please (buying a ticket)', category: 'transport', usageTip: 'Say the destination + made + onegaishimasu. Staff will tell you the fare.', formalityLevel: 'polite' },
+      { scenarioId: sIds[6], targetText: 'なんばんせん', phonetic: 'Nanbansen', translation: 'What platform number?', category: 'transport', usageTip: 'Ask: Yokohama wa nanbansen desu ka (what platform for Yokohama?). Critical for train stations.', formalityLevel: 'neutral' },
       { scenarioId: sIds[6], targetText: 'おうふく', phonetic: 'Oufuku', translation: 'Round trip', category: 'transport', usageTip: 'Say oufuku when you want a return ticket. Katamichi is one-way.', formalityLevel: 'neutral' },
-      { scenarioId: sIds[6], targetText: 'つぎの___', phonetic: 'Tsugi no ___', translation: 'The next ___', category: 'transport', usageTip: 'Combine with densha (train) or basu (bus) to ask about the next departure.', formalityLevel: 'neutral' },
+      { scenarioId: sIds[6], targetText: 'つぎのでんしゃ', phonetic: 'Tsugi no densha', translation: 'The next train', category: 'transport', usageTip: 'Combine tsugi no with densha (train) or basu (bus) to ask about the next departure.', formalityLevel: 'neutral' },
       // Scenario 8: Hotel
       { scenarioId: sIds[7], targetText: 'よやくしています', phonetic: 'Yoyaku shite imasu', translation: 'I have a reservation', category: 'hotel', usageTip: 'Say this first at check-in. Have your reservation confirmation ready to show.', formalityLevel: 'polite' },
-      { scenarioId: sIds[7], targetText: 'にょこう', phonetic: 'Niyokou (haku)', translation: '___ night(s)', category: 'hotel', usageTip: 'Use counter: ippaku (1 night), nihaku (2 nights). Ask: nan-nichi (how many days?).', formalityLevel: 'neutral' },
+      { scenarioId: sIds[7], targetText: 'にょこう', phonetic: 'Niyokou (haku)', translation: 'Overnight stay(s)', category: 'hotel', usageTip: 'Use counter: ippaku (1 night), nihaku (2 nights). Ask: nan-nichi (how many days?).', formalityLevel: 'neutral' },
       { scenarioId: sIds[7], targetText: 'へや', phonetic: 'Heya', translation: 'Room', category: 'hotel', usageTip: 'Used in: heya wa itsu demo daijoubu desu ka (when is check-in).', formalityLevel: 'neutral' },
       { scenarioId: sIds[7], targetText: 'チェックアウト', phonetic: 'Chekkuauto', translation: 'Check-out', category: 'hotel', usageTip: 'English loanword commonly used. Check-in is also chekkuin.', formalityLevel: 'neutral' },
       // Scenario 9: Neighbour
@@ -314,7 +375,7 @@ async function seed() {
       // Scenario 12: Community Welcome Party
       { scenarioId: sIds[11], targetText: 'はじめまして', phonetic: 'Hajimemashite', translation: 'Nice to meet you', category: 'greeting', usageTip: 'Repeat this with each new person you meet. It never gets old at a welcome party.', formalityLevel: 'polite' },
       { scenarioId: sIds[11], targetText: 'どこからきましたか', phonetic: 'Doko kara kimashita ka', translation: 'Where are you from?', category: 'question', usageTip: 'The most common question at international events. Have your answer ready.', formalityLevel: 'polite' },
-      { scenarioId: sIds[11], targetText: 'にほんの___がすきです', phonetic: 'Nihon no ___ ga suki desu', translation: 'I like Japanese ___', category: 'expression', usageTip: 'Great conversation starter. Fill in: tabemono (food), eiga (movies), ongaku (music).', formalityLevel: 'polite' },
+      { scenarioId: sIds[11], targetText: 'にほんのたべものがすきです', phonetic: 'Nihon no tabemono ga suki desu', translation: 'I like Japanese food', category: 'expression', usageTip: 'Great conversation starter. Swap tabemono for eiga (movies) or ongaku (music).', formalityLevel: 'polite' },
       { scenarioId: sIds[11], targetText: 'またあいましょう', phonetic: 'Mata aimashou', translation: 'Let\'s meet again', category: 'farewell', usageTip: 'A friendly way to end a conversation. Less formal: mata ne.', formalityLevel: 'polite' },
       // Scenario 13: Job Interview
       { scenarioId: sIds[12], targetText: 'しつれいします', phonetic: 'Shitsurei shimasu', translation: 'Excuse me (entering a room)', category: 'etiquette', usageTip: 'Say this before entering an interview room. Knock first, wait, then enter and say it.', formalityLevel: 'formal' },
@@ -323,7 +384,7 @@ async function seed() {
       { scenarioId: sIds[12], targetText: 'よろしくおねがいします', phonetic: 'Yoroshiku onegaishimasu', translation: 'Please treat me favourably', category: 'greeting', usageTip: 'Crucial at the end of an interview. It replaces a "thank you for this opportunity."', formalityLevel: 'formal' },
       // Scenario 14: First Day at Office
       { scenarioId: sIds[13], targetText: 'はじめまして', phonetic: 'Hajimemashite', translation: 'Nice to meet you', category: 'greeting', usageTip: 'Use this with each new colleague during the team introduction.', formalityLevel: 'polite' },
-      { scenarioId: sIds[13], targetText: '___せんぱい', phonetic: '___-senpai', translation: 'Senior colleague', category: 'workplace', usageTip: 'Add -senpai to the name of more experienced colleagues. Shows respect for seniority.', formalityLevel: 'polite' },
+      { scenarioId: sIds[13], targetText: 'たなかせんぱい', phonetic: 'Tanaka-senpai', translation: 'Senior colleague Tanaka', category: 'workplace', usageTip: 'Add -senpai to a senior colleague\'s name, like Tanaka-senpai. Shows respect for seniority.', formalityLevel: 'polite' },
       { scenarioId: sIds[13], targetText: 'つくえ', phonetic: 'Tsukue', translation: 'Desk', category: 'office', usageTip: 'You may be shown: kochira ga anata no tsukue desu (this is your desk).', formalityLevel: 'neutral' },
       { scenarioId: sIds[13], targetText: 'きゅうけい', phonetic: 'Kyuukei', translation: 'Break', category: 'office', usageTip: 'Ask: kyuukei wa nanji desu ka (what time is break?).', formalityLevel: 'neutral' },
       // Scenario 15: Business Meeting
@@ -339,7 +400,7 @@ async function seed() {
       // Scenario 17: Video Conference
       { scenarioId: sIds[16], targetText: 'おはようございます', phonetic: 'Ohayou gozaimasu', translation: 'Good morning', category: 'greeting', usageTip: 'Use at the start of a morning video call even if you are in different time zones.', formalityLevel: 'polite' },
       { scenarioId: sIds[16], targetText: 'こえがきこえますか', phonetic: 'Koe ga kikoemasu ka', translation: 'Can you hear me?', category: 'tech', usageTip: 'Essential for remote meetings. Alternative: mieru (can see) for video issues.', formalityLevel: 'polite' },
-      { scenarioId: sIds[16], targetText: 'これが___です', phonetic: 'Kore ga ___ desu', translation: 'This is ___ (while screen sharing)', category: 'presentation', usageTip: 'Use when sharing your screen. Point to the relevant document or chart.', formalityLevel: 'polite' },
+      { scenarioId: sIds[16], targetText: 'これがしょるいです', phonetic: 'Kore ga shorui desu', translation: 'This is the document (while screen sharing)', category: 'presentation', usageTip: 'Use when sharing your screen. Swap shorui (document) for whatever you are showing.', formalityLevel: 'polite' },
       { scenarioId: sIds[16], targetText: 'おつかれさまでした', phonetic: 'Otsukaresama deshita', translation: 'Thank you for your hard work (past tense)', category: 'workplace', usageTip: 'Use at the end of a meeting or work day. The all-purpose thanks for effort.', formalityLevel: 'polite' },
       // Scenario 18: Post Office
       { scenarioId: sIds[17], targetText: 'これをおくりたいです', phonetic: 'Kore o okuritai desu', translation: 'I want to send this', category: 'postal', usageTip: 'Point at your parcel and say this. The clerk will guide you through the rest.', formalityLevel: 'polite' },
@@ -363,7 +424,7 @@ async function seed() {
       .where(inArray(vocabulary.scenarioId, sIds));
 
     const missingVocabulary = seedVocabulary.filter(v =>
-      !existingVocabulary.some(e => e.scenarioId === v.scenarioId && e.targetText === v.targetText && e.languageCode === v.languageCode),
+      !existingVocabulary.some(e => e.scenarioId === v.scenarioId && e.targetText === v.targetText && e.languageCode === (v.languageCode ?? 'ja')),
     );
     if (missingVocabulary.length > 0) {
       await db.insert(vocabulary).values(missingVocabulary);
@@ -378,13 +439,13 @@ async function seed() {
       languageCode: 'lg',
       title: 'Okutegeeza ne Kuyogaanya okukubiri',
       context: 'Omutabaga owa Uganda akuutuuka mu mwolo gw\'okwaniriza abantu mu Tokyo era alaba Hana, omukugu mu kukolagana n\'amawanga. Okusooka kuno kusaba okwetegeza n\'ebitiibwa: okukuuta, okwogera erinnya lyo, n\'okwagala okubeera mu mikwano egirungi.',
-      learningGoals: 'Yiga okukozesa hajimemashite, watashi wa ___ desu, yoroshiku onegaishimasu, n\'enzira ey\'okwetegeza.',
+      learningGoals: 'Yiga okukozesa hajimemashite, watashi wa Sarah desu, yoroshiku onegaishimasu, n\'enzira ey\'okwetegeza.',
     }).onConflictDoUpdate({
       target: [scenarioLocalizations.scenarioId, scenarioLocalizations.languageCode],
       set: {
         title: 'Okutegeeza ne Kuyogaanya okukubiri',
         context: 'Omutabaga owa Uganda akuutuuka mu mwolo gw\'okwaniriza abantu mu Tokyo era alaba Hana, omukugu mu kukolagana n\'amawanga. Okusooka kuno kusaba okwetegeza n\'ebitiibwa: okukuuta, okwogera erinnya lyo, n\'okwagala okubeera mu mikwano egirungi.',
-        learningGoals: 'Yiga okukozesa hajimemashite, watashi wa ___ desu, yoroshiku onegaishimasu, n\'enzira ey\'okwetegeza.',
+        learningGoals: 'Yiga okukozesa hajimemashite, watashi wa Sarah desu, yoroshiku onegaishimasu, n\'enzira ey\'okwetegeza.',
       },
     });
 
@@ -396,9 +457,9 @@ async function seed() {
 
     const lgVocab: Array<[string, string]> = [
       ['Nsanyuse okukutusa', 'Kozesa emirundi emu gyokka, ng\'osooka okutukutusa omuntu.'],
-      ['Nze ___', 'Yingira erinnya lyo mu kifo kya ___ we lisangibwa.'],
+      ['Nze Sarah', 'Yingira erinnya lyo mu kifo kya Sarah we lisangibwa.'],
       ['Nsanyuse okukolagana naawe', 'Ekigambo ekikozesebwa okuggumiza omukwano ng\'omaze okwetegeza.'],
-      ['Nva mu Uganda', 'Kozesa \'Nva mu ___\' okwogera n\'ensi gye wava.'],
+      ['Nva mu Uganda', 'Kino kikozesebwa okwogera n\'ensi gye wava.'],
       ['Erinnya lyo ggwe ani?', 'Ekibuuzo ekipolofu eky\'okubuuza erinnya ly\'omuntu.'],
       ['Nsanyuse', 'Enfaanana enkyusifu ya yoroshiku onegaishimasu.'],
     ];
@@ -418,49 +479,49 @@ async function seed() {
     const seedScenarioGoals = [
       // Scenario 1: First Meeting
       { scenarioId: sIds[0], sequenceOrder: 1, goalType: 'vocabulary', goalText: 'Recognize and use "hajimemashite" as a first-meeting greeting', targetPhrase: 'はじめまして' },
-      { scenarioId: sIds[0], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself using "watashi wa ___ desu" with own name', targetPhrase: 'わたしは___です' },
-      { scenarioId: sIds[0], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'State country of origin with "___ kara kimashita"', targetPhrase: '〜からきました' },
+      { scenarioId: sIds[0], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Introduce oneself using "watashi wa Sarah desu"', targetPhrase: 'わたしはサラです' },
+      { scenarioId: sIds[0], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'State country of origin with "Uganda kara kimashita"', targetPhrase: 'ウガンダからきました' },
       { scenarioId: sIds[0], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Respond with "yoroshiku onegaishimasu" after introduction', targetPhrase: 'よろしくおねがいします' },
       { scenarioId: sIds[0], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a polite self-introduction flowing from opening to closing', targetPhrase: null },
       // Scenario 2: Konbini
       { scenarioId: sIds[1], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "irasshaimase" as store welcome', targetPhrase: 'いらっしゃいませ' },
-      { scenarioId: sIds[1], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Request items using "___ o kudasai"', targetPhrase: '〜をください' },
+      { scenarioId: sIds[1], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Request items using "onigiri o kudasai"', targetPhrase: 'おにぎりをください' },
       { scenarioId: sIds[1], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Use counter "ippon" for bottle-shaped items', targetPhrase: 'いっぽん' },
       { scenarioId: sIds[1], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Confirm price with "ikura desu ka"', targetPhrase: 'いくらですか' },
       { scenarioId: sIds[1], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a polite purchase exchange including thanks', targetPhrase: null },
       // Scenario 3: Directions
       { scenarioId: sIds[2], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Use "sumimasen" to politely get someone\'s attention', targetPhrase: 'すみません' },
-      { scenarioId: sIds[2], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "___ wa doko desu ka" for a location', targetPhrase: '〜はどこですか' },
+      { scenarioId: sIds[2], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "eki wa doko desu ka" for a location', targetPhrase: 'えきはどこですか' },
       { scenarioId: sIds[2], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Understand directional words: migi, hidari, massugu', targetPhrase: null },
-      { scenarioId: sIds[2], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand the distance question "___ made dono kurai desu ka"', targetPhrase: '〜までどのくらいですか' },
+      { scenarioId: sIds[2], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand the distance question "eki made dono kurai desu ka"', targetPhrase: 'えきまでどのくらいですか' },
       { scenarioId: sIds[2], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Use "arigatou gozaimasu" and respond to "dou itashimashite"', targetPhrase: 'ありがとうございます' },
       // Scenario 4: Medical Clinic
       { scenarioId: sIds[3], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "dou shimashita ka" from medical staff', targetPhrase: 'どうしましたか' },
-      { scenarioId: sIds[3], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe symptom using "___ ga itai desu" pattern', targetPhrase: '〜がいたいです' },
+      { scenarioId: sIds[3], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Describe symptom using "nodo ga itai desu" pattern', targetPhrase: 'のどがいたいです' },
       { scenarioId: sIds[3], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Say "netsu ga arimasu" to indicate fever', targetPhrase: 'ねつがあります' },
       { scenarioId: sIds[3], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Respond to basic health questions from nurse or doctor', targetPhrase: null },
       { scenarioId: sIds[3], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete clinic visit with polite thanks', targetPhrase: null },
       // Scenario 5: Restaurant
       { scenarioId: sIds[4], sequenceOrder: 1, goalType: 'comprehension', goalText: 'Understand "nan o tabemasu ka" or "nan ni shimasu ka"', targetPhrase: 'なにをたべますか' },
-      { scenarioId: sIds[4], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order using "___ o onegaishimasu" or "___ o kudasai"', targetPhrase: '〜をください' },
+      { scenarioId: sIds[4], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Order using "ramen o onegaishimasu" or "biiru o kudasai"', targetPhrase: 'ビールをください' },
       { scenarioId: sIds[4], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Ask "osusume wa nan desu ka" for recommendations', targetPhrase: 'おすすめはなんですか' },
       { scenarioId: sIds[4], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Say "itadakimasu" before eating', targetPhrase: 'いただきます' },
       { scenarioId: sIds[4], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Say "gochisousama deshita" after the meal', targetPhrase: 'ごちそうさまでした' },
       // Scenario 6: Supermarket
-      { scenarioId: sIds[5], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask "___ wa doko desu ka" to locate items', targetPhrase: '〜はどこですか' },
+      { scenarioId: sIds[5], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask "pan wa doko desu ka" to locate items', targetPhrase: 'パンはどこですか' },
       { scenarioId: sIds[5], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask "ikura desu ka" for price', targetPhrase: 'いくらですか' },
       { scenarioId: sIds[5], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand "fukuro wa irimasu ka" at checkout', targetPhrase: 'ふくろはいりますか' },
       { scenarioId: sIds[5], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand "kashikomarimashita" as confirmation', targetPhrase: 'かしこまりました' },
       { scenarioId: sIds[5], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a polite supermarket checkout interaction', targetPhrase: null },
       // Scenario 7: Train Station
-      { scenarioId: sIds[6], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask for ticket using "___ made onegaishimasu"', targetPhrase: '〜までおねがいします' },
-      { scenarioId: sIds[6], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask about platform: "___ wa nanbansen desu ka"', targetPhrase: '〜はなんばんせんですか' },
+      { scenarioId: sIds[6], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Ask for ticket using "Yokohama made onegaishimasu"', targetPhrase: 'よこはままでおねがいします' },
+      { scenarioId: sIds[6], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Ask about platform: "Yokohama wa nanbansen desu ka"', targetPhrase: 'よこはまはなんばんせんですか' },
       { scenarioId: sIds[6], sequenceOrder: 3, goalType: 'vocabulary', goalText: 'Distinguish oufuku (round trip) vs katamichi (one-way)', targetPhrase: 'おうふく' },
       { scenarioId: sIds[6], sequenceOrder: 4, goalType: 'comprehension', goalText: 'Understand departure time information from station staff', targetPhrase: null },
       { scenarioId: sIds[6], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Thank the station staff and proceed correctly', targetPhrase: null },
       // Scenario 8: Hotel
       { scenarioId: sIds[7], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'State "yoyaku shite imasu" to confirm reservation', targetPhrase: 'よやくしています' },
-      { scenarioId: sIds[7], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Use counter "___ haku" for length of stay', targetPhrase: '〜はく' },
+      { scenarioId: sIds[7], sequenceOrder: 2, goalType: 'vocabulary', goalText: 'Use counter "nihaku" for length of stay', targetPhrase: 'にはく' },
       { scenarioId: sIds[7], sequenceOrder: 3, goalType: 'comprehension', goalText: 'Understand check-in and check-out timing information', targetPhrase: null },
       { scenarioId: sIds[7], sequenceOrder: 4, goalType: 'social_closing', goalText: 'Complete hotel check-in with appropriate polite phrases', targetPhrase: null },
       // Scenario 9: Neighbour
@@ -483,7 +544,7 @@ async function seed() {
       // Scenario 12: Community Welcome Party
       { scenarioId: sIds[11], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Initiate with "hajimemashite" confidently to new people', targetPhrase: 'はじめまして' },
       { scenarioId: sIds[11], sequenceOrder: 2, goalType: 'comprehension', goalText: 'Understand and answer "doko kara kimashita ka"', targetPhrase: 'どこからきましたか' },
-      { scenarioId: sIds[11], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Share interests with "nihon no ___ ga suki desu"', targetPhrase: 'にほんの〜がすきです' },
+      { scenarioId: sIds[11], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Share interests with "nihon no tabemono ga suki desu"', targetPhrase: 'にほんのたべものがすきです' },
       { scenarioId: sIds[11], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Close exchanges with "mata aimashou"', targetPhrase: 'またあいましょう' },
       { scenarioId: sIds[11], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a multi-person introduction circuit', targetPhrase: null },
       // Scenario 13: Job Interview
@@ -512,7 +573,7 @@ async function seed() {
       { scenarioId: sIds[15], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Complete a full meishi exchange cycle politely', targetPhrase: null },
       // Scenario 17: Video Conference
       { scenarioId: sIds[16], sequenceOrder: 1, goalType: 'phrase_production', goalText: 'Greet remote team with "ohayou gozaimasu"', targetPhrase: 'おはようございます' },
-      { scenarioId: sIds[16], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Handle screen share with "kore ga ___ desu"', targetPhrase: 'これが〜です' },
+      { scenarioId: sIds[16], sequenceOrder: 2, goalType: 'phrase_production', goalText: 'Handle screen share with "kore ga shorui desu"', targetPhrase: 'これがしょるいです' },
       { scenarioId: sIds[16], sequenceOrder: 3, goalType: 'phrase_production', goalText: 'Handle technical issues with "koe ga kikoemasu ka"', targetPhrase: 'こえがきこえますか' },
       { scenarioId: sIds[16], sequenceOrder: 4, goalType: 'phrase_production', goalText: 'Close the call with "otsukaresama deshita"', targetPhrase: 'おつかれさまでした' },
       { scenarioId: sIds[16], sequenceOrder: 5, goalType: 'social_closing', goalText: 'Demonstrate proper video meeting etiquette (timing, mute, camera)', targetPhrase: null },
@@ -977,6 +1038,192 @@ const [s1Row] = await db.insert(sessions).values({
       await db.insert(vocabularyLocalizations).values([
         { vocabularyId: lgLocalizedVocab[0].id, languageCode: 'lg', translation: 'Nsanyuse okukutukirirako (okulabirirako okusooka)', usageTip: 'Ekigambo kino kikozesebwa ku mulundi gw okusooka okusisinkana omuntu.' },
       ]).onConflictDoNothing();
+    }
+
+    // ================================================================
+    // 5b. LOCALIZATION FIXTURE (exported snapshot)
+    // Regenerate via: npm run db:export-localizations
+    // Rows are keyed by business keys (titles/slugs), not numeric ids,
+    // so entries whose parent does not exist yet are skipped safely.
+    // ================================================================
+    console.log('Replaying localization fixture...');
+    const fixturePath = fileURLToPath(new URL('./data/localizations.json', import.meta.url));
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as LocalizationFixture;
+
+    const locParentScenarios = await db.select({ id: scenarios.id, title: scenarios.title }).from(scenarios);
+    const scenarioIdByTitle = new Map(locParentScenarios.map((r) => [r.title, r.id]));
+
+    const locParentSituations = await db
+      .select({ id: situations.id, title: situations.title, domainSlug: domains.slug })
+      .from(situations)
+      .innerJoin(domains, eq(situations.domainId, domains.id));
+    const situationIdByKey = new Map(
+      locParentSituations.map((r) => [`${r.domainSlug}\u0000${r.title}`, r.id] as const),
+    );
+
+    const locParentVocab = await db
+      .select({ id: vocabulary.id, targetText: vocabulary.targetText, scenarioTitle: scenarios.title })
+      .from(vocabulary)
+      .innerJoin(scenarios, eq(vocabulary.scenarioId, scenarios.id));
+    const locVocabIdsWithRows = new Set(
+      (await db.select({ id: vocabularyLocalizations.vocabularyId }).from(vocabularyLocalizations)).map((r) => r.id),
+    );
+    const vocabIdByKey = new Map<string, number>();
+    for (const r of locParentVocab) {
+      const key = `${r.scenarioTitle}\u0000${r.targetText}`;
+      const prev = vocabIdByKey.get(key);
+      if (prev === undefined || (!locVocabIdsWithRows.has(prev) && locVocabIdsWithRows.has(r.id))) {
+        vocabIdByKey.set(key, r.id);
+      }
+    }
+
+    const existingScenarioLocKeys = new Set(
+      (await db.select({
+        scenarioId: scenarioLocalizations.scenarioId,
+        languageCode: scenarioLocalizations.languageCode,
+      }).from(scenarioLocalizations)).map((r) => `${r.scenarioId}\u0000${r.languageCode}`),
+    );
+    const existingSituationLocKeys = new Set(
+      (await db.select({
+        situationId: situationLocalizations.situationId,
+        languageCode: situationLocalizations.languageCode,
+      }).from(situationLocalizations)).map((r) => `${r.situationId}\u0000${r.languageCode}`),
+    );
+    const existingVocabLocKeys = new Set(
+      (await db.select({
+        vocabularyId: vocabularyLocalizations.vocabularyId,
+        languageCode: vocabularyLocalizations.languageCode,
+      }).from(vocabularyLocalizations)).map((r) => `${r.vocabularyId}\u0000${r.languageCode}`),
+    );
+
+    const locParentGoals = await db
+      .select({ id: scenarioGoals.id, sequenceOrder: scenarioGoals.sequenceOrder, scenarioTitle: scenarios.title })
+      .from(scenarioGoals)
+      .innerJoin(scenarios, eq(scenarioGoals.scenarioId, scenarios.id));
+    const goalIdByKey = new Map(
+      locParentGoals.map((r) => [`${r.scenarioTitle}\u0000${r.sequenceOrder}`, r.id] as const),
+    );
+    const existingGoalLocKeys = new Set(
+      (await db.select({
+        scenarioGoalId: scenarioGoalLocalizations.scenarioGoalId,
+        languageCode: scenarioGoalLocalizations.languageCode,
+      }).from(scenarioGoalLocalizations)).map((r) => `${r.scenarioGoalId}\u0000${r.languageCode}`),
+    );
+
+    let scenLocInserted = 0;
+    const scenLocSkippedNoParent: string[] = [];
+    const scenLocValues = fixture.scenarioLocalizations.flatMap((row) => {
+      const parentId = scenarioIdByTitle.get(row.scenario);
+      if (!parentId) {
+        scenLocSkippedNoParent.push(`${row.scenario} (${row.languageCode})`);
+        return [];
+      }
+      if (existingScenarioLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        scenarioId: parentId,
+        languageCode: row.languageCode,
+        title: row.title,
+        context: row.context,
+        learningGoals: row.learningGoals,
+        aiCharacterName: row.aiCharacterName,
+        aiCharacterRole: row.aiCharacterRole,
+        userCharacterName: row.userCharacterName,
+        userCharacterRole: row.userCharacterRole,
+      }];
+    });
+
+    let sitLocInserted = 0;
+    const sitLocSkippedNoParent: string[] = [];
+    const sitLocValues = fixture.situationLocalizations.flatMap((row) => {
+      const parentId = situationIdByKey.get(`${row.domainSlug}\u0000${row.situation}`);
+      if (!parentId) {
+        sitLocSkippedNoParent.push(`${row.domainSlug}/${row.situation} (${row.languageCode})`);
+        return [];
+      }
+      if (existingSituationLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        situationId: parentId,
+        languageCode: row.languageCode,
+        title: row.title,
+        context: row.context,
+        learningGoals: row.learningGoals,
+        focusPills: row.focusPills,
+      }];
+    });
+
+    let vocabLocInserted = 0;
+    const vocabLocSkippedNoParent: string[] = [];
+    const vocabLocValues = fixture.vocabularyLocalizations.flatMap((row) => {
+      const parentId = vocabIdByKey.get(`${row.scenario}\u0000${row.targetText}`);
+      if (!parentId) {
+        vocabLocSkippedNoParent.push(`${row.scenario}/${row.targetText} (${row.languageCode})`);
+        return [];
+      }
+      if (existingVocabLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        vocabularyId: parentId,
+        languageCode: row.languageCode,
+        translation: row.translation,
+        usageTip: row.usageTip,
+      }];
+    });
+
+    let goalLocInserted = 0;
+    const goalLocSkippedNoParent: string[] = [];
+    const goalLocValues = (fixture.scenarioGoalLocalizations ?? []).flatMap((row) => {
+      const parentId = goalIdByKey.get(`${row.scenario}\u0000${row.sequenceOrder}`);
+      if (!parentId) {
+        goalLocSkippedNoParent.push(`${row.scenario}/#${row.sequenceOrder} (${row.languageCode})`);
+        return [];
+      }
+      if (existingGoalLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        scenarioGoalId: parentId,
+        languageCode: row.languageCode,
+        goalText: row.goalText,
+        targetPhrase: row.targetPhrase,
+      }];
+    });
+
+    const FIXTURE_CHUNK_SIZE = 200;
+    for (let i = 0; i < scenLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(scenarioLocalizations)
+        .values(scenLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: scenarioLocalizations.id });
+      scenLocInserted += inserted.length;
+    }
+    for (let i = 0; i < sitLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(situationLocalizations)
+        .values(sitLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: situationLocalizations.id });
+      sitLocInserted += inserted.length;
+    }
+    for (let i = 0; i < vocabLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(vocabularyLocalizations)
+        .values(vocabLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: vocabularyLocalizations.id });
+      vocabLocInserted += inserted.length;
+    }
+    for (let i = 0; i < goalLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(scenarioGoalLocalizations)
+        .values(goalLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: scenarioGoalLocalizations.id });
+      goalLocInserted += inserted.length;
+    }
+
+    console.log(`Localization fixture replayed: ${scenLocInserted}/${fixture.counts.scenarios} scenario, ` +
+      `${sitLocInserted}/${fixture.counts.situations} situation, ${vocabLocInserted}/${fixture.counts.vocabulary} vocab, ` +
+      `${goalLocInserted}/${fixture.counts.goals ?? 0} goal row(s) inserted.`);
+    if (scenLocSkippedNoParent.length > 0 || sitLocSkippedNoParent.length > 0 || vocabLocSkippedNoParent.length > 0 || goalLocSkippedNoParent.length > 0) {
+      console.log(`Localization fixture parents not found yet (re-run seed after their seeder): ` +
+        `${scenLocSkippedNoParent.length} scenario, ${sitLocSkippedNoParent.length} situation, ${vocabLocSkippedNoParent.length} vocab, ${goalLocSkippedNoParent.length} goal entr(ies) skipped.`);
+      for (const s of [...scenLocSkippedNoParent.slice(0, 3), ...sitLocSkippedNoParent.slice(0, 3), ...vocabLocSkippedNoParent.slice(0, 3), ...goalLocSkippedNoParent.slice(0, 3)]) {
+        console.log(`  [skip-no-parent] ${s}`);
+      }
     }
 
     // ================================================================

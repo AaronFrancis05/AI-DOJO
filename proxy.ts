@@ -72,6 +72,11 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow unauthenticated access to tryout guest preview (no DB session)
+  if (pathname.startsWith('/tryout')) {
+    return NextResponse.next();
+  }
+
   // Public routes — redirect authenticated users to /home
   if (PUBLIC_REFRESH_PATHS.has(pathname)) {
     return checkSessionAndRedirect(req);
@@ -82,5 +87,5 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|restaurant.png|.+\.hdr$|.+\.mp4$|.+\.png$|.+\.jpg$|.+\.jpeg$|.+\.webp$|.+\.gif$|.+\.svg$|.+\.ico$|.+\.woff2?$|.+\.ttf$|.+\.glb$|.+\.css$|.+\.js$|.+\.json$|auth(?:/|$)|api(?:/|$)|share(?:/|$)).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|restaurant.png|.+\\.hdr$|.+\\.mp4$|.+\\.png$|.+\\.jpg$|.+\\.jpeg$|.+\\.webp$|.+\\.gif$|.+\\.svg$|.+\\.ico$|.+\\.woff2?$|.+\\.ttf$|.+\\.glb$|.+\\.css$|.+\\.js$|.+\\.json$|auth(?:/|$)|api(?:/|$)|share(?:/|$)|tryout(?:/|$)).*)'],
 };

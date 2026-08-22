@@ -341,6 +341,8 @@ export async function PATCH(
         phaseKey: 'evaluation',
         complete: true,
         score: session.vocabularyScore ?? null,
+        targetLanguage: session.targetLanguage,
+        nativeLanguage: session.nativeLanguage,
       });
     } catch (err) {
       console.error('[session-complete] failed to record lesson progress', { sessionId, lessonId: session.lessonId, error: String(err) });

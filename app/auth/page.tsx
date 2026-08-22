@@ -1,8 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
 import PasswordInput from '@/components/PasswordInput';
@@ -12,7 +12,19 @@ import { Mic2, Star, BarChart3, Zap } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AuthPage() {
+  // useSearchParams needs a Suspense boundary in the app router
+  return (
+    <Suspense fallback={null}>
+      <AuthPageContent />
+    </Suspense>
+  );
+}
+
+function AuthPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tryoutTargetLanguage = searchParams.get('targetLanguage');
+  const tryoutNativeLanguage = searchParams.get('nativeLanguage');
 
   useEffect(() => {
     if (window.location.search.includes('signed_out')) return;
@@ -58,6 +70,14 @@ export default function AuthPage() {
       void consent;
 
       if (isLogin) {
+        router.push('/home');
+      } else if (tryoutTargetLanguage && tryoutNativeLanguage) {
+        await fetch('/api/user/onboarding', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ targetLanguage: tryoutTargetLanguage, nativeLanguage: tryoutNativeLanguage }),
+        }).catch(() => {});
         router.push('/home');
       } else {
         router.push('/onboarding');
