@@ -7,6 +7,8 @@ import {
   scenarioGoals,
   goalCompletions,
   vocabulary,
+  users,
+  countries,
 } from '../../src/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
 import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
@@ -21,6 +23,11 @@ import {
   getTargetScenarioLocalization,
   getTargetVocabLocalizations,
   applyTargetLanguageVocab,
+  getSituationLocalization,
+  getTargetSituationLocalization,
+  applySituationLocalization,
+  getTargetGoalLocalizations,
+  applyGoalLocalization,
 } from '../localization';
 
 export const MAX_ICEBREAKER_VOCAB = 5;
@@ -133,6 +140,10 @@ export interface SessionTurnData {
   /** True when a curated localization row exists for this scenario in the session's native or target language. */
   scenarioLocalized: boolean;
   currentPhase: SessionPhase;
+  /** The signed-in learner's real profile name (may be empty for guest-style accounts). */
+  learnerName: string;
+  /** The learner's country display name, or null when unset/unknown. */
+  learnerCountry: string | null;
 }
 
 /**
@@ -153,7 +164,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       return r;
     })();
 
-  const [conversationRows, goalsResult, completionsResult, situationResult] = await Promise.all([
+  const [conversationRows, goalsResult, completionsResult, rawSituationResult, learnerProfile] = await Promise.all([
     db
       .select()
       .from(conversations)
@@ -185,9 +196,23 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
           return r;
         })()
       : Promise.resolve(null),
+
+    (async (): Promise<{ name: string; countryName: string | null }> => {
+      const k = cacheKeys.userProfile(session.userId);
+      const c = await cacheGet<{ name: string; countryName: string | null }>(k);
+      if (c) return c;
+      const [r] = await db
+        .select({ name: users.name, countryName: countries.name })
+        .from(users)
+        .leftJoin(countries, eq(users.countryCode, countries.code))
+        .where(eq(users.id, session.userId))
+        .limit(1);
+      const profile = { name: r?.name ?? '', countryName: r?.countryName ?? null };
+      await cacheSet(k, profile, TTL.USER_PROFILE);
+      return profile;
+    })(),
   ]);
 
-  const goals = goalsResult;
   const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
 
   const currentTurnNo = conversationRows.length > 0
@@ -206,6 +231,43 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
   const nativeLanguage = session.nativeLanguage ?? 'en';
   const isSameLanguage = targetLanguage === nativeLanguage;
   const currentPhase = session.phase as SessionPhase;
+
+  let situationResult = rawSituationResult;
+  if (situationResult) {
+    const [nativeSituationLoc, targetSituationLoc] = await Promise.all([
+      nativeLanguage !== 'en' ? getSituationLocalization(situationResult.id, nativeLanguage) : Promise.resolve(null),
+      targetLanguage ? getTargetSituationLocalization(situationResult.id, targetLanguage) : Promise.resolve(null),
+    ]);
+    // Native-language localization first (instructional text a non-English
+    // speaker can understand), then target-language last so the roleplay
+    // content the learner actually practices wins.
+    if (nativeSituationLoc) situationResult = applySituationLocalization(situationResult, nativeSituationLoc);
+    if (targetSituationLoc) situationResult = applySituationLocalization(situationResult, targetSituationLoc);
+    if (!targetSituationLoc && targetLanguage && targetLanguage !== 'ja') {
+      console.warn(
+        `[LOCALIZATION] Situation ${situationResult.id} has no ${targetLanguage} localization — the ` +
+          `scenario setting may fall back to the Japan-shaped base text. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage}`,
+      );
+    }
+  }
+
+  let goals = goalsResult;
+  if (goals.length > 0 && targetLanguage) {
+    const goalLocs = await getTargetGoalLocalizations(scenarioId, targetLanguage);
+    if (goalLocs.size > 0) {
+      goals = goals.map((g) => {
+        const loc = goalLocs.get(g.id);
+        return loc ? applyGoalLocalization(g, loc) : g;
+      });
+    }
+    const missing = goals.filter((g) => !goalLocs.has(g.id)).length;
+    if (missing > 0 && targetLanguage !== 'ja') {
+      console.warn(
+        `[LOCALIZATION] Scenario ${scenarioId} has ${missing} goal(s) without ${targetLanguage} ` +
+          `localization — targetPhrase may fall back to Japanese. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage} --only=goals`,
+      );
+    }
+  }
 
   let vocabRows = currentPhase === 'orientation' || currentPhase === 'icebreaker' || currentPhase === 'guided'
     ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {
@@ -236,7 +298,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
 
   const scenarioLocs = await Promise.all([
     nativeLanguage !== 'en' ? getScenarioLocalization(scenarioId, nativeLanguage) : Promise.resolve(null),
-    targetLanguage && targetLanguage !== 'en' ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
+    targetLanguage ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
   ]);
 
   if (currentScenario) {
@@ -329,6 +391,8 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
     isSameLanguage,
     scenarioLocalized,
     currentPhase,
+    learnerName: learnerProfile.name,
+    learnerCountry: learnerProfile.countryName,
   };
 }
 
@@ -360,5 +424,7 @@ export async function analyzeTurn(input: {
     situationLearningGoals,
     data.targetLanguage,
     data.nativeLanguage,
+    data.learnerName,
+    data.learnerCountry,
   );
 }

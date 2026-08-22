@@ -114,6 +114,19 @@ export const vocabularyLocalizations = pgTable('vocabulary_localizations', {
   uniqueVocabLang: uniqueIndex('uq_vocabulary_localizations_key').on(table.vocabularyId, table.languageCode),
 }));
 
+export const situationLocalizations = pgTable('situation_localizations', {
+  id:            serial('id').primaryKey(),
+  situationId:   integer('situation_id').references(() => situations.id, { onDelete: 'cascade' }).notNull(),
+  languageCode:  varchar('language_code', { length: 10 }).notNull(),
+  title:         varchar('title', { length: 120 }),
+  context:       text('context'),
+  learningGoals: text('learning_goals'),
+  focusPills:    text('focus_pills'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueSituationLang: uniqueIndex('uq_situation_localizations_key').on(table.situationId, table.languageCode),
+}));
+
 export const scenarioLocalizations = pgTable('scenario_localizations', {
   id:                serial('id').primaryKey(),
   scenarioId:        integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
@@ -140,6 +153,17 @@ export const scenarioGoals = pgTable('scenario_goals', {
   languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
+
+export const scenarioGoalLocalizations = pgTable('scenario_goal_localizations', {
+  id:             serial('id').primaryKey(),
+  scenarioGoalId: integer('scenario_goal_id').references(() => scenarioGoals.id, { onDelete: 'cascade' }).notNull(),
+  languageCode:   varchar('language_code', { length: 10 }).notNull(),
+  goalText:       text('goal_text'),
+  targetPhrase:   varchar('target_phrase', { length: 200 }),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueGoalLang: uniqueIndex('uq_scenario_goal_localizations_key').on(table.scenarioGoalId, table.languageCode),
+}));
 
 export const countries = pgTable('countries', {
   id:                    serial('id').primaryKey(),
@@ -530,6 +554,11 @@ export const situationsRelations = relations(situations, ({ one, many }) => ({
   domain:     one(domains, { fields: [situations.domainId], references: [domains.id] }),
   scenarios:  many(scenarios),
   sessions:   many(sessions),
+  localizations: many(situationLocalizations),
+}));
+
+export const situationLocalizationsRelations = relations(situationLocalizations, ({ one }) => ({
+  situation: one(situations, { fields: [situationLocalizations.situationId], references: [situations.id] }),
 }));
 
 export const charactersRelations = relations(characters, ({ one }) => ({
@@ -562,6 +591,11 @@ export const vocabularyLocalizationsRelations = relations(vocabularyLocalization
 export const scenarioGoalsRelations = relations(scenarioGoals, ({ one, many }) => ({
   scenario:    one(scenarios, { fields: [scenarioGoals.scenarioId], references: [scenarios.id] }),
   completions: many(goalCompletions),
+  localizations: many(scenarioGoalLocalizations),
+}));
+
+export const scenarioGoalLocalizationsRelations = relations(scenarioGoalLocalizations, ({ one }) => ({
+  scenarioGoal: one(scenarioGoals, { fields: [scenarioGoalLocalizations.scenarioGoalId], references: [scenarioGoals.id] }),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
