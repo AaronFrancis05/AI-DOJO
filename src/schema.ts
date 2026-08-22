@@ -154,6 +154,17 @@ export const scenarioGoals = pgTable('scenario_goals', {
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
+export const scenarioGoalLocalizations = pgTable('scenario_goal_localizations', {
+  id:             serial('id').primaryKey(),
+  scenarioGoalId: integer('scenario_goal_id').references(() => scenarioGoals.id, { onDelete: 'cascade' }).notNull(),
+  languageCode:   varchar('language_code', { length: 10 }).notNull(),
+  goalText:       text('goal_text'),
+  targetPhrase:   varchar('target_phrase', { length: 200 }),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueGoalLang: uniqueIndex('uq_scenario_goal_localizations_key').on(table.scenarioGoalId, table.languageCode),
+}));
+
 export const countries = pgTable('countries', {
   id:                    serial('id').primaryKey(),
   code:                  varchar('code', { length: 2 }).notNull().unique(),
@@ -580,6 +591,11 @@ export const vocabularyLocalizationsRelations = relations(vocabularyLocalization
 export const scenarioGoalsRelations = relations(scenarioGoals, ({ one, many }) => ({
   scenario:    one(scenarios, { fields: [scenarioGoals.scenarioId], references: [scenarios.id] }),
   completions: many(goalCompletions),
+  localizations: many(scenarioGoalLocalizations),
+}));
+
+export const scenarioGoalLocalizationsRelations = relations(scenarioGoalLocalizations, ({ one }) => ({
+  scenarioGoal: one(scenarioGoals, { fields: [scenarioGoalLocalizations.scenarioGoalId], references: [scenarioGoals.id] }),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({

@@ -8,6 +8,7 @@ import {
   sessions, conversations, corrections, evaluations,
   goalCompletions, vocabularyEncounters,
   scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
+  scenarioGoalLocalizations,
   countries, scenarioSettings,
   courses, courseLevels, units, lessons, lessonPhases,
 } from './schema';
@@ -42,12 +43,22 @@ interface VocabLocFixtureRow {
   usageTip: string | null;
 }
 
+interface GoalLocFixtureRow {
+  scenario: string;
+  sequenceOrder: number;
+  baseGoalText: string;
+  languageCode: string;
+  goalText: string | null;
+  targetPhrase: string | null;
+}
+
 interface LocalizationFixture {
   version: number;
-  counts: { scenarios: number; situations: number; vocabulary: number };
+  counts: { scenarios: number; situations: number; vocabulary: number; goals: number };
   scenarioLocalizations: ScenarioLocFixtureRow[];
   situationLocalizations: SituationLocFixtureRow[];
   vocabularyLocalizations: VocabLocFixtureRow[];
+  scenarioGoalLocalizations: GoalLocFixtureRow[];
 }
 
 async function seed() {
@@ -1085,6 +1096,20 @@ const [s1Row] = await db.insert(sessions).values({
       }).from(vocabularyLocalizations)).map((r) => `${r.vocabularyId}\u0000${r.languageCode}`),
     );
 
+    const locParentGoals = await db
+      .select({ id: scenarioGoals.id, sequenceOrder: scenarioGoals.sequenceOrder, scenarioTitle: scenarios.title })
+      .from(scenarioGoals)
+      .innerJoin(scenarios, eq(scenarioGoals.scenarioId, scenarios.id));
+    const goalIdByKey = new Map(
+      locParentGoals.map((r) => [`${r.scenarioTitle}\u0000${r.sequenceOrder}`, r.id] as const),
+    );
+    const existingGoalLocKeys = new Set(
+      (await db.select({
+        scenarioGoalId: scenarioGoalLocalizations.scenarioGoalId,
+        languageCode: scenarioGoalLocalizations.languageCode,
+      }).from(scenarioGoalLocalizations)).map((r) => `${r.scenarioGoalId}\u0000${r.languageCode}`),
+    );
+
     let scenLocInserted = 0;
     const scenLocSkippedNoParent: string[] = [];
     const scenLocValues = fixture.scenarioLocalizations.flatMap((row) => {
@@ -1143,6 +1168,23 @@ const [s1Row] = await db.insert(sessions).values({
       }];
     });
 
+    let goalLocInserted = 0;
+    const goalLocSkippedNoParent: string[] = [];
+    const goalLocValues = (fixture.scenarioGoalLocalizations ?? []).flatMap((row) => {
+      const parentId = goalIdByKey.get(`${row.scenario}\u0000${row.sequenceOrder}`);
+      if (!parentId) {
+        goalLocSkippedNoParent.push(`${row.scenario}/#${row.sequenceOrder} (${row.languageCode})`);
+        return [];
+      }
+      if (existingGoalLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        scenarioGoalId: parentId,
+        languageCode: row.languageCode,
+        goalText: row.goalText,
+        targetPhrase: row.targetPhrase,
+      }];
+    });
+
     const FIXTURE_CHUNK_SIZE = 200;
     for (let i = 0; i < scenLocValues.length; i += FIXTURE_CHUNK_SIZE) {
       const inserted = await db.insert(scenarioLocalizations)
@@ -1165,13 +1207,21 @@ const [s1Row] = await db.insert(sessions).values({
         .returning({ id: vocabularyLocalizations.id });
       vocabLocInserted += inserted.length;
     }
+    for (let i = 0; i < goalLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(scenarioGoalLocalizations)
+        .values(goalLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: scenarioGoalLocalizations.id });
+      goalLocInserted += inserted.length;
+    }
 
     console.log(`Localization fixture replayed: ${scenLocInserted}/${fixture.counts.scenarios} scenario, ` +
-      `${sitLocInserted}/${fixture.counts.situations} situation, ${vocabLocInserted}/${fixture.counts.vocabulary} vocab row(s) inserted.`);
-    if (scenLocSkippedNoParent.length > 0 || sitLocSkippedNoParent.length > 0 || vocabLocSkippedNoParent.length > 0) {
+      `${sitLocInserted}/${fixture.counts.situations} situation, ${vocabLocInserted}/${fixture.counts.vocabulary} vocab, ` +
+      `${goalLocInserted}/${fixture.counts.goals ?? 0} goal row(s) inserted.`);
+    if (scenLocSkippedNoParent.length > 0 || sitLocSkippedNoParent.length > 0 || vocabLocSkippedNoParent.length > 0 || goalLocSkippedNoParent.length > 0) {
       console.log(`Localization fixture parents not found yet (re-run seed after their seeder): ` +
-        `${scenLocSkippedNoParent.length} scenario, ${sitLocSkippedNoParent.length} situation, ${vocabLocSkippedNoParent.length} vocab entr(ies) skipped.`);
-      for (const s of [...scenLocSkippedNoParent.slice(0, 3), ...sitLocSkippedNoParent.slice(0, 3), ...vocabLocSkippedNoParent.slice(0, 3)]) {
+        `${scenLocSkippedNoParent.length} scenario, ${sitLocSkippedNoParent.length} situation, ${vocabLocSkippedNoParent.length} vocab, ${goalLocSkippedNoParent.length} goal entr(ies) skipped.`);
+      for (const s of [...scenLocSkippedNoParent.slice(0, 3), ...sitLocSkippedNoParent.slice(0, 3), ...vocabLocSkippedNoParent.slice(0, 3), ...goalLocSkippedNoParent.slice(0, 3)]) {
         console.log(`  [skip-no-parent] ${s}`);
       }
     }

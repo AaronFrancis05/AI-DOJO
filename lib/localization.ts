@@ -1,5 +1,5 @@
 import { db } from '../src/db';
-import { scenarioLocalizations, situationLocalizations, vocabulary, vocabularyLocalizations } from '../src/schema';
+import { scenarioGoalLocalizations, scenarioGoals, scenarioLocalizations, situationLocalizations, vocabulary, vocabularyLocalizations } from '../src/schema';
 import { and, eq } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from './cache';
 
@@ -7,6 +7,7 @@ export const DEFAULT_NATIVE_LANGUAGE = 'en';
 
 export type ScenarioLocalizationRow = typeof scenarioLocalizations.$inferSelect;
 export type SituationLocalizationRow = typeof situationLocalizations.$inferSelect;
+export type ScenarioGoalLocalizationRow = typeof scenarioGoalLocalizations.$inferSelect;
 
 export interface VocabLocalizationFields {
   translation: string | null;
@@ -233,4 +234,70 @@ export function applyTargetLanguageVocab<
       usageTip: loc.usageTip ?? v.usageTip,
     };
   });
+}
+
+export interface GoalLocalizationFields {
+  goalText: string | null;
+  targetPhrase: string | null;
+}
+
+async function queryScenarioGoalLocalizations(
+  scenarioId: number,
+  languageCode: string,
+): Promise<Map<number, GoalLocalizationFields>> {
+  const map = new Map<number, GoalLocalizationFields>();
+
+  const k = cacheKeys.goalLocalizations(scenarioId, languageCode);
+  const cached = await cacheGet<Array<{ scenarioGoalId: number; goalText: string | null; targetPhrase: string | null }>>(k);
+  let rows: Array<{ scenarioGoalId: number; goalText: string | null; targetPhrase: string | null }>;
+  if (cached && Array.isArray(cached)) {
+    rows = cached;
+  } else {
+    rows = await db
+      .select({
+        scenarioGoalId: scenarioGoalLocalizations.scenarioGoalId,
+        goalText: scenarioGoalLocalizations.goalText,
+        targetPhrase: scenarioGoalLocalizations.targetPhrase,
+      })
+      .from(scenarioGoalLocalizations)
+      .innerJoin(scenarioGoals, eq(scenarioGoalLocalizations.scenarioGoalId, scenarioGoals.id))
+      .where(and(
+        eq(scenarioGoals.scenarioId, scenarioId),
+        eq(scenarioGoalLocalizations.languageCode, languageCode),
+      ));
+    await cacheSet(k, rows, TTL.GOALS);
+  }
+
+  for (const row of rows) {
+    map.set(row.scenarioGoalId, { goalText: row.goalText, targetPhrase: row.targetPhrase });
+  }
+  return map;
+}
+
+/**
+ * Loads the localized goalText/targetPhrase for every goal of a scenario in
+ * the given language. Returns a map keyed by scenarioGoalId with only the
+ * localized fields (falls back to the base value at the call site).
+ */
+export async function getTargetGoalLocalizations(
+  scenarioId: number,
+  languageCode: string,
+): Promise<Map<number, GoalLocalizationFields>> {
+  if (!languageCode) return new Map();
+  return queryScenarioGoalLocalizations(scenarioId, languageCode);
+}
+
+/** Merges localized goal fields over a base goal row, or returns the base row untouched when nothing is available. */
+export function applyGoalLocalization<
+  T extends { id: number; goalText: string; targetPhrase: string | null },
+>(
+  base: T,
+  loc: GoalLocalizationFields | null,
+): T {
+  if (!loc) return base;
+  return {
+    ...base,
+    goalText: loc.goalText ?? base.goalText,
+    targetPhrase: loc.targetPhrase ?? base.targetPhrase,
+  };
 }

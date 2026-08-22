@@ -17,8 +17,9 @@ import { dirname, join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { db } from '../src/db';
 import {
-  scenarios, situations, domains, vocabulary,
+  scenarios, situations, domains, vocabulary, scenarioGoals,
   scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
+  scenarioGoalLocalizations,
 } from '../src/schema';
 
 interface ScenarioLocFixture {
@@ -51,12 +52,22 @@ interface VocabLocFixture {
   usageTip: string | null;
 }
 
+interface GoalLocFixture {
+  scenario: string;
+  sequenceOrder: number;
+  baseGoalText: string;
+  languageCode: string;
+  goalText: string | null;
+  targetPhrase: string | null;
+}
+
 interface LocalizationFixture {
   version: number;
-  counts: { scenarios: number; situations: number; vocabulary: number };
+  counts: { scenarios: number; situations: number; vocabulary: number; goals: number };
   scenarioLocalizations: ScenarioLocFixture[];
   situationLocalizations: SituationLocFixture[];
   vocabularyLocalizations: VocabLocFixture[];
+  scenarioGoalLocalizations: GoalLocFixture[];
 }
 
 const FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'data', 'localizations.json');
@@ -114,9 +125,23 @@ async function main() {
     .innerJoin(vocabulary, eq(vocabularyLocalizations.vocabularyId, vocabulary.id))
     .innerJoin(scenarios, eq(vocabulary.scenarioId, scenarios.id));
 
+  const goalRows = await db
+    .select({
+      scenarioTitle: scenarios.title,
+      sequenceOrder: scenarioGoals.sequenceOrder,
+      baseGoalText: scenarioGoals.goalText,
+      languageCode: scenarioGoalLocalizations.languageCode,
+      goalText: scenarioGoalLocalizations.goalText,
+      targetPhrase: scenarioGoalLocalizations.targetPhrase,
+    })
+    .from(scenarioGoalLocalizations)
+    .innerJoin(scenarioGoals, eq(scenarioGoalLocalizations.scenarioGoalId, scenarioGoals.id))
+    .innerJoin(scenarios, eq(scenarioGoals.scenarioId, scenarios.id));
+
   assertUnique(scenRows.map((r) => [r.scenarioTitle, r.languageCode]));
   assertUnique(sitRows.map((r) => [r.domainSlug, r.situationTitle, r.languageCode]));
   assertUnique(vocabRows.map((r) => [r.scenarioTitle, r.targetText, r.languageCode]));
+  assertUnique(goalRows.map((r) => [r.scenarioTitle, String(r.sequenceOrder), r.languageCode]));
 
   const fixture: LocalizationFixture = {
     version: 1,
@@ -124,6 +149,7 @@ async function main() {
       scenarios: scenRows.length,
       situations: sitRows.length,
       vocabulary: vocabRows.length,
+      goals: goalRows.length,
     },
     scenarioLocalizations: scenRows.map((r) => ({
       scenario: r.scenarioTitle,
@@ -152,6 +178,14 @@ async function main() {
       translation: r.translation,
       usageTip: r.usageTip,
     })),
+    scenarioGoalLocalizations: goalRows.map((r) => ({
+      scenario: r.scenarioTitle,
+      sequenceOrder: r.sequenceOrder,
+      baseGoalText: r.baseGoalText,
+      languageCode: r.languageCode,
+      goalText: r.goalText,
+      targetPhrase: r.targetPhrase,
+    })),
   };
 
   // Locale-independent ordering: the fixture is committed, so its byte order
@@ -165,6 +199,9 @@ async function main() {
   fixture.vocabularyLocalizations.sort((a, b) =>
     cmp(a.scenario, b.scenario) || cmp(a.targetText, b.targetText)
     || cmp(a.languageCode, b.languageCode));
+  fixture.scenarioGoalLocalizations.sort((a, b) =>
+    cmp(a.scenario, b.scenario) || (a.sequenceOrder - b.sequenceOrder)
+    || cmp(a.languageCode, b.languageCode));
 
   await mkdir(dirname(FIXTURE_PATH), { recursive: true });
   await writeFile(FIXTURE_PATH, JSON.stringify(fixture, null, 2) + '\n', 'utf8');
@@ -174,7 +211,8 @@ async function main() {
   console.log(`  scenario_localizations:  ${scenRows.length}`);
   console.log(`  situation_localizations: ${sitRows.length}`);
   console.log(`  vocabulary_localizations: ${vocabRows.length}`);
-  console.log(`  total rows: ${scenRows.length + sitRows.length + vocabRows.length} (${sizeKb} KB)`);
+  console.log(`  scenario_goal_localizations: ${goalRows.length}`);
+  console.log(`  total rows: ${scenRows.length + sitRows.length + vocabRows.length + goalRows.length} (${sizeKb} KB)`);
 
   process.exit(0);
 }

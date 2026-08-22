@@ -20,11 +20,11 @@
    translator — only the generation prompt differs).
 
    Usage:
-     npm run db:backfill-target-localizations                      # all scenarios+situations, all non-ja target languages
-     npm run db:backfill-target-localizations -- --lang=fr         # single target language
-     npm run db:backfill-target-localizations -- --lang=fr --limit=3
-     npm run db:backfill-target-localizations -- --only=scenarios  # or --only=situations
-     npm run db:backfill-target-localizations -- --dry-run         # print generated JSON, insert nothing
+      npm run db:backfill-target-localizations                      # all scenarios+situations+goals, all non-ja target languages
+      npm run db:backfill-target-localizations -- --lang=fr         # single target language
+      npm run db:backfill-target-localizations -- --lang=fr --limit=3
+      npm run db:backfill-target-localizations -- --only=scenarios  # or --only=situations / --only=goals
+      npm run db:backfill-target-localizations -- --dry-run         # print generated JSON, insert nothing
 
    Idempotent — skips any (id, languageCode) that already has a row, so
    reruns only fill gaps. Failures are logged per id/language and do not
@@ -36,8 +36,10 @@ import {
   scenarioLocalizations,
   situations,
   situationLocalizations,
+  scenarioGoals,
+  scenarioGoalLocalizations,
 } from '../src/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, asc } from 'drizzle-orm';
 import { TARGET_LANGUAGES } from '../lib/language';
 import { getAIProvider, type AIProvider } from '../lib/ai-providers';
 import { cacheDel, cacheKeys } from '../lib/cache';
@@ -69,6 +71,11 @@ interface GeneratedSituation {
   context?: string;
   learningGoals?: string;
   focusPills?: string;
+}
+
+interface GeneratedGoal {
+  goalText?: string;
+  targetPhrase?: string;
 }
 
 function buildScenarioPrompt(langName: string, langCode: string, sc: typeof scenarios.$inferSelect): string {
@@ -116,6 +123,42 @@ Return strictly a JSON object (no markdown, no code fences) matching exactly thi
   "learningGoals": "...",
   "focusPills": "... (same '|||'-delimited format and number of topics as the original, translated/adapted)"
 }
+Write every field in ${langName}.`;
+}
+
+function buildGoalsPrompt(
+  langName: string,
+  langCode: string,
+  sc: typeof scenarios.$inferSelect,
+  scLoc: typeof scenarioLocalizations.$inferSelect | null,
+  goals: Array<typeof scenarioGoals.$inferSelect>,
+): string {
+  const locBlock = scLoc
+    ? `The scenario has ALREADY been reimagined for a ${langName}-speaking context:
+Localized title: ${scLoc.title ?? sc.title}
+Localized context: ${scLoc.context ?? sc.context}
+AI character: ${scLoc.aiCharacterName ?? sc.aiCharacterName} (${scLoc.aiCharacterRole ?? sc.aiCharacterRole})
+User character: ${scLoc.userCharacterName ?? sc.userCharacterName} (${scLoc.userCharacterRole ?? sc.userCharacterRole})
+
+Adapt each goal so it fits THAT reimagined scene.`
+    : `The base scenario is titled "${sc.title}" (Japan-flavored). Adapt each goal naturally for a ${langName}-speaking context.`;
+
+  const goalList = goals.map((g, i) =>
+    `${i + 1}. goalText: ${g.goalText}\n   targetPhrase: ${g.targetPhrase ?? '(none)'}`).join('\n');
+
+  return `You are adapting the learning goals of a language-learning roleplay scenario for a learner studying ${langName} (${langCode}) for business/travel purposes.
+
+${locBlock}
+
+Base goals (Japan-flavored, preserve the order — there are exactly ${goals.length}):
+${goalList}
+
+For each goal:
+- "goalText": rewrite in ${langName}, consistent with the reimagined scene.
+- "targetPhrase": replace with an equivalent natural phrase in ${langName} that fits the reimagined scene and characters — do NOT translate the Japanese phrase literally. Keep it short (under 200 characters), realistic for a learner to say aloud.
+
+Return strictly a JSON array (no markdown, no code fences) of exactly ${goals.length} objects, in the same order:
+[{"goalText": "...", "targetPhrase": "..."}]
 Write every field in ${langName}.`;
 }
 
@@ -236,9 +279,95 @@ async function backfillSituations(
   return { processed, written };
 }
 
+async function backfillGoals(
+  provider: AIProvider,
+  langCode: string,
+  langName: string,
+  limit: number | null,
+  dryRun: boolean,
+): Promise<{ processed: number; written: number }> {
+  const scenarioRows = await db.select().from(scenarios).orderBy(scenarios.id);
+  const goalsByScenario = new Map<number, Array<typeof scenarioGoals.$inferSelect>>();
+  const allGoals = await db
+    .select()
+    .from(scenarioGoals)
+    .where(inArray(scenarioGoals.scenarioId, scenarioRows.map((s) => s.id)))
+    .orderBy(asc(scenarioGoals.scenarioId), asc(scenarioGoals.sequenceOrder));
+  for (const g of allGoals) {
+    if (!goalsByScenario.has(g.scenarioId)) goalsByScenario.set(g.scenarioId, []);
+    goalsByScenario.get(g.scenarioId)!.push(g);
+  }
+
+  const existing = await db
+    .select({ scenarioGoalId: scenarioGoalLocalizations.scenarioGoalId })
+    .from(scenarioGoalLocalizations)
+    .where(and(
+      eq(scenarioGoalLocalizations.languageCode, langCode),
+      inArray(scenarioGoalLocalizations.scenarioGoalId, allGoals.map((g) => g.id)),
+    ));
+  // A scenario's goal set is generated in one batch — treat any partial
+  // coverage as "needs a run" and let onConflictDoNothing absorb overlaps.
+  const coveredScenarios = new Set<number>();
+  for (const r of existing) {
+    for (const [sid, goals] of goalsByScenario) {
+      if (goals.some((g) => g.id === r.scenarioGoalId)) { coveredScenarios.add(sid); break; }
+    }
+  }
+
+  let processed = 0;
+  let written = 0;
+
+  for (const sc of scenarioRows) {
+    const goals = goalsByScenario.get(sc.id);
+    if (!goals || goals.length === 0) continue;
+    if (coveredScenarios.has(sc.id)) {
+      console.log(`  [skip] scenario "${sc.title}" already has ${langCode} goals`);
+      continue;
+    }
+    if (limit != null && processed >= limit) break;
+    processed++;
+
+    try {
+      const [scLoc] = await db
+        .select()
+        .from(scenarioLocalizations)
+        .where(and(eq(scenarioLocalizations.scenarioId, sc.id), eq(scenarioLocalizations.languageCode, langCode)))
+        .limit(1);
+      const raw = await provider.generateJSON(buildGoalsPrompt(langName, langCode, sc, scLoc ?? null, goals), []);
+      const parsed = JSON.parse(raw) as GeneratedGoal[];
+      if (!Array.isArray(parsed) || parsed.length !== goals.length) {
+        throw new Error(`expected JSON array of ${goals.length} goal(s), got ${Array.isArray(parsed) ? parsed.length : typeof parsed}`);
+      }
+
+      if (dryRun) {
+        console.log(`  [dry-run] scenario "${sc.title}" (${langCode}):`, JSON.stringify(parsed, null, 2));
+        continue;
+      }
+
+      let inserted = 0;
+      for (let i = 0; i < goals.length; i++) {
+        const res = await db.insert(scenarioGoalLocalizations).values({
+          scenarioGoalId: goals[i].id,
+          languageCode: langCode,
+          goalText: parsed[i].goalText ?? null,
+          targetPhrase: parsed[i].targetPhrase ?? null,
+        }).onConflictDoNothing().returning({ id: scenarioGoalLocalizations.id });
+        inserted += res.length;
+      }
+      await cacheDel(cacheKeys.goalLocalizations(sc.id, langCode));
+      written += inserted;
+      console.log(`  [ok] scenario "${sc.title}" -> ${inserted}/${goals.length} goal(s) (${langCode})`);
+    } catch (err) {
+      console.warn(`  [ERR] scenario "${sc.title}" (${langCode}):`, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return { processed, written };
+}
+
 async function main(): Promise<void> {
   const langFilter = parseArg('lang');
-  const only = parseArg('only'); // 'scenarios' | 'situations' | null (both)
+  const only = parseArg('only'); // 'scenarios' | 'situations' | 'goals' | null (all)
   const limitRaw = parseArg('limit');
   let limit: number | null = null;
   if (limitRaw !== null && limitRaw !== undefined) {
@@ -271,24 +400,31 @@ async function main(): Promise<void> {
 
   let totalScenarios = 0;
   let totalSituations = 0;
+  let totalGoals = 0;
 
   for (const lang of langs) {
     console.log(`\n=== ${lang.name} (${lang.code}) ===`);
 
-    if (only !== 'situations') {
+    if (only !== 'situations' && only !== 'goals') {
       console.log(' Scenarios:');
       const r = await backfillScenarios(provider, lang.code, lang.name, limit, dryRun);
       totalScenarios += r.written;
     }
 
-    if (only !== 'scenarios') {
+    if (only !== 'scenarios' && only !== 'goals') {
       console.log(' Situations:');
       const r = await backfillSituations(provider, lang.code, lang.name, limit, dryRun);
       totalSituations += r.written;
     }
+
+    if (only !== 'scenarios' && only !== 'situations') {
+      console.log(' Goals:');
+      const r = await backfillGoals(provider, lang.code, lang.name, limit, dryRun);
+      totalGoals += r.written;
+    }
   }
 
-  console.log(`\n=== Done. Wrote ${totalScenarios} scenario localization(s), ${totalSituations} situation localization(s). ===`);
+  console.log(`\n=== Done. Wrote ${totalScenarios} scenario localization(s), ${totalSituations} situation localization(s), ${totalGoals} goal localization(s). ===`);
 }
 
 main().catch((err) => {

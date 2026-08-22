@@ -24,6 +24,8 @@ import {
   getSituationLocalization,
   getTargetSituationLocalization,
   applySituationLocalization,
+  getTargetGoalLocalizations,
+  applyGoalLocalization,
 } from '../localization';
 
 export const MAX_ICEBREAKER_VOCAB = 5;
@@ -190,7 +192,6 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       : Promise.resolve(null),
   ]);
 
-  const goals = goalsResult;
   const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
 
   const currentTurnNo = conversationRows.length > 0
@@ -225,6 +226,24 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       console.warn(
         `[LOCALIZATION] Situation ${situationResult.id} has no ${targetLanguage} localization — the ` +
           `scenario setting may fall back to the Japan-shaped base text. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage}`,
+      );
+    }
+  }
+
+  let goals = goalsResult;
+  if (goals.length > 0 && targetLanguage) {
+    const goalLocs = await getTargetGoalLocalizations(scenarioId, targetLanguage);
+    if (goalLocs.size > 0) {
+      goals = goals.map((g) => {
+        const loc = goalLocs.get(g.id);
+        return loc ? applyGoalLocalization(g, loc) : g;
+      });
+    }
+    const missing = goals.filter((g) => !goalLocs.has(g.id)).length;
+    if (missing > 0 && targetLanguage !== 'ja') {
+      console.warn(
+        `[LOCALIZATION] Scenario ${scenarioId} has ${missing} goal(s) without ${targetLanguage} ` +
+          `localization — targetPhrase may fall back to Japanese. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage} --only=goals`,
       );
     }
   }
