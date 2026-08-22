@@ -102,7 +102,8 @@ Return strictly a JSON object (no markdown, no code fences) matching exactly thi
   "userCharacterName": "... (keep a generic learner-appropriate name, can be non-local since the user plays this role)",
   "userCharacterRole": "..."
 }
-Write every field in ${langName}, except userCharacterName which may stay as a generic learner name.`;
+Write every field in ${langName}, except userCharacterName which may stay as a generic learner name.
+CRITICAL: Never output "___" or any bracketed placeholder — always write complete, natural sentences with concrete examples.`;
 }
 
 function buildSituationPrompt(langName: string, langCode: string, st: typeof situations.$inferSelect): string {
@@ -120,10 +121,11 @@ Return strictly a JSON object (no markdown, no code fences) matching exactly thi
 {
   "title": "...",
   "context": "... (1-3 sentences, culturally grounded in a ${langName}-speaking setting)",
-  "learningGoals": "...",
-  "focusPills": "... (same '|||'-delimited format and number of topics as the original, translated/adapted)"
+  "learningGoals": "... (complete, natural description of what the learner will practice — no blanks or templates)",
+  "focusPills": "... (same '|||'-delimited format and number of topics as the original, translated/adapted — no blanks)"
 }
-Write every field in ${langName}.`;
+Write every field in ${langName}.
+CRITICAL: Never output "___" or any bracketed placeholder like "[word]" — every field must be a complete, natural sentence with concrete wording. For learningGoals/focusPills, give concrete example phrases (e.g. "ask Where is the market?") not templates (never "Where is the ___?").`;
 }
 
 function buildGoalsPrompt(
@@ -159,7 +161,8 @@ For each goal:
 
 Return strictly a JSON array (no markdown, no code fences) of exactly ${goals.length} objects, in the same order:
 [{"goalText": "...", "targetPhrase": "..."}]
-Write every field in ${langName}.`;
+Write every field in ${langName}.
+CRITICAL: Never output "___" or any bracketed placeholder like "[Name]" — every goal must be a complete, natural sentence with concrete wording.`;
 }
 
 async function backfillScenarios(
@@ -198,6 +201,10 @@ async function backfillScenarios(
       if (dryRun) {
         console.log(`  [dry-run] scenario "${sc.title}" (${langCode}):`, JSON.stringify(parsed, null, 2));
         continue;
+      }
+
+      for (const k of Object.keys(parsed) as Array<keyof GeneratedScenario>) {
+        if (typeof parsed[k] === 'string') parsed[k] = (parsed[k] as string).replace(/___/g, '').trim() as any;
       }
 
       await db.insert(scenarioLocalizations).values({
@@ -260,6 +267,10 @@ async function backfillSituations(
         continue;
       }
 
+      for (const k of Object.keys(parsed) as Array<keyof GeneratedSituation>) {
+        if (typeof parsed[k] === 'string') parsed[k] = (parsed[k] as string).replace(/___/g, '').trim() as any;
+      }
+
       await db.insert(situationLocalizations).values({
         situationId: st.id,
         languageCode: langCode,
@@ -305,14 +316,11 @@ async function backfillGoals(
       eq(scenarioGoalLocalizations.languageCode, langCode),
       inArray(scenarioGoalLocalizations.scenarioGoalId, allGoals.map((g) => g.id)),
     ));
-  // A scenario's goal set is generated in one batch — treat any partial
-  // coverage as "needs a run" and let onConflictDoNothing absorb overlaps.
-  const coveredScenarios = new Set<number>();
-  for (const r of existing) {
-    for (const [sid, goals] of goalsByScenario) {
-      if (goals.some((g) => g.id === r.scenarioGoalId)) { coveredScenarios.add(sid); break; }
-    }
-  }
+  // A scenario's goals are generated in one batch, but individual goal rows
+  // can be purged independently (content fixes) — so only treat a scenario as
+  // done when EVERY one of its goals has a row. Partial coverage falls through
+  // and lets onConflictDoNothing absorb the already-present goals.
+  const coveredGoalIds = new Set(existing.map((r) => r.scenarioGoalId));
 
   let processed = 0;
   let written = 0;
@@ -320,7 +328,7 @@ async function backfillGoals(
   for (const sc of scenarioRows) {
     const goals = goalsByScenario.get(sc.id);
     if (!goals || goals.length === 0) continue;
-    if (coveredScenarios.has(sc.id)) {
+    if (goals.every((g) => coveredGoalIds.has(g.id))) {
       console.log(`  [skip] scenario "${sc.title}" already has ${langCode} goals`);
       continue;
     }
@@ -337,6 +345,10 @@ async function backfillGoals(
       const parsed = JSON.parse(raw) as GeneratedGoal[];
       if (!Array.isArray(parsed) || parsed.length !== goals.length) {
         throw new Error(`expected JSON array of ${goals.length} goal(s), got ${Array.isArray(parsed) ? parsed.length : typeof parsed}`);
+      }
+      for (const g of parsed) {
+        if (g.goalText) g.goalText = g.goalText.replace(/___/g, '').replace(/\s{2,}/g, ' ').trim();
+        if (g.targetPhrase) g.targetPhrase = g.targetPhrase.replace(/___/g, '').replace(/\s{2,}/g, ' ').trim();
       }
 
       if (dryRun) {

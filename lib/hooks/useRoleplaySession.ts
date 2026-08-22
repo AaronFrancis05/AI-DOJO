@@ -86,13 +86,14 @@ export interface UseRoleplaySessionReturn extends SessionState {
     accuracyScore?: number;
     responseTimeMs?: number;
     onToken?: (text: string) => void;
+    onTextDone?: (text: string) => void;
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
     onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
     onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
     onComplete?: (analysis: any) => void;
   }) => Promise<void>;
-  sendGreeting: (opts?: { onToken?: (t: string) => void }) => Promise<string>;
+  sendGreeting: (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<string>;
   pendingRetry: PendingRetry | null;
   retryCorrection: () => Promise<void>;
   dismissRetry: () => void;
@@ -229,6 +230,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       accuracyScore?: number;
       responseTimeMs?: number;
       onToken?: (text: string) => void;
+      onTextDone?: (text: string) => void;
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
       onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
@@ -304,6 +306,10 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
           case 'token':
             collectedAiText += payload.text;
             options?.onToken?.(collectedAiText);
+            break;
+          case 'text_done':
+            if (payload.fullText) collectedAiText = payload.fullText;
+            options?.onTextDone?.(payload.fullText ?? '');
             break;
           case 'phase_transition':
             setPhase(payload.toPhase);
@@ -426,10 +432,11 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }
   }, [sessionId, phase, conversations.length]);
 
-  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void }) => {
+  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => {
     let fullText = '';
     await submitTurnStream('__session_start__', {
       onToken: (t) => { if (t) fullText = t; opts?.onToken?.(t); },
+      onTextDone: (t) => { if (t) fullText = t; opts?.onTextDone?.(t); },
     });
     return fullText;
   }, [submitTurnStream]);

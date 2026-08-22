@@ -194,6 +194,14 @@ export default function AvatarModePage() {
     resetStreamingTts();
 
     let fullText = '';
+    const speechDoneRef = { current: false };
+    const analysisDoneRef = { current: false };
+    const tryShowCelebration = () => {
+      if (pendingCelebrationRef.current && speechDoneRef.current && analysisDoneRef.current) {
+        setCompletionResult(pendingCelebrationRef.current);
+        pendingCelebrationRef.current = null;
+      }
+    };
 
     try {
       await submitTurnStream(text.trim(), {
@@ -201,6 +209,25 @@ export default function AvatarModePage() {
         onToken: (t) => {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
+        },
+        onTextDone: (t: string) => {
+          const cleaned = cleanDisplay(t);
+          if (!mutedRef.current && cleaned) {
+            speakMixedText(
+              cleaned,
+              getBCP47(targetLangRef.current, 'tts'),
+              getNativeLangBcp47(nativeLangRef.current),
+              phaseRef.current,
+            ).catch(() => {}).then(() => {
+              setAiTurnActive(false);
+              speechDoneRef.current = true;
+              tryShowCelebration();
+            });
+          } else {
+            setAiTurnActive(false);
+            speechDoneRef.current = true;
+            tryShowCelebration();
+          }
         },
         onRetry: (analysis) => {
           setLastCorrections(analysis.corrections ?? []);
@@ -221,6 +248,7 @@ export default function AvatarModePage() {
               xpGained: info?.xpGained,
               newStreak: info?.newStreak,
             };
+            tryShowCelebration();
           }
         },
         onComplete: (analysis) => {
@@ -231,23 +259,8 @@ export default function AvatarModePage() {
         },
       });
       setStreamingText(null);
-
-      const cleaned = cleanDisplay(fullText);
-      const speechPromise = !mutedRef.current && cleaned
-        ? speakMixedText(
-            cleaned,
-            getBCP47(targetLangRef.current, 'tts'),
-            getNativeLangBcp47(nativeLangRef.current),
-            phaseRef.current,
-          ).catch(() => {})
-        : Promise.resolve();
-      speechPromise.then(() => {
-        setAiTurnActive(false);
-        if (pendingCelebrationRef.current) {
-          setCompletionResult(pendingCelebrationRef.current);
-          pendingCelebrationRef.current = null;
-        }
-      });
+      analysisDoneRef.current = true;
+      tryShowCelebration();
 
       const latestUser = [...conversations].reverse().find(c => c.speaker === 'user');
       if (latestUser?.corrections?.length) {
@@ -392,7 +405,15 @@ export default function AvatarModePage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
-                    sendGreeting({ onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null) })
+                    sendGreeting({
+                      onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
+                      onTextDone: (t: string) => {
+                        const cleaned = cleanDisplay(t);
+                        if (!mutedRef.current && cleaned) {
+                          speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
+                        }
+                      },
+                    })
                       .then((fullText) => {
                         setStreamingText(null);
                         const cleaned = cleanDisplay(fullText);

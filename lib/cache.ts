@@ -1,8 +1,9 @@
 import { Redis } from '@upstash/redis';
 
 const TTL = {
-  AVATARS: 300,        // 5 min
-  SESSION: 60,         // 1 min (session state changes often)
+AVATARS: 300,        // 5 min
+USER_PROFILE: 300,   // 5 min (name/country change rarely but can be edited in settings)
+SESSION: 60,         // 1 min (session state changes often)
   SCENARIO: 3600,      // 1 hr (scenarios never change)
   VOCABULARY: 3600,    // 1 hr
   GOALS: 3600,         // 1 hr
@@ -58,6 +59,7 @@ function key(prefix: string, ...parts: (string | number)[]): string {
 
 export const cacheKeys = {
   userAvatars: (userId: string) => key('avatars', userId),
+  userProfile: (userId: string) => key('user-profile', userId),
   session: (sessionId: number) => key('session', sessionId),
   scenario: (scenarioId: number) => key('scenario', scenarioId),
   scenarioLocalization: (scenarioId: number, lang: string) => key('scenario-loc', scenarioId, lang),

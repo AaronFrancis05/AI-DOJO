@@ -329,9 +329,14 @@ export async function POST(req: Request) {
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
     const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+    // Defense-in-depth: legacy seed content teaches fill-in-the-blank templates
+    // ("わたしは___です"). Substitute the learner's real profile name so a blank
+    // never reaches the model or the learner as an unresolved artifact.
+    const resolveBlank = (text: string) =>
+      turnData.learnerName ? text.replace(/___/g, turnData.learnerName) : text;
     const displayVocab = (v: (typeof vocabRows)[number]) => {
-      const phoneticPart = showPhonetic && v.phonetic ? ` (${v.phonetic})` : '';
-      return `"${v.targetText}"${phoneticPart}`;
+      const phoneticPart = showPhonetic && v.phonetic ? ` (${resolveBlank(v.phonetic)})` : '';
+      return `"${resolveBlank(v.targetText)}"${phoneticPart}`;
     };
 
     // Same-language lessons (e.g. an English course for an English speaker)
@@ -340,18 +345,19 @@ export async function POST(req: Request) {
     // An 'en' course with no curated vocab localizations overwrites targetText
     // to equal the translation, so guard against printing the same string twice.
     const sameLangWordLine = (v: (typeof vocabRows)[number]): string => {
-      const phrase = String(v.targetText || '').trim();
-      const meaning = String(v.translation || '').trim();
+      const phrase = resolveBlank(String(v.targetText || '').trim());
+      const meaning = resolveBlank(String(v.translation || '').trim());
       const distinct = phrase && meaning && phrase.toLowerCase() !== meaning.toLowerCase();
       const core = distinct ? `"${phrase}" — ${meaning}` : (phrase || meaning);
-      return v.usageTip ? `${core} — ${v.usageTip}` : core;
+      const tip = v.usageTip ? resolveBlank(v.usageTip) : null;
+      return tip ? `${core} — ${tip}` : core;
     };
 
     const vocabBlock = vocabRows.length > 0
       ? `Key vocabulary for this lesson:\n${
           isSameLanguage
             ? vocabRows.map((v, i) => `  ${i + 1}. ${sameLangWordLine(v)}`).join('\n')
-            : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${v.translation}"`).join('\n')
+            : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${resolveBlank(v.translation)}"`).join('\n')
         }`
       : '';
 
@@ -359,7 +365,7 @@ export async function POST(req: Request) {
     // actual (already-localized) lesson vocabulary so they demonstrate the
     // format in the real target language instead of hardcoded Japanese.
     const icebreakerExample = vocabRows[0]
-      ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${vocabRows[0].translation}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
+      ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${resolveBlank(vocabRows[0].translation)}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
       : `Example: In ${targetLangName}, we say ⟦${targetLangName} word (romaji)⟧ — it means 'the meaning'. Can you say ⟦${targetLangName} word (romaji)⟧?`;
 
     // Deterministically hands off to the next word when we bypass generation
@@ -382,7 +388,7 @@ export async function POST(req: Request) {
         // below still advances the phase instead of looping forever.
         : `${icebreakerPhrase(forcedAdvanceLang, 'ack')} 【VOCAB ${currentVocabIndex + 1}】 ${icebreakerPhrase(forcedAdvanceLang, 'allDone')}`;
     const guidedExample = vocabRows[0]
-      ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${vocabRows[0].translation}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
+      ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${resolveBlank(vocabRows[0].translation)}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
       : `Example: Now you try: ⟦${targetLangName} word (romaji)⟧`;
     const unguidedExample = vocabRows.length >= 2
       ? `Example: ⟦${displayVocab(vocabRows[0])}⟧ ⟦${displayVocab(vocabRows[1])}⟧？`
@@ -393,7 +399,7 @@ export async function POST(req: Request) {
     const goalsBlock = goals.map(g => {
       const done = completedSequenceOrders.includes(g.sequenceOrder);
       const status = done ? '[COVERED]' : '[PENDING]';
-      return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${g.goalText}`;
+      return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${resolveBlank(g.goalText)}`;
     }).join('\n');
 
     const modeInstruction = behaviorMode === 'trouble'
@@ -679,6 +685,10 @@ RULES:
             const tail = streamSanitizer.flush();
             if (tail) send(JSON.stringify({ type: 'token', text: tail }));
           }
+
+          // Let the client start TTS as soon as the reply text is ready,
+          // without waiting for the analysis/phase-transition round-trips.
+          send(JSON.stringify({ type: 'text_done', fullText: sanitizeStreamedChunk(fullAiText) }));
 
           // Keep icebreakerVocabIndex/Attempts authoritative instead of trusting
           // the model to self-track: advance state directly when we forced the

@@ -7,6 +7,8 @@ import {
   scenarioGoals,
   goalCompletions,
   vocabulary,
+  users,
+  countries,
 } from '../../src/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
 import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
@@ -138,6 +140,10 @@ export interface SessionTurnData {
   /** True when a curated localization row exists for this scenario in the session's native or target language. */
   scenarioLocalized: boolean;
   currentPhase: SessionPhase;
+  /** The signed-in learner's real profile name (may be empty for guest-style accounts). */
+  learnerName: string;
+  /** The learner's country display name, or null when unset/unknown. */
+  learnerCountry: string | null;
 }
 
 /**
@@ -158,7 +164,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       return r;
     })();
 
-  const [conversationRows, goalsResult, completionsResult, rawSituationResult] = await Promise.all([
+  const [conversationRows, goalsResult, completionsResult, rawSituationResult, learnerProfile] = await Promise.all([
     db
       .select()
       .from(conversations)
@@ -190,6 +196,21 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
           return r;
         })()
       : Promise.resolve(null),
+
+    (async (): Promise<{ name: string; countryName: string | null }> => {
+      const k = cacheKeys.userProfile(session.userId);
+      const c = await cacheGet<{ name: string; countryName: string | null }>(k);
+      if (c) return c;
+      const [r] = await db
+        .select({ name: users.name, countryName: countries.name })
+        .from(users)
+        .leftJoin(countries, eq(users.countryCode, countries.code))
+        .where(eq(users.id, session.userId))
+        .limit(1);
+      const profile = { name: r?.name ?? '', countryName: r?.countryName ?? null };
+      await cacheSet(k, profile, TTL.USER_PROFILE);
+      return profile;
+    })(),
   ]);
 
   const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
@@ -370,6 +391,8 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
     isSameLanguage,
     scenarioLocalized,
     currentPhase,
+    learnerName: learnerProfile.name,
+    learnerCountry: learnerProfile.countryName,
   };
 }
 
@@ -401,5 +424,7 @@ export async function analyzeTurn(input: {
     situationLearningGoals,
     data.targetLanguage,
     data.nativeLanguage,
+    data.learnerName,
+    data.learnerCountry,
   );
 }
