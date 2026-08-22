@@ -1,4 +1,4 @@
-import { getTargetLangConfig, getNativeLangName } from './language';
+import { getTargetLangConfig, getNativeLangName, TARGET_LANGUAGES } from './language';
 import { getDifficultyTierDescription, getAppropriatenessRubric } from './language-packs';
 import { getAIProvider } from './ai-providers';
 import type { ChatTurn } from './ai-providers';
@@ -84,15 +84,13 @@ export interface AIResponseAnalysis {
   scenarioComplete: boolean;
 }
 
-const TARGET_LANG_NAMES: Record<string, string> = {
-  ja: 'Japanese',
-  en: 'English',
-};
+const TARGET_LANG_NAMES: Record<string, string> = Object.fromEntries(
+  TARGET_LANGUAGES.map(l => [l.code, l.name]),
+);
 
-const TARGET_LANG_NATIVE: Record<string, string> = {
-  ja: '日本語',
-  en: 'English',
-};
+const TARGET_LANG_NATIVE: Record<string, string> = Object.fromEntries(
+  TARGET_LANGUAGES.map(l => [l.code, l.nativeName]),
+);
 
 export async function analyzeAndGenerateTurn(
   userInput: string,

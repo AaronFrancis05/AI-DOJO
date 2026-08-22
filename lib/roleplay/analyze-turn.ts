@@ -21,6 +21,9 @@ import {
   getTargetScenarioLocalization,
   getTargetVocabLocalizations,
   applyTargetLanguageVocab,
+  getSituationLocalization,
+  getTargetSituationLocalization,
+  applySituationLocalization,
 } from '../localization';
 
 export const MAX_ICEBREAKER_VOCAB = 5;
@@ -153,7 +156,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       return r;
     })();
 
-  const [conversationRows, goalsResult, completionsResult, situationResult] = await Promise.all([
+  const [conversationRows, goalsResult, completionsResult, rawSituationResult] = await Promise.all([
     db
       .select()
       .from(conversations)
@@ -206,6 +209,25 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
   const nativeLanguage = session.nativeLanguage ?? 'en';
   const isSameLanguage = targetLanguage === nativeLanguage;
   const currentPhase = session.phase as SessionPhase;
+
+  let situationResult = rawSituationResult;
+  if (situationResult) {
+    const [nativeSituationLoc, targetSituationLoc] = await Promise.all([
+      nativeLanguage !== 'en' ? getSituationLocalization(situationResult.id, nativeLanguage) : Promise.resolve(null),
+      targetLanguage && targetLanguage !== 'en' ? getTargetSituationLocalization(situationResult.id, targetLanguage) : Promise.resolve(null),
+    ]);
+    // Native-language localization first (instructional text a non-English
+    // speaker can understand), then target-language last so the roleplay
+    // content the learner actually practices wins.
+    if (nativeSituationLoc) situationResult = applySituationLocalization(situationResult, nativeSituationLoc);
+    if (targetSituationLoc) situationResult = applySituationLocalization(situationResult, targetSituationLoc);
+    if (!targetSituationLoc && targetLanguage && targetLanguage !== 'ja' && targetLanguage !== 'en') {
+      console.warn(
+        `[LOCALIZATION] Situation ${situationResult.id} has no ${targetLanguage} localization — the ` +
+          `scenario setting may fall back to the Japan-shaped base text. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage}`,
+      );
+    }
+  }
 
   let vocabRows = currentPhase === 'orientation' || currentPhase === 'icebreaker' || currentPhase === 'guided'
     ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {

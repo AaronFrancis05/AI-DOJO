@@ -114,6 +114,19 @@ export const vocabularyLocalizations = pgTable('vocabulary_localizations', {
   uniqueVocabLang: uniqueIndex('uq_vocabulary_localizations_key').on(table.vocabularyId, table.languageCode),
 }));
 
+export const situationLocalizations = pgTable('situation_localizations', {
+  id:            serial('id').primaryKey(),
+  situationId:   integer('situation_id').references(() => situations.id, { onDelete: 'cascade' }).notNull(),
+  languageCode:  varchar('language_code', { length: 10 }).notNull(),
+  title:         varchar('title', { length: 120 }),
+  context:       text('context'),
+  learningGoals: text('learning_goals'),
+  focusPills:    text('focus_pills'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueSituationLang: uniqueIndex('uq_situation_localizations_key').on(table.situationId, table.languageCode),
+}));
+
 export const scenarioLocalizations = pgTable('scenario_localizations', {
   id:                serial('id').primaryKey(),
   scenarioId:        integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
@@ -530,6 +543,11 @@ export const situationsRelations = relations(situations, ({ one, many }) => ({
   domain:     one(domains, { fields: [situations.domainId], references: [domains.id] }),
   scenarios:  many(scenarios),
   sessions:   many(sessions),
+  localizations: many(situationLocalizations),
+}));
+
+export const situationLocalizationsRelations = relations(situationLocalizations, ({ one }) => ({
+  situation: one(situations, { fields: [situationLocalizations.situationId], references: [situations.id] }),
 }));
 
 export const charactersRelations = relations(characters, ({ one }) => ({

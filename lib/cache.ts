@@ -65,6 +65,7 @@ export const cacheKeys = {
   vocabLocalizations: (scenarioId: number, lang: string) => key('vocab-loc', scenarioId, lang),
   goals: (scenarioId: number) => key('goals', scenarioId),
   situation: (situationId: number) => key('situation', situationId),
+  situationLocalization: (situationId: number, lang: string) => key('situation-loc', situationId, lang),
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
 };

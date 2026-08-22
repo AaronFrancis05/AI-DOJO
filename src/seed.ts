@@ -1,14 +1,54 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { db } from './db';
 import bcrypt from 'bcryptjs';
 import { eq, inArray, sql } from 'drizzle-orm';
 import {
-  users, scenarios, vocabulary, scenarioGoals,
+  users, scenarios, situations, domains, vocabulary, scenarioGoals,
   sessions, conversations, corrections, evaluations,
   goalCompletions, vocabularyEncounters,
-  scenarioLocalizations, vocabularyLocalizations,
+  scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
   countries, scenarioSettings,
   courses, courseLevels, units, lessons, lessonPhases,
 } from './schema';
+
+interface ScenarioLocFixtureRow {
+  scenario: string;
+  languageCode: string;
+  title: string | null;
+  context: string | null;
+  learningGoals: string | null;
+  aiCharacterName: string | null;
+  aiCharacterRole: string | null;
+  userCharacterName: string | null;
+  userCharacterRole: string | null;
+}
+
+interface SituationLocFixtureRow {
+  domainSlug: string;
+  situation: string;
+  languageCode: string;
+  title: string | null;
+  context: string | null;
+  learningGoals: string | null;
+  focusPills: string | null;
+}
+
+interface VocabLocFixtureRow {
+  scenario: string;
+  targetText: string;
+  languageCode: string;
+  translation: string | null;
+  usageTip: string | null;
+}
+
+interface LocalizationFixture {
+  version: number;
+  counts: { scenarios: number; situations: number; vocabulary: number };
+  scenarioLocalizations: ScenarioLocFixtureRow[];
+  situationLocalizations: SituationLocFixtureRow[];
+  vocabularyLocalizations: VocabLocFixtureRow[];
+}
 
 async function seed() {
   try {
@@ -363,7 +403,7 @@ async function seed() {
       .where(inArray(vocabulary.scenarioId, sIds));
 
     const missingVocabulary = seedVocabulary.filter(v =>
-      !existingVocabulary.some(e => e.scenarioId === v.scenarioId && e.targetText === v.targetText && e.languageCode === v.languageCode),
+      !existingVocabulary.some(e => e.scenarioId === v.scenarioId && e.targetText === v.targetText && e.languageCode === (v.languageCode ?? 'ja')),
     );
     if (missingVocabulary.length > 0) {
       await db.insert(vocabulary).values(missingVocabulary);
@@ -977,6 +1017,153 @@ const [s1Row] = await db.insert(sessions).values({
       await db.insert(vocabularyLocalizations).values([
         { vocabularyId: lgLocalizedVocab[0].id, languageCode: 'lg', translation: 'Nsanyuse okukutukirirako (okulabirirako okusooka)', usageTip: 'Ekigambo kino kikozesebwa ku mulundi gw okusooka okusisinkana omuntu.' },
       ]).onConflictDoNothing();
+    }
+
+    // ================================================================
+    // 5b. LOCALIZATION FIXTURE (exported snapshot)
+    // Regenerate via: npm run db:export-localizations
+    // Rows are keyed by business keys (titles/slugs), not numeric ids,
+    // so entries whose parent does not exist yet are skipped safely.
+    // ================================================================
+    console.log('Replaying localization fixture...');
+    const fixturePath = fileURLToPath(new URL('./data/localizations.json', import.meta.url));
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as LocalizationFixture;
+
+    const locParentScenarios = await db.select({ id: scenarios.id, title: scenarios.title }).from(scenarios);
+    const scenarioIdByTitle = new Map(locParentScenarios.map((r) => [r.title, r.id]));
+
+    const locParentSituations = await db
+      .select({ id: situations.id, title: situations.title, domainSlug: domains.slug })
+      .from(situations)
+      .innerJoin(domains, eq(situations.domainId, domains.id));
+    const situationIdByKey = new Map(
+      locParentSituations.map((r) => [`${r.domainSlug}\u0000${r.title}`, r.id] as const),
+    );
+
+    const locParentVocab = await db
+      .select({ id: vocabulary.id, targetText: vocabulary.targetText, scenarioTitle: scenarios.title })
+      .from(vocabulary)
+      .innerJoin(scenarios, eq(vocabulary.scenarioId, scenarios.id));
+    const locVocabIdsWithRows = new Set(
+      (await db.select({ id: vocabularyLocalizations.vocabularyId }).from(vocabularyLocalizations)).map((r) => r.id),
+    );
+    const vocabIdByKey = new Map<string, number>();
+    for (const r of locParentVocab) {
+      const key = `${r.scenarioTitle}\u0000${r.targetText}`;
+      const prev = vocabIdByKey.get(key);
+      if (prev === undefined || (!locVocabIdsWithRows.has(prev) && locVocabIdsWithRows.has(r.id))) {
+        vocabIdByKey.set(key, r.id);
+      }
+    }
+
+    const existingScenarioLocKeys = new Set(
+      (await db.select({
+        scenarioId: scenarioLocalizations.scenarioId,
+        languageCode: scenarioLocalizations.languageCode,
+      }).from(scenarioLocalizations)).map((r) => `${r.scenarioId}\u0000${r.languageCode}`),
+    );
+    const existingSituationLocKeys = new Set(
+      (await db.select({
+        situationId: situationLocalizations.situationId,
+        languageCode: situationLocalizations.languageCode,
+      }).from(situationLocalizations)).map((r) => `${r.situationId}\u0000${r.languageCode}`),
+    );
+    const existingVocabLocKeys = new Set(
+      (await db.select({
+        vocabularyId: vocabularyLocalizations.vocabularyId,
+        languageCode: vocabularyLocalizations.languageCode,
+      }).from(vocabularyLocalizations)).map((r) => `${r.vocabularyId}\u0000${r.languageCode}`),
+    );
+
+    let scenLocInserted = 0;
+    const scenLocSkippedNoParent: string[] = [];
+    const scenLocValues = fixture.scenarioLocalizations.flatMap((row) => {
+      const parentId = scenarioIdByTitle.get(row.scenario);
+      if (!parentId) {
+        scenLocSkippedNoParent.push(`${row.scenario} (${row.languageCode})`);
+        return [];
+      }
+      if (existingScenarioLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        scenarioId: parentId,
+        languageCode: row.languageCode,
+        title: row.title,
+        context: row.context,
+        learningGoals: row.learningGoals,
+        aiCharacterName: row.aiCharacterName,
+        aiCharacterRole: row.aiCharacterRole,
+        userCharacterName: row.userCharacterName,
+        userCharacterRole: row.userCharacterRole,
+      }];
+    });
+
+    let sitLocInserted = 0;
+    const sitLocSkippedNoParent: string[] = [];
+    const sitLocValues = fixture.situationLocalizations.flatMap((row) => {
+      const parentId = situationIdByKey.get(`${row.domainSlug}\u0000${row.situation}`);
+      if (!parentId) {
+        sitLocSkippedNoParent.push(`${row.domainSlug}/${row.situation} (${row.languageCode})`);
+        return [];
+      }
+      if (existingSituationLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        situationId: parentId,
+        languageCode: row.languageCode,
+        title: row.title,
+        context: row.context,
+        learningGoals: row.learningGoals,
+        focusPills: row.focusPills,
+      }];
+    });
+
+    let vocabLocInserted = 0;
+    const vocabLocSkippedNoParent: string[] = [];
+    const vocabLocValues = fixture.vocabularyLocalizations.flatMap((row) => {
+      const parentId = vocabIdByKey.get(`${row.scenario}\u0000${row.targetText}`);
+      if (!parentId) {
+        vocabLocSkippedNoParent.push(`${row.scenario}/${row.targetText} (${row.languageCode})`);
+        return [];
+      }
+      if (existingVocabLocKeys.has(`${parentId}\u0000${row.languageCode}`)) return [];
+      return [{
+        vocabularyId: parentId,
+        languageCode: row.languageCode,
+        translation: row.translation,
+        usageTip: row.usageTip,
+      }];
+    });
+
+    const FIXTURE_CHUNK_SIZE = 200;
+    for (let i = 0; i < scenLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(scenarioLocalizations)
+        .values(scenLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: scenarioLocalizations.id });
+      scenLocInserted += inserted.length;
+    }
+    for (let i = 0; i < sitLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(situationLocalizations)
+        .values(sitLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: situationLocalizations.id });
+      sitLocInserted += inserted.length;
+    }
+    for (let i = 0; i < vocabLocValues.length; i += FIXTURE_CHUNK_SIZE) {
+      const inserted = await db.insert(vocabularyLocalizations)
+        .values(vocabLocValues.slice(i, i + FIXTURE_CHUNK_SIZE))
+        .onConflictDoNothing()
+        .returning({ id: vocabularyLocalizations.id });
+      vocabLocInserted += inserted.length;
+    }
+
+    console.log(`Localization fixture replayed: ${scenLocInserted}/${fixture.counts.scenarios} scenario, ` +
+      `${sitLocInserted}/${fixture.counts.situations} situation, ${vocabLocInserted}/${fixture.counts.vocabulary} vocab row(s) inserted.`);
+    if (scenLocSkippedNoParent.length > 0 || sitLocSkippedNoParent.length > 0 || vocabLocSkippedNoParent.length > 0) {
+      console.log(`Localization fixture parents not found yet (re-run seed after their seeder): ` +
+        `${scenLocSkippedNoParent.length} scenario, ${sitLocSkippedNoParent.length} situation, ${vocabLocSkippedNoParent.length} vocab entr(ies) skipped.`);
+      for (const s of [...scenLocSkippedNoParent.slice(0, 3), ...sitLocSkippedNoParent.slice(0, 3), ...vocabLocSkippedNoParent.slice(0, 3)]) {
+        console.log(`  [skip-no-parent] ${s}`);
+      }
     }
 
     // ================================================================
