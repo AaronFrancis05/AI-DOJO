@@ -138,6 +138,14 @@ export default async function LandingPage() {
           道
         </div>
 
+        {/* Ink-wash pagoda illustration, bottom-left */}
+        <img
+          src="/landing/house.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-0 left-0 hidden w-56 select-none opacity-70 sm:block lg:w-72"
+        />
+
         <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-16 sm:px-6 sm:pt-20 sm:pb-20 lg:pt-24">
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
             {/* LEFT COLUMN */}
@@ -419,8 +427,14 @@ export default async function LandingPage() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section id="how" className="scroll-mt-16 border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+      <section id="how" className="scroll-mt-16 relative overflow-hidden border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
+        <img
+          src="/landing/banboo.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-6 bottom-0 hidden w-72 select-none opacity-80 lg:block xl:w-80"
+        />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-dojo-accent">How It Works</p>
           <h2 className="mt-3 text-center font-display text-2xl font-bold text-dojo-text-primary sm:text-3xl">
             Simple steps to fluency
@@ -512,8 +526,15 @@ export default async function LandingPage() {
       </section>
 
       {/* ── BOTTOM CTA BANNER ── */}
-      <section id="cta" className="scroll-mt-16 mx-4 my-16 max-w-7xl overflow-hidden rounded-2xl border border-dojo-accent/30 bg-dojo-surface-raised shadow-[0_24px_80px_-32px_rgba(193,57,43,0.35)] sm:mx-6 lg:mx-auto sm:my-20">
-        <div className="relative flex flex-col items-center justify-between gap-6 px-6 py-12 text-center sm:flex-row sm:px-10 sm:py-14 sm:text-left">
+      <section id="cta" className="scroll-mt-16 relative mx-4 my-16 max-w-7xl overflow-hidden rounded-2xl border border-dojo-accent/30 bg-dojo-surface-raised shadow-[0_24px_80px_-32px_rgba(193,57,43,0.35)] sm:mx-6 lg:mx-auto sm:my-20">
+        <img
+          src="/landing/dojo-gate.png"
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-6 left-0 hidden w-48 select-none opacity-90 sm:block lg:w-60"
+        />
+
+        <div className="relative flex flex-col items-center justify-between gap-6 px-6 py-12 text-center sm:flex-row sm:px-10 sm:py-14 sm:text-left sm:pl-56 lg:pl-64">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -left-8 -top-8 select-none font-display text-9xl leading-none text-dojo-accent/10"
@@ -541,7 +562,6 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
       <footer className="border-t border-dojo-border bg-dojo-surface/60">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">

@@ -28,7 +28,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#0EA5E9',
     badgeClass: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
     glowClass: 'from-sky-500/25 via-sky-500/5 to-transparent',
-    portraitSrc: '/characters/phase-orientation.png',
+    portraitSrc: '/characters/session_phase_avatars/orientation_avatar.png',
   },
   icebreaker: {
     key: 'icebreaker',
@@ -40,7 +40,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#D946EF',
     badgeClass: 'bg-dojo-icebreaker/20 text-dojo-icebreaker border-dojo-icebreaker/30',
     glowClass: 'from-dojo-icebreaker/25 via-dojo-icebreaker/5 to-transparent',
-    portraitSrc: '/characters/phase-icebreaker.png',
+    portraitSrc: '/characters/session_phase_avatars/icebreaker_avatar.png',
   },
   guided: {
     key: 'guided',
@@ -52,7 +52,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#16A34A',
     badgeClass: 'bg-dojo-success/20 text-dojo-success border-dojo-success/30',
     glowClass: 'from-dojo-success/25 via-dojo-success/5 to-transparent',
-    portraitSrc: '/characters/phase-guided.png',
+    portraitSrc: '/characters/session_phase_avatars/guidephase_avatar.png',
   },
   unguided: {
     key: 'unguided',
@@ -64,7 +64,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#D97706',
     badgeClass: 'bg-dojo-warning/20 text-dojo-warning border-dojo-warning/30',
     glowClass: 'from-dojo-warning/25 via-dojo-warning/5 to-transparent',
-    portraitSrc: '/characters/phase-unguided.png',
+    portraitSrc: '/characters/session_phase_avatars/unguidedphase_avatar.png',
   },
   evaluation: {
     key: 'evaluation',
@@ -76,7 +76,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#3B82F6',
     badgeClass: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     glowClass: 'from-blue-500/25 via-blue-500/5 to-transparent',
-    portraitSrc: '/characters/phase-evaluation.png',
+    portraitSrc: '/characters/session_phase_avatars/evalauation_avatar.png',
   },
   completed: {
     key: 'completed',
@@ -88,7 +88,7 @@ export const PHASE_META: Record<SessionPhaseKey, PhaseMeta> = {
     hex: '#F0A93B',
     badgeClass: 'bg-dojo-streak/20 text-dojo-streak border-dojo-streak/30',
     glowClass: 'from-dojo-streak/25 via-dojo-streak/5 to-transparent',
-    portraitSrc: '/characters/phase-completed.png',
+    portraitSrc: '/characters/session_phase_avatars/lessoncomplete_avatar.png',
   },
 };
 

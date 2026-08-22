@@ -50,7 +50,7 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
 
         <div className="relative mt-6 flex items-center justify-center">
           <img
-            src="/characters/lesson-complete.png"
+            src="/characters/session_phase_avatars/lessoncomplete_avatar.png"
             alt=""
             className={`h-36 w-36 rounded-full object-cover shadow-2xl ${reduced ? '' : 'animate-glow-pulse'}`}
             style={{ boxShadow: '0 0 0 4px rgba(240,169,59,0.5), 0 0 40px rgba(240,169,59,0.35)' }}
