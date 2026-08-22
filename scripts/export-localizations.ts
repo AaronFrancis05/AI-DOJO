@@ -154,14 +154,17 @@ async function main() {
     })),
   };
 
+  // Locale-independent ordering: the fixture is committed, so its byte order
+  // must not depend on each machine's ICU/default locale (localeCompare does).
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
   fixture.scenarioLocalizations.sort((a, b) =>
-    a.scenario.localeCompare(b.scenario) || a.languageCode.localeCompare(b.languageCode));
+    cmp(a.scenario, b.scenario) || cmp(a.languageCode, b.languageCode));
   fixture.situationLocalizations.sort((a, b) =>
-    a.domainSlug.localeCompare(b.domainSlug) || a.situation.localeCompare(b.situation)
-    || a.languageCode.localeCompare(b.languageCode));
+    cmp(a.domainSlug, b.domainSlug) || cmp(a.situation, b.situation)
+    || cmp(a.languageCode, b.languageCode));
   fixture.vocabularyLocalizations.sort((a, b) =>
-    a.scenario.localeCompare(b.scenario) || a.targetText.localeCompare(b.targetText)
-    || a.languageCode.localeCompare(b.languageCode));
+    cmp(a.scenario, b.scenario) || cmp(a.targetText, b.targetText)
+    || cmp(a.languageCode, b.languageCode));
 
   await mkdir(dirname(FIXTURE_PATH), { recursive: true });
   await writeFile(FIXTURE_PATH, JSON.stringify(fixture, null, 2) + '\n', 'utf8');

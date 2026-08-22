@@ -240,7 +240,14 @@ async function main(): Promise<void> {
   const langFilter = parseArg('lang');
   const only = parseArg('only'); // 'scenarios' | 'situations' | null (both)
   const limitRaw = parseArg('limit');
-  const limit = limitRaw ? Number(limitRaw) : null;
+  let limit: number | null = null;
+  if (limitRaw !== null && limitRaw !== undefined) {
+    const parsedLimit = Number(limitRaw);
+    if (!Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+      throw new Error(`Invalid --limit value "${limitRaw}" — expected a positive number. Refusing to run without a limit.`);
+    }
+    limit = Math.floor(parsedLimit);
+  }
   const dryRun = hasFlag('dry-run');
 
   console.log('=== Target-Language Localization Backfill ===');

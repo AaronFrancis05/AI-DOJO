@@ -7,13 +7,13 @@
 - Voice UI polish: orb volume meter, status pill, token-based light/dark colors, real `skillLevel` and `userCharacterRole`, functional chat filter tabs (All/Key Phrases/Notes), suggested replies replaced dead buttons.
 - Conversation chat moved OUT of the central stage (orb + mic area) into a left slide-out panel toggled by the "Show Chat" button; caption bubble removed from `VoiceOnlyStage.tsx`.
 - `/remember`, `/recover`, and `/agents/remember` are not built-in opencode commands; created a custom `remember` subagent at `~/.config/opencode/agents/remember.md` so `/agents/remember <note>` saves to `MEMORY.md`.
-- Working repo: `C:\Users\ARON\Desktop\ai_dojo\AI-DOJO`, branch `dev`.
+- Working repo: this repository (`AI-DOJO`), branch `dev`.
 ## 2026-08-22
 
 - Target-language localization backfill COMPLETE. New situation_localizations table (migration drizzle/0031_tan_swordsman.sql; 
-pm run db:migrate is broken by a stale backlog failing at 0002 - apply single migrations by executing the SQL + inserting the journal hash/when from drizzle/meta/_journal.json into drizzle.__drizzle_migrations). Code: situationLocalizations in src/schema.ts; getTargetSituationLocalization/pplySituationLocalization in lib/localization.ts + cache key in lib/cache.ts; wired into lib/roleplay/analyze-turn.ts; TARGET_LANG_NAMES/NATIVE now derived from TARGET_LANGUAGES in lib/ai-engine.ts.
+pm run db:migrate is broken by a stale backlog failing at 0002 - EMERGENCY-ONLY workaround (after backup + schema verification + rollback plan): execute the single migration's SQL directly and record its hash/when from drizzle/meta/_journal.json into drizzle.__drizzle_migrations; do not treat this as the default path - journal reconciliation is pending deliberate work). Code: situationLocalizations in src/schema.ts; getTargetSituationLocalization/pplySituationLocalization in lib/localization.ts + cache key in lib/cache.ts; wired into lib/roleplay/analyze-turn.ts; TARGET_LANG_NAMES/NATIVE now derived from TARGET_LANGUAGES in lib/ai-engine.ts.
 - Backfill script: scripts/backfill-target-localizations.ts (
-pm run db:backfill-target-localizations, flags --lang= --limit= --only= --dry-run). Culturally reimagines (not translates) all 41 scenarios + 64 situations per target language via Gemini flash-lite; idempotent (skips existing rows). Final DB state: 30/30 target languages at 41/41 scenarios and 64/64 situations (3,778 rows total). Note: 
+pm run db:backfill-target-localizations, flags --lang= --limit= --only= --dry-run). Culturally reimagines (not translates) all 41 scenarios + 64 situations per target language via Gemini flash-lite; idempotent (skips existing rows). Final DB state: 30/30 target languages at 41/41 scenarios and 64/64 situations = 3,150 rows, plus 2,160 vocabulary_localizations (72 items x 30 langs) and 10 legacy `ne` scenario rows = 1,240 scenario_localizations total (5,320 localization rows overall). Note: th
 e scenario_localizations 10/41 rows are legacy for a NATIVE-UI language, out of scope. Transient Gemini JSON-truncation failures on km/my were cleared by idempotent reruns.
 
 ## 2026-08-22 (localization fixture seeding)

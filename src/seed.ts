@@ -286,7 +286,17 @@ async function seed() {
     // 3. VOCABULARY (5-8 items per scenario)
     // ================================================================
     console.log('Inserting vocabulary...');
-    const seedVocabulary = [
+    interface SeedVocabularyRow {
+      scenarioId: number;
+      targetText: string;
+      phonetic: string;
+      translation: string;
+      category: string;
+      usageTip: string;
+      formalityLevel: string;
+      languageCode?: string;
+    }
+    const seedVocabulary: SeedVocabularyRow[] = [
       // Scenario 1: First Meeting
       { scenarioId: sIds[0], targetText: 'はじめまして', phonetic: 'Hajimemashite', translation: 'Nice to meet you (first meeting only)', category: 'greeting', usageTip: 'Only used the very first time you meet someone. Never used again with the same person.', formalityLevel: 'polite' },
       { scenarioId: sIds[0], targetText: 'わたしは___です', phonetic: 'Watashi wa ___ desu', translation: 'I am ___', category: 'self-introduction', usageTip: 'The standard self-introduction template. Say your name where ___ is, then bow slightly.', formalityLevel: 'polite' },

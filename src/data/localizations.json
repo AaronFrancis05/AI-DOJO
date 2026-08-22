@@ -38282,216 +38282,6 @@
     },
     {
       "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "ar",
-      "translation": "جئت من أوغندا",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "bn",
-      "translation": "আমি উগান্ডা থেকে এসেছি",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "de",
-      "translation": "Ich komme aus Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "el",
-      "translation": "Ήρθα από την Ουγκάντα",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "en",
-      "translation": "I came from Uganda",
-      "usageTip": "Use this to state where you are from. Replace 'Uganda' with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "es",
-      "translation": "Vengo de Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "fa",
-      "translation": "من از اوگاندا آمده‌ام",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "fr",
-      "translation": "Je viens d'Ouganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "he",
-      "translation": "אני מאוגנדה",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "hi",
-      "translation": "मैं युगांडा से आया/आयी हूँ",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "id",
-      "translation": "Saya datang dari Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "it",
-      "translation": "Vengo dall'Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "km",
-      "translation": "ខ្ញុំមកពីប្រទេសអ៊ូហ្គង់ដា",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "ko",
-      "translation": "우간다에서 왔습니다",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "lg",
-      "translation": "Nva mu Uganda",
-      "usageTip": "Kozesa 'Nva mu ___' okwogera n'ensi gye wava."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "lo",
-      "translation": "ຂ້ອຍມາຈາກອູການດາ",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "ms",
-      "translation": "Saya datang dari Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "my",
-      "translation": "ယူဂန္ဓာမှ လာပါသည်",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "nl",
-      "translation": "Ik kom uit Oeganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "pl",
-      "translation": "Jestem z Ugandy",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "pt",
-      "translation": "Vim de Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "ru",
-      "translation": "Я из Уганды",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "sw",
-      "translation": "Nilitoka Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "th",
-      "translation": "ฉันมาจากประเทศอูกันดา",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "tl",
-      "translation": "Taga-Uganda ako",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "tr",
-      "translation": "Uganda'dan geldim",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "uk",
-      "translation": "Я з Уганди",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "ur",
-      "translation": "میں یوگینڈا سے آیا ہوں/آئی ہوں",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "vi",
-      "translation": "Tôi đến từ Uganda",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
-      "targetText": "ウガンダからきました",
-      "languageCode": "zh",
-      "translation": "我来自乌干达",
-      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
-    },
-    {
-      "scenario": "First Meeting & Self Introduction",
       "targetText": "おなまえはなんですか",
       "languageCode": "ar",
       "translation": "ما اسمك؟",
@@ -39539,6 +39329,216 @@
       "languageCode": "zh",
       "translation": "我叫___",
       "usageTip": "The standard self-introduction template. Say your name where ___ is, then bow slightly."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "ar",
+      "translation": "جئت من أوغندا",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "bn",
+      "translation": "আমি উগান্ডা থেকে এসেছি",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "de",
+      "translation": "Ich komme aus Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "el",
+      "translation": "Ήρθα από την Ουγκάντα",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "en",
+      "translation": "I came from Uganda",
+      "usageTip": "Use this to state where you are from. Replace 'Uganda' with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "es",
+      "translation": "Vengo de Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "fa",
+      "translation": "من از اوگاندا آمده‌ام",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "fr",
+      "translation": "Je viens d'Ouganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "he",
+      "translation": "אני מאוגנדה",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "hi",
+      "translation": "मैं युगांडा से आया/आयी हूँ",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "id",
+      "translation": "Saya datang dari Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "it",
+      "translation": "Vengo dall'Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "km",
+      "translation": "ខ្ញុំមកពីប្រទេសអ៊ូហ្គង់ដា",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "ko",
+      "translation": "우간다에서 왔습니다",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "lg",
+      "translation": "Nva mu Uganda",
+      "usageTip": "Kozesa 'Nva mu ___' okwogera n'ensi gye wava."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "lo",
+      "translation": "ຂ້ອຍມາຈາກອູການດາ",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "ms",
+      "translation": "Saya datang dari Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "my",
+      "translation": "ယူဂန္ဓာမှ လာပါသည်",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "nl",
+      "translation": "Ik kom uit Oeganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "pl",
+      "translation": "Jestem z Ugandy",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "pt",
+      "translation": "Vim de Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "ru",
+      "translation": "Я из Уганды",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "sw",
+      "translation": "Nilitoka Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "th",
+      "translation": "ฉันมาจากประเทศอูกันดา",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "tl",
+      "translation": "Taga-Uganda ako",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "tr",
+      "translation": "Uganda'dan geldim",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "uk",
+      "translation": "Я з Уганди",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "ur",
+      "translation": "میں یوگینڈا سے آیا ہوں/آئی ہوں",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "vi",
+      "translation": "Tôi đến từ Uganda",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
+    },
+    {
+      "scenario": "First Meeting & Self Introduction",
+      "targetText": "ウガンダからきました",
+      "languageCode": "zh",
+      "translation": "我来自乌干达",
+      "usageTip": "Use this to state where you are from. Replaces kara with other country names."
     },
     {
       "scenario": "Job Interview at a Japanese Company",

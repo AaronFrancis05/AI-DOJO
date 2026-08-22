@@ -214,14 +214,14 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
   if (situationResult) {
     const [nativeSituationLoc, targetSituationLoc] = await Promise.all([
       nativeLanguage !== 'en' ? getSituationLocalization(situationResult.id, nativeLanguage) : Promise.resolve(null),
-      targetLanguage && targetLanguage !== 'en' ? getTargetSituationLocalization(situationResult.id, targetLanguage) : Promise.resolve(null),
+      targetLanguage ? getTargetSituationLocalization(situationResult.id, targetLanguage) : Promise.resolve(null),
     ]);
     // Native-language localization first (instructional text a non-English
     // speaker can understand), then target-language last so the roleplay
     // content the learner actually practices wins.
     if (nativeSituationLoc) situationResult = applySituationLocalization(situationResult, nativeSituationLoc);
     if (targetSituationLoc) situationResult = applySituationLocalization(situationResult, targetSituationLoc);
-    if (!targetSituationLoc && targetLanguage && targetLanguage !== 'ja' && targetLanguage !== 'en') {
+    if (!targetSituationLoc && targetLanguage && targetLanguage !== 'ja') {
       console.warn(
         `[LOCALIZATION] Situation ${situationResult.id} has no ${targetLanguage} localization — the ` +
           `scenario setting may fall back to the Japan-shaped base text. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage}`,
@@ -258,7 +258,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
 
   const scenarioLocs = await Promise.all([
     nativeLanguage !== 'en' ? getScenarioLocalization(scenarioId, nativeLanguage) : Promise.resolve(null),
-    targetLanguage && targetLanguage !== 'en' ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
+    targetLanguage ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
   ]);
 
   if (currentScenario) {

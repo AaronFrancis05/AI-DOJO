@@ -250,7 +250,9 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
     console.error('[auth-proxy] Origin check failed', {
       path,
       origin: request.headers.get('origin'),
-      appOrigin: getAppOrigin(),
+      // Never call getAppOrigin() here — it throws when APP_ORIGIN is unset
+      // in production, which would mask the original error before the 403.
+      appOrigin: process.env.APP_ORIGIN ?? '(unset)',
       error: err instanceof Error ? err.message : String(err),
     });
     return NextResponse.json({ error: 'Invalid Origin' }, { status: 403 });
