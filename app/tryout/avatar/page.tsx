@@ -52,7 +52,7 @@ function TryoutAvatarResolver() {
 }
 
 function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguage: string; nativeLanguage: string }) {
-  const { conversations, sending, limitReached, error, submitTurnStream, sendGreeting } = useGuestRoleplaySession({ targetLanguage, nativeLanguage });
+  const { conversations, sending, limitReached, completed, error, submitTurnStream, sendGreeting } = useGuestRoleplaySession({ targetLanguage, nativeLanguage });
 
   const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -98,7 +98,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
     } catch (e) {
       console.error(e);
     }
-  }, [sending, limitReached, submitTurnStream, targetLanguage, nativeLanguage]);
+  }, [sending, limitReached, completed, submitTurnStream, targetLanguage, nativeLanguage]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -115,7 +115,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
     await voice.start();
   }, [avatarMode, voice]);
 
-  if (limitReached) {
+  if (completed || limitReached) {
     return <TryoutCompleteScreen targetLanguage={targetLanguage} nativeLanguage={nativeLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
   }
 

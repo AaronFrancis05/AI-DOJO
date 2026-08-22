@@ -1,8 +1,10 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { PartyPopper, Sparkles } from 'lucide-react';
 import { getTargetLangConfig } from '@/lib/language';
+import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
 
 interface TryoutCompleteScreenProps {
   targetLanguage: string;
@@ -12,6 +14,11 @@ interface TryoutCompleteScreenProps {
 
 export function TryoutCompleteScreen({ targetLanguage, nativeLanguage, turnCount }: TryoutCompleteScreenProps) {
   const targetLangName = getTargetLangConfig(targetLanguage).name;
+  const { fireBurst } = useCelebrationConfetti();
+
+  useEffect(() => {
+    fireBurst('full');
+  }, [fireBurst]);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-dojo-canvas/95 backdrop-blur-sm px-4">

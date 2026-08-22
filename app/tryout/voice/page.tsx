@@ -53,7 +53,7 @@ function TryoutVoiceResolver() {
 }
 
 function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage: string; nativeLanguage: string }) {
-  const { conversations, sending, limitReached, error, submitTurnStream, sendGreeting } = useGuestRoleplaySession({ targetLanguage, nativeLanguage });
+  const { conversations, sending, limitReached, completed, error, submitTurnStream, sendGreeting } = useGuestRoleplaySession({ targetLanguage, nativeLanguage });
 
   const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -82,7 +82,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
   }, [conversations, chatOpen]);
 
   const handleUserUtterance = useCallback(async (text: string) => {
-    if (sending || !text.trim() || limitReached) return;
+    if (sending || !text.trim() || limitReached || completed) return;
     stopTts();
     resetStreamingTts();
     try {
@@ -99,7 +99,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
     } catch (e) {
       console.error(e);
     }
-  }, [sending, limitReached, submitTurnStream, targetLanguage, nativeLanguage]);
+  }, [sending, limitReached, completed, submitTurnStream, targetLanguage, nativeLanguage]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -116,7 +116,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
     await voice.start();
   }, [avatarMode, voice]);
 
-  if (limitReached) {
+  if (completed || limitReached) {
     return <TryoutCompleteScreen targetLanguage={targetLanguage} nativeLanguage={nativeLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
   }
 

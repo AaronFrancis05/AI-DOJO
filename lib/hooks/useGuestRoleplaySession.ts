@@ -12,6 +12,7 @@ export interface UseGuestRoleplaySessionReturn {
   conversations: TurnData[];
   sending: boolean;
   limitReached: boolean;
+  completed: boolean;
   error: string;
   sendGreeting: (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<void>;
   submitTurnStream: (input: string, opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<void>;
@@ -21,6 +22,7 @@ export function useGuestRoleplaySession({ targetLanguage, nativeLanguage }: UseG
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [sending, setSending] = useState(false);
   const [limitReached, setLimitReached] = useState(false);
+  const [completed, setCompleted] = useState(false);
   const [error, setError] = useState('');
   const historyRef = useRef<{ speaker: 'user' | 'ai'; text: string }[]>([]);
 
@@ -58,6 +60,9 @@ export function useGuestRoleplaySession({ targetLanguage, nativeLanguage }: UseG
       if (data.limitReached) {
         setLimitReached(true);
       }
+      if (data.completed) {
+        setCompleted(true);
+      }
 
       if (data.replyTarget) {
         opts?.onToken?.(data.replyTarget);
@@ -90,5 +95,5 @@ export function useGuestRoleplaySession({ targetLanguage, nativeLanguage }: UseG
     await requestTurn(trimmed, opts);
   }, [requestTurn, limitReached]);
 
-  return { conversations, sending, limitReached, error, sendGreeting, submitTurnStream };
+  return { conversations, sending, limitReached, completed, error, sendGreeting, submitTurnStream };
 }
