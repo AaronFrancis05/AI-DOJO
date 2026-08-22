@@ -414,12 +414,8 @@ export default function AvatarModePage() {
                         }
                       },
                     })
-                      .then((fullText) => {
+                      .then(() => {
                         setStreamingText(null);
-                        const cleaned = cleanDisplay(fullText);
-                        if (!mutedRef.current && cleaned) {
-                          speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
-                        }
                       })
                       .catch(() => { setStreamingText(null); setGreetingSent(false); });
                   }}
