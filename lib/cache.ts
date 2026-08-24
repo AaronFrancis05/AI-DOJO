@@ -11,6 +11,8 @@ SESSION: 60,         // 1 min (session state changes often)
   CHARACTER: 3600,     // 1 hr
   DOMAIN: 3600,        // 1 hr
   TRYOUT_RATE_LIMIT: 3600, // 1 hr window for guest tryout throttling
+  SPEECH_TOKEN: 540,   // 9 min (Azure issueToken lifetime is 10 min)
+  PROFICIENCY: 300,    // 5 min (only changes when a session completes)
 } as const;
 
 let redis: Redis | null = null;
@@ -44,6 +46,30 @@ export async function cacheSet(key: string, value: unknown, ttl: number): Promis
   }
 }
 
+/**
+ * Atomically increments a counter and returns its new value, or `null` when
+ * Redis is unavailable or errors.
+ *
+ * Read-then-write with `cacheGet`/`cacheSet` is not a rate limit: concurrent
+ * requests all read the same count and all write count+1, so a burst passes
+ * a limit of N with far more than N requests. Callers that gate a *billed*
+ * resource must treat `null` as "deny" — a cache outage is not a licence to
+ * hand out an unmetered relay.
+ */
+export async function rateLimitIncrement(key: string, ttl: number): Promise<number | null> {
+  const r = getRedis();
+  if (!r) return null;
+  try {
+    const count = await r.incr(key);
+    // Only the request that created the key sets the window, so the window
+    // rolls forward from the first request rather than the most recent one.
+    if (count === 1) await r.expire(key, ttl);
+    return count;
+  } catch {
+    return null;
+  }
+}
+
 export async function cacheDel(key: string): Promise<void> {
   const r = getRedis();
   if (!r) return;
@@ -61,6 +87,7 @@ function key(prefix: string, ...parts: (string | number)[]): string {
 export const cacheKeys = {
   userAvatars: (userId: string) => key('avatars', userId),
   userProfile: (userId: string) => key('user-profile', userId),
+  learnerProficiency: (userId: string, lang: string) => key('proficiency', `${userId}:${lang}`),
   session: (sessionId: number) => key('session', sessionId),
   scenario: (scenarioId: number) => key('scenario', scenarioId),
   scenarioLocalization: (scenarioId: number, lang: string) => key('scenario-loc', scenarioId, lang),
@@ -73,6 +100,7 @@ export const cacheKeys = {
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
   tryoutRateLimit: (ip: string) => key('tryout-rate-limit', ip),
+  speechToken: (region: string) => key('speech-token', region),
 };
 
 export { TTL };

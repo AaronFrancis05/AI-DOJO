@@ -371,16 +371,23 @@ function AnimationSystemHost({
     const normalizedGesture = gesture && ALLOWED_GESTURES.has(gesture) ? gesture : 'none';
 
     if (mode === 'talking') {
+      // Keep the flag in sync with the mode, not just with LipSync's own
+      // audio: a one-shot gesture fired mid-utterance returns to whatever
+      // isTalking says, and a stale `false` dropped the character into idle
+      // while the reply was still being spoken.
+      emo.animation.isTalking = true;
       if (prevModeRef.current !== 'talking') {
         emo.animation.play('talk', { loop: true, fade: 0.7 });
       }
     } else if (mode === 'listening') {
+      emo.animation.isTalking = false;
       if (emo.animation.hasClip('listening')) {
         emo.startListening();
       } else if (prevModeRef.current !== 'idle') {
         emo.animation.play('idle', { loop: true, fade: 0.7 });
       }
     } else {
+      emo.animation.isTalking = false;
       if (prevModeRef.current !== 'idle' && prevGestureRef.current === 'none') {
         emo.animation.play('idle', { loop: true, fade: 0.7 });
       } else if (prevGestureRef.current !== 'none' && normalizedGesture === 'none') {
@@ -417,19 +424,17 @@ function AnimationSystemHost({
     scene.updateMatrixWorld(true);
   }, [initialized, mode, gesture, scene]);
 
+  // Freezing used to dispose the AnimationManager outright, so unfreezing had
+  // to re-run init() — re-fetching and re-parsing every clip in the manifest.
+  // Pausing the mixer keeps the loaded actions intact and resumes instantly.
   useEffect(() => {
     if (!initialized) return;
-    if (freezeOnIdle) {
-      animManagerRef.current?.dispose();
-    } else if (prevFreezeRef.current) {
-      const mixer = new THREE.AnimationMixer(scene);
-      const anim = animManagerRef.current;
-      if (anim) {
-        anim.init(scene, mixer, null, sceneBoneNames).catch(() => {});
-      }
-    }
-    prevFreezeRef.current = !!freezeOnIdle;
-  }, [freezeOnIdle, initialized, scene, sceneBoneNames]);
+    // Never freeze a character that is speaking — pausing the mixer mid-
+    // utterance leaves it standing perfectly still while its audio plays.
+    const shouldPause = !!freezeOnIdle && mode !== 'talking';
+    animManagerRef.current?.setPaused(shouldPause);
+    prevFreezeRef.current = shouldPause;
+  }, [freezeOnIdle, initialized, mode]);
 
   useFrame((_, delta) => {
     if (!initialized) return;

@@ -1,7 +1,8 @@
 import { ExpressionEngine } from './ExpressionEngine';
-import { AnimationManager, ANIMATION_ALIASES } from './AnimationManager';
+import { AnimationManager, ANIMATION_ALIASES, ONE_SHOT_CLIPS } from './AnimationManager';
 import { LipSync } from './LipSync';
 import type { VisemeFrame } from './LipSync';
+import { isSpeaking } from '@/lib/roleplay/tts';
 
 export interface EmotionSystemDeps {
   expression: ExpressionEngine;
@@ -46,10 +47,31 @@ export class EmotionSystem {
 
   startTalking(): void {
     this.lipSync.simulateTalking(true);
+    // The session pages stream TTS through lib/roleplay/tts rather than
+    // through LipSync.play(), so this callback is the only signal the body
+    // gets that audio started. It used to move the mouth alone, leaving the
+    // character standing in the idle clip for the whole utterance.
+    this.animation.setTalkingState(true);
   }
 
   stopTalking(): void {
     this.lipSync.simulateTalking(false);
+    this.animation.setTalkingState(false);
+  }
+
+  /**
+   * True while audio is coming out, whether it is driven by LipSync.play()
+   * or by the streaming TTS player the session pages use.
+   */
+  private _audioActive(hasOwnAudio: boolean): boolean {
+    if (hasOwnAudio) return true;
+    if (this.animation.isTalking) return true;
+    if (this.lipSync.playing) return true;
+    try {
+      return isSpeaking();
+    } catch {
+      return false;
+    }
   }
 
   startListening(): void {
@@ -77,8 +99,9 @@ export class EmotionSystem {
     const rawKey = String(data.animation || data.gestureHint || 'talk').trim().toLowerCase();
     const bodyKey = ANIMATION_ALIASES[rawKey] ?? rawKey;
     const isDefaultIdle = bodyKey === 'idle' || bodyKey === 'talk';
-    const isOneShotGesture =
-      bodyKey === 'thankful' || bodyKey === 'greeting' || bodyKey === 'nod';
+    // Shares AnimationManager's definition rather than repeating the names:
+    // a clip added there but not here would loop forever on one side.
+    const isOneShotGesture = ONE_SHOT_CLIPS.has(bodyKey);
     const isThinkingStance = bodyKey === 'think';
     const isStandaloneClip =
       !isThinkingStance &&
@@ -86,7 +109,11 @@ export class EmotionSystem {
       bodyKey !== 'talk' &&
       bodyKey !== 'idle' &&
       this.animation.hasClip(bodyKey);
-    const hasAudio = !!data.audioUrl;
+    // apply() is called with behaviour metadata only (no audioUrl) while the
+    // streaming TTS player is still mid-utterance. Treating that as "no audio"
+    // sent the body back to the idle clip on every analysis callback, which is
+    // why characters froze part-way through speaking.
+    const hasAudio = this._audioActive(!!data.audioUrl);
     const shouldLoop = isOneShotGesture
       ? false
       : isStandaloneClip

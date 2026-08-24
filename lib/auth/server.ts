@@ -70,7 +70,13 @@ export async function getAuthUserReadOnly() {
       const { payload } = await jwtVerify(sessionDataValue, secret, { algorithms: ['HS256'] });
       return resolveDbId((payload as Record<string, unknown>)?.user as { id: string; email?: string } | null ?? null);
     } catch (err) {
-      console.error('[getAuthUserReadOnly] JWT verify failed:', err instanceof Error ? err.message : String(err));
+      // An expired session_data JWT is the normal steady state — the cookie is
+      // short-lived and the session_token fallback below re-establishes it.
+      // Only surface verification failures that indicate a real problem.
+      const code = (err as { code?: string } | undefined)?.code;
+      if (code !== 'ERR_JWT_EXPIRED') {
+        console.error('[getAuthUserReadOnly] JWT verify failed:', err instanceof Error ? err.message : String(err));
+      }
     }
   }
 

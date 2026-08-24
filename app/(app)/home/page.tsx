@@ -22,6 +22,7 @@ import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
 import { getLeaderboardGlobal } from '@/lib/data/sessions';
 import { getDomains, type DomainFixture } from '@/lib/data/domains';
+import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
 
 const WelcomeBanner = dynamic(() => import('@/components/roleplay/avatar-variants/WelcomeBanner').then(m => ({ default: m.WelcomeBanner })), {
   ssr: false,
@@ -58,6 +59,7 @@ import {
   Briefcase,
   Compass,
   Sun,
+  Repeat2,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -77,11 +79,7 @@ function formatDate(dateStr: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function computeTotalPct(s: SessionRecord): number | null {
-  if (s.status !== 'completed' || s.vocabularyScore === null) return null;
-  const sum = (s.vocabularyScore ?? 0) + (s.grammarScore ?? 0) + (s.fluencyScore ?? 0) + (s.culturalScore ?? 0) + (s.taskScore ?? 0);
-  return Math.round((sum / 100) * 100);
-}
+const computeTotalPct = sessionCompositePct;
 
 // ── Icon map ──────────────────────────────────────────
 
@@ -203,6 +201,18 @@ export default function HomePage() {
   const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityItem[]>(DEFAULT_WEEKLY_ACTIVITY);
   const [globalRank, setGlobalRank] = useState<number | null>(null);
   const [domains, setDomains] = useState<DomainFixture[]>([]);
+  const [dueCount, setDueCount] = useState<number | null>(null);
+
+  // How many words are ready to be seen again. Drives the review prompt below;
+  // without it the SRS queue is invisible unless the learner goes looking.
+  useEffect(() => {
+    fetch('/api/review/due', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((body) => {
+        if (typeof body.dueCount === 'number') setDueCount(body.dueCount);
+      })
+      .catch(() => {});
+  }, []);
 
   // Load sessions from DB via API
   useEffect(() => {
@@ -399,10 +409,37 @@ export default function HomePage() {
             </div>
             <ProgressBar value={Math.min(todayMinutes * 100 / (user?.dailyGoalMinutes ?? 30), 100)} color="success" size="lg" className="mb-4" />
             <p className="text-xs text-dojo-text-muted leading-relaxed">{completedSessions.length > 0 ? 'Great progress! Keep practicing to reach your daily goal.' : 'Start a roleplay session to build your daily practice streak.'}</p>
-            <Button variant="primary" className="w-full mt-6 shadow-lg shadow-dojo-accent/20" onClick={() => router.push('/hub')}>
-              <Play className="h-4 w-4 fill-current" /> Continue Practice
+            {/* Pick up the conversation already in progress rather than
+                dropping the learner back at the catalogue to find it. */}
+            <Button
+              variant="primary"
+              className="w-full mt-6 shadow-lg shadow-dojo-accent/20"
+              onClick={() => router.push(activeSession ? `/session/${activeSession.id}` : '/hub')}
+            >
+              <Play className="h-4 w-4 fill-current" />
+              {activeSession ? 'Resume Session' : 'Continue Practice'}
             </Button>
           </Card>
+
+          {/* Review queue — only worth surfacing when something is actually due. */}
+          {dueCount != null && dueCount > 0 && (
+            <Link href="/review" className="block">
+              <Card hoverable className="!p-4 cursor-pointer border-dojo-warning/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
+                    <Repeat2 className="h-5 w-5 text-dojo-warning" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-dojo-text-primary">
+                      {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
+                    </p>
+                    <p className="text-xs text-dojo-text-muted">Ready to see again</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted" />
+                </div>
+              </Card>
+            </Link>
+          )}
 
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 gap-4">

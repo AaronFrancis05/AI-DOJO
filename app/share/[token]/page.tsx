@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
 import { ArrowLeft, Lock } from 'lucide-react';
 
 export default function SharedSessionPage() {
@@ -68,17 +69,28 @@ export default function SharedSessionPage() {
 
   const { scenario, session, conversations, evaluation, goalCompletions } = data;
 
+  // Independent 0-100 dimensions. This page previously divided by maxes of
+  // 30/25/20/15/10 — a third scale, matching neither the prompts nor the
+  // in-app report.
   const scoreFields = [
-    { label: 'Vocabulary', value: evaluation?.vocabularyScore ?? 0, max: 30 },
-    { label: 'Grammar',    value: evaluation?.grammarScore ?? 0,    max: 25 },
-    { label: 'Fluency',    value: evaluation?.fluencyScore ?? 0,    max: 20 },
-    { label: 'Cultural',   value: evaluation?.culturalScore ?? 0,   max: 15 },
-    { label: 'Task',       value: evaluation?.taskScore ?? 0,       max: 10 },
+    { label: 'Vocabulary', value: evaluation?.vocabularyScore ?? 0 },
+    { label: 'Grammar',    value: evaluation?.grammarScore ?? 0 },
+    { label: 'Fluency',    value: evaluation?.fluencyScore ?? 0 },
+    { label: 'Cultural',   value: evaluation?.culturalScore ?? 0 },
+    { label: 'Task',       value: evaluation?.taskScore ?? 0 },
+    // Carries 0.10 of the composite below, so it belongs in the breakdown that
+    // is supposed to explain that number.
+    { label: 'Expression', value: evaluation?.expressionAppropriatenessScore ?? 0 },
   ];
 
-  const totalScore = scoreFields.reduce((s, x) => s + x.value, 0);
-  const totalMax = scoreFields.reduce((s, x) => s + x.max, 0);
-  const pct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : null;
+  const pct = sessionCompositePct({
+    vocabularyScore: evaluation?.vocabularyScore ?? 0,
+    grammarScore: evaluation?.grammarScore ?? 0,
+    fluencyScore: evaluation?.fluencyScore ?? 0,
+    culturalScore: evaluation?.culturalScore ?? 0,
+    taskScore: evaluation?.taskScore ?? 0,
+    expressionAppropriatenessScore: evaluation?.expressionAppropriatenessScore ?? 0,
+  });
 
   return (
     <div className="min-h-dvh bg-dojo-canvas">
@@ -127,14 +139,18 @@ export default function SharedSessionPage() {
             <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">
               📊 Performance Evaluation
             </h3>
+            <div className="mb-4 flex items-baseline gap-2">
+              <span className="text-3xl font-bold leading-none tracking-tight text-dojo-text-primary">{pct}%</span>
+              <span className="text-xs text-dojo-text-muted">overall</span>
+            </div>
             <div className="space-y-3">
               {scoreFields.map(sf => (
                 <div key={sf.label}>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-dojo-text-primary">{sf.label}</span>
-                    <span className="text-dojo-text-muted">{sf.value}/{sf.max}</span>
+                    <span className="text-dojo-text-muted">{sf.value}%</span>
                   </div>
-                  <ProgressBar value={sf.value} max={sf.max} color="accent" size="sm" />
+                  <ProgressBar value={sf.value} color="accent" size="sm" />
                 </div>
               ))}
             </div>

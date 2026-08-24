@@ -1,15 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveAzureVoice } from '../../../lib/language';
+import { getAuthUser } from '@/lib/auth/server';
+import { rateLimitIncrement, cacheKeys, TTL } from '@/lib/cache';
 
 export const runtime = 'nodejs';
 
+// Guests reach this route through the marketing tryout, so it can't simply
+// require auth. Mirrors the allowance in app/api/speech/token/route.ts.
+const MAX_GUEST_SYNTHESES_PER_IP_PER_HOUR = 40;
+
+// A request count alone doesn't bound the bill — Azure charges per character,
+// so one allowed request could carry a megabyte of text. Roughly a paragraph,
+// which is more than any tryout line needs.
+const MAX_GUEST_CHARS_PER_REQUEST = 1000;
+
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthUser();
+
     const body = await req.json();
     const { text, lang, ssml, gender } = body;
 
     if (!text && !ssml) {
       return NextResponse.json({ error: 'text or ssml is required' }, { status: 400 });
+    }
+
+    // Synthesis is billed per character, so this route must not be an open
+    // relay to the Azure account — it previously accepted any caller.
+    if (!user) {
+      const payload = String(ssml ?? text ?? '');
+      if (payload.length > MAX_GUEST_CHARS_PER_REQUEST) {
+        return NextResponse.json(
+          { error: 'That text is too long to synthesize.' },
+          { status: 413 },
+        );
+      }
+
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      const rateLimitKey = cacheKeys.tryoutRateLimit(`tts:${ip}`);
+      // Fails closed: with no counter to increment there is no way to bound
+      // guest spend, and an unmetered relay is the worse failure mode.
+      const count = await rateLimitIncrement(rateLimitKey, TTL.TRYOUT_RATE_LIMIT);
+      if (count === null || count > MAX_GUEST_SYNTHESES_PER_IP_PER_HOUR) {
+        return NextResponse.json(
+          { error: 'Too many speech requests. Please try again later.' },
+          { status: 429 },
+        );
+      }
     }
 
     const speechKey = process.env.AZURE_SPEECH_KEY;

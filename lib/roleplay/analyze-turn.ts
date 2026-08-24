@@ -13,6 +13,8 @@ import {
 import { eq, and, asc, inArray } from 'drizzle-orm';
 import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
 import { getAIProvider, type ChatTurn } from '../ai-providers';
+import { buildConversationHistory } from './conversation-history';
+import { getLearnerProficiency, resolveDifficulty } from './proficiency';
 import { getTargetLangConfig, getNativeLangName } from '../language';
 import type { SessionPhase } from './phase-engine';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../cache';
@@ -29,8 +31,20 @@ import {
   getTargetGoalLocalizations,
   applyGoalLocalization,
 } from '../localization';
+import { applySessionAvatarIdentity } from '../avatar/catalog';
 
 export const MAX_ICEBREAKER_VOCAB = 5;
+
+/**
+ * Scenario+language pairs with a background vocabulary top-up already running.
+ *
+ * The background call is deliberately not awaited, so nothing downstream slows
+ * for it — but that also means the next turn arrives before it finishes and
+ * sees the same short list. Without this guard every turn of a thin scenario
+ * launches another generation, so one learner can have several LLM calls
+ * writing the same rows at once.
+ */
+const vocabTopUpInFlight = new Set<string>();
 
 type SessionRow = typeof sessions.$inferSelect;
 type ScenarioRow = typeof scenarios.$inferSelect;
@@ -144,6 +158,12 @@ export interface SessionTurnData {
   learnerName: string;
   /** The learner's country display name, or null when unset/unknown. */
   learnerCountry: string | null;
+  /**
+   * The difficulty the character should actually play at — the scenario's
+   * authored tier adjusted by the learner's recent measured performance.
+   * See lib/roleplay/proficiency.ts.
+   */
+  effectiveDifficulty: string;
 }
 
 /**
@@ -154,22 +174,51 @@ export interface SessionTurnData {
  */
 export async function loadSessionTurnData(session: SessionRow): Promise<SessionTurnData> {
   const { scenarioId } = session;
+  const targetLanguage = session.targetLanguage ?? 'ja';
+  const nativeLanguage = session.nativeLanguage ?? 'en';
+  const currentPhase = session.phase as SessionPhase;
 
-  let currentScenario = await (async (): Promise<ScenarioRow | null> => {
+  // Everything below is keyed on ids already known from the session row
+  // (scenarioId, situationId, userId) plus the two language codes, so none of
+  // it has to wait on anything else. This used to run as six sequential waves
+  // — scenario, then the core batch, then situation localizations, then goal
+  // localizations, then vocabulary, then scenario/vocab localizations — and
+  // every one of those round trips sat between the learner's utterance and
+  // the model's first token.
+  const [
+    currentScenarioRow,
+    conversationRows,
+    goalsResult,
+    completionsResult,
+    rawSituationResult,
+    learnerProfile,
+    nativeSituationLoc,
+    targetSituationLoc,
+    goalLocs,
+    nativeScenarioLoc,
+    targetScenarioLoc,
+    nativeVocabLoc,
+    targetVocabLoc,
+    proficiency,
+    baseVocab,
+  ] = await Promise.all([
+    (async (): Promise<ScenarioRow | null> => {
       const k = cacheKeys.scenario(scenarioId);
       const c = await cacheGet<ScenarioRow | null>(k);
       if (c) return c;
       const r = await db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null);
       if (r) await cacheSet(k, r, TTL.SCENARIO);
       return r;
-    })();
+    })(),
 
-  const [conversationRows, goalsResult, completionsResult, rawSituationResult, learnerProfile] = await Promise.all([
     db
       .select()
       .from(conversations)
       .where(eq(conversations.sessionId, session.id))
-      .orderBy(asc(conversations.turnNo)),
+      // The user turn and the AI reply share a turnNo, so turnNo alone leaves
+      // their order up to the planner. id breaks the tie in insert order,
+      // which is user-then-AI.
+      .orderBy(asc(conversations.turnNo), asc(conversations.id)),
 
     (async (): Promise<GoalRow[]> => {
       const k = cacheKeys.goals(scenarioId);
@@ -211,33 +260,70 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       await cacheSet(k, profile, TTL.USER_PROFILE);
       return profile;
     })(),
+
+    session.situationId && nativeLanguage !== 'en'
+      ? getSituationLocalization(session.situationId, nativeLanguage)
+      : Promise.resolve(null),
+
+    session.situationId && targetLanguage
+      ? getTargetSituationLocalization(session.situationId, targetLanguage)
+      : Promise.resolve(null),
+
+    targetLanguage
+      ? getTargetGoalLocalizations(scenarioId, targetLanguage)
+      : Promise.resolve(new Map<number, { goalText: string | null; targetPhrase: string | null }>()),
+
+    nativeLanguage !== 'en' ? getScenarioLocalization(scenarioId, nativeLanguage) : Promise.resolve(null),
+
+    targetLanguage ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
+
+    nativeLanguage !== 'en'
+      ? getScenarioVocabLocalizations(scenarioId, nativeLanguage)
+      : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
+
+    targetLanguage
+      ? getTargetVocabLocalizations(scenarioId, targetLanguage)
+      : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
+
+    getLearnerProficiency(session.userId, targetLanguage),
+
+    // Vocabulary is only consulted in the phases that actually teach words.
+    currentPhase === 'orientation' || currentPhase === 'icebreaker' || currentPhase === 'guided'
+      ? (async (): Promise<{ rows: typeof vocabulary.$inferSelect[]; fromCache: boolean }> => {
+          const k = cacheKeys.vocabulary(scenarioId, targetLanguage);
+          const c = await cacheGet<typeof vocabulary.$inferSelect[]>(k);
+          // Only a full list short-circuits: a cached partial list still needs
+          // the DB read, since words may have been generated since it was set.
+          if (c && c.length >= MAX_ICEBREAKER_VOCAB) return { rows: c, fromCache: true };
+          // The canonical vocabulary rows are the Japanese seed ones ('ja'); a
+          // target-language session sees those plus any rows already generated
+          // for its own language. Other languages' generated rows are excluded so
+          // a French session's AI-generated words never leak into a Japanese one.
+          const languages = targetLanguage === 'ja' ? ['ja'] : ['ja', targetLanguage];
+          const rows = await db.select().from(vocabulary)
+            .where(and(eq(vocabulary.scenarioId, scenarioId), inArray(vocabulary.languageCode, languages)))
+            .orderBy(vocabulary.id);
+          return { rows, fromCache: false };
+        })()
+      : Promise.resolve({ rows: [], fromCache: true }),
   ]);
 
+  let currentScenario = currentScenarioRow;
   const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
 
   const currentTurnNo = conversationRows.length > 0
     ? Math.max(...conversationRows.map(c => c.turnNo)) + 1
     : 1;
 
-  const conversationHistory: ChatTurn[] = conversationRows.map(row => ({
-    role: row.speaker === 'ai' ? 'assistant' as const : 'user' as const,
-    content: row.messageNative ?? row.messageTarget,
-  }));
+  const conversationHistory = buildConversationHistory(conversationRows);
 
   const userTurnCount = conversationRows.filter(c => c.speaker === 'user').length;
 
   const behaviorMode = session.behaviorMode ?? 'standard';
-  const targetLanguage = session.targetLanguage ?? 'ja';
-  const nativeLanguage = session.nativeLanguage ?? 'en';
   const isSameLanguage = targetLanguage === nativeLanguage;
-  const currentPhase = session.phase as SessionPhase;
 
   let situationResult = rawSituationResult;
   if (situationResult) {
-    const [nativeSituationLoc, targetSituationLoc] = await Promise.all([
-      nativeLanguage !== 'en' ? getSituationLocalization(situationResult.id, nativeLanguage) : Promise.resolve(null),
-      targetLanguage ? getTargetSituationLocalization(situationResult.id, targetLanguage) : Promise.resolve(null),
-    ]);
     // Native-language localization first (instructional text a non-English
     // speaker can understand), then target-language last so the roleplay
     // content the learner actually practices wins.
@@ -253,7 +339,6 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
 
   let goals = goalsResult;
   if (goals.length > 0 && targetLanguage) {
-    const goalLocs = await getTargetGoalLocalizations(scenarioId, targetLanguage);
     if (goalLocs.size > 0) {
       goals = goals.map((g) => {
         const loc = goalLocs.get(g.id);
@@ -269,26 +354,42 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
     }
   }
 
-  let vocabRows = currentPhase === 'orientation' || currentPhase === 'icebreaker' || currentPhase === 'guided'
-    ? await (async (): Promise<typeof vocabulary.$inferSelect[]> => {
-        const k = cacheKeys.vocabulary(scenarioId, targetLanguage);
-        const c = await cacheGet<typeof vocabulary.$inferSelect[]>(k);
-        if (c && c.length >= MAX_ICEBREAKER_VOCAB) return c;
-        // The canonical vocabulary rows are the Japanese seed ones ('ja'); a
-        // target-language session sees those plus any rows already generated
-        // for its own language. Other languages' generated rows are excluded so
-        // a French session's AI-generated words never leak into a Japanese one.
-        const languages = targetLanguage === 'ja' ? ['ja'] : ['ja', targetLanguage];
-        let r = await db.select().from(vocabulary)
-          .where(and(eq(vocabulary.scenarioId, scenarioId), inArray(vocabulary.languageCode, languages)))
-          .orderBy(vocabulary.id);
-        if (r.length < MAX_ICEBREAKER_VOCAB && currentScenario) {
-          r = await generateAndPersistMissingVocabulary(currentScenario, r, targetLanguage, nativeLanguage);
-        }
-        await cacheSet(k, r, TTL.VOCABULARY);
-        return r;
-      })()
-    : [];
+  let vocabRows = baseVocab.rows;
+
+  // Topping up a thin vocabulary list costs a full LLM round trip. That used
+  // to happen inline on whatever turn first noticed the shortfall, adding
+  // seconds of silence mid-conversation.
+  //
+  // Orientation is the one turn where waiting is right: it is the first turn
+  // of the session, the icebreaker that immediately follows needs the words,
+  // and there is no prior context to lose. On every later turn we teach with
+  // what exists and generate in the background so the next session is whole.
+  if (vocabRows.length < MAX_ICEBREAKER_VOCAB && currentScenario) {
+    if (currentPhase === 'orientation') {
+      vocabRows = await generateAndPersistMissingVocabulary(
+        currentScenario, vocabRows, targetLanguage, nativeLanguage,
+      );
+    } else if (currentPhase === 'icebreaker' || currentPhase === 'guided') {
+      const scenarioForBackfill = currentScenario;
+      const topUpKey = `${scenarioId}:${targetLanguage}`;
+      if (!vocabTopUpInFlight.has(topUpKey)) {
+        vocabTopUpInFlight.add(topUpKey);
+        void generateAndPersistMissingVocabulary(
+          scenarioForBackfill, vocabRows, targetLanguage, nativeLanguage,
+        ).catch((err) => {
+          console.warn('[VOCABULARY] background top-up failed:', err);
+        }).finally(() => {
+          vocabTopUpInFlight.delete(topUpKey);
+        });
+      }
+    }
+  }
+
+  // Refresh the cache only when this call actually read from the database;
+  // rewriting a value we just read back from the cache is pure overhead.
+  if (!baseVocab.fromCache && vocabRows.length > 0) {
+    await cacheSet(cacheKeys.vocabulary(scenarioId, targetLanguage), vocabRows, TTL.VOCABULARY);
+  }
 
   if ((currentPhase === 'icebreaker' || currentPhase === 'orientation') && vocabRows.length > MAX_ICEBREAKER_VOCAB) {
     vocabRows = vocabRows.slice(0, MAX_ICEBREAKER_VOCAB);
@@ -296,41 +397,30 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
 
   let scenarioLocalized = false;
 
-  const scenarioLocs = await Promise.all([
-    nativeLanguage !== 'en' ? getScenarioLocalization(scenarioId, nativeLanguage) : Promise.resolve(null),
-    targetLanguage ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
-  ]);
-
   if (currentScenario) {
     // Native-language scenario localization (the base scenario fields are
     // English) so a learner who doesn't speak English still gets a scenario
     // they can understand.
-    const nativeLoc = scenarioLocs[0];
-    if (nativeLoc) {
-      currentScenario = applyScenarioLocalization(currentScenario, nativeLoc);
+    if (nativeScenarioLoc) {
+      currentScenario = applyScenarioLocalization(currentScenario, nativeScenarioLoc);
       scenarioLocalized = true;
     }
 
     // Target-language scenario localization (e.g. French context and
     // character names for a French course). Applied last so the roleplay
     // content matches the language the student is actually learning.
-    const targetLoc = scenarioLocs[1];
-    if (targetLoc) {
-      currentScenario = applyScenarioLocalization(currentScenario, targetLoc);
+    if (targetScenarioLoc) {
+      currentScenario = applyScenarioLocalization(currentScenario, targetScenarioLoc);
       scenarioLocalized = true;
     }
+
+    // Applied last so the avatar the learner picked for this session names
+    // the character in prompts and the greeting, ahead of both the shared
+    // scenario row and any localized character name.
+    currentScenario = applySessionAvatarIdentity(currentScenario, session.selectedAvatarId);
   }
 
   if (currentScenario && vocabRows.length > 0) {
-    const [nativeVocabLoc, targetVocabLoc] = await Promise.all([
-      nativeLanguage !== 'en'
-        ? getScenarioVocabLocalizations(scenarioId, nativeLanguage)
-        : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
-      targetLanguage
-        ? getTargetVocabLocalizations(scenarioId, targetLanguage)
-        : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
-    ]);
-
     if (nativeVocabLoc.size > 0) {
       // Native-language meaning shown alongside the word being learned.
       vocabRows = vocabRows.map((v) => {
@@ -393,6 +483,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
     currentPhase,
     learnerName: learnerProfile.name,
     learnerCountry: learnerProfile.countryName,
+    effectiveDifficulty: resolveDifficulty(currentScenario?.difficulty, proficiency),
   };
 }
 
@@ -411,20 +502,27 @@ export async function analyzeTurn(input: {
   const situationContext = data.situation && !data.scenarioLocalized ? data.situation.context : scenario.context;
   const situationLearningGoals = data.situation && !data.scenarioLocalized ? data.situation.learningGoals : scenario.learningGoals;
 
-  return analyzeUserTurn(
+  return analyzeUserTurn({
     userInput,
-    aiReplyText ?? '',
-    data.currentTurnNo,
-    scenario,
-    data.goals,
-    data.completedSequenceOrders,
-    data.conversationHistory,
-    data.behaviorMode,
+    aiReplyText: aiReplyText ?? '',
+    currentTurnNo: data.currentTurnNo,
+    // Grade against the tier the character actually played at, not the one
+    // the scenario was authored for — otherwise a learner who has been
+    // promoted is marked down for the harder conversation they were given.
+    scenario: { ...scenario, difficulty: data.effectiveDifficulty },
+    goals: data.goals,
+    completedGoalSequenceOrders: data.completedSequenceOrders,
+    conversationHistory: data.conversationHistory,
+    behaviorMode: data.behaviorMode,
     situationContext,
     situationLearningGoals,
-    data.targetLanguage,
-    data.nativeLanguage,
-    data.learnerName,
-    data.learnerCountry,
-  );
+    targetLanguage: data.targetLanguage,
+    nativeLanguage: data.nativeLanguage,
+    learnerName: data.learnerName,
+    learnerCountry: data.learnerCountry,
+    // The reply being graded was generated by the prompt for THIS phase, so
+    // the analyzer must be told which output contract to expect.
+    phase: data.currentPhase,
+    isSameLanguage: data.isSameLanguage,
+  });
 }

@@ -6,6 +6,7 @@ import {
   stopContinuousRecognition,
   ensureRecognizer,
   prewarmRecognizer,
+  destroyRecognizer,
 } from '@/lib/roleplay/pronunciation';
 
 export interface UseVoiceInputOptions {
@@ -123,12 +124,12 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     }
   }, [onFinal]);
 
+  // The recognizer, its Azure connection, and the microphone stream are held
+  // warm for the whole session so push-to-talk stays instant. Leaving the
+  // session is the point at which they must actually be released — otherwise
+  // the mic indicator stays lit and the stream leaks across navigations.
   useEffect(() => {
-    return () => {
-      if (isListeningRef.current) {
-        stopContinuousRecognition().catch(() => {});
-      }
-    };
+    return () => { destroyRecognizer(); };
   }, []);
 
   return {

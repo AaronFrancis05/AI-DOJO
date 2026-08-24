@@ -11,7 +11,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, feedStreamTts, flushStreamTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
@@ -42,7 +42,7 @@ export default function VoiceOnlyPage() {
   const sessionId = Number(params.sessionId);
 
   const {
-    session, scenario, character, conversations, phase,
+    session, scenario, character, selectedAvatar, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     evaluation, avgPronunciationScore, newWordsCount,
@@ -54,7 +54,7 @@ export default function VoiceOnlyPage() {
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
-  const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [greetingSent, setGreetingSent] = useState(false);
@@ -84,9 +84,11 @@ export default function VoiceOnlyPage() {
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
 
-  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
+  // The avatar the learner picked for this session wins over the scenario's
+  // seeded character — scenario rows are shared across sessions, the pick is not.
+  const charName = selectedAvatar?.name ?? character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
-  const charRole = character?.role ?? scenario?.aiCharacterRole ?? undefined;
+  const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
 
   // Session timer
   useEffect(() => {
@@ -132,15 +134,14 @@ export default function VoiceOnlyPage() {
     setVoiceGender(session?.voiceGender || character?.gender || 'Female');
   }, [session, character]);
 
-  useEffect(() => {
-    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
-    }
-  }, []);
+  // Microphone acquisition is handled once by the recognizer prewarm in
+  // useVoiceInput, which holds the stream open for the whole session. A
+  // separate permission-priming getUserMedia here would just acquire and
+  // immediately release a second device handle.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
-      setAvatarMode(speaking ? 'talking' : 'idle');
+      setIsAiSpeaking(speaking);
       if (!speaking) lastAiCompletedRef.current = Date.now();
     });
     return () => { setOnSpeakingChange(null); stopTts(); };
@@ -155,6 +156,10 @@ export default function VoiceOnlyPage() {
         fluencyScore: source.fluencyScore ?? 0,
         culturalScore: source.culturalScore ?? 0,
         taskScore: source.taskScore ?? 0,
+        // Weighted at 0.10 by computeCompositeScore. Omitting it here scored
+        // the same evaluation lower than the report page does, so a session
+        // could celebrate as failed and read as passed.
+        expressionAppropriatenessScore: source.expressionAppropriatenessScore ?? 0,
       });
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
@@ -182,6 +187,19 @@ export default function VoiceOnlyPage() {
     try {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
+        // Speak each sentence the moment it completes, while the model is
+        // still generating the rest — the character starts talking in
+        // roughly the time it takes to produce one sentence instead of
+        // waiting for the whole reply to finish first.
+        onTokenDelta: (delta) => {
+          if (mutedRef.current) return;
+          feedStreamTts(
+            delta,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          );
+        },
         onToken: (t) => {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
@@ -189,8 +207,9 @@ export default function VoiceOnlyPage() {
         onTextDone: (t: string) => {
           const cleaned = cleanDisplay(t);
           if (!mutedRef.current && cleaned) {
-            speakMixedText(
-              cleaned,
+            // Speak the trailing fragment (the last sentence often has no
+            // terminating punctuation) and wait for the queue to drain.
+            flushStreamTts(
               getBCP47(targetLangRef.current, 'tts'),
               getNativeLangBcp47(nativeLangRef.current),
               phaseRef.current,
@@ -231,6 +250,9 @@ export default function VoiceOnlyPage() {
       }
     } catch (e: any) {
       console.error(e);
+      // Whatever was queued belongs to a turn that failed; leaving it to drain
+      // talks over the learner's retry.
+      stopTts();
       setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
@@ -251,6 +273,13 @@ export default function VoiceOnlyPage() {
     lang: bcp47,
     onFinal: handleUserUtterance,
   });
+
+  // Single source of truth for the stage's visual state: the AI talking
+  // outranks listening (a mic press stops TTS anyway), idle is the default.
+  // Derived rather than stored, so it can never drift out of sync with the
+  // two inputs that define it.
+  const avatarMode: 'idle' | 'listening' | 'talking' =
+    isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
 
   const handleMicStart = useCallback(async () => {
     if (avatarMode === 'talking') stopTts();
@@ -365,19 +394,22 @@ export default function VoiceOnlyPage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
+                    resetStreamingTts();
                     sendGreeting({
+                      onTokenDelta: (delta: string) => {
+                        if (mutedRef.current) return;
+                        feedStreamTts(delta, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current);
+                      },
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
-                      onTextDone: (t: string) => {
-                        const cleaned = cleanDisplay(t);
-                        if (!mutedRef.current && cleaned) {
-                          speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
-                        }
+                      onTextDone: () => {
+                        if (mutedRef.current) return;
+                        flushStreamTts(getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                       },
                     })
                       .then(() => {
                         setStreamingText(null);
                       })
-                      .catch(() => { setStreamingText(null); setGreetingSent(false); });
+                      .catch(() => { stopTts(); setStreamingText(null); setGreetingSent(false); });
                   }}
                   className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >

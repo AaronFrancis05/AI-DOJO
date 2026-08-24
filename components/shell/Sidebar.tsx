@@ -14,6 +14,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useUser } from '@/lib/auth/user-context';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import {
   LayoutDashboard,
   Compass,
@@ -25,6 +26,8 @@ import {
   Settings,
   LogOut,
   History,
+  Repeat2,
+  Users,
 } from 'lucide-react';
 
 interface NavItem {
@@ -35,8 +38,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Home',      href: '/home',        icon: LayoutDashboard },
+  ...(TUTORS_ENABLED ? [{ label: 'Tutors', href: '/tutors', icon: Users }] : []),
   { label: 'Hub',       href: '/hub',         icon: Compass },
   { label: 'Courses',   href: '/courses',     icon: GraduationCap },
+  { label: 'Review',    href: '/review',      icon: Repeat2 },
   { label: 'Sessions',  href: '/sessions',    icon: History },
   { label: 'Progress',  href: '/progress',    icon: BarChart3 },
   { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },

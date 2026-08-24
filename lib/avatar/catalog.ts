@@ -27,6 +27,105 @@ function thumbnailUrl(filename: string): string {
   return `/ai-avatars/thumbnails/${filename}`;
 }
 
+/* ── Shared female body model ────────────────────────────────────────
+   Every female character renders with female_ug.glb. The per-character
+   GLBs were visually distinct but rigged inconsistently, so the shared
+   Mixamo clip set (Idle/Talking/Listening/…) bound to a different subset
+   of bones on each one and several characters barely moved while their
+   audio played. One known-good rig for all of them makes the animation
+   behaviour identical across the catalog.
+
+   Thumbnails are deliberately NOT remapped — the picker still shows each
+   character's own portrait art.
+   ──────────────────────────────────────────────────────────────────── */
+
+export const SHARED_FEMALE_MODEL_FILE = 'female_ug.glb';
+export const SHARED_FEMALE_MODEL_URL = avatarUrl(SHARED_FEMALE_MODEL_FILE);
+
+export const FEMALE_AVATAR_IDS: ReadonlySet<string> = new Set([
+  'afro_lady',
+  'black_dress_lady',
+  'blue_dress_lady_cp',
+  'business_white_lady',
+  'casual_female',
+  'classy_white_female',
+  'cool_female_cp',
+  'cool_orange_lady',
+  'cool_purple_female_cp',
+  'cool_sweater_female_cp',
+  'debbie_cp',
+  'female_jp',
+  'female_ug',
+  'fire_lady',
+  'glasses_lady',
+  'gothic_girl',
+  'ninja_female',
+  'office_lady',
+  'pink_smart_lady',
+  'punk_female_cp',
+  'red_hoddie_girl_cp',
+  'smart_female',
+  'star_wars_female',
+  'tech_girl',
+  'yellow_dress_lady',
+]);
+
+export function isFemaleAvatarId(avatarId: string): boolean {
+  return FEMALE_AVATAR_IDS.has(avatarId);
+}
+
+/** Model URL for a catalog id, collapsing every female id onto the shared rig. */
+export function modelUrlForAvatarId(avatarId: string): string {
+  return isFemaleAvatarId(avatarId)
+    ? SHARED_FEMALE_MODEL_URL
+    : avatarUrl(`${avatarId}.glb`);
+}
+
+/**
+ * Normalizes a stored model URL onto the shared rig. Character rows in the
+ * database carry their own `avatarModelUrl`, seeded before this swap, so
+ * resolving at render time keeps those rows working without a migration.
+ */
+export function resolveAvatarModelUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  const id = url.match(/\/([^/]+)\.glb$/)?.[1];
+  if (!id) return url;
+  return isFemaleAvatarId(id) ? SHARED_FEMALE_MODEL_URL : url;
+}
+
+/**
+ * Concise role line for a catalog avatar: the first sentence of its persona,
+ * trimmed to fit scenarios.aiCharacterRole (varchar 150). Session creation,
+ * the session GET route and turn loading all derive the role this way — keep
+ * them going through here so the name/role a learner sees never diverges.
+ */
+export function avatarRoleLine(avatar: AvatarDef): string {
+  const firstSentence = avatar.persona.split(/[.!?]\s/)[0] ?? avatar.persona;
+  return firstSentence.slice(0, 145);
+}
+
+/**
+ * Overlays the avatar a session was created with onto its scenario row.
+ *
+ * Scenario rows are shared by every session that practises the same
+ * situation, so the seeded aiCharacterName/Role only describe whoever
+ * practised first. Sessions carry their own selectedAvatarId; resolving it
+ * at read time gives each session the right identity in prompts, greetings
+ * and the UI without mutating (and thereby rewriting the history of) the
+ * shared row. Returns the scenario unchanged when there is no override.
+ */
+export function applySessionAvatarIdentity<T extends { aiCharacterName?: string | null; aiCharacterRole?: string | null }>(
+  scenario: T,
+  selectedAvatarId: string | null | undefined,
+): T {
+  if (!selectedAvatarId) return scenario;
+  const picked = AVATAR_SOURCES.find(a => a.id === selectedAvatarId);
+  if (!picked) return scenario;
+  const role = avatarRoleLine(picked);
+  if (scenario.aiCharacterName === picked.name && scenario.aiCharacterRole === role) return scenario;
+  return { ...scenario, aiCharacterName: picked.name, aiCharacterRole: role };
+}
+
 export const AVATAR_DATA: AvatarDef[] = [
   {
     id: "female_ug",
@@ -500,7 +599,7 @@ export interface AvatarSource extends AvatarDef {
 
 export const AVATAR_SOURCES: AvatarSource[] = AVATAR_DATA.map((avatar) => ({
   ...avatar,
-  file: avatarUrl(`${avatar.id}.glb`),
+  file: modelUrlForAvatarId(avatar.id),
   thumbnail: thumbnailUrl(`${avatar.id}.webp`),
 }));
 

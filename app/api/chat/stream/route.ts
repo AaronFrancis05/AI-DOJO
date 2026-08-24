@@ -1,8 +1,7 @@
 import { db } from '../../../../src/db';
 import { withSessionLock } from '../../../../src/db-pool';
-import { sessions, conversations, corrections, evaluations, goalCompletions, users, vocabularyEncounters, audioJobs } from '../../../../src/schema';
+import { sessions, conversations, corrections, evaluations, goalCompletions, users, vocabularyEncounters, srsCards } from '../../../../src/schema';
 import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
-import { buildIdentityAndGuardBlock } from '../../../../lib/ai-engine';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
 import {
@@ -19,195 +18,47 @@ import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { sanitizeStreamedChunk, createStreamTextSanitizer } from '../../../../lib/roleplay/stream-sanitizer';
-import { inngest } from '../../../../lib/inngest/client';
-import type { AIProvider } from '../../../../lib/ai-providers';
+import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
+import {
+  buildTurnSystemPrompt,
+  buildTurnUserMessage,
+  generateLocalizedPhaseMessage,
+  icebreakerPhrase,
+  displayVocab,
+  sameLangWordLine,
+  type PhaseMessageKind,
+  type TurnPromptContext,
+} from '../../../../lib/roleplay/prompts';
 
-async function enqueueAudioJob(
-  conversationId: number,
-  sessionId: number,
-  text: string,
-  lang: string,
-  phase: string,
-  speaker: string,
-  voiceGender?: string,
-): Promise<number | null> {
-  try {
-    const [row] = await db.insert(audioJobs).values({
-      conversationId,
-      sessionId,
-      text,
-      lang,
-      phase,
-      speaker,
-      voiceGender: voiceGender ?? null,
-    }).returning({ id: audioJobs.id });
-    return row?.id ?? null;
-  } catch (err) {
-    console.error('[AUDIO QUEUE] Failed to enqueue job:', err);
-    return null;
-  }
-}
+/* ── Note on server-side audio ──────────────────────────────────────────
+   Every AI turn used to be queued to `audio_jobs` and synthesized a SECOND
+   time by the Inngest worker, which stored the result as a base64 `data:`
+   URL in `conversations.audio_url` — hundreds of KB per turn, in a Postgres
+   column, that nothing ever played. The learner's audio has always come
+   from the client speaking the reply directly (lib/roleplay/tts.ts).
 
-async function dispatchAudioJob(jobId: number | null, conversationId: number, sessionId: number): Promise<void> {
-  if (jobId == null) return;
-  try {
-    await inngest.send({
-      name: 'audio/enqueued',
-      data: { jobId, conversationId, sessionId },
-    });
-  } catch (err) {
-    console.error('[INNGEST] Failed to dispatch audio job', jobId, err);
-  }
-}
+   The second of the two enqueue sites also never dispatched its Inngest
+   event, so those rows were written and then sat 'pending' forever.
+
+   The enqueue calls are removed here. The `audioJobs` table and the
+   processAudio worker are intentionally left in place but dormant: dropping
+   them is a destructive schema change, and if per-turn audio is ever wanted
+   for session-report replay it should write to blob storage rather than to
+   a DB column.
+   ────────────────────────────────────────────────────────────────────── */
+
+/* ── Note on prompts ────────────────────────────────────────────────────
+   The per-phase prompts used to live inline in this file — six near-
+   duplicate variants totalling several hundred lines — while a second,
+   contradictory set lived in lib/ai-engine.ts. They drifted, and the
+   analyzer ended up grading replies against a format no phase produced.
+
+   They now live in lib/roleplay/prompts/, which both generation (here) and
+   analysis (via describeReplyContract) build from. This route is left as
+   orchestration: load → stream → analyze → persist → transition.
+   ────────────────────────────────────────────────────────────────────── */
 
 export const runtime = 'nodejs';
-
-type PhaseMessageKind = 'to-icebreaker' | 'to-guided' | 'to-unguided' | 'to-evaluation' | 'celebration';
-
-const PHASE_MESSAGE_DESCRIPTION: Record<PhaseMessageKind, string> = {
-  'to-icebreaker': 'the lesson is moving from orientation into the icebreaker vocabulary drill',
-  'to-guided': 'the lesson is about to move from the vocabulary-drill phase into the guided roleplay phase',
-  'to-unguided': 'the lesson is about to move from the guided roleplay phase into full-immersion unguided practice',
-  'to-evaluation': 'the lesson is about to end and move into the final evaluation',
-  'celebration': 'the learner just mastered the whole scenario',
-};
-
-type IcebreakerPhraseKey = 'ack' | 'newWord' | 'means' | 'tryIt' | 'allDone';
-
-/**
- * Fixed phrases for the deterministic forced-advance icebreaker message (see
- * shouldForceAdvanceVocab below), which bypasses the model entirely and so
- * can't rely on it to localize anything. Unlike the English example strings
- * used elsewhere in this file as LLM prompt scaffolding, this text is sent to
- * the learner directly, so it must already be in the right language. Best-
- * effort translations — the less common languages here would benefit from a
- * native-speaker review. Falls back to English for any code not listed.
- */
-const ICEBREAKER_PHRASES: Record<string, Record<IcebreakerPhraseKey, string>> = {
-  en: { ack: "Good job!", newWord: "New word:", means: "means", tryIt: "Can you say it?", allDone: "That's all our vocabulary for now — let's practice!" },
-  ja: { ack: 'よくできました!', newWord: '新しい単語:', means: 'という意味です', tryIt: '言ってみましょう?', allDone: 'これで単語は全部です。練習してみましょう!' },
-  fr: { ack: 'Bon travail !', newWord: 'Nouveau mot :', means: 'signifie', tryIt: 'Peux-tu le dire ?', allDone: "C'est tout notre vocabulaire pour l'instant — pratiquons !" },
-  de: { ack: 'Gut gemacht!', newWord: 'Neues Wort:', means: 'bedeutet', tryIt: 'Kannst du es sagen?', allDone: 'Das war unser gesamter Wortschatz — üben wir jetzt!' },
-  es: { ack: '¡Buen trabajo!', newWord: 'Nueva palabra:', means: 'significa', tryIt: '¿Puedes decirlo?', allDone: 'Eso es todo nuestro vocabulario por ahora — ¡practiquemos!' },
-  ru: { ack: 'Отлично!', newWord: 'Новое слово:', means: 'значит', tryIt: 'Можешь сказать это?', allDone: 'Это все наши слова на сегодня — давай попрактикуемся!' },
-  ar: { ack: 'أحسنت!', newWord: 'كلمة جديدة:', means: 'تعني', tryIt: 'هل يمكنك أن تقولها؟', allDone: 'هذه كل مفرداتنا الآن — لنتدرب!' },
-  sw: { ack: 'Vizuri sana!', newWord: 'Neno jipya:', means: 'maana yake ni', tryIt: 'Unaweza kulisema?', allDone: 'Hayo ndiyo msamiati wetu wote kwa sasa — tufanye mazoezi!' },
-  lg: { ack: 'Weebale!', newWord: 'Ekigambo ekiggya:', means: 'kitegeeza', tryIt: 'Osobola okukyogera?', allDone: 'Ago ge magezi gonna ge tulina kaakati — tutandike okwenyigira!' },
-  pt: { ack: 'Muito bem!', newWord: 'Palavra nova:', means: 'significa', tryIt: 'Consegues dizê-la?', allDone: 'Isso é todo o nosso vocabulário por agora — vamos praticar!' },
-  it: { ack: 'Ottimo lavoro!', newWord: 'Nuova parola:', means: 'significa', tryIt: 'Riesci a dirla?', allDone: 'Questo è tutto il nostro vocabolario per ora — mettiamolo in pratica!' },
-  nl: { ack: 'Goed gedaan!', newWord: 'Nieuw woord:', means: 'betekent', tryIt: 'Kun je het zeggen?', allDone: 'Dat is al onze woordenschat voor nu — laten we oefenen!' },
-  tr: { ack: 'Aferin!', newWord: 'Yeni kelime:', means: 'anlamına gelir', tryIt: 'Söyleyebilir misin?', allDone: 'Şimdilik kelime dağarcığımız bu kadar — hadi pratik yapalım!' },
-  pl: { ack: 'Dobra robota!', newWord: 'Nowe słowo:', means: 'znaczy', tryIt: 'Potrafisz to powiedzieć?', allDone: 'To już całe nasze słownictwo na teraz — poćwiczmy!' },
-  uk: { ack: 'Молодець!', newWord: 'Нове слово:', means: 'означає', tryIt: 'Можеш це сказати?', allDone: 'Це всі наші слова на зараз — давай практикуватися!' },
-  el: { ack: 'Μπράβο!', newWord: 'Νέα λέξη:', means: 'σημαίνει', tryIt: 'Μπορείς να το πεις;', allDone: 'Αυτό είναι όλο το λεξιλόγιό μας προς το παρόν — ας εξασκηθούμε!' },
-  he: { ack: 'כל הכבוד!', newWord: 'מילה חדשה:', means: 'פירושה', tryIt: 'אתה יכול להגיד את זה?', allDone: 'זה כל אוצר המילים שלנו לעת עתה — בואו נתרגל!' },
-  fa: { ack: 'آفرین!', newWord: 'کلمه جدید:', means: 'به معنی', tryIt: 'می‌توانی آن را بگویی؟', allDone: 'این تمام واژگان ما برای الان است — بیایید تمرین کنیم!' },
-  hi: { ack: 'शाबाश!', newWord: 'नया शब्द:', means: 'का अर्थ है', tryIt: 'क्या तुम इसे बोल सकते हो?', allDone: 'फ़िलहाल हमारी सारी शब्दावली यही है — चलो अभ्यास करते हैं!' },
-  bn: { ack: 'চমৎকার!', newWord: 'নতুন শব্দ:', means: 'মানে', tryIt: 'তুমি কি এটা বলতে পারো?', allDone: 'আপাতত এটাই আমাদের সব শব্দভাণ্ডার — চলো অনুশীলন করি!' },
-  ne: { ack: 'राम्रो काम!', newWord: 'नयाँ शब्द:', means: 'को अर्थ हो', tryIt: 'के तपाईं यो भन्न सक्नुहुन्छ?', allDone: 'अहिलेलाई हाम्रो सबै शब्दावली यही हो — अभ्यास गरौं!' },
-  ur: { ack: 'شاباش!', newWord: 'نیا لفظ:', means: 'کا مطلب ہے', tryIt: 'کیا آپ یہ کہہ سکتے ہیں؟', allDone: 'فی الحال ہماری تمام الفاظ کی فہرست یہی ہے — آئیے مشق کریں!' },
-  zh: { ack: '做得好!', newWord: '新单词:', means: '意思是', tryIt: '你能说说看吗?', allDone: '这就是我们目前的全部词汇——我们来练习吧!' },
-  ko: { ack: '잘했어요!', newWord: '새 단어:', means: '라는 뜻이에요', tryIt: '말해볼 수 있어요?', allDone: '지금까지 배운 단어는 여기까지예요 — 연습해봐요!' },
-  th: { ack: 'เก่งมาก!', newWord: 'คำศัพท์ใหม่:', means: 'แปลว่า', tryIt: 'พูดได้ไหม?', allDone: 'นี่คือคำศัพท์ทั้งหมดของเราตอนนี้ — มาฝึกกันเถอะ!' },
-  vi: { ack: 'Làm tốt lắm!', newWord: 'Từ mới:', means: 'có nghĩa là', tryIt: 'Bạn có thể nói được không?', allDone: 'Đó là tất cả từ vựng của chúng ta lúc này — hãy cùng luyện tập!' },
-  tl: { ack: 'Mahusay!', newWord: 'Bagong salita:', means: 'ibig sabihin ay', tryIt: 'Kaya mo bang sabihin ito?', allDone: 'Iyan na ang lahat ng ating bokabularyo sa ngayon — mag-ensayo tayo!' },
-  ms: { ack: 'Bagus!', newWord: 'Perkataan baharu:', means: 'bermaksud', tryIt: 'Bolehkah anda sebutkannya?', allDone: 'Itu sahaja kosa kata kita buat masa ini — mari kita berlatih!' },
-  id: { ack: 'Bagus sekali!', newWord: 'Kata baru:', means: 'artinya', tryIt: 'Bisakah kamu mengucapkannya?', allDone: 'Itu semua kosakata kita untuk saat ini — ayo kita berlatih!' },
-  km: { ack: 'ល្អណាស់!', newWord: 'ពាក្យថ្មី:', means: 'មានន័យថា', tryIt: 'តើអ្នកអាចនិយាយវាបានទេ?', allDone: 'នេះជាវាក្យសព្ទទាំងអស់របស់យើងសម្រាប់ពេលនេះ — តោះអនុវត្ត!' },
-  my: { ack: 'ကောင်းပါတယ်!', newWord: 'စကားလုံးအသစ်:', means: 'ဆိုလိုသည်မှာ', tryIt: 'ပြောပြနိုင်မလား?', allDone: 'အခုအတွက်တော့ ဒါဟာ ကျွန်တော်တို့ရဲ့ ဝေါဟာရအားလုံးပဲ — လေ့ကျင့်ကြရအောင်!' },
-  lo: { ack: 'ດີຫຼາຍ!', newWord: 'ຄໍາໃໝ່:', means: 'ໝາຍຄວາມວ່າ', tryIt: 'ເຈົ້າເວົ້າໄດ້ບໍ?', allDone: 'ນັ້ນແມ່ນຄໍາສັບທັງໝົດຂອງພວກເຮົາໃນຕອນນີ້ — ມາຝຶກກັນເທາະ!' },
-};
-
-function icebreakerPhrase(langCode: string, key: IcebreakerPhraseKey): string {
-  return (ICEBREAKER_PHRASES[langCode] ?? ICEBREAKER_PHRASES.en)[key];
-}
-
-/**
- * Languages whose writing system does not separate words with spaces (CJK,
- * Thai, Khmer, Burmese, Lao). For these there is no word boundary to enforce,
- * so phrase matching falls back to raw substring containment.
- */
-const SPACE_DELIMITED_LANGUAGES = new Set([
-  'en', 'fr', 'de', 'es', 'ru', 'ar', 'sw', 'lg', 'pt', 'it', 'nl', 'tr', 'pl',
-  'uk', 'el', 'he', 'fa', 'hi', 'bn', 'ur', 'ko', 'vi', 'tl', 'ms', 'id',
-]);
-
-/**
- * Lightweight lexical check for whether the learner's raw input contains the
- * word currently being drilled (its target text, romaji phonetic, or meaning).
- * Used to steer the model past a word the learner has already produced, so the
- * AI doesn't loop back and ask them to repeat it.
- *
- * Matching rules:
- * - Exact match always counts.
- * - For space-delimited languages, a phrase match must appear as a standalone
- *   token, so a partial input like "bon" never matches "bonjour" (and the user
- *   typing "bonjour" never counts as producing the word "bon").
- * - Non-space-delimited scripts fall back to substring containment; reverse
- *   containment is never used.
- */
-function userAttemptsVocabWord(
-  input: string,
-  v: { targetText: string; phonetic: string | null; translation: string },
-  targetLanguage: string,
-): boolean {
-  const norm = (s: string) => s.toLowerCase().trim().replace(/[.,!?;:'"()\[\]⟦⟧【】]/g, '');
-  const clean = norm(input);
-  if (!clean) return false;
-  const haystacks = [v.targetText, v.phonetic ?? '', v.translation].map(norm).filter(Boolean);
-
-  if (!SPACE_DELIMITED_LANGUAGES.has(targetLanguage)) {
-    return haystacks.some(h => clean === h || clean.includes(h));
-  }
-
-  return haystacks.some(h => {
-    if (clean === h) return true;
-    const escaped = h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'u').test(clean);
-  });
-}
-
-/**
- * Generates the short phase-transition / celebration message in the learner's
- * actual target language. The old version appended hardcoded Japanese phrases
- * to every session regardless of the course language — that leaked Japanese
- * into French, German, etc. lessons. Returns '' on any failure so callers can
- * skip the message rather than emit wrong-language text.
- */
-async function generateLocalizedPhaseMessage(
-  provider: AIProvider,
-  targetLanguage: string,
-  nativeLanguage: string,
-  charName: string,
-  kind: PhaseMessageKind,
-): Promise<string> {
-  const targetLangName = getTargetLangConfig(targetLanguage).name;
-  const nativeLangName = getNativeLangName(nativeLanguage);
-  const isSameLanguage = targetLanguage === nativeLanguage;
-  const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
-  const description = PHASE_MESSAGE_DESCRIPTION[kind];
-
-  const instruction = isSameLanguage
-    ? `You are ${charName}. ${description}. Write ONE short, natural sentence in ${targetLangName} (no delimiters, no romaji, no translations, no explanations).`
-    : `You are ${charName}. ${description}. Write a brief message with two parts:
-1. An explanation line in ${nativeLangName}.
-2. One short sentence in ${targetLangName} wrapped in ⟦ ⟧ delimiters${showPhonetic ? ' with romaji in parentheses inside the delimiters' : ''}.
-Everything outside ⟦ ⟧ must be pure ${nativeLangName}; everything inside ⟦ ⟧ must be pure ${targetLangName}. Keep the whole message to 1-2 sentences.`;
-
-  try {
-    let text = '';
-    for await (const chunk of provider.generateStream(instruction, [])) {
-      text += chunk;
-    }
-    return text.trim();
-  } catch (err) {
-    console.warn(
-      '[STREAM CHAT] phase message generation failed, skipping:',
-      err instanceof Error ? err.message : String(err),
-    );
-    return '';
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -290,7 +141,6 @@ export async function POST(req: Request) {
     // on it. Both are authoritative — the AI's "【VOCAB N】" marker only
     // updates them after being parsed back out of its own response below.
     const hasNoVocab = vocabRows.length === 0;
-    const isOrientation = currentPhase === 'orientation';
     const currentVocabIndex = session.icebreakerVocabIndex ?? 1;
     const currentVocabAttempts = session.icebreakerVocabAttempts ?? 0;
     const isIcebreakerExhausted = currentPhase === 'icebreaker'
@@ -327,64 +177,50 @@ export async function POST(req: Request) {
     );
 
     // The base `phonetic` column stores Japanese romaji. Once vocab is
+    // The base `phonetic` column stores Japanese romaji. Once vocab is
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
     const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
-    // Defense-in-depth: legacy seed content teaches fill-in-the-blank templates
-    // ("わたしは___です"). Substitute the learner's real profile name so a blank
-    // never reaches the model or the learner as an unresolved artifact.
-    const resolveBlank = (text: string) =>
-      turnData.learnerName ? text.replace(/___/g, turnData.learnerName) : text;
-    const displayVocab = (v: (typeof vocabRows)[number]) => {
-      const phoneticPart = showPhonetic && v.phonetic ? ` (${resolveBlank(v.phonetic)})` : '';
-      return `"${resolveBlank(v.targetText)}"${phoneticPart}`;
+
+    const scenarioTitle = turnData.scenarioLocalized
+      ? currentScenario.title
+      : (situationResult?.title ?? currentScenario.title);
+
+    // Everything the phase prompts need, assembled once. See
+    // lib/roleplay/prompts/ for the builders that consume it.
+    const promptCtx: TurnPromptContext = {
+      phase: currentPhase,
+      isSameLanguage,
+      isSessionStart,
+      targetLangName,
+      nativeLangName,
+      showPhonetic,
+      scenarioTitle,
+      situationContext,
+      situationLearningGoals,
+      aiCharacterName: currentScenario.aiCharacterName,
+      aiCharacterRole: currentScenario.aiCharacterRole,
+      learnerName: turnData.learnerName,
+      learnerCountry: turnData.learnerCountry,
+      behaviorMode,
+      difficulty: turnData.effectiveDifficulty,
+      vocab: vocabRows,
+      goals,
+      completedSequenceOrders,
+      currentVocabIndex,
+      userProducedCurrentWord,
     };
-
-    // Same-language lessons (e.g. an English course for an English speaker)
-    // need the ACTUAL phrase shown next to its meaning — the phrase lives in
-    // `targetText` while `translation` holds the native-language description.
-    // An 'en' course with no curated vocab localizations overwrites targetText
-    // to equal the translation, so guard against printing the same string twice.
-    const sameLangWordLine = (v: (typeof vocabRows)[number]): string => {
-      const phrase = resolveBlank(String(v.targetText || '').trim());
-      const meaning = resolveBlank(String(v.translation || '').trim());
-      const distinct = phrase && meaning && phrase.toLowerCase() !== meaning.toLowerCase();
-      const core = distinct ? `"${phrase}" — ${meaning}` : (phrase || meaning);
-      const tip = v.usageTip ? resolveBlank(v.usageTip) : null;
-      return tip ? `${core} — ${tip}` : core;
-    };
-
-    const vocabBlock = vocabRows.length > 0
-      ? `Key vocabulary for this lesson:\n${
-          isSameLanguage
-            ? vocabRows.map((v, i) => `  ${i + 1}. ${sameLangWordLine(v)}`).join('\n')
-            : vocabRows.map((v, i) => `  ${i + 1}. ${displayVocab(v)} = "${resolveBlank(v.translation)}"`).join('\n')
-        }`
-      : '';
-
-    // Delimiter-format examples for the dual-language prompts. Built from the
-    // actual (already-localized) lesson vocabulary so they demonstrate the
-    // format in the real target language instead of hardcoded Japanese.
-    // Phonetic glosses ("romaji") are only reliable for Japanese — see
-    // showPhonetic above — so every mention of them below is gated on it to
-    // stop the model inventing ad hoc, often-garbled phonetics for other
-    // target languages.
-    const phoneticParen = showPhonetic ? ' (romaji)' : '';
-    const icebreakerExample = vocabRows[0]
-      ? `Example: Let's learn a useful word. In ${targetLangName}, we say ⟦${displayVocab(vocabRows[0])}⟧ — it means '${resolveBlank(vocabRows[0].translation)}'. Can you say ⟦${displayVocab(vocabRows[0])}⟧?`
-      : `Example: In ${targetLangName}, we say ⟦${targetLangName} word${phoneticParen}⟧ — it means 'the meaning'. Can you say ⟦${targetLangName} word${phoneticParen}⟧?`;
 
     // Deterministically hands off to the next word when we bypass generation
-    // (see shouldForceAdvanceVocab below). This text goes straight to the
-    // learner rather than through the model, so — unlike the English example
-    // strings above, which are just LLM prompt scaffolding — it must already
-    // be phrased in the right language: entirely in targetLanguage for a
-    // same-language lesson, or native-language connectives around a
-    // ⟦ ⟧-wrapped target-language word for a cross-language one.
+    // (see shouldForceAdvanceVocab above). This text goes straight to the
+    // learner rather than through the model, so it must already be phrased in
+    // the right language: entirely in targetLanguage for a same-language
+    // lesson, or native-language connectives around a ⟦ ⟧-wrapped
+    // target-language word for a cross-language one.
     const forcedAdvanceLang = isSameLanguage ? targetLanguage : nativeLanguage;
     const buildWordIntro = (v: (typeof vocabRows)[number]) => isSameLanguage
-      ? `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ${sameLangWordLine(v)} ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')}`
-      : `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ⟦${displayVocab(v)}⟧ — ${icebreakerPhrase(forcedAdvanceLang, 'means')} "${v.translation}". ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')} ⟦${displayVocab(v)}⟧`;
+      ? `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ${sameLangWordLine(v, promptCtx)} ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')}`
+      : `${icebreakerPhrase(forcedAdvanceLang, 'newWord')} ⟦${displayVocab(v, promptCtx)}⟧ — ${icebreakerPhrase(forcedAdvanceLang, 'means')} "${v.translation}". ${icebreakerPhrase(forcedAdvanceLang, 'tryIt')} ⟦${displayVocab(v, promptCtx)}⟧`;
     const forcedAdvanceMessage = !shouldForceAdvanceVocab
       ? null
       : forcedNextVocabRow
@@ -393,262 +229,9 @@ export async function POST(req: Request) {
         // one-past-the-end marker so the index-based icebreakerDone check
         // below still advances the phase instead of looping forever.
         : `${icebreakerPhrase(forcedAdvanceLang, 'ack')} 【VOCAB ${currentVocabIndex + 1}】 ${icebreakerPhrase(forcedAdvanceLang, 'allDone')}`;
-    const guidedExample = vocabRows[0]
-      ? `Example: The phrase ${displayVocab(vocabRows[0])} means '${resolveBlank(vocabRows[0].translation)}'. Now you try: ⟦${displayVocab(vocabRows[0])}⟧`
-      : `Example: Now you try: ⟦${targetLangName} word${phoneticParen}⟧`;
-    const unguidedExample = vocabRows.length >= 2
-      ? `Example: ⟦${displayVocab(vocabRows[0])}⟧ ⟦${displayVocab(vocabRows[1])}⟧？`
-      : vocabRows[0]
-        ? `Example: ⟦${displayVocab(vocabRows[0])}⟧`
-        : `Example: ⟦${targetLangName} text${phoneticParen}⟧ ⟦${targetLangName} text${phoneticParen}⟧？`;
 
-    const goalsBlock = goals.map(g => {
-      const done = completedSequenceOrders.includes(g.sequenceOrder);
-      const status = done ? '[COVERED]' : '[PENDING]';
-      return `  ${status} Goal ${g.sequenceOrder} (${g.goalType}): ${resolveBlank(g.goalText)}`;
-    }).join('\n');
-
-    const modeInstruction = behaviorMode === 'trouble'
-      ? `The AI character should be MORE DIFFICULT to deal with — less cooperative, more complex vocabulary, occasionally misunderstand the user.`
-      : `The AI character should be cooperative, friendly, and helpful.`;
-
-    const scenarioTitle = turnData.scenarioLocalized
-      ? currentScenario.title
-      : (situationResult?.title ?? currentScenario.title);
-    const identityAndGuardBlock = buildIdentityAndGuardBlock(turnData.learnerName, turnData.learnerCountry);
-    const scenarioContextBlock = `
-===== SCENARIO =====
-Title: ${scenarioTitle}
-Setting: ${situationContext}
-Learning goals: ${situationLearningGoals}
-=====================
-
-${identityAndGuardBlock}`;
-
-    // ── Phase-specific prompts ──
-    const orientationRules = `
-ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
-PHASE: ORIENTATION — Welcome the learner warmly, introduce yourself, and plainly explain what this practice session is about.
-
-${scenarioContextBlock}
-
-Goals to cover in this session:
-${goalsBlock}
-
-RULES FOR ORIENTATION:
-- PURE ${nativeLangName}: Write your entire response in friendly, natural ${nativeLangName}. Do NOT use delimiters, romaji, or foreign script.
-- Introduce yourself by name (${currentScenario.aiCharacterName}) and role (${currentScenario.aiCharacterRole}).
-- Plainly explain what the session is about (setting, scenario goal: "${scenarioTitle}", and what role the learner plays).
-- Mention that you will first drill a few key vocabulary words together before moving into the live roleplay.
-- Keep the message concise, clear, and encouraging (2–3 sentences max).`;
-
-    const sameLangOrientationRules = `
-ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
-PHASE: ORIENTATION — Welcome the learner warmly, introduce yourself, and plainly explain what this practice session is about.
-
-${scenarioContextBlock}
-
-Goals to cover in this session:
-${goalsBlock}
-
-RULES FOR ORIENTATION:
-- Speak naturally in ${targetLangName}.
-- Introduce yourself by name (${currentScenario.aiCharacterName}) and role (${currentScenario.aiCharacterRole}).
-- Plainly explain what the session is about (setting, scenario goal: "${scenarioTitle}", and what role the learner plays).
-- Mention that you will first drill a few key vocabulary words together before moving into the live roleplay.
-- Keep the message concise, clear, and encouraging (2–3 sentences max).`;
-
-    const icebreakerGreetingRule = isSessionStart
-      ? `- This is the FIRST message of the session: begin by greeting the student in ${nativeLangName} and explaining what the scenario is about, using the title and setting above.`
-      : `- Do NOT greet the student again — you already greeted them at the start of this session. Continue directly with teaching/practicing the current vocabulary word. Do not restate the scenario setting either; that was already covered.`;
-    const icebreakerRules = `
-ROLE: You are a LANGUAGE TEACHER, not just a roleplay character. Your primary job is TEACHING vocabulary through conversation.
-
-PHASE: ICEBREAKER — You are introducing the student to key vocabulary for the upcoming roleplay scenario described below. Every word you teach must be directly relevant to this specific scenario.
-
-${scenarioContextBlock}
-
-${vocabBlock}
-
-Rules for icebreaker phase:
-- STRICT VOCAB LIMIT: You have EXACTLY ${vocabRows.length} vocabulary word(s) listed above. Teach ONLY these words and in this exact order. Do NOT create, invent, or add any words beyond this list. If the student says something unrelated, acknowledge it briefly and return to the current word.
-- BREVITY: Keep your entire response to 2-3 sentences max. Do not give long explanations.
-${icebreakerGreetingRule}
-- For each word: say the ${targetLangName} word${showPhonetic ? ' (with romaji in parentheses)' : ''}, then clearly say its ${nativeLangName} meaning.
-- After introducing a word, ask the student to repeat it back to you.
-- Keep your tone encouraging and supportive — the student is a beginner.
-- Use a mix of ${nativeLangName} for explanations and ${targetLangName}${showPhonetic ? ' (with romaji)' : ''} for the vocabulary itself.${showPhonetic ? '' : `\n- Do NOT invent a phonetic/pronunciation transliteration for ${targetLangName} text — none is provided for this language, so any such gloss you produce will be unreliable and inconsistent. Present the word as-is.`}
-- Do NOT cover multiple words at once. One word per turn.
-- After the student attempts a word, give very brief feedback (5 words max) in ${nativeLangName} on their attempt, then introduce the next word.
-- Mark the vocabulary word you are currently teaching by saying "【VOCAB N】" at the start of your teaching turn, where N is the word number (1-based).
-- If this is the session-start turn (see rule above), start teaching word 1 right after your one-time greeting. On every later turn, skip straight to introducing/reviewing the current word — no greeting.
-- STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase once and it is still not completely clean, do NOT ask them to repeat it a second time. Acknowledge their effort, provide the correct pronunciation/phrase for reference, and smoothly move to the next word. Never loop more than once on any item.
-- NEVER RE-TEACH A MASTERED WORD: If the student's message already contains the current vocabulary word (they said it correctly), do NOT ask them to say it again. Give a very short acknowledgment and immediately introduce the next word.
-- NEVER REVERT TO AN EARLIER WORD: If the student seems confused or asks what the word was, restate the CURRENT word only (the one you are on now). Never go back and re-teach a word you already covered — each word gets exactly one teaching turn, then you move forward.
-- CRITICAL: Never teach vocabulary unrelated to this scenario. Stay on-topic. Use ONLY the listed scenario vocabulary.
-- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward — acknowledge, then teach the next word. Never stall on the same word. Aim to complete the lesson session naturally and on time.
-- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
-
-===== OUTPUT FORMAT (MANDATORY) =====
-Wrap every ${targetLangName} span${showPhonetic ? ' — the word/phrase itself plus its romaji in parentheses —' : ''} in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName}${showPhonetic ? ' (+ romaji)' : ''}. Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
-
-${icebreakerExample}`;
-
-    const guidedRules = `
-ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}) in a ${targetLangName} language learning roleplay. You are also a language coach.
-
-${scenarioContextBlock}
-
-${vocabBlock}
-
-${modeInstruction}
-
-Goals remaining:
-${goalsBlock}
-
-RULES FOR GUIDED PHASE:
-- Stay in character as ${currentScenario.aiCharacterName} at ALL times. Every response must feel like it belongs to this specific scenario.
-- Do NOT greet the student at every turn — you already greeted them at the start of the session. Jump straight into the roleplay dialogue.
-- THE GUIDED PHASE IS WHERE COACHING HAPPENS: This is the only phase where you give explanations, corrections, and guidance. Keep the EXPLANATION / CORRECTION / GUIDANCE part short (one sentence of coaching max) — never lecture at length.
-- LANGUAGE SEPARATION: Every response has TWO strictly separated parts:
-   1. EXPLANATION / CORRECTION / GUIDANCE part: Write in pure ${nativeLangName}. No ${targetLangName}-accented ${nativeLangName} — it must sound like a native ${nativeLangName} speaker wrote it. Keep it to a single short sentence.
-   2. ROLEPLAY DIALOGUE part: Write in pure ${targetLangName}. Natural in-character dialogue that advances the scenario. This is the main body of your reply.
-- Switch between the two cleanly — don't mix languages in the same sentence.
-${showPhonetic ? `- Always include romaji in parentheses after any ${targetLangName} text.` : `- Do NOT invent a phonetic/pronunciation transliteration for ${targetLangName} text — none is provided for this language, so any such gloss you produce will be unreliable and inconsistent. Write the ${targetLangName} text as-is with no parenthetical pronunciation guide.`}
-- Keep the overall response to 1–3 sentences typically.
-- Do NOT include any JSON, markdown, ratings, or meta text.
-- CRITICAL: Every response must be grounded in the scenario setting above. Do not generate generic phrases that ignore the situation.
-- STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word/phrase/sentence once and it's still not clean, do not ask them to repeat it again. Comment briefly, acknowledge effort, give the correct reference, and move the session forward.
-- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
-- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
-
-===== OUTPUT FORMAT (MANDATORY) =====
-Wrap every ${targetLangName} span${showPhonetic ? ' — the roleplay line itself plus its romaji in parentheses —' : ''} in ⟦ ⟧ delimiters. Everything OUTSIDE ⟦ ⟧ must be pure ${nativeLangName}, and everything INSIDE ⟦ ⟧ must be ${targetLangName}${showPhonetic ? ' (+ romaji)' : ''}. Never place ${nativeLangName} text inside ⟦ ⟧, and never place ${targetLangName} text outside it.
-
-${guidedExample}`;
-
-    const unguidedRules = `
-ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}) in a ${targetLangName} language learning roleplay. This is FULL IMMERSION mode.
-
-${scenarioContextBlock}
-
-${vocabBlock}
-
-${modeInstruction}
-
-Goals remaining:
-${goalsBlock}
-
-RULES FOR UNGUIDED PHASE:
-- FULL IMMERSION: Reply entirely in ${targetLangName}. Do NOT use ${nativeLangName} for any reason.
-- STRICTLY ROLEPLAY, NO COACHING: This phase is pure in-character dialogue. Do NOT give explanations, corrections, feedback, or vocabulary reviews — the guided phase is over. Just act the scene.
-- Stay in character as ${currentScenario.aiCharacterName} at all times.
-- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
-${showPhonetic ? `- Always include romaji in parentheses after every ${targetLangName} sentence.` : `- Do NOT invent a phonetic/pronunciation transliteration for ${targetLangName} text — none is provided for this language, so any such gloss you produce will be unreliable and inconsistent. Write the ${targetLangName} text as-is with no parenthetical pronunciation guide.`}
-- Keep responses natural, conversational, and in-character — driven entirely by the scenario setting above.
-- Drive the conversation toward completing the remaining goals naturally within the scenario.
-- Keep responses to 1–3 sentences typically.
-- Do NOT include any JSON, markdown, ratings, or meta text.
-- CRITICAL: Every response must be grounded in the specific scenario setting. Never resort to generic greetings or phrases that ignore the situation.
-- STRICT NO-LOOP RETRY RULE: If the learner has already attempted a phrase once, do not ask them to repeat it. Move the conversation forward naturally.
-- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward completing the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
-- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.
-
-===== OUTPUT FORMAT (MANDATORY) =====
-Wrap every ${targetLangName} span in ⟦ ⟧ delimiters. Since unguided phase is 100% ${targetLangName}, virtually all text should be inside ⟦ ⟧.${showPhonetic ? ` Include romaji inside the delimiters: ⟦${targetLangName} text (romaji)⟧.` : ''}
-
-${unguidedExample}`;
-
-    // ── Same-language prompt variants (no dual-language, no delimiters) ──
-    const sameLangIcebreakerGreetingRule = isSessionStart
-      ? `- This is the FIRST message of the session: greet the student and briefly explain what the scenario is about.`
-      : `- Do NOT greet the student again — that already happened at the start of this session. Go straight into teaching/practicing the current word.`;
-    const sameLangIcebreakerRules = `
-ROLE: You are a TEACHER. Your primary job is TEACHING vocabulary through conversation.
-
-PHASE: ICEBREAKER — You are introducing the student to key vocabulary for the upcoming roleplay scenario described below.
-
-${scenarioContextBlock}
-
-${vocabBlock}
-
-Rules:
-- You have EXACTLY ${vocabRows.length} vocabulary word(s) listed above. Teach ONLY these words and in this exact order.
-- BREVITY: Keep your entire response to 2-3 sentences max.
-${sameLangIcebreakerGreetingRule}
-- For each word: present the word, clearly explain its meaning, and ask the student to repeat it.
-- Keep your tone encouraging and supportive.
-- Do NOT cover multiple words at once. One word per turn.
-- After the student attempts a word, give brief feedback, then introduce the next word.
-- Mark the vocabulary word by saying "【VOCAB N】" at the start of your teaching turn.
-- STRICT NO-LOOP RETRY RULE: If the learner has already attempted this word once and it's still not clean, do not ask them to repeat it again. Comment briefly and move forward.
-- NEVER REVERT TO AN EARLIER WORD: If the student seems confused or asks what the word was, restate the CURRENT word only. Never go back and re-teach a word you already covered.
-- Speak naturally in ${targetLangName}. No delimiters, no romaji, no language switching.`;
-
-    const sameLangGuidedRules = `
-ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
-
-${scenarioContextBlock}
-
-${vocabBlock}
-
-${modeInstruction}
-
-Goals remaining:
-${goalsBlock}
-
-RULES:
-- Stay in character as ${currentScenario.aiCharacterName} at all times. Every response must feel like it belongs to this specific scenario.
-- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
-- Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
-- Keep the overall response to 1–3 sentences typically.
-- Do NOT include any JSON, markdown, ratings, or meta text.
-- Drive the conversation forward naturally toward completing the remaining goals.
-- CRITICAL: Every response must be grounded in the scenario setting above. Never give language lessons or coaching — just act the roleplay.
-- STRICT NO-LOOP RETRY RULE: Never loop more than once on the same mistake. Acknowledge and move forward.
-- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward completing the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
-- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
-
-    const sameLangUnguidedRules = `
-ROLE: You are ${currentScenario.aiCharacterName} (${currentScenario.aiCharacterRole}).
-
-${scenarioContextBlock}
-
-${modeInstruction}
-
-Goals remaining:
-${goalsBlock}
-
-RULES:
-- STRICTLY ROLEPLAY, NO COACHING: This phase is pure in-character dialogue. Do NOT give explanations, corrections, feedback, or vocabulary reviews — the guided phase is over. Just act the scene.
-- Stay in character as ${currentScenario.aiCharacterName} at all times.
-- Do NOT greet the student — you already greeted them at the start of the session. Jump straight into the roleplay.
-- Speak naturally in ${targetLangName}. No coaching, no explanations, no breaking character.
-- Keep responses to 1–3 sentences typically.
-- Do NOT include any JSON, markdown, ratings, or meta text.
-- Drive the conversation toward completing the remaining goals naturally within the scenario.
-- CRITICAL: Every response must be grounded in the scenario setting. Never resort to generic greetings or phrases that ignore the situation.
-- STRICT NO-LOOP RETRY RULE: Never loop on retries. Move forward.
-- GOAL-DRIVEN PROGRESS: Every turn you must move the conversation forward toward completing the remaining [PENDING] goals. Never stall on the same exchange. Aim to complete the lesson session naturally and on time.
-- When appropriate, briefly signal what the student should expect next in the session (e.g. moving to a new goal or wrapping up), so the learner never feels like they have to guess what to do — you are always the one steering the conversation forward.`;
-
-    const streamSystemPrompt = isSameLanguage
-      ? (isOrientation
-          ? sameLangOrientationRules
-          : currentPhase === 'icebreaker'
-            ? (isIcebreakerExhausted || hasNoVocab ? sameLangGuidedRules : sameLangIcebreakerRules)
-            : (currentPhase === 'guided' ? sameLangGuidedRules : sameLangUnguidedRules))
-      : (isOrientation
-          ? orientationRules
-          : currentPhase === 'icebreaker'
-            ? (isIcebreakerExhausted || hasNoVocab ? guidedRules : icebreakerRules)
-            : (currentPhase === 'guided' ? guidedRules : unguidedRules));
-
-    const streamUserMsg = isSessionStart
-      ? `[SESSION START] The student is ready to begin. This is the first turn.`
-      : userProducedCurrentWord
-        ? `[Turn ${currentTurnNo}] The student says: "${effectiveInput}" — and that message ALREADY contains the exact vocabulary word you are currently teaching (word ${currentVocabIndex}). The learner has produced it correctly. Do NOT ask them to repeat it. Acknowledge very briefly (max 5 words) and immediately move on to the next word.`
-        : `[Turn ${currentTurnNo}] The student says: "${effectiveInput}"`;
+    const streamSystemPrompt = buildTurnSystemPrompt(promptCtx);
+    const streamUserMsg = buildTurnUserMessage(promptCtx, effectiveInput, currentTurnNo);
 
     // ── Build SSE response stream ──
     const encoder = new TextEncoder();
@@ -705,12 +288,28 @@ RULES:
           // was asked to emit before trusting it to move the index.
           let newVocabIndex = currentVocabIndex;
           let newVocabAttempts = currentVocabAttempts;
+          // The encounter to record for the word we are moving off, if any.
+          // Nothing in this streaming flow ever wrote `vocabulary_encounters`
+          // — only the legacy /api/sessions/[id]/icebreaker drill route did.
+          // Two things depended on that data and silently got nothing:
+          // the icebreakerPassRate blended into the final vocabulary score
+          // (see below), and the words that should feed the review queue.
+          let vocabEncounter: { vocabularyId: number; usedCorrectly: boolean; attemptNumber: number } | null = null;
           if (currentPhase === 'icebreaker') {
             if (shouldForceAdvanceVocab) {
               // We authored fullAiText ourselves (forcedAdvanceMessage) — advance
               // state directly instead of round-tripping through the marker regex.
               newVocabIndex = currentVocabIndex + 1;
               newVocabAttempts = newVocabIndex <= vocabRows.length ? 1 : 0;
+              // Forced advance means they used up both attempts without
+              // producing it cleanly.
+              if (currentVocabRow) {
+                vocabEncounter = {
+                  vocabularyId: currentVocabRow.id,
+                  usedCorrectly: false,
+                  attemptNumber: currentVocabAttempts,
+                };
+              }
             } else if (userProducedCurrentWord) {
               // The learner's last message already contained the current word, so
               // they've produced it. Advance deterministically instead of waiting
@@ -721,6 +320,13 @@ RULES:
               // this advance is never persisted.
               newVocabIndex = currentVocabIndex + 1;
               newVocabAttempts = newVocabIndex <= vocabRows.length ? 1 : 0;
+              if (currentVocabRow) {
+                vocabEncounter = {
+                  vocabularyId: currentVocabRow.id,
+                  usedCorrectly: true,
+                  attemptNumber: Math.max(1, currentVocabAttempts),
+                };
+              }
             } else {
               // Only trust a marker that matches the current word or steps to the
               // very next one; a missing, malformed, or out-of-range value (e.g. the
@@ -733,6 +339,15 @@ RULES:
               } else if (parsedIndex === currentVocabIndex + 1 && parsedIndex <= vocabRows.length) {
                 newVocabIndex = parsedIndex;
                 newVocabAttempts = 1;
+                // The model moved on of its own accord, which it is told to do
+                // once the learner has produced the word acceptably.
+                if (currentVocabRow) {
+                  vocabEncounter = {
+                    vocabularyId: currentVocabRow.id,
+                    usedCorrectly: true,
+                    attemptNumber: Math.max(1, currentVocabAttempts),
+                  };
+                }
               } else {
                 newVocabAttempts = currentVocabAttempts + 1;
               }
@@ -751,7 +366,6 @@ RULES:
 
           // Phase 2: Analyze the user's turn (skip for session start greeting)
           if (isSessionStart) {
-            let aiConversationId: number | null = null;
             const { newPhase: sessionStartPhase, phaseChanged } = await withSessionLock(numericSessionId, async (tx) => {
               const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
               if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
@@ -765,7 +379,7 @@ RULES:
                 .limit(1);
               if (existingGreeting.length > 0) throw new Error('Session start already processed');
 
-              const [aiConversation] = await tx.insert(conversations).values({
+              await tx.insert(conversations).values({
                 sessionId: numericSessionId,
                 turnNo: currentTurnNo,
                 speaker: 'ai',
@@ -773,9 +387,7 @@ RULES:
                 messageNative: '',
                 messagePhonetic: null,
                 isValidInContext: true,
-              }).returning({ id: conversations.id });
-
-              aiConversationId = aiConversation?.id ?? null;
+              });
 
               const icebreakerDoneInner = currentPhase === 'icebreaker'
                 ? (vocabRows.length > 0 ? newVocabIndex > vocabRows.length : true)
@@ -794,19 +406,6 @@ RULES:
 
               return { newPhase: newPhaseInner, phaseChanged: newPhaseInner !== currentPhase };
             });
-
-            if (aiConversationId) {
-              const jobId = await enqueueAudioJob(
-                aiConversationId,
-                numericSessionId,
-                fullAiText,
-                targetBcp47,
-                currentPhase,
-                'ai',
-                session.voiceGender ?? undefined,
-              );
-              await dispatchAudioJob(jobId, aiConversationId, numericSessionId);
-            }
 
             if (phaseChanged) {
               send(JSON.stringify({
@@ -938,6 +537,21 @@ RULES:
                     }
                   }
 
+                  // Same reason as the goal rows above: this branch advances
+                  // icebreakerVocabIndex/Attempts, so the encounter that drove
+                  // that advance has to be recorded here too — otherwise the
+                  // word counts as taught with no evidence row behind it.
+                  if (vocabEncounter) {
+                    await tx.insert(vocabularyEncounters).values({
+                      sessionId: numericSessionId,
+                      conversationId: userConversation.id,
+                      vocabularyId: vocabEncounter.vocabularyId,
+                      usedCorrectly: vocabEncounter.usedCorrectly,
+                      attemptNumber: vocabEncounter.attemptNumber,
+                      phase: 'icebreaker',
+                    });
+                  }
+
                   const sessionUpdate: Record<string, unknown> = {
                     pendingRetryCorrectionId: newPendingId,
                     lastActiveAt: new Date(),
@@ -1019,6 +633,17 @@ RULES:
                   }))
                 );
               }
+            }
+
+            if (vocabEncounter) {
+              await tx.insert(vocabularyEncounters).values({
+                sessionId: numericSessionId,
+                conversationId: userConversation.id,
+                vocabularyId: vocabEncounter.vocabularyId,
+                usedCorrectly: vocabEncounter.usedCorrectly,
+                attemptNumber: vocabEncounter.attemptNumber,
+                phase: 'icebreaker',
+              });
             }
 
             const [aiConversation] = await tx.insert(conversations).values({
@@ -1106,7 +731,7 @@ RULES:
             const blendedFluency = Math.round(((currentFluencyScore * (scoredTurnsCount - 1)) + analysis.scores.fluency) / scoredTurnsCount);
             const blendedCultural = Math.round(((currentCulturalScore * (scoredTurnsCount - 1)) + analysis.scores.cultural) / scoredTurnsCount);
             const blendedTask = Math.round(((currentTaskScore * (scoredTurnsCount - 1)) + analysis.scores.task) / scoredTurnsCount);
-            const blendedExpression = Math.round(((currentExpressionScore * (scoredTurnsCount - 1)) + (analysis.scores as any).expressionAppropriateness) / scoredTurnsCount);
+            const blendedExpression = Math.round(((currentExpressionScore * (scoredTurnsCount - 1)) + analysis.scores.expressionAppropriateness) / scoredTurnsCount);
 
             const updateData: Record<string, unknown> = {
               totalTurns: currentTurnNo,
@@ -1149,11 +774,15 @@ RULES:
                   eq(vocabularyEncounters.phase, 'icebreaker'),
                 ));
 
-              const icebreakerPassRate = icebreakerStats && icebreakerStats.total > 0
-                ? Math.round((icebreakerStats.passed / icebreakerStats.total) * 100)
-                : 0;
-
-              const finalVocabScore = Math.round((blendedVocab + icebreakerPassRate) / 2);
+              // Blend the drill result into the vocabulary score ONLY when the
+              // drill actually produced data. Averaging against a hardcoded 0
+              // for a session with no recorded encounters silently halved the
+              // learner's vocabulary score — which, until encounters started
+              // being written above, was every streaming session.
+              const icebreakerTotal = icebreakerStats?.total ?? 0;
+              const finalVocabScore = icebreakerTotal > 0
+                ? Math.round((blendedVocab + Math.round((icebreakerStats.passed / icebreakerTotal) * 100)) / 2)
+                : blendedVocab;
               const finalFluencyScore = Math.round((blendedFluency + runningScoreInner) / 2);
               const finalTaskScore = Math.round((blendedTask + runningScoreInner) / 2);
 
@@ -1167,6 +796,19 @@ RULES:
               });
               const isPassed = compositeScore >= PASSING_SCORE_THRESHOLD;
               const celebrationVariant: 'scenario-mastery' | 'needs-practice' = isPassed ? 'scenario-mastery' : 'needs-practice';
+
+              // Every word met in this session enters the spaced-repetition
+              // queue. Card seeding previously lived only in
+              // recordLessonActivity, so it fired for curriculum lessons and
+              // never for a freeform session — meaning most practice produced
+              // nothing to review later. onConflictDoNothing keeps an existing
+              // card's schedule intact rather than resetting it.
+              const practisedVocabIds = vocabRows.map(v => v.id);
+              if (practisedVocabIds.length > 0) {
+                await tx.insert(srsCards)
+                  .values(practisedVocabIds.map(vocabularyId => ({ userId: user.id, vocabularyId })))
+                  .onConflictDoNothing();
+              }
 
               await tx.insert(evaluations).values({
                 sessionId: numericSessionId,
@@ -1247,18 +889,6 @@ RULES:
               shouldComplete: shouldCompleteInner,
             };
           });
-
-          if (writeResult.aiConversationId) {
-            enqueueAudioJob(
-              writeResult.aiConversationId,
-              numericSessionId,
-              fullAiText,
-              targetBcp47,
-              currentPhase,
-              'ai',
-              session.voiceGender ?? undefined,
-            );
-          }
 
           // ── Phase transition announcement & SSE event broadcast ──
           if (writeResult.newPhase !== currentPhase && !writeResult.shouldComplete) {
