@@ -90,6 +90,9 @@ export function withVerifiedRequestOrigin(request: Request): Request {
     return new Request(request.url, {
       method: request.method,
       headers,
+      // Preserve client cancellation — the rebuilt Request must abort when the
+      // original does, so builtin.POST can observe AbortSignal abort.
+      signal: request.signal,
       // body is null for GET/HEAD; clone via arrayBuffer would be more correct
       // but sign-out is POST with no body, so undefined is fine here.
       body: (request as Request & { body?: BodyInit | null }).body ?? undefined,

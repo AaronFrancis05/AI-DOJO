@@ -413,7 +413,15 @@ export default function VoiceOnlyPage() {
           <VoiceOnlyStage
             name={charName}
             accentColor={charColor}
-            mode={avatarMode}
+            mode={
+              avatarMode === 'talking'
+                ? 'talking'
+                : voice.isListening
+                  ? 'listening'
+                  : aiTurnActive
+                    ? 'thinking'
+                    : 'idle'
+            }
             role={charRole}
             volumeLevel={voice.volumeLevel}
           />

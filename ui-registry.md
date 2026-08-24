@@ -65,6 +65,17 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `RoleplayInputBar` | Text/voice toggle input + send button. Input has `min-w-0 flex-1` for proper shrink on narrow viewports. |
 | `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
 | `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
+| `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
+| `AvatarCaptionsOverlay` | `bg-black/70 backdrop-blur` pill at `bottom-6`; `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. |
+| `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`); otherwise same as before. |
+
+## Avatar Catalog (`/lib/avatar/`)
+
+| Module | Notes |
+|--------|-------|
+| `lib/avatar/catalog.ts` | 43-entry `AVATAR_DATA` + `AVATAR_SOURCES` (`/ai-avatars/models/*.glb` + `/ai-avatars/thumbnails/*.webp`); `getAvatar/getAllAvatars/setPersonaOverride` cache keyed `${instanceId}::${avatarId}` — port of `ai-avatar-ui/src/avatar/AvatarSources.js`. |
+| `lib/avatar/dojo-adapter.ts` | `DojoBrainAdapter` replacing `CharacterBrain` (`CharacterBrain.js:117-232`): `ask→POST /api/chat/stream` SSE + `POST /api/tts`, `history→GET /api/sessions/[id]`, `getSettings→GET /api/user/preferences\|/api/user/avatars`. |
+| `lib/hooks/useAvatarCaptions.ts` | `splitIntoCaptionChunks(130)` + `playCaption(text,totalDurationMs)` (`MIN_CHUNK_MS=900` proportional) — port of `AvatarController.js:758-817`. |
 
 ## Route Map (Phase F1-F4)
 | Route | Panel | Status |
@@ -123,6 +134,13 @@ Last updated: 2026-07-25
 - Barge-in: pressing mic while AI speaking calls `stopTts()` before starting recognition
 - Caption bubble uses dashed border to distinguish from chat bubble
 - Live caption falls back from external partial to voice.partialTranscript
+- Note: this component is currently unreferenced — the live mic UI lives inline in `app/(app)/session/[sessionId]/voice/page.tsx` and `avatar/page.tsx`, both built on `useVoiceInput`/`lib/roleplay/pronunciation.ts`. Docs below describe that actual live implementation.
+
+**`useVoiceInput` / `lib/roleplay/pronunciation.ts` (live mic capture, 2026-08-24):**
+- `pronunciation.ts` prewarms the Azure Speech token + `SpeechRecognizer` on mount (`prewarmRecognizer`) so the first mic press doesn't pay for a network round trip before capture starts; the auth token is refreshed on an interval so long sessions don't silently stop capturing after the ~10min token TTL.
+- `useVoiceInput().stop()` awaits any in-flight `start()` before issuing the stop, so a fast push-to-talk tap-and-release can't race ahead of the recognizer attaching its handlers and drop the utterance.
+- `voice.volumeLevel` is driven by a real `AnalyserNode` RMS reading of the mic stream (independent of the Speech SDK's own audio input), not a proxy off transcript length — this is what the mic button's ring/scale and the voice-only orb's swell react to.
+- `VoiceOnlyStage`'s `mode` prop now includes `'thinking'` (three pulsing dots + "Thinking" status pill) for the gap between mic release and the first streamed AI token, so the user isn't staring at a "Ready" orb wondering if their voice was dropped. The avatar (3D) page mirrors capture state via `EmotionSystem.startListening()/stopListening()` and shows a "Thinking…" caption for the same gap.
 
 ### ConnectionLatencyIndicator
 

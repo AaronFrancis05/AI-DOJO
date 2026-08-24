@@ -134,11 +134,37 @@ const EMOTION_ALIASES: Record<string, string> = {
   apologetic: 'sad',
 };
 
+// Fallback for rigs missing whole groups of granular shapes (e.g. no
+// mouthSmileLeft/Right, no jawOpen). Ported from ai-avatar-ui ExpressionEngine.js
+const COMPENSATION_RULES: Record<string, { missing: string[]; floor: Record<string, number> }[]> = {
+  happy: [
+    { missing: ['cheekSquintLeft', 'cheekSquintRight'], floor: { eyeSquintLeft: 0.65, eyeSquintRight: 0.65 } },
+    { missing: ['mouthSmileLeft', 'mouthSmileRight'], floor: { mouthSmile: 1 } },
+    { missing: ['mouthUpperUpLeft', 'mouthUpperUpRight'], floor: { mouthOpen: 1, mouthLowerDownLeft: 1, mouthLowerDownRight: 1 } },
+  ],
+  angry: [
+    { missing: ['mouthStretchLeft', 'mouthStretchRight'], floor: { noseSneerLeft: 0.55, noseSneerRight: 0.50, mouthShrugUpper: 0.30 } },
+  ],
+  surprised: [
+    { missing: ['jawOpen'], floor: { mouthOpen: 1 } },
+    { missing: ['mouthFunnel'], floor: { mouthPucker: 0.25 } },
+  ],
+  scared: [
+    { missing: ['mouthStretchLeft', 'mouthStretchRight'], floor: { mouthShrugUpper: 0.35, mouthShrugLower: 0.30, noseSneerLeft: 0.30, noseSneerRight: 0.30 } },
+    { missing: ['mouthRollLower', 'mouthRollUpper'], floor: { mouthShrugLower: 0.20 } },
+    { missing: ['jawOpen'], floor: { mouthOpen: 1, jawForward: 0.40 } },
+  ],
+  relaxed: [
+    { missing: ['eyeLookDownLeft', 'eyeLookDownRight'], floor: { eyeBlinkLeft: 0.55, eyeBlinkRight: 0.55 } },
+  ],
+};
+
 export type BlinkState = 'waiting' | 'closing' | 'opening';
 
 export class ExpressionEngine {
   model: THREE.Group;
   faceMesh: MorphMesh | null = null;
+  faceMeshes: MorphMesh[] = [];
   targetWeights: Record<string, number> = {};
   currentWeights: Record<string, number> = {};
   activeEmotion = 'neutral';
@@ -162,13 +188,19 @@ export class ExpressionEngine {
     this.isTalking = !!talking;
   }
 
+  private _existsSomewhere(key: string): boolean {
+    return this.faceMeshes.some((m) => m.morphTargetDictionary[key] !== undefined);
+  }
+
   private _findFaceMesh(): void {
+    this.faceMeshes = [];
     let best: MorphMesh | null = null;
     let bestScore = -1;
     const root = this.model;
     root.traverse((obj) => {
       const morph = asMorphMesh(obj);
       if (morph) {
+        this.faceMeshes.push(morph);
         const dict = morph.morphTargetDictionary;
         const nameHint = (obj.name?.toLowerCase().includes('head') ?? false) ? 1 : 0;
         const hasVisemeOrJaw =
@@ -184,22 +216,17 @@ export class ExpressionEngine {
     });
     this.faceMesh = best;
 
-    if (best) {
-      const dict = (best as unknown as Record<string, unknown>).morphTargetDictionary as Record<string, number>;
-      if (dict) {
-        Object.keys(dict).forEach((key) => {
-          this.targetWeights[key] = 0;
-          if (this.currentWeights[key] === undefined) {
-            this.currentWeights[key] = 0;
-          }
-        });
-      }
-    }
+    this.faceMeshes.forEach((mesh) => {
+      Object.keys(mesh.morphTargetDictionary).forEach((key) => {
+        if (this.targetWeights[key] === undefined) this.targetWeights[key] = 0;
+        if (this.currentWeights[key] === undefined) this.currentWeights[key] = 0;
+      });
+    });
   }
 
   setExpression(emotion: string): void {
-    if (!this.faceMesh) this._findFaceMesh();
-    if (!this.faceMesh) return;
+    if (!this.faceMeshes.length) this._findFaceMesh();
+    if (!this.faceMeshes.length) return;
 
     const clean = (emotion || 'neutral').trim().toLowerCase();
     const targetEmotion =
@@ -211,25 +238,31 @@ export class ExpressionEngine {
     });
 
     const designLayout = COMBINED_EXPRESSIONS[targetEmotion] || {};
-    const dict = this.faceMesh.morphTargetDictionary;
     Object.entries(designLayout).forEach(([morphName, targetWeight]) => {
-      if (dict[morphName] !== undefined) {
+      if (this._existsSomewhere(morphName)) {
         this.targetWeights[morphName] = targetWeight;
       }
+    });
+
+    const rules = COMPENSATION_RULES[targetEmotion] || [];
+    rules.forEach(({ missing, floor }) => {
+      const groupIsMissing = missing.every((key) => !this._existsSomewhere(key));
+      if (!groupIsMissing) return;
+      Object.entries(floor).forEach(([morphName, floorWeight]) => {
+        if (this._existsSomewhere(morphName)) {
+          this.targetWeights[morphName] = Math.max(this.targetWeights[morphName] || 0, floorWeight);
+        }
+      });
     });
   }
 
   update(delta: number): void {
-    if (!this.faceMesh) {
+    if (!this.faceMeshes.length) {
       this._findFaceMesh();
       return;
     }
 
     const dt = delta || 0.016;
-    const dict = this.faceMesh.morphTargetDictionary;
-    const influences = this.faceMesh.morphTargetInfluences;
-    if (!dict || !influences) return;
-
     const lerpFactor = 1 - Math.exp(-1.5 * dt);
 
     Object.keys(this.targetWeights).forEach((key) => {
@@ -250,11 +283,17 @@ export class ExpressionEngine {
 
       this.currentWeights[key] +=
         (targetValue - this.currentWeights[key]) * lerpFactor;
+    });
 
-      const index = dict[key];
-      if (index !== undefined) {
-        influences[index] = Math.max(0, Math.min(1, this.currentWeights[key]));
-      }
+    this.faceMeshes.forEach((mesh) => {
+      const dict = mesh.morphTargetDictionary;
+      const influences = mesh.morphTargetInfluences;
+      Object.keys(this.currentWeights).forEach((key) => {
+        const index = dict[key];
+        if (index !== undefined) {
+          influences[index] = Math.max(0, Math.min(1, this.currentWeights[key]));
+        }
+      });
     });
 
     if (this._blinkState === 'waiting') {
@@ -275,11 +314,14 @@ export class ExpressionEngine {
       }
     }
 
-    const leftIdx = dict['eyeBlinkLeft'] ?? dict['eyeBlink_L'];
-    const rightIdx = dict['eyeBlinkRight'] ?? dict['eyeBlink_R'];
-
-    const blinkVal = this._blinkState !== 'waiting' ? this._blinkProgress : 0;
-    if (leftIdx !== undefined) influences[leftIdx] = blinkVal;
-    if (rightIdx !== undefined) influences[rightIdx] = blinkVal;
+    this.faceMeshes.forEach((mesh) => {
+      const dict = mesh.morphTargetDictionary;
+      const influences = mesh.morphTargetInfluences;
+      const leftIdx = dict['eyeBlinkLeft'] ?? dict['eyeBlink_L'];
+      const rightIdx = dict['eyeBlinkRight'] ?? dict['eyeBlink_R'];
+      const blinkVal = this._blinkState !== 'waiting' ? this._blinkProgress : 0;
+      if (leftIdx !== undefined) influences[leftIdx] = blinkVal;
+      if (rightIdx !== undefined) influences[rightIdx] = blinkVal;
+    });
   }
 }

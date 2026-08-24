@@ -13,6 +13,7 @@ import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
@@ -79,6 +80,7 @@ export default function AvatarModePage() {
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const { caption, playCaption, clear: clearCaption } = useAvatarCaptions();
 
   useEffect(() => {
     if (lastAiCompletedRef.current === 0) {
@@ -192,6 +194,10 @@ export default function AvatarModePage() {
     emotionSystemRef.current?.startThinking();
     stopTts();
     resetStreamingTts();
+    clearCaption();
+    // Bridge the gap between the mic release and the first streamed token so
+    // the learner sees the reply is coming, not that their voice was dropped.
+    playCaption('Thinking…', 4000).catch(() => {});
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -212,6 +218,8 @@ export default function AvatarModePage() {
         },
         onTextDone: (t: string) => {
           const cleaned = cleanDisplay(t);
+          const estDuration = Math.max(3000, cleaned.length * 65);
+          if (cleaned) playCaption(cleaned, estDuration).catch(() => {});
           if (!mutedRef.current && cleaned) {
             speakMixedText(
               cleaned,
@@ -275,7 +283,7 @@ export default function AvatarModePage() {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [submitTurnStream, conversations]);
+  }, [submitTurnStream, conversations, clearCaption, playCaption]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -295,6 +303,15 @@ export default function AvatarModePage() {
     if (avatarMode === 'talking') stopTts();
     await voice.start();
   }, [avatarMode, voice]);
+
+  // Mirror mic capture state onto the 3D avatar so it's visibly "listening",
+  // not just idle, for the duration the mic button is held.
+  useEffect(() => {
+    const emo = emotionSystemRef.current;
+    if (!emo) return;
+    if (voice.isListening) emo.startListening();
+    else emo.stopListening();
+  }, [voice.isListening]);
 
   const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
   const skillLevelLabel = situation?.skillLevel
@@ -409,6 +426,7 @@ export default function AvatarModePage() {
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t: string) => {
                         const cleaned = cleanDisplay(t);
+                        if (cleaned) playCaption(cleaned, Math.max(3000, cleaned.length * 65)).catch(() => {});
                         if (!mutedRef.current && cleaned) {
                           speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                         }
@@ -457,6 +475,7 @@ export default function AvatarModePage() {
               mode={avatarMode}
               modelUrl={avatarModelUrl}
               cameraMode="front"
+              caption={caption}
               onSystemReady={(sys) => {
                 emotionSystemRef.current = sys;
                 if (speakingRef.current) sys.startTalking?.();

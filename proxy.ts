@@ -17,11 +17,22 @@ function withPublicOrigin(request: NextRequest): NextRequest {
   if (current.origin === publicOrigin) return request;
   // Avoid `new NextRequest(url, request)` — passing a NextRequest as init
   // throws "Cannot read private member #state" in this Next.js version.
-  // Rebuild explicitly from URL string + method/headers.
-  return new NextRequest(new URL(current.pathname + current.search, publicOrigin).toString(), {
+  // Rebuild explicitly from URL string + method/headers/body.
+  const headers = new Headers(request.headers);
+  const init: RequestInit & { duplex?: string } = {
     method: request.method,
-    headers: new Headers(request.headers),
-  });
+    headers,
+  };
+  // Preserve body for non-GET/HEAD so a POST that reaches protectedMiddleware
+  // doesn't arrive with body === null (and a stale content-length).
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body) {
+    // Clone the stream so the original request remains readable.
+    init.body = request.clone().body as unknown as BodyInit;
+    init.duplex = 'half';
+    // Let fetch set content-length from the stream; a stale header would mismatch.
+    headers.delete('content-length');
+  }
+  return new NextRequest(new URL(current.pathname + current.search, publicOrigin).toString(), init as unknown as never);
 }
 
 async function checkSessionAndRedirect(request: NextRequest) {
