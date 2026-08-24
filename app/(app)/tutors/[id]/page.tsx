@@ -164,7 +164,7 @@ export default function TutorDetailPage() {
                       type="button"
                       onClick={() => setSelected(s.startsAt)}
                       className={cn(
-                        'rounded-[--radius-md] border px-4 py-2 text-sm transition-colors',
+                        'rounded-(--radius-md) border px-4 py-2 text-sm transition-colors',
                         selected === s.startsAt
                           ? 'border-dojo-accent bg-dojo-accent text-white'
                           : 'border-dojo-border bg-dojo-surface text-dojo-text-primary hover:bg-dojo-surface-raised',
@@ -195,7 +195,7 @@ export default function TutorDetailPage() {
                   type="button"
                   onClick={() => setDuration(m)}
                   className={cn(
-                    'rounded-[--radius-md] border px-4 py-2 text-sm transition-colors',
+                    'rounded-(--radius-md) border px-4 py-2 text-sm transition-colors',
                     duration === m
                       ? 'border-dojo-accent bg-dojo-accent text-white'
                       : 'border-dojo-border bg-dojo-surface text-dojo-text-primary hover:bg-dojo-surface-raised',
@@ -218,7 +218,7 @@ export default function TutorDetailPage() {
               rows={3}
               maxLength={2000}
               placeholder="What you'd like to work on…"
-              className="w-full rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none"
+              className="w-full rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none"
             />
           </div>
 

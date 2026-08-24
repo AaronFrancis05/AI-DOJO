@@ -1,5 +1,27 @@
-import { buildIdentityAndGuardBlock } from '../../ai-engine';
 import type { PromptVocab, TurnPromptContext } from './types';
+
+/**
+ * Single source of truth for the learner-identity + placeholder-guard
+ * instruction block. Every prompt that generates or evaluates a reply the
+ * learner will read must include this — duplicating it inline per call site
+ * is how the "[Your Name]"-style placeholder bug slipped past one prompt
+ * (lib/ai-engine.ts) while still shipping live in another (the streaming
+ * prompt in app/api/chat/stream/route.ts).
+ *
+ * Lives here rather than in ai-engine so the prompt modules own their own
+ * building blocks and don't import back out of the prompts directory.
+ */
+export function buildIdentityAndGuardBlock(learnerName?: string, learnerCountry?: string | null): string {
+  return learnerName
+    ? `- The REAL learner you are talking to is named "${learnerName}"${learnerCountry ? ` and they are from ${learnerCountry}` : ''}. Use this real information whenever the roleplay calls for the learner's name or country — never invent a placeholder, never leave a blank unfilled, and never ask for information you already have here.
+
+===== PLACEHOLDER GUARD =====
+NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`
+    : `- The real learner's profile name/country were not provided. If the roleplay requires their name or country, ask for it naturally in-character before using it — never guess and never emit a placeholder token.
+
+===== PLACEHOLDER GUARD =====
+NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`;
+}
 
 /**
  * Legacy seed content teaches fill-in-the-blank templates ("わたしは___です").

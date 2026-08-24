@@ -78,6 +78,9 @@ export default function SharedSessionPage() {
     { label: 'Fluency',    value: evaluation?.fluencyScore ?? 0 },
     { label: 'Cultural',   value: evaluation?.culturalScore ?? 0 },
     { label: 'Task',       value: evaluation?.taskScore ?? 0 },
+    // Carries 0.10 of the composite below, so it belongs in the breakdown that
+    // is supposed to explain that number.
+    { label: 'Expression', value: evaluation?.expressionAppropriatenessScore ?? 0 },
   ];
 
   const pct = sessionCompositePct({
@@ -136,6 +139,10 @@ export default function SharedSessionPage() {
             <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">
               📊 Performance Evaluation
             </h3>
+            <div className="mb-4 flex items-baseline gap-2">
+              <span className="text-3xl font-bold leading-none tracking-tight text-dojo-text-primary">{pct}%</span>
+              <span className="text-xs text-dojo-text-muted">overall</span>
+            </div>
             <div className="space-y-3">
               {scoreFields.map(sf => (
                 <div key={sf.label}>

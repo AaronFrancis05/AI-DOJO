@@ -11,7 +11,7 @@
 #   NEXT_PUBLIC_TUTORS_ENABLED=1
 #   LIVEKIT_URL=ws://localhost:7880
 #   LIVEKIT_API_KEY=devkey
-#   LIVEKIT_API_SECRET=<the same secret as livekit.yaml>
+#   LIVEKIT_API_SECRET=<the secret; this compose file passes it to the server>
 #
 # PRODUCTION NOTES — this compose file is a development/self-host starting
 # point, not a hardened deployment:
@@ -24,10 +24,17 @@
 
 services:
   livekit:
-    image: livekit/livekit-server:latest
+    # Pinned: `latest` makes the media server's version a function of when the
+    # host last pulled, which is not something a deployment should vary on.
+    image: livekit/livekit-server:v1.8
     container_name: dojo-livekit
     restart: unless-stopped
     command: --config /etc/livekit.yaml
+    environment:
+      # The API secret is NOT committed to livekit.yaml. `:?` refuses to start
+      # the container when LIVEKIT_API_SECRET is unset, so LiveKit can never
+      # come up on a default or empty secret.
+      LIVEKIT_KEYS: "devkey: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set — see .env.example}"
     # Host networking so the WebRTC UDP range doesn't need per-port mapping.
     # On Docker Desktop (macOS/Windows) host mode is limited — use the
     # `ports` block below instead and expect to configure TURN.

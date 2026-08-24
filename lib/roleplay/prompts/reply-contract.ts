@@ -1,3 +1,5 @@
+import type { SessionPhase } from '../phase-engine';
+
 /**
  * Describes, to the ANALYZER, the format the reply it is grading was actually
  * produced in.
@@ -14,7 +16,7 @@
  * branch here changes with it.
  */
 export function describeReplyContract(
-  phase: string,
+  phase: SessionPhase,
   isSameLanguage: boolean,
   targetLangName: string,
   nativeLangName: string,
@@ -45,7 +47,12 @@ export function describeReplyContract(
 - messageTarget should contain the ${targetLangName} the learner produced (empty string if none); messageNative their full utterance.`;
 
     case 'unguided':
-      return `- The AI character replied ENTIRELY in ${targetLangName} — full immersion, in-character only, with no coaching and no ${nativeLangName} anywhere.
+      // buildUnguidedPrompt still emits the ⟦ ⟧ contract for a cross-language
+      // lesson (tts.ts splits on those delimiters to pick the voice), so the
+      // analyzer has to be told they may be there — "no delimiters" made it
+      // read them as text the learner was meant to have produced.
+      return `${spanRule}
+- The AI character replied ENTIRELY in ${targetLangName} — full immersion, in-character only, with no coaching and no ${nativeLangName} anywhere. In practice that means effectively the whole reply sits inside ⟦ ⟧.
 - The learner is expected to reply in ${targetLangName}. Falling back to ${nativeLangName} IS meaningful here: set isEnglishWhenExpected true only if they abandoned the target language wholesale or refused to participate.
 - messageTarget should contain the ${targetLangName} they produced; messageNative a ${nativeLangName} translation of their utterance for the transcript.`;
 

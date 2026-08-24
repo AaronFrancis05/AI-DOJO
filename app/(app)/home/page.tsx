@@ -423,24 +423,22 @@ export default function HomePage() {
 
           {/* Review queue — only worth surfacing when something is actually due. */}
           {dueCount != null && dueCount > 0 && (
-            <Card
-              hoverable
-              className="!p-4 cursor-pointer border-dojo-warning/30"
-              onClick={() => router.push('/review')}
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
-                  <Repeat2 className="h-5 w-5 text-dojo-warning" />
+            <Link href="/review" className="block">
+              <Card hoverable className="!p-4 cursor-pointer border-dojo-warning/30">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
+                    <Repeat2 className="h-5 w-5 text-dojo-warning" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-dojo-text-primary">
+                      {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
+                    </p>
+                    <p className="text-xs text-dojo-text-muted">Ready to see again</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-dojo-text-primary">
-                    {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
-                  </p>
-                  <p className="text-xs text-dojo-text-muted">Ready to see again</p>
-                </div>
-                <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted" />
-              </div>
-            </Card>
+              </Card>
+            </Link>
           )}
 
           {/* Quick Stats Grid */}

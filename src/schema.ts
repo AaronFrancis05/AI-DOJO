@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp, integer, boolean, numeric, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, integer, boolean, numeric, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
@@ -780,7 +780,12 @@ export const tutorBookings = pgTable('tutor_bookings', {
   chatRoomId:  integer('chat_room_id').references(() => chatRooms.id, { onDelete: 'set null' }),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
   updatedAt:   timestamp('updated_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  // Every read of this table is "this tutor's bookings, in time order" (the
+  // overlap check on booking, the availability expansion) or "my bookings".
+  idxTutorSchedule: index('idx_tutor_bookings_tutor_scheduled').on(t.tutorId, t.scheduledAt),
+  idxLearner:       index('idx_tutor_bookings_learner').on(t.learnerId),
+}));
 
 /**
  * A tutor's verdict on a learner, on the SAME 0-100 dimensions the AI grades

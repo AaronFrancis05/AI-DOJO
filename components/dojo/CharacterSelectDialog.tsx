@@ -37,6 +37,11 @@ interface CharacterSelectDialogProps {
   behaviorMode: string;
 }
 
+const defaultFemale = (): AvatarSource =>
+  AVATAR_SOURCES.find(a => a.id === FEMALE_DEFAULT_ID) ?? AVATAR_SOURCES[0];
+const defaultMale = (): AvatarSource =>
+  AVATAR_SOURCES.find(a => a.id === MALE_DEFAULT_ID) ?? AVATAR_SOURCES[1] ?? AVATAR_SOURCES[0];
+
 function avatarRoleSnippet(a: AvatarSource): string {
   // Keep role line short for the card — first sentence of persona
   const first = a.persona.split(/[.!?]\s/)[0] ?? a.persona;
@@ -59,11 +64,30 @@ export function CharacterSelectDialog({
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
 
-  const [femalePick, setFemalePick] = useState<AvatarSource>(() => AVATAR_SOURCES.find(a => a.id === FEMALE_DEFAULT_ID) ?? AVATAR_SOURCES[0]);
-  const [malePick, setMalePick] = useState<AvatarSource>(() => AVATAR_SOURCES.find(a => a.id === MALE_DEFAULT_ID) ?? AVATAR_SOURCES[1] ?? AVATAR_SOURCES[0]);
+  const [femalePick, setFemalePick] = useState<AvatarSource>(defaultFemale);
+  const [malePick, setMalePick] = useState<AvatarSource>(defaultMale);
 
   // Which picker's grid is open — null means no picker
   const [pickerGender, setPickerGender] = useState<'female' | 'male' | null>(null);
+
+  // Guards against a double-press starting two sessions: /api/sessions can take
+  // seconds, and both cards stay clickable for the whole wait otherwise.
+  const [starting, setStarting] = useState(false);
+
+  // Reset when the dialog opens so a previous custom choice doesn't leak, and
+  // clear `starting` on either transition so a dialog cancelled mid-request
+  // isn't left with both buttons disabled. Done during render rather than in an
+  // effect — an effect would paint the stale picks for one frame first.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    setStarting(false);
+    if (open) {
+      setFemalePick(defaultFemale());
+      setMalePick(defaultMale());
+      setPickerGender(null);
+    }
+  }
 
   const situationIdNum = Number(situationId);
 
@@ -75,16 +99,19 @@ export function CharacterSelectDialog({
         getSituationById(situationIdNum),
         getDomainBySlug(domainSlug),
         getCharacters(),
-        fetch('/api/user/stats', { credentials: 'include' }).then(r => r.json()).catch(() => ({} as any)),
+        fetch('/api/user/stats', { credentials: 'include' })
+          .then(r => r.json() as Promise<Record<string, unknown>>)
+          .catch(() => ({} as Record<string, unknown>)),
       ]);
       if (cancelled) return;
       setSituation(sitRes.situation);
       setSource(charsRes.source);
 
-      if (statsRes.success && statsRes.stats) {
-        if (statsRes.stats.preferredTargetLanguage) setTargetLanguage(statsRes.stats.preferredTargetLanguage);
-        if (statsRes.stats.nativeLanguage) setNativeLanguage(statsRes.stats.nativeLanguage);
-      }
+      const stats = statsRes.success && typeof statsRes.stats === 'object' && statsRes.stats !== null
+        ? statsRes.stats as { preferredTargetLanguage?: string; nativeLanguage?: string }
+        : null;
+      if (stats?.preferredTargetLanguage) setTargetLanguage(stats.preferredTargetLanguage);
+      if (stats?.nativeLanguage) setNativeLanguage(stats.nativeLanguage);
 
       // Keep defaults on catalog entries, but if live characters exist we
       // keep their color for the two defaults' accentColor fallback.
@@ -95,16 +122,10 @@ export function CharacterSelectDialog({
     return () => { cancelled = true; };
   }, [open, situationIdNum, domainSlug]);
 
-  // Reset picks when dialog re-opens so a previous custom choice doesn't leak
-  useEffect(() => {
-    if (open) {
-      setFemalePick(AVATAR_SOURCES.find(a => a.id === FEMALE_DEFAULT_ID) ?? AVATAR_SOURCES[0]);
-      setMalePick(AVATAR_SOURCES.find(a => a.id === MALE_DEFAULT_ID) ?? AVATAR_SOURCES[1] ?? AVATAR_SOURCES[0]);
-      setPickerGender(null);
-    }
-  }, [open]);
-
   const startSession = useCallback(async (avatar: AvatarSource) => {
+    if (starting) return;
+    setStarting(true);
+
     // Pre-warm the 3D model so the session route doesn't show a loader
     if (avatar.file) {
       import('@react-three/drei').then(m => m.useGLTF.preload(avatar.file));
@@ -131,16 +152,20 @@ export function CharacterSelectDialog({
     } catch (err) {
       console.error('Failed to start session:', err);
       alert('Failed to start session — try again.');
+      setStarting(false);
       return;
     }
     if (!res.ok) {
-      const body = await res.json().catch(() => ({} as any));
+      const body = await res.json().catch(() => ({} as { error?: string }));
       alert(body.error ?? 'Failed to start session — try again.');
+      setStarting(false);
       return;
     }
     const body = await res.json();
+    // Left `starting` set on success: the route change is what ends this
+    // dialog, and re-enabling the buttons first only invites a second press.
     router.push(`/session/${body.session.id}`);
-  }, [situationIdNum, behaviorMode, targetLanguage, nativeLanguage, router]);
+  }, [starting, situationIdNum, behaviorMode, targetLanguage, nativeLanguage, router]);
 
   const femaleOptions = AVATAR_SOURCES.filter(a => FEMALE_AVATAR_IDS.has(a.id));
   const maleOptions = AVATAR_SOURCES.filter(a => !FEMALE_AVATAR_IDS.has(a.id));
@@ -180,7 +205,7 @@ export function CharacterSelectDialog({
         {loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {[1, 2].map(i => (
-              <div key={i} className="h-[420px] rounded-xl bg-dojo-surface animate-pulse" />
+              <div key={i} className="h-96 rounded-xl bg-dojo-surface animate-pulse" />
             ))}
           </div>
         ) : (
@@ -202,14 +227,14 @@ export function CharacterSelectDialog({
                   </div>
                   <h3 className="mt-3 text-sm font-semibold text-dojo-text-primary">{avatar.name}</h3>
                   <p className="text-xs text-dojo-text-muted line-clamp-1">{avatarRoleSnippet(avatar)}</p>
-                  <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs leading-none font-medium ${
                     gender === 'female'
                       ? 'bg-pink-500/10 text-pink-400'
                       : 'bg-sky-500/10 text-sky-400'
                   }`}>
-                    {gender === 'female' ? '♀' : '♂'} {gender} · {avatar.id}
+                    {gender === 'female' ? '♀' : '♂'} {gender} · {avatar.name}
                   </span>
-                  <p className="mt-2 text-[11px] text-dojo-text-muted leading-relaxed line-clamp-3">{avatar.persona}</p>
+                  <p className="mt-2 text-xs text-dojo-text-muted leading-relaxed line-clamp-3">{avatar.persona}</p>
                 </div>
 
                 <div className="mt-4 flex flex-col gap-2">
@@ -217,6 +242,7 @@ export function CharacterSelectDialog({
                     variant="secondary"
                     size="sm"
                     className="w-full"
+                    disabled={starting}
                     onClick={() => setPickerGender(gender)}
                   >
                     <Shuffle className="mr-1.5 h-3.5 w-3.5" />
@@ -226,6 +252,7 @@ export function CharacterSelectDialog({
                     variant="primary"
                     size="sm"
                     className="w-full"
+                    loading={starting}
                     onClick={() => startSession(avatar)}
                   >
                     Start Practice
@@ -244,7 +271,7 @@ export function CharacterSelectDialog({
         onClose={() => setPickerGender(null)}
         size="xl"
         title={pickerGender === 'female' ? 'Choose a female avatar' : 'Choose a male avatar'}
-        subtitle={`${pickerOptions.length} options — thumbnails stay distinct, 3D model is the shared ${pickerGender === 'female' ? 'female_ug' : 'male'} rig`}
+        subtitle={`${pickerOptions.length} options — each has its own portrait and persona`}
         label="Choose avatar"
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -276,7 +303,7 @@ export function CharacterSelectDialog({
                   loading="lazy"
                 />
                 <span className="text-xs font-semibold text-dojo-text-primary line-clamp-1">{av.name}</span>
-                <span className="text-[10px] text-dojo-text-muted line-clamp-1">{av.id}</span>
+                <span className="text-xs leading-tight text-dojo-text-muted line-clamp-1">{avatarRoleSnippet(av)}</span>
               </button>
             );
           })}

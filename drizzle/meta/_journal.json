@@ -239,6 +239,20 @@
       "when": 1787579683581,
       "tag": "0034_add-selected-avatar-id",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1787584916119,
+      "tag": "0035_quick_carnage",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787585101208,
+      "tag": "0036_tutor_booking_no_overlap",
+      "breakpoints": true
     }
   ]
 }

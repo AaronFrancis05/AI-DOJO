@@ -111,6 +111,18 @@ export function LiveRoom({ bookingId, onLeave }: LiveRoomProps) {
 
       setPhase('connected');
     } catch (e) {
+      // A room that failed part-way through connect/publish still holds a
+      // socket and possibly the camera. Tear it down and drop the ref so
+      // pressing "Join session" again starts from a clean instance.
+      const failed = roomRef.current;
+      if (failed) {
+        roomRef.current = null;
+        // Listeners come off first: the disconnect below would otherwise fire
+        // RoomEvent.Disconnected and report a normal leave for a room that
+        // never connected.
+        failed.removeAllListeners();
+        void failed.disconnect().catch(() => {});
+      }
       setError(e instanceof Error ? e.message : 'Could not join this session.');
       setPhase('error');
     }
@@ -167,7 +179,7 @@ export function LiveRoom({ bookingId, onLeave }: LiveRoomProps) {
 
   if (phase === 'idle' || phase === 'error') {
     return (
-      <div className="flex min-h-[24rem] flex-col items-center justify-center gap-4 rounded-[--radius-md] border border-dojo-border bg-dojo-surface p-8 text-center">
+      <div className="flex min-h-96 flex-col items-center justify-center gap-4 rounded-(--radius-md) border border-dojo-border bg-dojo-surface p-8 text-center">
         <p className="text-sm leading-relaxed text-dojo-text-muted">
           {error || 'Ready when you are.'}
         </p>
@@ -180,7 +192,7 @@ export function LiveRoom({ bookingId, onLeave }: LiveRoomProps) {
 
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden rounded-[--radius-md] border border-dojo-border bg-black">
+      <div className="relative overflow-hidden rounded-(--radius-md) border border-dojo-border bg-black">
         <div ref={remoteVideoRef} className="aspect-video w-full" />
 
         {peers.length === 0 && (

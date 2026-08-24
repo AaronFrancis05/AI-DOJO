@@ -84,7 +84,9 @@ export default function LiveSessionPage() {
   // The AI's own scores for the reviewed session, so the tutor grades with the
   // machine's verdict visible rather than blind to it.
   useEffect(() => {
-    if (!booking?.isTutor || !booking.sessionId) return;
+    // Gated on isTutor alone: an evaluation booking need not carry a sessionId,
+    // and a tutor evaluation saved earlier must still load back into the form.
+    if (!booking?.isTutor) return;
     fetch(`/api/bookings/${bookingId}/evaluation`, { credentials: 'include' })
       .then((r) => r.json())
       .then((body) => {
@@ -109,6 +111,7 @@ export default function LiveSessionPage() {
 
   const submitEvaluation = useCallback(async () => {
     setSaving(true);
+    setError('');
     try {
       const res = await fetch(`/api/bookings/${bookingId}/evaluation`, {
         method: 'POST',
@@ -187,7 +190,7 @@ export default function LiveSessionPage() {
           {booking.chatRoomId && (
             <Link
               href={`/messages/${booking.chatRoomId}`}
-              className="inline-flex items-center gap-2 rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-3 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+              className="inline-flex items-center gap-2 rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-3 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
             >
               <MessageSquare className="h-4 w-4" /> Chat
             </Link>
@@ -253,7 +256,7 @@ export default function LiveSessionPage() {
                   type="button"
                   onClick={() => setAgreement(o.value)}
                   className={cn(
-                    'rounded-[--radius-md] border px-4 py-2 text-sm transition-colors',
+                    'rounded-(--radius-md) border px-4 py-2 text-sm transition-colors',
                     agreement === o.value
                       ? 'border-dojo-accent bg-dojo-accent text-white'
                       : 'border-dojo-border bg-dojo-surface text-dojo-text-primary hover:bg-dojo-surface-raised',
@@ -276,7 +279,7 @@ export default function LiveSessionPage() {
               rows={4}
               maxLength={5000}
               placeholder="What they did well, and what to work on next…"
-              className="w-full rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none"
+              className="w-full rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none"
             />
           </div>
 

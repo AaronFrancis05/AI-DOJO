@@ -65,10 +65,8 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-  useEffect(() => {
-    // Microphone acquisition is handled once by the recognizer prewarm in
-    // useVoiceInput, which holds the stream open for the whole session.
-  }, []);
+  // Microphone acquisition is handled once by the recognizer prewarm in
+  // useVoiceInput, which holds the stream open for the whole session.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => setAvatarMode(speaking ? 'talking' : 'idle'));

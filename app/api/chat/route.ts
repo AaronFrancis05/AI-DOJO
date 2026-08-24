@@ -69,7 +69,10 @@ export async function POST(req: Request) {
         .select()
         .from(conversations)
         .where(eq(conversations.sessionId, numericSessionId))
-        .orderBy(asc(conversations.turnNo)),
+        // The user turn and the AI reply share a turnNo, so turnNo alone
+        // leaves their order up to the planner. id breaks the tie in insert
+        // order, which is user-then-AI.
+        .orderBy(asc(conversations.turnNo), asc(conversations.id)),
 
       db
         .select()

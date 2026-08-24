@@ -544,22 +544,35 @@ let streamTtsBuffer = '';
 let streamTtsBusy = false;
 let streamTtsStopped = false;
 
-// A sentence terminator only ends a sentence if it is followed by whitespace,
-// a closing delimiter, or end-of-buffer. Without that guard a decimal, an
-// abbreviation, or a mid-word period would be spoken as a complete sentence.
-const SENTENCE_BOUNDARY = /[。！？](?=\s|⟧|$)|[.!?](?=\s|⟧|$)|\n/;
+// A sentence terminator only ends a sentence if it is followed by whitespace
+// or a closing delimiter. While the model is still generating, the end of the
+// buffer is NOT a boundary: the "." of "1.5" or "Mr." sits at the end of the
+// buffer for exactly as long as it takes the next chunk to arrive, and that
+// window is enough to speak half a word as a sentence.
+const SENTENCE_BOUNDARY = /[。！？.!?](?=\s|⟧)|\n/;
+
+// The flush pattern runs only after generation has finished, so there is no
+// next chunk and end-of-buffer really does terminate the last sentence.
+const SENTENCE_BOUNDARY_FINAL = /[。！？.!?](?=\s|⟧|$)|\n/;
 
 // Don't synthesize a fragment so short it costs more in setup than it returns;
 // wait for it to join the next sentence instead.
 const MIN_SENTENCE_CHARS = 2;
 
-async function processStreamTtsQueue(targetBcp47: string, nativeBcp47: string, phase: string): Promise<void> {
+async function processStreamTtsQueue(
+  targetBcp47: string,
+  nativeBcp47: string,
+  phase: string,
+  isFinal = false,
+): Promise<void> {
   if (streamTtsBusy || streamTtsStopped) return;
   streamTtsBusy = true;
 
+  const boundary = isFinal ? SENTENCE_BOUNDARY_FINAL : SENTENCE_BOUNDARY;
+
   try {
     while (!streamTtsStopped) {
-      const match = streamTtsBuffer.match(SENTENCE_BOUNDARY);
+      const match = streamTtsBuffer.match(boundary);
       if (!match) break;
 
       const idx = match.index! + match[0].length;
@@ -598,6 +611,11 @@ export async function flushStreamTts(targetBcp47: string, nativeBcp47: string, p
   while (streamTtsBusy && !streamTtsStopped) {
     await new Promise((r) => setTimeout(r, 30));
   }
+  if (streamTtsStopped) return;
+
+  // Generation is over, so a terminator at the end of the buffer is now a real
+  // sentence end rather than a chunk boundary — drain those first.
+  await processStreamTtsQueue(targetBcp47, nativeBcp47, phase, true);
   if (streamTtsStopped) return;
 
   const tail = streamTtsBuffer.trim();

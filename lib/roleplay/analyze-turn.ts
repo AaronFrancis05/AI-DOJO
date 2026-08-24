@@ -35,6 +35,17 @@ import { applySessionAvatarIdentity } from '../avatar/catalog';
 
 export const MAX_ICEBREAKER_VOCAB = 5;
 
+/**
+ * Scenario+language pairs with a background vocabulary top-up already running.
+ *
+ * The background call is deliberately not awaited, so nothing downstream slows
+ * for it — but that also means the next turn arrives before it finishes and
+ * sees the same short list. Without this guard every turn of a thin scenario
+ * launches another generation, so one learner can have several LLM calls
+ * writing the same rows at once.
+ */
+const vocabTopUpInFlight = new Set<string>();
+
 type SessionRow = typeof sessions.$inferSelect;
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
@@ -204,7 +215,10 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       .select()
       .from(conversations)
       .where(eq(conversations.sessionId, session.id))
-      .orderBy(asc(conversations.turnNo)),
+      // The user turn and the AI reply share a turnNo, so turnNo alone leaves
+      // their order up to the planner. id breaks the tie in insert order,
+      // which is user-then-AI.
+      .orderBy(asc(conversations.turnNo), asc(conversations.id)),
 
     (async (): Promise<GoalRow[]> => {
       const k = cacheKeys.goals(scenarioId);
@@ -357,11 +371,17 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       );
     } else if (currentPhase === 'icebreaker' || currentPhase === 'guided') {
       const scenarioForBackfill = currentScenario;
-      void generateAndPersistMissingVocabulary(
-        scenarioForBackfill, vocabRows, targetLanguage, nativeLanguage,
-      ).catch((err) => {
-        console.warn('[VOCABULARY] background top-up failed:', err);
-      });
+      const topUpKey = `${scenarioId}:${targetLanguage}`;
+      if (!vocabTopUpInFlight.has(topUpKey)) {
+        vocabTopUpInFlight.add(topUpKey);
+        void generateAndPersistMissingVocabulary(
+          scenarioForBackfill, vocabRows, targetLanguage, nativeLanguage,
+        ).catch((err) => {
+          console.warn('[VOCABULARY] background top-up failed:', err);
+        }).finally(() => {
+          vocabTopUpInFlight.delete(topUpKey);
+        });
+      }
     }
   }
 

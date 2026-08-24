@@ -142,7 +142,12 @@ export default function AvatarModePage() {
     router.push(redirectTo || `/sessions/${sessionId}/report`);
   }, [sessionId, router]);
 
-  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  // Muting has to silence the line already playing, not just the next one —
+  // the ref guard alone left the current utterance running to the end.
+  useEffect(() => {
+    mutedRef.current = muted;
+    if (muted) stopTts();
+  }, [muted]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
@@ -179,6 +184,10 @@ export default function AvatarModePage() {
         fluencyScore: source.fluencyScore ?? 0,
         culturalScore: source.culturalScore ?? 0,
         taskScore: source.taskScore ?? 0,
+        // Weighted at 0.10 by computeCompositeScore. Omitting it here scored
+        // the same evaluation lower than the report page does, so a session
+        // could celebrate as failed and read as passed.
+        expressionAppropriatenessScore: source.expressionAppropriatenessScore ?? 0,
       });
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }

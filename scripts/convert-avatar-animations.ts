@@ -17,8 +17,12 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, statSync, readdirSync, unlinkSync, renameSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(import.meta.dirname, '..');
+// `import.meta.dirname` needs Node 20.11+; the repo's @types/node is 20 but
+// nothing pins the runtime that high, and this script is the only thing that
+// would have failed on Node 18.
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CONVERTER = path.join(REPO_ROOT, 'fbx2gltf.exe');
 const ANIM_DIR = path.join(REPO_ROOT, 'public', 'ai-avatars', 'animations');
 
@@ -51,6 +55,7 @@ function main(): void {
 
   let converted = 0;
   let skipped = 0;
+  let failed = 0;
   let totalIn = 0;
   let totalOut = 0;
 
@@ -67,26 +72,39 @@ function main(): void {
     }
 
     process.stdout.write(`Converting ${file} … `);
+    // The converter writes to a scratch basename, never straight over the
+    // existing .glb: a failed run used to delete the previous good asset
+    // (or leave a half-written one in its place) because the output path and
+    // the live path were the same file.
+    const tmpBase = path.join(ANIM_DIR, `${base}.tmp-${process.pid}`);
+    const tmpCandidates = [`${tmpBase}.glb`, `${tmpBase}_out.glb`];
+    const cleanTemps = () => {
+      for (const p of tmpCandidates) {
+        if (existsSync(p)) unlinkSync(p);
+      }
+    };
+
     try {
       // FBX2glTF appends its own suffix to -o, so it is given the path
       // without extension and the result is normalized afterwards.
-      const outBase = path.join(ANIM_DIR, base);
       execFileSync(
         CONVERTER,
-        ['--binary', '--anim-framerate', 'bake30', '-i', fbxPath, '-o', outBase],
+        ['--binary', '--anim-framerate', 'bake30', '-i', fbxPath, '-o', tmpBase],
         { stdio: ['ignore', 'ignore', 'pipe'] },
       );
 
       // Depending on version the tool emits "<base>.glb" or "<base>_out.glb".
-      if (!existsSync(glbPath)) {
-        const alt = path.join(ANIM_DIR, `${base}_out.glb`);
-        if (existsSync(alt)) renameSync(alt, glbPath);
-      }
-
-      if (!existsSync(glbPath)) {
+      const produced = tmpCandidates.find((p) => existsSync(p));
+      if (!produced) {
         console.log('FAILED (no output produced)');
+        failed++;
+        cleanTemps();
         continue;
       }
+
+      // Only now is the previous asset replaced.
+      renameSync(produced, glbPath);
+      cleanTemps();
 
       const inSize = statSync(fbxPath).size;
       const outSize = statSync(glbPath).size;
@@ -97,15 +115,22 @@ function main(): void {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.log(`FAILED (${detail})`);
-      // Never leave a half-written file behind for the runtime to load.
-      if (existsSync(glbPath)) unlinkSync(glbPath);
+      failed++;
+      // Never leave a half-written file behind for the runtime to load — but
+      // the existing .glb is untouched and stays serviceable.
+      cleanTemps();
     }
   }
 
   console.log(
-    `\nConverted ${converted}, skipped ${skipped} (up to date). ` +
+    `\nConverted ${converted}, skipped ${skipped} (up to date)` +
+    `${failed > 0 ? `, FAILED ${failed}` : ''}. ` +
     `Total ${mb(totalIn)} FBX -> ${mb(totalOut)} GLB.`,
   );
+
+  // A conversion failure must not read as success to a CI step or an npm
+  // script chained after this one.
+  if (failed > 0) process.exitCode = 1;
 }
 
 main();

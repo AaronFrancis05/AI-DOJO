@@ -537,6 +537,21 @@ export async function POST(req: Request) {
                     }
                   }
 
+                  // Same reason as the goal rows above: this branch advances
+                  // icebreakerVocabIndex/Attempts, so the encounter that drove
+                  // that advance has to be recorded here too — otherwise the
+                  // word counts as taught with no evidence row behind it.
+                  if (vocabEncounter) {
+                    await tx.insert(vocabularyEncounters).values({
+                      sessionId: numericSessionId,
+                      conversationId: userConversation.id,
+                      vocabularyId: vocabEncounter.vocabularyId,
+                      usedCorrectly: vocabEncounter.usedCorrectly,
+                      attemptNumber: vocabEncounter.attemptNumber,
+                      phase: 'icebreaker',
+                    });
+                  }
+
                   const sessionUpdate: Record<string, unknown> = {
                     pendingRetryCorrectionId: newPendingId,
                     lastActiveAt: new Date(),

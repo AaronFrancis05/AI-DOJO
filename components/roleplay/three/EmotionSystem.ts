@@ -1,5 +1,5 @@
 import { ExpressionEngine } from './ExpressionEngine';
-import { AnimationManager, ANIMATION_ALIASES } from './AnimationManager';
+import { AnimationManager, ANIMATION_ALIASES, ONE_SHOT_CLIPS } from './AnimationManager';
 import { LipSync } from './LipSync';
 import type { VisemeFrame } from './LipSync';
 import { isSpeaking } from '@/lib/roleplay/tts';
@@ -99,8 +99,9 @@ export class EmotionSystem {
     const rawKey = String(data.animation || data.gestureHint || 'talk').trim().toLowerCase();
     const bodyKey = ANIMATION_ALIASES[rawKey] ?? rawKey;
     const isDefaultIdle = bodyKey === 'idle' || bodyKey === 'talk';
-    const isOneShotGesture =
-      bodyKey === 'thankful' || bodyKey === 'greeting' || bodyKey === 'nod';
+    // Shares AnimationManager's definition rather than repeating the names:
+    // a clip added there but not here would loop forever on one side.
+    const isOneShotGesture = ONE_SHOT_CLIPS.has(bodyKey);
     const isThinkingStance = bodyKey === 'think';
     const isStandaloneClip =
       !isThinkingStance &&

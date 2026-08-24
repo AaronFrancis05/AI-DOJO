@@ -125,7 +125,7 @@ export default function TutorsPage() {
           </h2>
           <div className="space-y-3">
             {upcoming.map((b) => (
-              <Card key={b.id} hoverable className="!p-4 cursor-pointer" onClick={() => router.push(`/live/${b.id}`)}>
+              <Card key={b.id} hoverable className="p-4! cursor-pointer" onClick={() => router.push(`/live/${b.id}`)}>
                 <div className="flex items-center gap-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
                     <Video className="h-5 w-5 text-dojo-accent" />
@@ -158,7 +158,7 @@ export default function TutorsPage() {
         {loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {[0, 1].map((i) => (
-              <Card key={i} className="animate-pulse !p-5">
+              <Card key={i} className="animate-pulse p-5!">
                 <div className="h-10 w-10 rounded-full bg-dojo-surface-raised" />
                 <div className="mt-4 h-4 w-2/3 rounded bg-dojo-surface-raised" />
                 <div className="mt-2 h-3 w-1/2 rounded bg-dojo-surface-raised" />
@@ -174,16 +174,16 @@ export default function TutorsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {tutors.map((t) => (
-              <Card key={t.id} hoverable className="!p-5">
+              <Card key={t.id} hoverable className="p-5!">
                 <div className="flex items-start gap-3">
                   <Avatar src={t.avatarSrc ?? undefined} name={t.name} size="md" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{t.name}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-dojo-text-muted">{t.headline}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-dojo-text-muted">{t.headline}</p>
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-1.5">
+                <div className="mt-4 flex flex-wrap gap-2">
                   {t.languages.map((code) => (
                     <Badge key={code} variant="outline">
                       {getTargetLangConfig(code).name}
@@ -204,7 +204,7 @@ export default function TutorsPage() {
                   </span>
                   <Link
                     href={`/tutors/${t.id}`}
-                    className="inline-flex items-center gap-2 rounded-[--radius-md] bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
+                    className="inline-flex items-center gap-2 rounded-(--radius-md) bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
                   >
                     <Calendar className="h-4 w-4" /> Book
                   </Link>

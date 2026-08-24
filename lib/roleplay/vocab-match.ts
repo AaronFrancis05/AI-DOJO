@@ -5,7 +5,7 @@
  */
 const SPACE_DELIMITED_LANGUAGES = new Set([
   'en', 'fr', 'de', 'es', 'ru', 'ar', 'sw', 'lg', 'pt', 'it', 'nl', 'tr', 'pl',
-  'uk', 'el', 'he', 'fa', 'hi', 'bn', 'ur', 'ko', 'vi', 'tl', 'ms', 'id',
+  'uk', 'el', 'he', 'fa', 'hi', 'bn', 'ur', 'ko', 'vi', 'tl', 'ms', 'id', 'ne',
 ]);
 
 /**

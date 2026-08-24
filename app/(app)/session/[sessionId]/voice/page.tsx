@@ -156,6 +156,10 @@ export default function VoiceOnlyPage() {
         fluencyScore: source.fluencyScore ?? 0,
         culturalScore: source.culturalScore ?? 0,
         taskScore: source.taskScore ?? 0,
+        // Weighted at 0.10 by computeCompositeScore. Omitting it here scored
+        // the same evaluation lower than the report page does, so a session
+        // could celebrate as failed and read as passed.
+        expressionAppropriatenessScore: source.expressionAppropriatenessScore ?? 0,
       });
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
@@ -246,6 +250,9 @@ export default function VoiceOnlyPage() {
       }
     } catch (e: any) {
       console.error(e);
+      // Whatever was queued belongs to a turn that failed; leaving it to drain
+      // talks over the learner's retry.
+      stopTts();
       setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
@@ -402,7 +409,7 @@ export default function VoiceOnlyPage() {
                       .then(() => {
                         setStreamingText(null);
                       })
-                      .catch(() => { setStreamingText(null); setGreetingSent(false); });
+                      .catch(() => { stopTts(); setStreamingText(null); setGreetingSent(false); });
                   }}
                   className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >

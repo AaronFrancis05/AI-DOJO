@@ -31,7 +31,8 @@ const ANIMATION_MANIFEST: Record<string, string> = {
   offline: 'Offline.glb',
 };
 
-const ONE_SHOT_CLIPS = new Set(['greeting', 'thankful', 'nod']);
+/** Clips that play once and hand the body back, rather than looping. */
+export const ONE_SHOT_CLIPS = new Set(['greeting', 'thankful', 'nod']);
 
 const isFaceTrack = (name: string): boolean => {
   const lower = name.toLowerCase();

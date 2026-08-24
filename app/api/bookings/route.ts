@@ -1,4 +1,5 @@
 import { db } from '@/src/db';
+import { dbPool } from '@/src/db-pool';
 import {
   tutorBookings,
   tutors,
@@ -11,6 +12,13 @@ import { and, desc, eq, gte, ne, or } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
 import { generateRoomName } from '@/lib/tutors/rooms';
 import { BOOKING_DURATIONS_MINUTES } from '@/lib/tutors/config';
+
+/** Rolls the booking transaction back and maps to the 409 response. */
+class SlotTakenError extends Error {}
+
+function isExclusionViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23P01';
+}
 
 /** Bookings the signed-in user is part of, as either learner or tutor. */
 export async function GET() {
@@ -116,56 +124,75 @@ export async function POST(req: Request) {
     }
   }
 
-  // Reject a slot that overlaps an existing live booking for this tutor.
+  // The chat room, its membership and the booking are one unit of work: a
+  // booking without its room is unreachable from /messages, and a room with no
+  // booking is an orphan the learner can never close. One transaction, so a
+  // failure anywhere leaves none of them behind.
   const requestedEnd = scheduledAt.getTime() + durationMinutes * 60 * 1000;
-  const existing = await db
-    .select({ scheduledAt: tutorBookings.scheduledAt, durationMinutes: tutorBookings.durationMinutes })
-    .from(tutorBookings)
-    .where(and(
-      eq(tutorBookings.tutorId, tutorId),
-      ne(tutorBookings.status, 'cancelled'),
-      gte(tutorBookings.scheduledAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
-    ));
 
-  const clashes = existing.some((b) => {
-    const start = b.scheduledAt.getTime();
-    return scheduledAt.getTime() < start + b.durationMinutes * 60 * 1000 && requestedEnd > start;
-  });
-  if (clashes) {
-    return Response.json({ error: 'That slot has just been taken' }, { status: 409 });
+  let bookingId: number | null;
+  try {
+    bookingId = await dbPool.transaction(async (tx) => {
+      // Read-side overlap check: gives the friendly 409 in the common case.
+      // The exclusion constraint below it is what actually makes the rule
+      // hold when two learners book the same slot at the same moment.
+      const existing = await tx
+        .select({ scheduledAt: tutorBookings.scheduledAt, durationMinutes: tutorBookings.durationMinutes })
+        .from(tutorBookings)
+        .where(and(
+          eq(tutorBookings.tutorId, tutorId),
+          ne(tutorBookings.status, 'cancelled'),
+          gte(tutorBookings.scheduledAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+        ));
+
+      const clashes = existing.some((b) => {
+        const start = b.scheduledAt.getTime();
+        return scheduledAt.getTime() < start + b.durationMinutes * 60 * 1000 && requestedEnd > start;
+      });
+      if (clashes) throw new SlotTakenError();
+
+      // Tutor↔learner chat reuses the existing messaging tables, including their
+      // per-member preferredLanguage translation — a good fit when the two people
+      // may not share a language.
+      const [room] = await tx.insert(chatRooms).values({
+        name: `Lesson with ${tutor.headline}`.slice(0, 150),
+        isGroup: false,
+        createdBy: user.id,
+      }).returning({ id: chatRooms.id });
+
+      if (room) {
+        await tx.insert(chatRoomMembers)
+          .values([
+            { roomId: room.id, userId: user.id },
+            { roomId: room.id, userId: tutor.userId },
+          ])
+          .onConflictDoNothing();
+      }
+
+      const [booking] = await tx.insert(tutorBookings).values({
+        tutorId,
+        learnerId: user.id,
+        sessionId,
+        targetLanguage,
+        scheduledAt,
+        durationMinutes,
+        status: 'requested',
+        purpose,
+        learnerNote,
+        livekitRoomName: generateRoomName(),
+        chatRoomId: room?.id ?? null,
+      }).returning({ id: tutorBookings.id });
+
+      return booking?.id ?? null;
+    });
+  } catch (err) {
+    // 23P01 = exclusion_violation, raised by tutor_bookings_no_overlap when a
+    // concurrent request won the same slot between the check and the insert.
+    if (err instanceof SlotTakenError || isExclusionViolation(err)) {
+      return Response.json({ error: 'That slot has just been taken' }, { status: 409 });
+    }
+    throw err;
   }
 
-  // Tutor↔learner chat reuses the existing messaging tables, including their
-  // per-member preferredLanguage translation — a good fit when the two people
-  // may not share a language.
-  const [room] = await db.insert(chatRooms).values({
-    name: `Lesson with ${tutor.headline}`.slice(0, 150),
-    isGroup: false,
-    createdBy: user.id,
-  }).returning({ id: chatRooms.id });
-
-  if (room) {
-    await db.insert(chatRoomMembers)
-      .values([
-        { roomId: room.id, userId: user.id },
-        { roomId: room.id, userId: tutor.userId },
-      ])
-      .onConflictDoNothing();
-  }
-
-  const [booking] = await db.insert(tutorBookings).values({
-    tutorId,
-    learnerId: user.id,
-    sessionId,
-    targetLanguage,
-    scheduledAt,
-    durationMinutes,
-    status: 'requested',
-    purpose,
-    learnerNote,
-    livekitRoomName: generateRoomName(),
-    chatRoomId: room?.id ?? null,
-  }).returning({ id: tutorBookings.id });
-
-  return Response.json({ success: true, bookingId: booking?.id ?? null }, { status: 201 });
+  return Response.json({ success: true, bookingId }, { status: 201 });
 }

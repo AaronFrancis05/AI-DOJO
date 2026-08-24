@@ -1,8 +1,9 @@
 import { getTargetLangConfig, getNativeLangName, TARGET_LANGUAGES } from './language';
-// Imported from the leaf module rather than the prompts barrel: the barrel
-// pulls in the phase builders, which import buildIdentityAndGuardBlock from
-// this file. reply-contract.ts has no imports of its own, so there is no cycle.
+// Imported from the leaf modules rather than the prompts barrel: the barrel
+// pulls in the phase builders, and nothing here needs them.
 import { describeReplyContract } from './roleplay/prompts/reply-contract';
+import { buildIdentityAndGuardBlock } from './roleplay/prompts/shared';
+import type { SessionPhase } from './roleplay/phase-engine';
 import { getDifficultyTierDescription, getAppropriatenessRubric } from './language-packs';
 import { getAIProvider } from './ai-providers';
 import type { ChatTurn } from './ai-providers';
@@ -74,26 +75,6 @@ export interface AIResponseAnalysis {
   };
   goalsAddressedThisTurn: number[];
   scenarioComplete: boolean;
-}
-
-/**
- * Single source of truth for the learner-identity + placeholder-guard
- * instruction block. Every prompt that generates or evaluates a reply the
- * learner will read must include this — duplicating it inline per call site
- * is how the "[Your Name]"-style placeholder bug slipped past one prompt
- * (lib/ai-engine.ts) while still shipping live in another (the streaming
- * prompt in app/api/chat/stream/route.ts).
- */
-export function buildIdentityAndGuardBlock(learnerName?: string, learnerCountry?: string | null): string {
-  return learnerName
-    ? `- The REAL learner you are talking to is named "${learnerName}"${learnerCountry ? ` and they are from ${learnerCountry}` : ''}. Use this real information whenever the roleplay calls for the learner's name or country — never invent a placeholder, never leave a blank unfilled, and never ask for information you already have here.
-
-===== PLACEHOLDER GUARD =====
-NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`
-    : `- The real learner's profile name/country were not provided. If the roleplay requires their name or country, ask for it naturally in-character before using it — never guess and never emit a placeholder token.
-
-===== PLACEHOLDER GUARD =====
-NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`;
 }
 
 /**
@@ -401,7 +382,7 @@ export interface AnalyzeUserTurnInput {
   learnerName?: string;
   learnerCountry?: string | null;
   /** Session phase the graded reply was generated in — decides the reply contract. */
-  phase: string;
+  phase: SessionPhase;
   /** True when target and native language match (no ⟦ ⟧ delimiters are used). */
   isSameLanguage: boolean;
 }

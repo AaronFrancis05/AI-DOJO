@@ -1,0 +1,2 @@
+CREATE INDEX "idx_tutor_bookings_tutor_scheduled" ON "tutor_bookings" USING btree ("tutor_id","scheduled_at");--> statement-breakpoint
+CREATE INDEX "idx_tutor_bookings_learner" ON "tutor_bookings" USING btree ("learner_id");

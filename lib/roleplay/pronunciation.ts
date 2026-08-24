@@ -36,6 +36,10 @@ let connection: SpeechSDK.Connection | null = null;
 let currentLang: string | null = null;
 let tokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recognizerPromise: Promise<void> | null = null;
+// The language the in-flight build is for. `currentLang` is only set once
+// buildRecognizer has finished, so it cannot be used to decide whether a
+// concurrent caller can join the build already running.
+let pendingLang: string | null = null;
 let isRecognizing = false;
 
 export type RecognizerCallbacks = {
@@ -289,11 +293,15 @@ export async function ensureRecognizer(lang: string): Promise<void> {
 
   // Concurrent callers (a prewarm racing the first press) must share one
   // build rather than each constructing a recognizer and leaking the loser.
-  if (recognizerPromise && currentLang === lang) return recognizerPromise;
+  if (recognizerPromise && pendingLang === lang) return recognizerPromise;
 
   if (recognizer) closeRecognizer();
 
-  recognizerPromise = buildRecognizer(lang).finally(() => { recognizerPromise = null; });
+  pendingLang = lang;
+  recognizerPromise = buildRecognizer(lang).finally(() => {
+    recognizerPromise = null;
+    pendingLang = null;
+  });
   return recognizerPromise;
 }
 

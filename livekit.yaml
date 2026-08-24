@@ -1,8 +1,11 @@
 # LiveKit server config for the self-hosted tutoring deployment.
 # Mounted read-only into the container by docker-compose.livekit.yml.
 #
-# The api_secret below is a DEVELOPMENT PLACEHOLDER. Replace it before this is
-# reachable from anywhere but localhost — anyone holding it can mint a token
+# There is deliberately NO `keys:` block here. The API secret is supplied at
+# run time through the LIVEKIT_KEYS environment variable in
+# docker-compose.livekit.yml, which reads it from LIVEKIT_API_SECRET and
+# refuses to start the container when that is unset. A secret committed to
+# this file is a secret in the repository — anyone holding it can mint a token
 # for any room. Generate one with:  openssl rand -hex 32
 
 port: 7880
@@ -13,10 +16,6 @@ rtc:
   port_range_end: 60000
   # Set false only when the server has a routable public address configured.
   use_external_ip: true
-
-keys:
-  # key: secret — must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env
-  devkey: devsecret_replace_me_before_any_non_local_use
 
 # Rooms are created on demand when the first participant joins with a valid
 # token, and torn down shortly after the last one leaves. Bookings already

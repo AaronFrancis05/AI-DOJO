@@ -46,6 +46,30 @@ export async function cacheSet(key: string, value: unknown, ttl: number): Promis
   }
 }
 
+/**
+ * Atomically increments a counter and returns its new value, or `null` when
+ * Redis is unavailable or errors.
+ *
+ * Read-then-write with `cacheGet`/`cacheSet` is not a rate limit: concurrent
+ * requests all read the same count and all write count+1, so a burst passes
+ * a limit of N with far more than N requests. Callers that gate a *billed*
+ * resource must treat `null` as "deny" — a cache outage is not a licence to
+ * hand out an unmetered relay.
+ */
+export async function rateLimitIncrement(key: string, ttl: number): Promise<number | null> {
+  const r = getRedis();
+  if (!r) return null;
+  try {
+    const count = await r.incr(key);
+    // Only the request that created the key sets the window, so the window
+    // rolls forward from the first request rather than the most recent one.
+    if (count === 1) await r.expire(key, ttl);
+    return count;
+  } catch {
+    return null;
+  }
+}
+
 export async function cacheDel(key: string): Promise<void> {
   const r = getRedis();
   if (!r) return;

@@ -26,7 +26,11 @@ export function createGeminiProvider(): AIProvider {
   // relying on the current default for whichever 2.5-series model is
   // configured. Analysis (generateJSON) is off the critical path and is left
   // alone so it can reason about scoring.
-  const thinkingConfig = modelName.includes('2.5') ? { thinkingBudget: 0 } : undefined;
+  // Only the 2.5 Flash family accepts a zero budget. Gemini 2.5 Pro cannot
+  // have thinking turned off and rejects the request outright, so a `2.5`
+  // substring test would have taken the whole provider down for a Pro model.
+  const canDisableThinking = /2\.5-flash/.test(modelName);
+  const thinkingConfig = canDisableThinking ? { thinkingBudget: 0 } : undefined;
 
   return {
     name: 'gemini',

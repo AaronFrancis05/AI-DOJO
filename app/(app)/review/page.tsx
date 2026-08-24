@@ -97,12 +97,15 @@ export default function ReviewPage() {
     if (!current || submitting) return;
     setSubmitting(true);
     try {
-      await fetch('/api/review/answer', {
+      // A rejected save must not advance the drill: the card would be counted
+      // as reviewed here while its schedule was never written server-side.
+      const res = await fetch('/api/review/answer', {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ cardId: current.id, quality }),
       });
+      if (!res.ok) throw new Error('save failed');
       setGraded((n) => n + 1);
       if (quality < 3) setLapsed((n) => n + 1);
       setRevealed(false);
@@ -208,7 +211,7 @@ export default function ReviewPage() {
         <ProgressBar value={progressPct} color="accent" size="sm" />
       </div>
 
-      <Card className="min-h-[22rem]">
+      <Card className="min-h-88">
         <div className="mb-6 flex items-center gap-2">
           {current.category && (
             <Badge variant="outline" className="capitalize">{current.category}</Badge>
@@ -255,7 +258,7 @@ export default function ReviewPage() {
           </div>
         ) : (
           <div className="mt-8">
-            <div className="rounded-[--radius-md] border border-dojo-border/60 bg-dojo-surface-raised p-4">
+            <div className="rounded-(--radius-md) border border-dojo-border/60 bg-dojo-surface-raised p-4">
               <p className="text-base leading-relaxed text-dojo-text-primary">
                 {current.translation}
               </p>
@@ -277,7 +280,7 @@ export default function ReviewPage() {
                   disabled={submitting}
                   onClick={() => grade(g.quality)}
                   className={cn(
-                    'rounded-[--radius-md] border px-4 py-3 text-left transition-colors disabled:opacity-50',
+                    'rounded-(--radius-md) border px-4 py-3 text-left transition-colors disabled:opacity-50',
                     g.variant === 'danger' && 'border-dojo-danger/30 bg-dojo-danger/10 hover:bg-dojo-danger/20',
                     g.variant === 'secondary' && 'border-dojo-border bg-dojo-surface hover:bg-dojo-surface-raised',
                     g.variant === 'primary' && 'border-dojo-success/30 bg-dojo-success/10 hover:bg-dojo-success/20',
