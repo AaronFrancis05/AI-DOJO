@@ -31,6 +31,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const finalRef = useRef('');
+  const partialRef = useRef('');
   const isListeningRef = useRef(false);
   // Tracks the in-flight start() call so stop() (fired by a quick
   // pointerup/pointerleave on push-to-talk buttons) never races ahead of the
@@ -50,6 +51,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   const start = useCallback(async () => {
     if (isListeningRef.current) return;
     finalRef.current = '';
+    partialRef.current = '';
     setFinalTranscript('');
     setPartialTranscript('');
     setVolumeLevel(0);
@@ -61,13 +63,16 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       await ensureRecognizer(lang);
       await startContinuousRecognition(lang, {
         onInterim: (text: string) => {
+          partialRef.current = text;
           setPartialTranscript(text);
         },
         onFinal: (text: string) => {
-          finalRef.current += text;
+          // Push-to-talk: buffer while held, transmit only on release.
+          // Accumulate so a long hold with multiple utterances is sent as one turn.
+          finalRef.current = finalRef.current ? `${finalRef.current} ${text}` : text;
+          partialRef.current = '';
           setFinalTranscript(finalRef.current);
           setPartialTranscript('');
-          onFinal?.(text);
         },
         onVolume: (level: number) => {
           setVolumeLevel(level);
@@ -104,7 +109,19 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     setIsListening(false);
     setVolumeLevel(0);
     await stopContinuousRecognition();
-  }, []);
+
+    // Release-to-transmit: flush buffered speech captured while held.
+    // Prefer finalized text; fall back to last interim if nothing finalized
+    // (short utterances that ended before a Recognized event).
+    const buffered = (finalRef.current || partialRef.current || '').trim();
+    if (buffered) {
+      finalRef.current = '';
+      partialRef.current = '';
+      setPartialTranscript('');
+      setFinalTranscript('');
+      onFinal?.(buffered);
+    }
+  }, [onFinal]);
 
   useEffect(() => {
     return () => {

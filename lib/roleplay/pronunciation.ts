@@ -178,14 +178,17 @@ export async function startContinuousRecognition(
 
 export function stopContinuousRecognition(): Promise<void> {
   stopVolumeMeter();
-  activeCallbacks = null;
+  // Keep activeCallbacks alive until the SDK has flushed its final
+  // Recognized events — otherwise a release-to-transmit utterance that
+  // finalizes right on pointer-up would be dropped.
   return new Promise((resolve) => {
     if (recognizer) {
       recognizer.stopContinuousRecognitionAsync(
-        () => resolve(),
-        () => resolve(),
+        () => { activeCallbacks = null; resolve(); },
+        () => { activeCallbacks = null; resolve(); },
       );
     } else {
+      activeCallbacks = null;
       resolve();
     }
   });
