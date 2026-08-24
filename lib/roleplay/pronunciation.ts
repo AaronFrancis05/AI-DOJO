@@ -6,10 +6,14 @@ import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
    Push-to-talk has to feel instant, so everything expensive is acquired
    once per session and held warm rather than rebuilt on every press:
 
-   - ONE microphone MediaStream, shared by the recognizer and the level
-     meter. These previously called getUserMedia separately, so each press
-     paid for a second device acquisition (and built a fresh AudioContext
-     that was never reused).
+   - ONE microphone MediaStream and ONE AudioContext, shared by the level
+     meter and the PCM tap. These previously called getUserMedia separately,
+     so each press paid for a second device acquisition (and built a fresh
+     AudioContext that was never reused).
+   - The tap runs continuously and feeds the recognizer through a push
+     stream, so a press opens a gate that is already carrying audio instead
+     of starting a capture. Audio spoken while the SDK opens its recognition
+     session is buffered, not clipped.
    - The recognizer's websocket to Azure is opened ahead of time and kept
      open, so a press starts streaming audio immediately instead of waiting
      out a handshake. Recognition itself still only runs while the button is
@@ -36,6 +40,9 @@ let connection: SpeechSDK.Connection | null = null;
 let currentLang: string | null = null;
 let tokenRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recognizerPromise: Promise<void> | null = null;
+// An in-flight stopContinuousRecognitionAsync. A press landing during one
+// must wait it out rather than start a session the teardown then stops.
+let stopPromise: Promise<void> | null = null;
 // The language the in-flight build is for. `currentLang` is only set once
 // buildRecognizer has finished, so it cannot be used to decide whether a
 // concurrent caller can join the build already running.
@@ -115,56 +122,323 @@ function releaseMicStream(): void {
   micStream = null;
 }
 
-/* ── Level meter ────────────────────────────────────────────────────────
-   Drives the mic button's visual feedback directly from the shared stream,
-   so the learner sees their voice registering immediately rather than
-   waiting for a transcript to prove sound arrived.
+/* ── Input audio graph ──────────────────────────────────────────────────
+   One AudioContext over the shared stream, feeding two consumers:
+
+   - the level meter, which drives the mic button's visual so the learner
+     sees their voice registering without waiting for a transcript;
+   - a PCM tap, which streams audio into the recognizer's push stream.
+
+   The tap runs for the whole session, not only while the button is held.
+   That is what makes a press capture instantly: audio is already flowing
+   when the press lands, so whatever is spoken while the SDK is still opening
+   its recognition session is buffered rather than clipped, and the last
+   PRE_ROLL_MS before the press are prepended on top of that.
+
+   Between presses the tap keeps only the rolling pre-roll window and writes
+   nothing to the recognizer, so nothing is transmitted or billed while the
+   button is up.
    ────────────────────────────────────────────────────────────────────── */
 
-let meterCtx: AudioContext | null = null;
-let meterAnalyser: AnalyserNode | null = null;
-let meterSource: MediaStreamAudioSourceNode | null = null;
-let meterRaf: number | null = null;
+/** The recognizer's push stream is fed 16 kHz mono 16-bit PCM. */
+const TARGET_SAMPLE_RATE = 16000;
+/** Audio retained from just before the press, so a word begun on it survives. */
+const PRE_ROLL_MS = 300;
+/** Cap on audio held while a cold recognizer is still being built. */
+const MAX_PENDING_MS = 5000;
+/** ScriptProcessor fallback block size (~43ms at 48 kHz). */
+const FALLBACK_BLOCK_SIZE = 2048;
 
-async function startVolumeMeter(onLevel: (level: number) => void): Promise<void> {
-  try {
-    const stream = await acquireMicStream();
-
-    // Built once per session and reused; only the animation loop restarts.
-    if (!meterCtx || meterCtx.state === 'closed') {
-      meterCtx = new AudioContext();
-      meterAnalyser = meterCtx.createAnalyser();
-      meterAnalyser.fftSize = 256;
-      meterAnalyser.smoothingTimeConstant = 0.6;
-      meterSource = null;
+// Loaded from a blob URL so the tap needs no separate public asset.
+const TAP_WORKLET_SOURCE = `
+class MicTapProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const channel = inputs[0] && inputs[0][0];
+    if (channel && channel.length) {
+      const block = new Float32Array(channel);
+      this.port.postMessage(block, [block.buffer]);
     }
-    if (meterCtx.state === 'suspended') await meterCtx.resume();
-    if (!meterSource) {
-      meterSource = meterCtx.createMediaStreamSource(stream);
-      meterSource.connect(meterAnalyser!);
-    }
-
-    const analyser = meterAnalyser!;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-
-    const tick = () => {
-      analyser.getByteTimeDomainData(data);
-      let sumSquares = 0;
-      for (let i = 0; i < data.length; i++) {
-        const normalized = (data[i] - 128) / 128;
-        sumSquares += normalized * normalized;
-      }
-      const rms = Math.sqrt(sumSquares / data.length);
-      onLevel(Math.min(1, rms * 4));
-      meterRaf = requestAnimationFrame(tick);
-    };
-
-    if (meterRaf != null) cancelAnimationFrame(meterRaf);
-    tick();
-  } catch {
-    // The recognizer owns the actual capture; if the meter can't start we
-    // lose the visual only, never the audio.
+    return true;
   }
+}
+registerProcessor('mic-tap', MicTapProcessor);
+`;
+
+let audioCtx: AudioContext | null = null;
+let graphStream: MediaStream | null = null;
+let micSource: MediaStreamAudioSourceNode | null = null;
+let meterAnalyser: AnalyserNode | null = null;
+let tapNode: AudioNode | null = null;
+let tapSink: GainNode | null = null;
+let tapModuleUrl: string | null = null;
+let audioGraphPromise: Promise<void> | null = null;
+let meterRaf: number | null = null;
+let resumeHandler: (() => void) | null = null;
+
+// Where the tap's audio goes. `preRoll` is the rolling window kept while the
+// button is up; `pending` holds audio captured before the push stream exists.
+let pushStream: SpeechSDK.PushAudioInputStream | null = null;
+let capturing = false;
+let preRoll: Int16Array[] = [];
+let preRollSamples = 0;
+let pending: Int16Array[] = [];
+let pendingSamples = 0;
+let resampleCarry = new Float32Array(0);
+let resampleOffset = 0;
+
+/**
+ * Converts one block of the context's float audio to 16 kHz 16-bit PCM,
+ * carrying the fractional window position across blocks so the boundaries
+ * don't click.
+ */
+function toTargetRatePcm(block: Float32Array, inputRate: number): Int16Array {
+  const ratio = inputRate / TARGET_SAMPLE_RATE;
+
+  let buf = block;
+  if (resampleCarry.length) {
+    buf = new Float32Array(resampleCarry.length + block.length);
+    buf.set(resampleCarry, 0);
+    buf.set(block, resampleCarry.length);
+  }
+
+  const out = new Int16Array(Math.ceil(buf.length / ratio) + 1);
+  let pos = resampleOffset;
+  let count = 0;
+
+  while (pos + ratio <= buf.length) {
+    const start = Math.floor(pos);
+    const end = Math.max(start + 1, Math.min(buf.length, Math.floor(pos + ratio)));
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += buf[i];
+    // Averaging the source window low-passes as it decimates. Dropping
+    // samples instead aliases, and aliasing measurably hurts recognition.
+    const sample = Math.max(-1, Math.min(1, sum / (end - start)));
+    out[count++] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    pos += ratio;
+  }
+
+  const consumed = Math.floor(pos);
+  resampleCarry = buf.slice(consumed);
+  resampleOffset = pos - consumed;
+  return out.slice(0, count);
+}
+
+function writePcm(pcm: Int16Array): void {
+  if (!pushStream) return;
+  try {
+    pushStream.write(
+      pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength) as ArrayBuffer,
+    );
+  } catch {
+    // Stream closed underneath us mid-teardown; the next build makes a new one.
+  }
+}
+
+function trimBuffer(chunks: Int16Array[], samples: number, maxMs: number): number {
+  const max = (maxMs / 1000) * TARGET_SAMPLE_RATE;
+  let total = samples;
+  while (total > max && chunks.length > 1) total -= chunks.shift()!.length;
+  return total;
+}
+
+function handleAudioBlock(block: Float32Array): void {
+  if (!audioCtx) return;
+  const pcm = toTargetRatePcm(block, audioCtx.sampleRate);
+  if (!pcm.length) return;
+
+  if (!capturing) {
+    preRoll.push(pcm);
+    preRollSamples = trimBuffer(preRoll, preRollSamples + pcm.length, PRE_ROLL_MS);
+    return;
+  }
+
+  if (pushStream) {
+    writePcm(pcm);
+    return;
+  }
+
+  // Cold first press: the recognizer is still being built, so hold the audio
+  // rather than lose the opening words. Bounded, so a build that never
+  // finishes can't grow this without limit.
+  pending.push(pcm);
+  pendingSamples = trimBuffer(pending, pendingSamples + pcm.length, MAX_PENDING_MS);
+}
+
+function flushPending(): void {
+  if (!pushStream || !pending.length) return;
+  for (const chunk of pending) writePcm(chunk);
+  pending = [];
+  pendingSamples = 0;
+}
+
+/** Opens the gate from the tap to the recognizer. Synchronous by design. */
+function beginCapture(): void {
+  if (capturing) return;
+  capturing = true;
+
+  // The rolling window is the moment immediately before the press — send it
+  // ahead of the live audio so the utterance starts where the learner did.
+  for (const chunk of preRoll) {
+    if (pushStream) {
+      writePcm(chunk);
+    } else {
+      pending.push(chunk);
+      pendingSamples += chunk.length;
+    }
+  }
+  preRoll = [];
+  preRollSamples = 0;
+}
+
+function endCapture(): void {
+  capturing = false;
+  pending = [];
+  pendingSamples = 0;
+}
+
+async function createTapNode(ctx: AudioContext): Promise<AudioNode> {
+  if (typeof AudioWorkletNode !== 'undefined' && ctx.audioWorklet) {
+    try {
+      if (!tapModuleUrl) {
+        tapModuleUrl = URL.createObjectURL(
+          new Blob([TAP_WORKLET_SOURCE], { type: 'application/javascript' }),
+        );
+      }
+      await ctx.audioWorklet.addModule(tapModuleUrl);
+      const node = new AudioWorkletNode(ctx, 'mic-tap', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+      });
+      node.port.onmessage = (e: MessageEvent<Float32Array>) => handleAudioBlock(e.data);
+      return node;
+    } catch {
+      // Browsers without AudioWorklet (or with blob modules blocked) fall
+      // through to the deprecated-but-universal node below.
+    }
+  }
+
+  const node = ctx.createScriptProcessor(FALLBACK_BLOCK_SIZE, 1, 1);
+  node.onaudioprocess = (e) => handleAudioBlock(new Float32Array(e.inputBuffer.getChannelData(0)));
+  return node;
+}
+
+function armContextResume(): void {
+  // A context built at mount — before any user gesture — starts suspended,
+  // which would leave the tap silent until the first press. Resuming on the
+  // first interaction anywhere means even that press keeps its pre-roll.
+  if (resumeHandler || typeof document === 'undefined') return;
+  resumeHandler = () => { void audioCtx?.resume().catch(() => {}); };
+  document.addEventListener('pointerdown', resumeHandler, { capture: true, passive: true });
+  document.addEventListener('keydown', resumeHandler, { capture: true });
+}
+
+function disarmContextResume(): void {
+  if (!resumeHandler || typeof document === 'undefined') return;
+  document.removeEventListener('pointerdown', resumeHandler, { capture: true });
+  document.removeEventListener('keydown', resumeHandler, { capture: true });
+  resumeHandler = null;
+}
+
+async function buildAudioGraph(): Promise<void> {
+  const stream = await acquireMicStream();
+
+  if (!audioCtx || audioCtx.state === 'closed') {
+    // Asking for the recognizer's own rate lets the browser resample once in
+    // native code; toTargetRatePcm covers the browsers that decline.
+    try {
+      audioCtx = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
+    } catch {
+      audioCtx = new AudioContext();
+    }
+    micSource = null;
+    meterAnalyser = null;
+    tapNode = null;
+    tapSink = null;
+  }
+
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume().catch(() => {});
+    if (audioCtx.state === 'suspended') armContextResume();
+  }
+
+  // A re-acquired stream (device unplugged, permission re-granted) needs a
+  // new source node; the rest of the graph is reused.
+  if (!micSource || graphStream !== stream) {
+    try { micSource?.disconnect(); } catch { /* ignore */ }
+
+    try {
+      micSource = audioCtx.createMediaStreamSource(stream);
+    } catch {
+      // Some browsers refuse a source whose device rate differs from the
+      // context's. Take the device's rate instead and let toTargetRatePcm
+      // do the conversion.
+      audioCtx.close().catch(() => {});
+      audioCtx = new AudioContext();
+      meterAnalyser = null;
+      tapNode = null;
+      tapSink = null;
+      resampleCarry = new Float32Array(0);
+      resampleOffset = 0;
+      if (audioCtx.state === 'suspended') await audioCtx.resume().catch(() => {});
+      micSource = audioCtx.createMediaStreamSource(stream);
+    }
+
+    graphStream = stream;
+    if (meterAnalyser) micSource.connect(meterAnalyser);
+    if (tapNode) micSource.connect(tapNode);
+  }
+
+  if (!meterAnalyser) {
+    meterAnalyser = audioCtx.createAnalyser();
+    meterAnalyser.fftSize = 256;
+    meterAnalyser.smoothingTimeConstant = 0.6;
+    micSource.connect(meterAnalyser);
+  }
+
+  if (!tapNode) {
+    tapNode = await createTapNode(audioCtx);
+    micSource.connect(tapNode);
+    // A node with no path to the destination is never pulled, so the tap
+    // ends in a muted sink rather than in nothing.
+    tapSink = audioCtx.createGain();
+    tapSink.gain.value = 0;
+    tapNode.connect(tapSink);
+    tapSink.connect(audioCtx.destination);
+  }
+}
+
+function ensureAudioGraph(): Promise<void> {
+  if (!audioGraphPromise) {
+    audioGraphPromise = buildAudioGraph()
+      .catch(() => {
+        // Capture is the recognizer's problem to report; a graph that can't
+        // be built costs the meter and the pre-roll, not the audio.
+      })
+      .finally(() => { audioGraphPromise = null; });
+  }
+  return audioGraphPromise;
+}
+
+function startVolumeMeter(onLevel: (level: number) => void): void {
+  const analyser = meterAnalyser;
+  if (!analyser) return;
+
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  const tick = () => {
+    analyser.getByteTimeDomainData(data);
+    let sumSquares = 0;
+    for (let i = 0; i < data.length; i++) {
+      const normalized = (data[i] - 128) / 128;
+      sumSquares += normalized * normalized;
+    }
+    const rms = Math.sqrt(sumSquares / data.length);
+    onLevel(Math.min(1, rms * 4));
+    meterRaf = requestAnimationFrame(tick);
+  };
+
+  if (meterRaf != null) cancelAnimationFrame(meterRaf);
+  tick();
 }
 
 function stopVolumeMeter(): void {
@@ -172,13 +446,41 @@ function stopVolumeMeter(): void {
   meterRaf = null;
 }
 
-function teardownVolumeMeter(): void {
+function teardownAudioGraph(): void {
   stopVolumeMeter();
-  try { meterSource?.disconnect(); } catch { /* ignore */ }
-  meterSource = null;
+  disarmContextResume();
+
+  if (typeof AudioWorkletNode !== 'undefined' && tapNode instanceof AudioWorkletNode) {
+    tapNode.port.onmessage = null;
+  } else if (tapNode) {
+    (tapNode as ScriptProcessorNode).onaudioprocess = null;
+  }
+
+  try { tapNode?.disconnect(); } catch { /* ignore */ }
+  try { tapSink?.disconnect(); } catch { /* ignore */ }
+  try { meterAnalyser?.disconnect(); } catch { /* ignore */ }
+  try { micSource?.disconnect(); } catch { /* ignore */ }
+  tapNode = null;
+  tapSink = null;
   meterAnalyser = null;
-  meterCtx?.close().catch(() => {});
-  meterCtx = null;
+  micSource = null;
+  graphStream = null;
+
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+
+  capturing = false;
+  preRoll = [];
+  preRollSamples = 0;
+  pending = [];
+  pendingSamples = 0;
+  resampleCarry = new Float32Array(0);
+  resampleOffset = 0;
+
+  if (tapModuleUrl) {
+    URL.revokeObjectURL(tapModuleUrl);
+    tapModuleUrl = null;
+  }
 }
 
 /* ── Recognizer ─────────────────────────────────────────────────────── */
@@ -218,7 +520,9 @@ function attachHandlers(reco: SpeechSDK.SpeechRecognizer): void {
 
 async function buildRecognizer(lang: string): Promise<void> {
   const { token, region } = await getToken();
-  const stream = await acquireMicStream();
+  // Bring the capture graph up alongside the recognizer, so the tap is
+  // already running before the learner's first press.
+  await ensureAudioGraph();
 
   const speechConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(token, region);
   speechConfig.speechRecognitionLanguage = lang;
@@ -229,14 +533,24 @@ async function buildRecognizer(lang: string): Promise<void> {
     SEGMENTATION_SILENCE_MS,
   );
 
-  // Feed the recognizer from the shared session stream rather than letting it
-  // open the default microphone itself, so there is exactly one capture.
+  // Audio reaches the recognizer through a push stream fed by the session-long
+  // tap, rather than the SDK opening the microphone itself. That decouples
+  // "the learner is capturing" from "the SDK is ready", which is what lets a
+  // press start capturing on the press rather than after a round trip.
+  const stream = SpeechSDK.AudioInputStream.createPushStream(
+    SpeechSDK.AudioStreamFormat.getWaveFormatPCM(TARGET_SAMPLE_RATE, 16, 1),
+  );
+  pushStream = stream;
+
   const audioConfig = SpeechSDK.AudioConfig.fromStreamInput(stream);
   const reco = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
   attachHandlers(reco);
 
   recognizer = reco;
   currentLang = lang;
+
+  // Anything captured while this build was in flight goes out now.
+  flushPending();
 
   // Open the websocket now so the first press doesn't pay for the handshake.
   // The Connection reference is held so it isn't garbage collected.
@@ -265,6 +579,8 @@ function closeRecognizer(): void {
   connection = null;
   try { recognizer?.close(); } catch { /* ignore */ }
   recognizer = null;
+  try { pushStream?.close(); } catch { /* ignore */ }
+  pushStream = null;
 }
 
 function startTokenRefresh(): void {
@@ -323,9 +639,21 @@ export async function startContinuousRecognition(
 ): Promise<void> {
   activeCallbacks = callbacks;
 
-  await ensureRecognizer(lang);
+  // Everything down to the first await runs synchronously with the press, so
+  // the learner's audio is being kept from the instant the button goes down —
+  // the recognition session opening behind it only decides when that audio
+  // gets transcribed, never whether it was captured.
+  beginCapture();
+  const graphReady = ensureAudioGraph();
 
-  if (callbacks.onVolume) void startVolumeMeter(callbacks.onVolume);
+  await ensureRecognizer(lang);
+  await graphReady;
+
+  if (callbacks.onVolume) startVolumeMeter(callbacks.onVolume);
+
+  // A release still tearing down would otherwise stop the session started
+  // just below it.
+  if (stopPromise) await stopPromise;
 
   // Already streaming from a previous press that hasn't fully stopped —
   // adopting the new callbacks is enough, and skips a needless restart.
@@ -344,21 +672,35 @@ export async function startContinuousRecognition(
 }
 
 export function stopContinuousRecognition(): Promise<void> {
+  // Closing the gate is the part that must happen on the release itself:
+  // from here on nothing the microphone hears reaches the recognizer.
+  endCapture();
   stopVolumeMeter();
 
-  return new Promise((resolve) => {
-    if (!recognizer || !isRecognizing) {
-      activeCallbacks = null;
-      resolve();
-      return;
-    }
+  if (!recognizer || !isRecognizing) {
+    activeCallbacks = null;
+    return Promise.resolve();
+  }
+  if (stopPromise) return stopPromise;
 
+  const owner = activeCallbacks;
+  const stopping = new Promise<void>((resolve) => {
     // activeCallbacks stays live until the SDK has flushed its final
     // Recognized events — otherwise an utterance that finalizes right on
     // pointer-up would be dropped.
-    const done = () => { isRecognizing = false; activeCallbacks = null; resolve(); };
-    recognizer.stopContinuousRecognitionAsync(done, done);
+    const done = () => {
+      isRecognizing = false;
+      // A press arriving while this teardown is in flight installs its own
+      // callbacks; clearing those here would deafen the new press.
+      if (activeCallbacks === owner) activeCallbacks = null;
+      resolve();
+    };
+    recognizer!.stopContinuousRecognitionAsync(done, done);
   });
+
+  stopPromise = stopping;
+  void stopping.finally(() => { if (stopPromise === stopping) stopPromise = null; });
+  return stopping;
 }
 
 /**
@@ -366,7 +708,8 @@ export function stopContinuousRecognition(): Promise<void> {
  * releases the microphone, and disposes the level meter's audio graph.
  */
 export function destroyRecognizer(): void {
-  teardownVolumeMeter();
+  endCapture();
+  teardownAudioGraph();
   stopTokenRefresh();
   closeRecognizer();
   releaseMicStream();

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useGLTF, useProgress, Html } from '@react-three/drei';
+import { useGLTF, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AvatarScale, AVATAR_SCALE_DEFAULTS } from './AvatarScale';
@@ -63,24 +63,6 @@ export function EmotionLight({ emotion }: { emotion?: string }) {
   return <directionalLight ref={lightRef} position={[-2, 3, 3]} intensity={0.4} />;
 }
 
-/* ── Loading progress bar ──────────────────────────────────────────── */
-export function ModelLoader() {
-  const { progress, active } = useProgress();
-  if (!active) return null;
-  return (
-    <Html center>
-      <div className="flex flex-col items-center gap-2">
-        <div className="h-1 w-32 overflow-hidden rounded-full bg-dojo-border">
-          <div
-            className="h-full rounded-full bg-dojo-accent transition-[width] duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-    </Html>
-  );
-}
-
 export function SceneLoadingFallback() {
   return (
     <Html center>
@@ -114,98 +96,85 @@ export function subscribeWarnings(fn: () => void): () => void {
   return () => { warningSubs.delete(fn); };
 }
 
-/* ── RestPoseApplicator ──────────────────────────────────────────────
+/* ── applyRestPose ───────────────────────────────────────────────────
    Rotates arm bones to a natural relaxed rest position (fixes T-pose).
-   Runs BEFORE the animation mixer takes over so the initial pose is
-   correct. Must settle before AvatarScale measures the model height.
+   Runs synchronously on the freshly cloned scene, BEFORE React mounts it
+   and before AvatarScale measures the model height — doing this in an
+   effect meant the first painted frames showed the raw GLB: arms out,
+   unscaled, floating at whatever height it was authored at.
    ──────────────────────────────────────────────────────────────────── */
-function RestPoseApplicator({ scene, onApplied }: { scene: THREE.Group; onApplied?: () => void }) {
-  const applied = useRef(false);
+export function applyRestPose(scene: THREE.Group): void {
+  const allBones: THREE.Bone[] = [];
 
-  useEffect(() => {
-    if (applied.current) return;
+  scene.traverse((node) => {
+    if (node instanceof THREE.Bone) allBones.push(node);
+  });
 
-    const boneNames: string[] = [];
-    const allBones: THREE.Bone[] = [];
+  const leftArm = allBones.find(b => b.name === 'LeftArm');
+  const rightArm = allBones.find(b => b.name === 'RightArm');
+  const leftForeArm = allBones.find(b => b.name === 'LeftForeArm');
+  const rightForeArm = allBones.find(b => b.name === 'RightForeArm');
 
-    scene.traverse((node) => {
-      if (node instanceof THREE.Bone) {
-        boneNames.push(node.name);
-        allBones.push(node);
+  let fallbackLeftArm: THREE.Bone | undefined;
+  let fallbackRightArm: THREE.Bone | undefined;
+  let fallbackLeftForeArm: THREE.Bone | undefined;
+  let fallbackRightForeArm: THREE.Bone | undefined;
+
+  if (!leftArm || !rightArm) {
+    for (const b of allBones) {
+      const n = b.name.toLowerCase();
+      const isLeft = n.includes('left') || n.includes('l_');
+      const isRight = n.includes('right') || n.includes('r_');
+
+      if (!fallbackLeftArm && !leftArm && (
+        n.includes('mixamorig:leftarm') ||
+        n === 'leftarm' ||
+        n === 'j_bip_l_upperarm' ||
+        (n.includes('arm') && isLeft && !n.includes('fore'))
+      )) {
+        fallbackLeftArm = b;
       }
-    });
-
-    const leftArm = allBones.find(b => b.name === 'LeftArm');
-    const rightArm = allBones.find(b => b.name === 'RightArm');
-    const leftForeArm = allBones.find(b => b.name === 'LeftForeArm');
-    const rightForeArm = allBones.find(b => b.name === 'RightForeArm');
-
-    let fallbackLeftArm: THREE.Bone | undefined;
-    let fallbackRightArm: THREE.Bone | undefined;
-    let fallbackLeftForeArm: THREE.Bone | undefined;
-    let fallbackRightForeArm: THREE.Bone | undefined;
-
-    if (!leftArm || !rightArm) {
-      for (const b of allBones) {
-        const n = b.name.toLowerCase();
-        const isLeft = n.includes('left') || n.includes('l_');
-        const isRight = n.includes('right') || n.includes('r_');
-
-        if (!fallbackLeftArm && !leftArm && (
-          n.includes('mixamorig:leftarm') ||
-          n === 'leftarm' ||
-          n === 'j_bip_l_upperarm' ||
-          (n.includes('arm') && isLeft && !n.includes('fore'))
-        )) {
-          fallbackLeftArm = b;
-        }
-        if (!fallbackRightArm && !rightArm && (
-          n.includes('mixamorig:rightarm') ||
-          n === 'rightarm' ||
-          n === 'j_bip_r_upperarm' ||
-          (n.includes('arm') && isRight && !n.includes('fore'))
-        )) {
-          fallbackRightArm = b;
-        }
-        if (!fallbackLeftForeArm && !leftForeArm && (
-          n.includes('mixamorig:leftforearm') ||
-          n === 'leftforearm' ||
-          n === 'j_bip_l_lowerarm' ||
-          (n.includes('forearm') && isLeft) ||
-          (n.includes('lowerarm') && isLeft)
-        )) {
-          fallbackLeftForeArm = b;
-        }
-        if (!fallbackRightForeArm && !rightForeArm && (
-          n.includes('mixamorig:rightforearm') ||
-          n === 'rightforearm' ||
-          n === 'j_bip_r_lowerarm' ||
-          (n.includes('forearm') && isRight) ||
-          (n.includes('lowerarm') && isRight)
-        )) {
-          fallbackRightForeArm = b;
-        }
+      if (!fallbackRightArm && !rightArm && (
+        n.includes('mixamorig:rightarm') ||
+        n === 'rightarm' ||
+        n === 'j_bip_r_upperarm' ||
+        (n.includes('arm') && isRight && !n.includes('fore'))
+      )) {
+        fallbackRightArm = b;
+      }
+      if (!fallbackLeftForeArm && !leftForeArm && (
+        n.includes('mixamorig:leftforearm') ||
+        n === 'leftforearm' ||
+        n === 'j_bip_l_lowerarm' ||
+        (n.includes('forearm') && isLeft) ||
+        (n.includes('lowerarm') && isLeft)
+      )) {
+        fallbackLeftForeArm = b;
+      }
+      if (!fallbackRightForeArm && !rightForeArm && (
+        n.includes('mixamorig:rightforearm') ||
+        n === 'rightforearm' ||
+        n === 'j_bip_r_lowerarm' ||
+        (n.includes('forearm') && isRight) ||
+        (n.includes('lowerarm') && isRight)
+      )) {
+        fallbackRightForeArm = b;
       }
     }
+  }
 
-    const finalLeftArm = leftArm ?? fallbackLeftArm;
-    const finalRightArm = rightArm ?? fallbackRightArm;
-    const finalLeftForeArm = leftForeArm ?? fallbackLeftForeArm;
-    const finalRightForeArm = rightForeArm ?? fallbackRightForeArm;
+  const finalLeftArm = leftArm ?? fallbackLeftArm;
+  const finalRightArm = rightArm ?? fallbackRightArm;
+  const finalLeftForeArm = leftForeArm ?? fallbackLeftForeArm;
+  const finalRightForeArm = rightForeArm ?? fallbackRightForeArm;
 
-    const armDrop = Math.PI / 2.3;
-    if (finalLeftArm) finalLeftArm.rotation.z = armDrop;
-    if (finalRightArm) finalRightArm.rotation.z = -armDrop;
-    if (finalLeftForeArm) finalLeftForeArm.rotation.z = 0.35;
-    if (finalRightForeArm) finalRightForeArm.rotation.z = -0.35;
+  const armDrop = Math.PI / 2.3;
+  if (finalLeftArm) finalLeftArm.rotation.z = armDrop;
+  if (finalRightArm) finalRightArm.rotation.z = -armDrop;
+  if (finalLeftForeArm) finalLeftForeArm.rotation.z = 0.35;
+  if (finalRightForeArm) finalRightForeArm.rotation.z = -0.35;
 
-    scene.updateMatrixWorld(true);
-
-    applied.current = true;
-    onApplied?.();
-  }, [scene, onApplied]);
-
-  return null;
+  scene.updateMatrixWorld(true);
 }
 
 /* ── AutoCamera ──────────────────────────────────────────────────────
@@ -283,10 +252,12 @@ export function AutoCamera({ scene, cameraMode, onFramed, groundedVersion }: {
       onFramed?.();
     };
 
-    const initialDelay = setTimeout(() => { rafId = requestAnimationFrame(tryFrame); }, 200);
+    // The model is scaled and grounded before it is ever mounted, so the box
+    // is measurable on the first frame — the fixed delay this used to wait out
+    // was pure latency in front of the reveal.
+    rafId = requestAnimationFrame(tryFrame);
 
     return () => {
-      clearTimeout(initialDelay);
       if (rafId) cancelAnimationFrame(rafId);
     };
   }, [scene, camera, cameraMode, onFramed, groundedVersion]);
@@ -310,11 +281,13 @@ function AnimationSystemHost({
   freezeOnIdle,
   onSystemReady,
   onGrounded,
+  onReady,
 }: {
   scene: THREE.Group;
   freezeOnIdle?: boolean;
   onSystemReady?: (system: EmotionSystem) => void;
   onGrounded?: () => void;
+  onReady?: () => void;
 } & AvatarAnimationProps) {
   const [initialized, setInitialized] = useState(false);
   const animManagerRef = useRef<AnimationManager | null>(null);
@@ -331,9 +304,20 @@ function AnimationSystemHost({
     return names;
   }, [scene]);
 
+  // Held in refs so a caller passing inline arrows — as the session page does
+  // — can't retrigger the whole initialization on every parent render.
+  const onSystemReadyRef = useRef(onSystemReady);
+  const onGroundedRef = useRef(onGrounded);
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onSystemReadyRef.current = onSystemReady; }, [onSystemReady]);
+  useEffect(() => { onGroundedRef.current = onGrounded; }, [onGrounded]);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+
   const initAnimSystem = useCallback(async () => {
     const mixer = new THREE.AnimationMixer(scene);
     const anim = new AnimationManager();
+    // Resolves as soon as the idle clip is registered; the rest of the
+    // manifest keeps streaming in behind this.
     const ok = await anim.init(scene, mixer, null, sceneBoneNames);
     if (!ok) console.warn('[AnimationSystemHost] No usable animation clips found');
 
@@ -343,25 +327,42 @@ function AnimationSystemHost({
 
     const emo = new EmotionSystem({ expression: expr, animation: anim, lipSync: lip });
 
-    animManagerRef.current = anim;
-    expressionRef.current = expr;
-    lipSyncRef.current = lip;
-    emotionSystemRef.current = emo;
-
-    return emo;
+    return { emo, anim, expr, lip };
   }, [scene, sceneBoneNames]);
 
-  const handleRestPoseApplied = useCallback(async () => {
-    if (initialized) return;
+  useEffect(() => {
+    let cancelled = false;
 
-    AvatarScale.apply(scene);
+    (async () => {
+      const { emo, anim, expr, lip } = await initAnimSystem();
+      // A remount (or a model swap) while clips were in flight: this system
+      // belongs to a scene nobody is showing any more.
+      if (cancelled) {
+        anim.dispose();
+        return;
+      }
 
-    const emo = await initAnimSystem();
-    emo.animation.play('idle', { loop: true, fade: 0 });
-    setInitialized(true);
-    onSystemReady?.(emo);
-    onGrounded?.();
-  }, [scene, initialized, onSystemReady, onGrounded, initAnimSystem]);
+      animManagerRef.current = anim;
+      expressionRef.current = expr;
+      lipSyncRef.current = lip;
+      emotionSystemRef.current = emo;
+
+      emo.animation.play('idle', { loop: true, fade: 0 });
+      setInitialized(true);
+      onSystemReadyRef.current?.(emo);
+      onGroundedRef.current?.();
+      onReadyRef.current?.();
+    })();
+
+    return () => {
+      cancelled = true;
+      lipSyncRef.current?.stop();
+      animManagerRef.current?.dispose();
+      animManagerRef.current = null;
+      emotionSystemRef.current = null;
+      setInitialized(false);
+    };
+  }, [initAnimSystem]);
 
   useEffect(() => {
     if (!initialized) return;
@@ -381,7 +382,7 @@ function AnimationSystemHost({
       }
     } else if (mode === 'listening') {
       emo.animation.isTalking = false;
-      if (emo.animation.hasClip('listening')) {
+      if (emo.animation.canPlay('listening')) {
         emo.startListening();
       } else if (prevModeRef.current !== 'idle') {
         emo.animation.play('idle', { loop: true, fade: 0.7 });
@@ -407,7 +408,7 @@ function AnimationSystemHost({
         case 'wave':        targetClip = 'greeting'; break;
         case 'nod':         targetClip = 'nod'; break;
       }
-      if (targetClip && emo.animation.hasClip(targetClip)) {
+      if (targetClip && emo.animation.canPlay(targetClip)) {
         emo.animation.play(targetClip, { loop: false, fade: 0.3 });
       }
     }
@@ -443,16 +444,22 @@ function AnimationSystemHost({
     lipSyncRef.current?.update(delta);
   });
 
-  return <RestPoseApplicator scene={scene} onApplied={handleRestPoseApplied} />;
+  return null;
 }
 
+/** Reveal the model even if the idle clip never arrives, rather than leaving
+ *  the stage permanently empty on a failed or hanging clip request. */
+const REVEAL_TIMEOUT_MS = 2500;
+
 /* ── AnimatedModel ───────────────────────────────────────────────────
-   Loads the GLB, applies rest-pose bone correction, deterministic
-   grounding, single-action animation manager, expression engine,
-   and lip sync. Animation clips load asynchronously from the FBX
-   manifest in AnimationManager during init().
+   Loads the GLB, applies rest-pose bone correction and deterministic
+   grounding up front, then hands the model to the animation manager,
+   expression engine and lip sync. The model stays hidden until the idle
+   clip is actually running: the pose/scale/framing pass takes a few
+   frames, and showing it beforehand is what put an unscaled, hands-up
+   mannequin on screen at the start of every session.
    ──────────────────────────────────────────────────────────────────── */
-export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, disableAutoCamera, freezeOnIdle, onSystemReady }: {
+export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, disableAutoCamera, freezeOnIdle, onSystemReady, onReady }: {
   url: string;
   cameraMode?: CameraMode;
   cameraIntent: CameraIntent;
@@ -460,30 +467,57 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
   disableAutoCamera?: boolean;
   freezeOnIdle?: boolean;
   onSystemReady?: (system: EmotionSystem) => void;
+  onReady?: () => void;
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
-  const scene = useMemo(() => cloneSkeleton(originalScene) as THREE.Group, [originalScene]);
-  const [groundedVersion, setGroundedVersion] = useState(0);
-
-  useEffect(() => {
-    if (!scene) return;
-    scene.traverse((child) => {
+  const scene = useMemo(() => {
+    const cloned = cloneSkeleton(originalScene) as THREE.Group;
+    // Both run before the clone is ever handed to React, so the very first
+    // rendered frame is an arms-down character standing at the right height.
+    applyRestPose(cloned);
+    AvatarScale.apply(cloned);
+    cloned.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = true;
         child.receiveShadow = false;
       }
     });
-  }, [scene]);
+    return cloned;
+  }, [originalScene]);
+  const [groundedVersion, setGroundedVersion] = useState(0);
+  const [ready, setReady] = useState(false);
+
+  const onReadyRef = useRef(onReady);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
 
   const handleGrounded = useCallback(() => {
     setGroundedVersion(v => v + 1);
   }, []);
 
+  const revealedRef = useRef(false);
+  const handleReady = useCallback(() => {
+    if (revealedRef.current) return;
+    revealedRef.current = true;
+    setReady(true);
+    onReadyRef.current?.();
+  }, []);
+
+  // Safety net only: a clip request that fails or hangs must not leave the
+  // stage permanently empty. The rest pose and grounding are already applied,
+  // so the worst case is a character standing still rather than a broken one.
+  useEffect(() => {
+    const timer = setTimeout(handleReady, REVEAL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [handleReady]);
+
   const computedYaw = yawFromIntent(cameraIntent);
+  // Grounding puts the model's slight forward tilt in rotation.x, but R3F owns
+  // this prop — carrying the tilt here keeps it from being flattened on mount.
+  const restTiltX = AVATAR_SCALE_DEFAULTS.forwardTiltX;
 
   return (
     <group>
-      <primitive object={scene} rotation={[0, computedYaw, 0]} />
+      <primitive object={scene} rotation={[restTiltX, computedYaw, 0]} visible={ready} />
       {!disableAutoCamera && (
         <AutoCamera scene={scene} cameraMode={cameraMode ?? 'front'} onFramed={onFramed} groundedVersion={groundedVersion} />
       )}
@@ -495,6 +529,7 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
         freezeOnIdle={freezeOnIdle}
         onGrounded={handleGrounded}
         onSystemReady={onSystemReady}
+        onReady={handleReady}
       />
     </group>
   );

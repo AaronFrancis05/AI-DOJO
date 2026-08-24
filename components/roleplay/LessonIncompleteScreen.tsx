@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Frown, Lightbulb, AlertCircle, XCircle, RotateCcw, ArrowRight, LogOut, Target, MessagesSquare, Mic, Star, Heart } from 'lucide-react';
 import { prefersReducedMotion } from '@/lib/hooks/useCelebrationConfetti';
+import { ResultsAvatarBackdrop } from '@/components/roleplay/ResultsAvatarBackdrop';
 import type { SessionMetrics } from '@/lib/roleplay/session-metrics';
 
 interface LessonIncompleteScreenProps {
@@ -44,18 +45,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
 
   return (
     <div className="fixed inset-0 z-40 overflow-y-auto bg-dojo-canvas">
-      <div className="fixed inset-0 -z-10">
-        <img
-          src="/characters/lesson-incomplete.png"
-          alt=""
-          className="h-full w-full object-cover object-top opacity-90"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-dojo-canvas via-dojo-canvas/70 to-dojo-canvas/20" />
-        <div
-          className="absolute inset-0"
-          style={{ background: 'radial-gradient(ellipse at center 22%, rgba(209,67,67,0.28), transparent 55%)' }}
-        />
-      </div>
+      <ResultsAvatarBackdrop src="/characters/lesson-incomplete.png" glow="rgba(209,67,67,0.26)" fit="portrait" />
 
       <div className="relative z-10 mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 py-10 sm:px-8 lg:px-12">
         <div className="text-center">

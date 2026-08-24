@@ -2,17 +2,17 @@
 
 import React, { useEffect, useState, useRef, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Environment, ContactShadows } from '@react-three/drei';
+import { Environment, ContactShadows, useProgress } from '@react-three/drei';
 import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import {
   AnimatedModel,
   EmotionLight,
-  ModelLoader,
   CameraIntent,
   CameraMode,
   getDevWarnings,
   subscribeWarnings,
 } from '@/components/roleplay/three/AnimatedModel';
+import { preloadAnimationClips } from '@/components/roleplay/three/AnimationManager';
 import { AvatarCaptionsOverlay } from '@/components/roleplay/AvatarCaptionsOverlay';
 import { SHARED_FEMALE_MODEL_URL, resolveAvatarModelUrl } from '@/lib/avatar/catalog';
 
@@ -60,14 +60,38 @@ function DevOverlay() {
   );
 }
 
+/* ── Loading indicator ──────────────────────────────
+   Lives in the DOM rather than inside the Canvas so it stays visible while
+   the 3D content is still faded out, and so its progress ticks don't
+   re-render the scene. */
+function AvatarLoadingIndicator({ name }: { name: string }) {
+  const { progress } = useProgress();
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-2">
+        <div className="h-1 w-32 overflow-hidden rounded-full bg-dojo-border/60">
+          <div
+            className="h-full rounded-full bg-dojo-accent transition-[width] duration-300"
+            style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
+          />
+        </div>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-dojo-text-muted">
+          Preparing {name}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ── ThreeScene ─────────────────────────────────── */
 type AvatarMode = 'idle' | 'listening' | 'talking';
 
-function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, freezeOnIdle, onSystemReady }: {
+function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent, onFramed, onReady, freezeOnIdle, onSystemReady }: {
   modelUrl: string;
   cameraMode?: CameraMode;
   cameraIntent: CameraIntent;
   onFramed?: () => void;
+  onReady?: () => void;
   freezeOnIdle?: boolean;
   onSystemReady?: (system: EmotionSystem) => void;
   mode?: AvatarMode;
@@ -91,7 +115,6 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent
         <directionalLight position={[-3, 2, 3]} intensity={0.3} color="#b0d0ff" />
         <directionalLight position={[0, -2, 2]} intensity={0.2} />
         <EmotionLight emotion={emotion} />
-        <ModelLoader />
         <Suspense fallback={null}>
           <AnimatedModel
             url={modelUrl}
@@ -101,6 +124,7 @@ function ThreeScene({ modelUrl, mode, emotion, gesture, cameraMode, cameraIntent
             cameraMode={cameraMode}
             cameraIntent={cameraIntent}
             onFramed={onFramed}
+            onReady={onReady}
             freezeOnIdle={freezeOnIdle}
             onSystemReady={onSystemReady}
           />
@@ -144,6 +168,7 @@ export function AvatarViewport3D({
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
+  const [posed, setPosed] = useState(false);
 
   // Every render path funnels through here, so resolving the female swap at
   // this point covers catalog picks and character rows seeded with their own
@@ -161,6 +186,10 @@ export function AvatarViewport3D({
   }, [framed]);
 
   useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
+
+  // Starts the clip download alongside the character GLB instead of after it:
+  // the manager can only ask for clips once the model has finished parsing.
+  useEffect(() => { preloadAnimationClips(); }, []);
 
   // Safety timer so the viewport is guaranteed to show even if camera auto-framing calculation takes extra frames
   useEffect(() => {
@@ -194,11 +223,16 @@ export function AvatarViewport3D({
     );
   }
 
+  // Both have to land before anything is shown: `framed` is the camera, `posed`
+  // is the character standing in its idle animation.
+  const revealed = framed && posed;
+
   return (
     <div className="relative h-full w-full">
       <DevOverlay />
+      {!revealed && <AvatarLoadingIndicator name={name} />}
       <AvatarErrorBoundary>
-        <div className={`h-full w-full transition-opacity duration-300 ${framed ? 'opacity-100' : 'opacity-80'}`}>
+        <div className={`h-full w-full transition-opacity duration-500 ${revealed ? 'opacity-100' : 'opacity-0'}`}>
           <ThreeScene
             modelUrl={activeModelUrl}
             mode={mode}
@@ -208,6 +242,7 @@ export function AvatarViewport3D({
             cameraIntent={cameraIntent}
             freezeOnIdle={freezeOnIdle}
             onSystemReady={onSystemReady}
+            onReady={() => setPosed(true)}
             onFramed={() => {
               setFramed(true);
               onFramedRef.current?.();

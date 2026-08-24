@@ -19,8 +19,20 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Warning | `--color-warning` | `bg-dojo-warning` | `#D97706` | `#E3A939` |
 | Danger | `--color-danger` | `bg-dojo-danger` | `#DC2626` | `#D14343` |
 | Streak | `--color-streak` | `text-dojo-streak` | `#EA580C` | `#F0A93B` |
+| Evaluation | `--color-evaluation` | `bg-dojo-evaluation` | `#8B5CF6` | `#8B5CF6` |
+| Icebreaker | `--color-icebreaker` | `bg-dojo-icebreaker` | `#D946EF` | `#D946EF` |
 | Text primary | `--color-text-primary` | `text-dojo-text-primary` | `#221A14` | `#F5F0E6` |
 | Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#6B6153` | `#A99C8B` |
+
+**Text-safe (`-strong`) status variants.** The status/phase hues above are tuned for fills, dots and borders. Used as small text they fall under 4.5:1 on the light canvas (and read dim on the dark one), so every *label* rendered in a status colour uses the `-strong` variant instead. Fills, dots and borders keep the base token.
+
+| Token | CSS Variable | Tailwind Class | Hex (light) | Hex (dark) |
+|-------|-------------|----------------|-----|-----|
+| Success text | `--color-success-strong` | `text-dojo-success-strong` | `#15803D` | `#4ADE80` |
+| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#B45309` | `#FBBF24` |
+| Danger text | `--color-danger-strong` | `text-dojo-danger-strong` | `#B91C1C` | `#F87171` |
+| Streak text | `--color-streak-strong` | `text-dojo-streak-strong` | `#C2410C` | `#F5B65C` |
+| Icebreaker text | `--color-icebreaker-strong` | `text-dojo-icebreaker-strong` | `#A21CAF` | `#E879F9` |
 
 **Radius:** `--radius-sm: 8px`, `--radius-md: 12px`, `--radius-lg: 16px`
 
@@ -66,24 +78,33 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
 | `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
 | `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
-| `AvatarCaptionsOverlay` | `bg-black/70 backdrop-blur` pill at `bottom-6`; `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. |
-| `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`); otherwise same as before. |
+| `AvatarCaptionsOverlay` | Translucent `bg-black/30 border-white/10 backdrop-blur-sm` pill, absolutely positioned at `bottom-6` (override via `className`, e.g. `bottom-32` to clear the mic controls); `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. Always floats — never render it in flow, a reserved caption band crops the avatar viewport above it. |
+| `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`). Nothing is shown until the character is both framed AND standing in its idle animation — until then a DOM-level progress bar ("Preparing {name}") sits over a fully transparent canvas, and the 3D content fades in over 500 ms. Calls `preloadAnimationClips()` on mount so the clips download alongside the model. |
+| `PhaseTransitionCard` | Phase-change card, `aspect-[11/10] max-w-md`. The coach art from `PHASE_META.portraitSrc` is the card itself (full-bleed `background-image`, framed by `artSize`/`artPosition`), with the title/description over a top-left scrim and a numbered 1→6 stepper over a bottom scrim. Copy is `text-white` because it always sits on the dark artwork. |
+| `ResultsAvatarBackdrop` | Shared backdrop for `LessonCompleteScreen` / `LessonIncompleteScreen`. Layers: blurred+dimmed copy of the art → radial mood glow → the art itself at full opacity, height-fitted and centred so the coach is never cropped or washed out → scrims limited to the top/bottom strips and the outer quarter of each side (where the stat panels sit). `fit="portrait"` caps and feathers small square art (`lesson-incomplete.png`, 380×380) instead of upscaling it to full height. Never put a full-screen scrim over the character. |
 
 ## Speech & Avatar Runtime (`/lib/roleplay/`, `/components/roleplay/three/`)
 
 | Module | Notes |
 |--------|-------|
-| `lib/roleplay/tts.ts` | Browser-side Azure synthesis. `feedStreamTts(delta,…)` speaks each sentence as the model streams it; `flushStreamTts(…)` drains the tail and resolves when speech ends. `speakMixedText` keeps ⟦ ⟧ span→SSML multi-voice switching. Falls back direct → `/api/tts` → `window.speechSynthesis`. Speaking state is reference-counted with a 350 ms settle so per-sentence utterances don't flicker the avatar between talk/idle. |
-| `lib/roleplay/pronunciation.ts` | One shared mic `MediaStream` + one `AudioContext` per session, feeding both the recognizer and the level meter. Azure websocket pre-opened via `Connection.fromRecognizer`; handlers attached once; `Speech_SegmentationSilenceTimeoutMs=350`. `destroyRecognizer()` is the session-unmount teardown. Exports `getToken()` as the single Azure token cache (shared with `tts.ts`). |
+| `lib/roleplay/tts.ts` | Browser-side Azure synthesis. Session views call `speakMixedText(text,…)` once from the stream's `onTextDone` — each reply is a single clip, not per-sentence streaming (the `feedStreamTts` / `flushStreamTts` helpers remain exported but currently have no callers). `speakMixedText` keeps ⟦ ⟧ span→SSML multi-voice switching. Falls back direct → `/api/tts` → `window.speechSynthesis`. Speaking state is reference-counted with a 350 ms settle so utterances don't flicker the avatar between talk/idle. `speakWhenAudioUnlocked(fn)` is for lines the app starts on its own rather than off a click (the welcome-back recap): it runs `fn` once the shared `AudioContext` is actually running, deferring to the first gesture instead of losing the line to autoplay policy. |
+| `lib/roleplay/pronunciation.ts` | One shared mic `MediaStream` + one `AudioContext` per session, feeding the level meter and a session-long PCM tap (AudioWorklet, `ScriptProcessor` fallback) that streams 16 kHz mono PCM into the recognizer's `PushAudioInputStream`. Press opens the gate (`beginCapture`, +300 ms pre-roll); release closes it. Azure websocket pre-opened via `Connection.fromRecognizer`; handlers attached once; `Speech_SegmentationSilenceTimeoutMs=350`. `destroyRecognizer()` is the session-unmount teardown. Exports `getToken()` as the single Azure token cache (shared with `tts.ts`). |
+| `lib/roleplay/mic-sfx.ts` | `playMicPress()` / `playMicRelease()` — synthesized push-to-talk earcons on the shared playback context, wired straight to `destination` (never through the lip-sync analyser). Called from `useVoiceInput`, not from individual buttons. |
 | `lib/roleplay/conversation-history.ts` | `buildConversationHistory(rows)` — per-speaker column selection when rebuilding model history. AI turns read `messageTarget`, user turns `messageNative`. |
 | `lib/roleplay/prompts/` | All role-play prompts. `buildTurnSystemPrompt(ctx)` / `buildTurnUserMessage(ctx,…)` are the only entry points; `phases.ts` holds the per-phase pedagogy, `shared.ts` the persona + formatting + ⟦ ⟧ contract + `buildIdentityAndGuardBlock`, `reply-contract.ts` the analyzer-facing description of what each phase emits (both imported by `ai-engine.ts` as leaf modules, not via the barrel). |
 | `lib/roleplay/proficiency.ts` | `getLearnerProficiency(userId,lang)` averages the last 5 completed `evaluations`; `resolveDifficulty(authored, prof)` shifts the scenario's tier at most one step from measured performance. Surfaces as `SessionTurnData.effectiveDifficulty`. |
 | `lib/roleplay/vocab-match.ts` | `userAttemptsVocabWord(...)` — word-boundary-aware check for whether the learner produced the drilled item. |
 | `lib/roleplay/session-metrics.ts` | `sessionCompositePct(scores)` — the ONLY way to turn dimension scores into an overall percentage. Delegates to `computeCompositeScore`. Three hand-rolled variants previously disagreed (home/sessions divided by 100; the share page by 30/25/20/15/10). |
-| `three/AnimationManager.ts` | Loads `.glb` clips (generated by `npm run avatars:convert`) through a module-level shared cache, so repeat mounts are free. Head/neck tracks are kept on all clips. `setPaused()` replaces dispose/re-init for idle-freeze. Exports `ONE_SHOT_CLIPS` — `EmotionSystem` reads the same set rather than repeating the names. |
-| `three/LipSync.ts` | Driven by live `visemeReceived` events from `tts.ts`; blends between mouth shapes (`VISEME_BLEND_SPEED`) instead of hard-switching. |
+| `three/AnimationManager.ts` | Loads `.glb` clips (generated by `npm run avatars:convert`) through a module-level shared cache, so repeat mounts are free. `init()` waits for `Idle.glb` alone and returns; the other clips register as they arrive, and a mode change that lands while its clip is in flight is queued (`_pending`) rather than dropped — guard on `canPlay()`, not `hasClip()`, for anything in the manifest. `preloadAnimationClips()` starts the same fetches before an avatar is mounted (called from `AvatarViewport3D` and the avatar session page). Head/neck tracks are kept on all clips. `setPaused()` replaces dispose/re-init for idle-freeze. Exports `ONE_SHOT_CLIPS` — `EmotionSystem` reads the same set rather than repeating the names. `talk` is `Talking1.glb` (37s of real gesticulation); `Talking.glb` is still on disk but unused — its largest in-clip joint swing is 11°, so the character stood motionless through a whole reply. `_faceForward()` strips each clip's baked mean yaw from the root (and, on looping clips only, the head) at registration, so every clip faces the same way and `CameraIntent` stays the only thing that decides which way — Mixamo bakes the actor's original facing in, and Talking1 stood 30° off camera. |
+| `three/ExpressionEngine.ts` | Emotion morphs + blink, written to EVERY morph mesh each frame. Exports `asMorphMesh`/`MorphMesh`, which `LipSync` shares. Ducks its own mouth weights to 0.2 while `isTalking`. |
+| `three/LipSync.ts` | Driven by live `visemeReceived` events from `tts.ts`. Maps Azure viseme ids 0-21 onto the Oculus viseme set every catalog rig ships (`viseme_aa`…`viseme_RR`) with jaw coupling, blending between shapes (`VISEME_BLEND_SPEED`) instead of hard-switching. Keeps its weights in its OWN map and composes them over the influences with `Math.max` — `ExpressionEngine.update()` rewrites the same morphs earlier in the frame, so reading an influence back as "what we set last frame" pinned the mouth at ~a fifth of its target. Drives every mouth mesh (head, teeth, tongue), not just the head. Jaw timing is asymmetric — `MOUTH_OPEN_SPEED` 16 vs `MOUTH_CLOSE_SPEED` 9 — and the analyser's RMS is smoothed (`LOUDNESS_SPEED`) before it drives the opening, so the mouth follows the speech rather than the waveform. |
+| `three/AnimatedModel.tsx` | `applyRestPose(scene)` + `AvatarScale.apply(scene)` run synchronously on the cloned scene, before React mounts it — in an effect they left a raw, unscaled T-pose on screen for the first frames. The model is `visible={false}` until the idle clip is running (2.5 s reveal timeout as a safety net). The primitive's `rotation` carries the grounding tilt as well as the `CameraIntent` yaw, since R3F owns that prop. |
 
 Session pages derive `avatarMode` (`'idle' | 'listening' | 'talking'`) at render from AI-speaking state and `voice.isListening` — never stored, never set imperatively.
+
+**The character's lines are spoken by the views, not by the session hook.** `useRoleplaySession` only ever hands reply text to the views (streaming callbacks, or the `recap` event); the views own mute state, captions and the TTS voices, so anything the character should *say* has to reach them. Appending a turn to `conversations` renders it in the transcript and nothing more. The welcome-back recap of a resumed session is raised as `recap` / `dismissRecap` for exactly this reason.
+
+**The session clock is anchored on `session.startedAt`, never on page mount.** `/session/[id]/avatar` and `/session/[id]/voice` are two views of one session under a shared `RoleplaySessionProvider` (in `session/[sessionId]/layout.tsx`), so a mount-time anchor restarts "Session Time" at 00:00 every time the learner switches mode or reloads.
 
 **Scores are six independent 0-100 dimensions.** Never render them against a per-dimension max, and never sum-and-divide to get an overall figure — call `sessionCompositePct`.
 
@@ -130,6 +151,18 @@ Tutor availability is stored as a weekday + minutes-from-midnight in the **tutor
 | `/settings` | Settings | Preferences + Notifications + Privacy |
 | `/settings/avatar` | Avatar & Character | Tabbed: avatar presets + voice prefs |
 | `/settings/billing` | Subscription | Plan cards |
+| `/auth` | Sign in / Register | Email+password and Google. "Forgot password?" opens `ForgotPasswordModal` with the typed email prefilled |
+| `/auth/reset` | Set a new password | Landing page for the emailed reset link |
+
+### Password reset (Neon Auth)
+
+Entirely Neon Auth's flow — no custom route, no app-side token storage:
+
+1. `ForgotPasswordModal` → `authClient.requestPasswordReset({ email, redirectTo: <origin>/auth/reset })`. Neon stores the token and sends the mail itself. The modal always reports success (except on real transport/rate-limit failures) so it never confirms which addresses are registered.
+2. The emailed link points at Neon, not the app. Neon validates the token, then redirects to `/auth/reset?token=…` — or `/auth/reset?error=INVALID_TOKEN` when it is expired (1 hour), already used, or tampered with. **The reset page must read both params**: on `error`, or with no token at all, it shows the spent-link state with a "Request a new link" action rather than a form that can only fail on submit.
+3. `authClient.resetPassword({ newPassword, token })` → `/api/auth/reset-password`.
+
+`<origin>` must be a trusted origin on the Neon project, or step 2 returns `INVALID_CALLBACK_URL` instead of redirecting.
 
 ## Design Pattern Notes
 - All cards use `bg-dojo-surface` with `border-dojo-border` by default
@@ -176,29 +209,28 @@ Last updated: 2026-07-25
 - `pronunciation.ts` prewarms the Azure Speech token + `SpeechRecognizer` on mount (`prewarmRecognizer`) so the first mic press doesn't pay for a network round trip before capture starts; the auth token is refreshed on an interval so long sessions don't silently stop capturing after the ~10min token TTL.
 - `useVoiceInput().stop()` awaits any in-flight `start()` before issuing the stop, so a fast push-to-talk tap-and-release can't race ahead of the recognizer attaching its handlers and drop the utterance.
 - `voice.volumeLevel` is driven by a real `AnalyserNode` RMS reading of the mic stream (independent of the Speech SDK's own audio input), not a proxy off transcript length — this is what the mic button's ring/scale and the voice-only orb's swell react to.
+- **Press captures on the press itself.** A PCM tap on the shared mic graph runs for the whole session and feeds the recognizer through a `PushAudioInputStream`, so a press opens a gate on audio that is already flowing rather than starting a capture. `beginCapture()` runs on `startContinuousRecognition`'s synchronous prefix (which is why `useVoiceInput` calls it directly rather than behind `await ensureRecognizer`), and prepends the last 300ms of pre-roll. Audio captured while a cold recognizer is still building is held and flushed once the push stream exists.
+- Release stops feeding the recognizer immediately, then transmits: instantly if the phrase finalized during the hold, otherwise as soon as the final lands, capped by `FINAL_FLUSH_GRACE_MS = 600` before falling back to the last interim.
+- Mic press/release earcons come from `lib/roleplay/mic-sfx.ts` — short synthesized blips (rising on press, falling on release) on the shared playback `AudioContext` (`getPlaybackContext()` in `tts.ts`), connected straight to `destination` so the lip-sync analyser never sees them. Played from `useVoiceInput`, so every mic surface gets them. Not gated by the AI-voice mute toggle: they are input feedback, not the character's voice.
+- Push-to-talk mic labels read "Hold to Speak" (all four session/tryout voice + avatar pages).
 - `VoiceOnlyStage`'s `mode` prop now includes `'thinking'` (three pulsing dots + "Thinking" status pill) for the gap between mic release and the first streamed AI token, so the user isn't staring at a "Ready" orb wondering if their voice was dropped. The avatar (3D) page mirrors capture state via `EmotionSystem.startListening()/stopListening()` and shows a "Thinking…" caption for the same gap.
 
 ### ConnectionLatencyIndicator
 
 File: `components/roleplay/ConnectionLatencyIndicator.tsx`
-Last updated: 2026-07-25
+Last updated: 2026-08-24
 
 | Property         | Class / Value                                   |
 | ---------------- | ----------------------------------------------- |
 | Container        | `flex items-center gap-2 px-3 py-1.5 rounded-full border` |
-| Good bg          | `bg-dojo-surface bg-opacity-80`                 |
-| Good border      | `#3FB27F` (inline style)                        |
-| Good dot         | `bg-[#3FB27F]`                                  |
-| Good text        | `text-[#8FE2B5]`                                |
-| Degraded bg      | `bg-[#2A2210]`                                  |
-| Degraded dot     | `bg-[#F2A93B] animate-pulse`                    |
-| Offline bg       | `bg-[#2A1416]`                                  |
-| Offline dot      | `bg-[#E5484D]`                                  |
+| Good             | `bg-dojo-success/10 border-dojo-success/40` · dot `bg-dojo-success` · text `text-dojo-success-strong` |
+| Degraded         | `bg-dojo-warning/10 border-dojo-warning/40` · dot `bg-dojo-warning animate-pulse` · text `text-dojo-warning-strong` |
+| Offline          | `bg-dojo-danger/10 border-dojo-danger/40` · dot `bg-dojo-danger` · text `text-dojo-danger-strong` |
 | Label text       | `text-[11px] font-semibold`                     |
-| Latency text     | `text-[10px] text-white/40 font-mono`           |
+| Latency text     | `text-[10px] text-dojo-text-muted font-mono`    |
 
 **Pattern notes:**
-- Hardcoded hex values used for dot/label colors because these are status-specific, not design tokens
+- Fully tokenised (the old hardcoded status hexes are gone) — the label uses the `-strong` text variant so it stays readable on the light canvas; the dot and 10%-tint fill use the base hue
 - `useLatencyMonitor` hook exported from same file — polls via `fetch OPTIONS` every 10s
 - Thresholds: <300ms good, <2000ms degraded, else offline
 
@@ -233,15 +265,20 @@ Last updated: 2026-07-25
 | Property         | Class / Value                                   |
 | ---------------- | ----------------------------------------------- |
 | Container        | `inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold` |
-| Phase bg pattern | `bg-dojo-{color}/20 text-dojo-{color} border-dojo-{color}/30` |
+| Phase bg pattern | `bg-dojo-{color}/20 text-dojo-{color}-strong border-dojo-{color}/40` |
 | Dot              | `h-1.5 w-1.5 rounded-full` (inline style for color) |
 | Dot animation    | `animate-pulse` (all phases except `completed`) |
-| Icebreaker       | bg `#2D3BC5` dot / `bg-dojo-accent/20 text-dojo-accent border-dojo-accent/30` |
-| Guided           | bg `#16A34A` dot / `bg-dojo-success/20 text-dojo-success border-dojo-success/30` |
-| Unguided         | bg `#D97706` dot / `bg-dojo-warning/20 text-dojo-warning border-dojo-warning/30` |
-| Evaluation       | bg `#8B5CF6` dot / `bg-[#8B5CF6]/20 text-[#8B5CF6] border-[#8B5CF6]/30` |
-| Completed        | bg `#64748B` dot / `bg-dojo-text-muted/10 text-dojo-text-muted border-dojo-border` |
-| Fallback         | `bg-dojo-surface border-dojo-border text-dojo-text-muted` |
+| Orientation      | bg `#0EA5E9` dot / `bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-500/40` |
+| Icebreaker       | bg `#D946EF` dot / `bg-dojo-icebreaker/20 text-dojo-icebreaker-strong border-dojo-icebreaker/40` |
+| Guided           | bg `#16A34A` dot / `bg-dojo-success/20 text-dojo-success-strong border-dojo-success/40` |
+| Unguided         | bg `#D97706` dot / `bg-dojo-warning/20 text-dojo-warning-strong border-dojo-warning/40` |
+| Evaluation       | bg `#3B82F6` dot / `bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/40` |
+| Completed        | bg `#F0A93B` dot / `bg-dojo-streak/20 text-dojo-streak-strong border-dojo-streak/40` |
+| Fallback         | `getPhaseMeta()` falls back to `orientation` for unknown phases |
+
+`PHASE_META` also carries the character art used by `PhaseTransitionCard`: `portraitSrc` plus `artSize`/`artPosition` (the `background-size`/`background-position` that frame the coach inside the card). Most phases use `cover`; `evaluation` zooms to `auto 175%` at `88% 24%` to push the scorecard baked into the left of that source art out of frame, and `completed` points at `celebration_avatar.png` rather than `lessoncomplete_avatar.png` because the latter has a headline and scorecard baked in.
+
+Source of truth for these classes is `PHASE_META` in `lib/roleplay/phase-ui.tsx`. Orientation/Evaluation have no dojo token, so they use the Tailwind palette with an explicit `dark:` variant for the same reason the `-strong` tokens exist.
 
 **Pattern notes:**
 - Phase dot color is driven by inline `style` (not a Tailwind class) because the phase is dynamic
@@ -302,6 +339,7 @@ Last updated: 2026-07-25
 | Section label       | `text-[11px] font-medium text-dojo-text-muted`   |
 | Suggestion pill     | `rounded-full border border-dojo-border px-2.5 py-1 text-[11px] text-dojo-text-primary hover:border-dojo-accent` |
 | Suggestion wrapper  | `flex flex-wrap gap-1.5`                         |
+| Disabled action     | `disabled:opacity-40 disabled:active:scale-100` (retry + suggestion pills, via the `disabled` prop) |
 
 **Pattern notes:**
 - Uses `rounded-2xl` (the largest radius variant, matching mode chooser cards)

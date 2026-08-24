@@ -32,7 +32,7 @@ export class EmotionSystem {
   startThinking(): void {
     this.lipSync.stop();
     this.expression.setExpression('neutral');
-    if (this.animation.hasClip('think')) {
+    if (this.animation.canPlay('think')) {
       this.animation.play('think', { loop: true, fade: 0.7 });
     }
   }
@@ -77,7 +77,7 @@ export class EmotionSystem {
   startListening(): void {
     this.lipSync.stop();
     this.expression.setExpression('neutral');
-    if (this.animation.hasClip('listening')) {
+    if (this.animation.canPlay('listening')) {
       this.animation.play('listening', { loop: true, fade: 0.7 });
     }
   }

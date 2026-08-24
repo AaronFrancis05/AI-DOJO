@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AvatarViewport3D, DEFAULT_AVATAR_MODEL_URL } from '@/components/roleplay/AvatarViewport3D';
+import { preloadAnimationClips } from '@/components/roleplay/three/AnimationManager';
+import { AvatarCaptionsOverlay } from '@/components/roleplay/AvatarCaptionsOverlay';
 import { EmotionSystem } from '@/components/roleplay/three/EmotionSystem';
 import { PhaseIndicator } from '@/components/roleplay/PhaseIndicator';
 import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
@@ -12,7 +14,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
-import { speakMixedText, stop as stopTts, resetStreamingTts, feedStreamTts, flushStreamTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
 import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
@@ -51,6 +53,7 @@ export default function AvatarModePage() {
     submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection,
     phaseTransition, dismissPhaseTransition,
+    recap, dismissRecap,
     unacknowledgedCompletion, acknowledgeCompletion,
   } = useRoleplaySessionContext();
 
@@ -69,7 +72,6 @@ export default function AvatarModePage() {
   const [chatInput, setChatInput] = useState('');
   const [tipsOpen, setTipsOpen] = useState(false);
   const [chatTab, setChatTab] = useState<'all' | 'key' | 'notes'>('all');
-  const [sessionStartTime] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
@@ -88,12 +90,18 @@ export default function AvatarModePage() {
     }
   }, []);
 
+  // The viewport only mounts once the session request resolves, so the clips
+  // would otherwise sit untouched for that whole round trip. They are the same
+  // files for every character, so there is nothing to wait on before asking.
+  useEffect(() => { preloadAnimationClips(); }, []);
+
   const speakingRef = useRef(false);
   const mutedRef = useRef(false);
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
   const sendingRef = useRef(false);
+  const isActiveRef = useRef(false);
 
   // The avatar the learner picked for this session wins over the scenario's
   // seeded character — scenario rows are shared across sessions, the pick is not.
@@ -102,14 +110,24 @@ export default function AvatarModePage() {
   const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
   const avatarModelUrl = selectedAvatar?.file ?? character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
 
+  // Anchored on the session's own start time rather than this page's mount:
+  // avatar and voice are two views of one session, so switching between them
+  // (or reloading) has to carry the clock over instead of restarting at 00:00.
+  const sessionStartTime: number | null = session?.startedAt
+    ? new Date(session.startedAt).getTime()
+    : null;
+
   // Session timer
   useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = Math.floor((Date.now() - sessionStartTime) / 1000);
+    if (sessionStartTime === null) return;
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000));
       const m = String(Math.floor(diff / 60)).padStart(2, '0');
       const s = String(diff % 60).padStart(2, '0');
       setElapsed(`${m}:${s}`);
-    }, 1000);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [sessionStartTime]);
 
@@ -151,6 +169,7 @@ export default function AvatarModePage() {
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   useEffect(() => {
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
@@ -175,6 +194,33 @@ export default function AvatarModePage() {
     return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
 
+  // Recite the welcome-back recap. It reaches the transcript on its own, so
+  // unlike every other AI line it never passes through the streaming callbacks
+  // that drive speech and captions — without this it would only ever be
+  // readable in chat, and the avatar would stay silent on a resumed session.
+  useEffect(() => {
+    if (!recap) return;
+    const text = cleanDisplay(recap.text);
+    if (!text || mutedRef.current) { dismissRecap(); return; }
+
+    const cancel = speakWhenAudioUnlocked(() => {
+      // The unlock can be deferred to the learner's first gesture — if that
+      // gesture was the mute button, the pre-check above is stale by now.
+      if (mutedRef.current) { dismissRecap(); return; }
+      playCaption(text, Math.max(3000, text.length * 65)).catch(() => {});
+      speakMixedText(
+        text,
+        getBCP47(targetLangRef.current, 'tts'),
+        targetLangRef.current === nativeLangRef.current
+          ? getBCP47(targetLangRef.current, 'tts')
+          : getNativeLangBcp47(nativeLangRef.current),
+        phaseRef.current,
+      ).catch(() => {});
+      dismissRecap();
+    });
+    return cancel;
+  }, [recap, dismissRecap, playCaption]);
+
   useEffect(() => {
     if (unacknowledgedCompletion && !completionResult) {
       const source = evaluation ?? session ?? {};
@@ -194,14 +240,20 @@ export default function AvatarModePage() {
   }, [unacknowledgedCompletion, completionResult, session, evaluation]);
 
   const handleUserUtterance = useCallback(async (text: string) => {
-    if (sendingRef.current || !text.trim()) return;
+    // A mic release can land after the last turn ended the session — the button
+    // is already disabled by then, but the held recognition still flushes here.
+    if (sendingRef.current || !text.trim() || !isActiveRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setAiTurnActive(true);
+    // The learner has spoken, so last turn's prompts are spent. Clearing them
+    // here keeps the conversation flowing: the coach panel only ever shows
+    // suggestions for the turn being corrected right now, and a clean turn
+    // leaves no leftover chips to answer.
+    setSuggestedReplies([]);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     emotionSystemRef.current?.startThinking();
     stopTts();
-    resetStreamingTts();
     clearCaption();
     // Bridge the gap between the mic release and the first streamed token so
     // the learner sees the reply is coming, not that their voice was dropped.
@@ -220,28 +272,21 @@ export default function AvatarModePage() {
     try {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
-        // Speak each sentence as soon as it completes rather than waiting for
-        // the whole reply, so the avatar's mouth starts moving while the model
-        // is still generating.
-        onTokenDelta: (delta) => {
-          if (mutedRef.current) return;
-          feedStreamTts(
-            delta,
-            getBCP47(targetLangRef.current, 'tts'),
-            getNativeLangBcp47(nativeLangRef.current),
-            phaseRef.current,
-          );
-        },
         onToken: (t) => {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
         },
+        // Speak the reply as one complete clip once the model has finished,
+        // same as the replay button — synthesizing per-sentence as the model
+        // streamed made every sentence boundary pay its own Azure connect
+        // round trip, which read as slow/choppy compared to a single clip.
         onTextDone: (t: string) => {
           const cleaned = cleanDisplay(t);
           const estDuration = Math.max(3000, cleaned.length * 65);
           if (cleaned) playCaption(cleaned, estDuration).catch(() => {});
           if (!mutedRef.current && cleaned) {
-            flushStreamTts(
+            speakMixedText(
+              cleaned,
               getBCP47(targetLangRef.current, 'tts'),
               getNativeLangBcp47(nativeLangRef.current),
               phaseRef.current,
@@ -426,7 +471,7 @@ export default function AvatarModePage() {
           <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
 
           {/* Greeting overlay */}
-          {conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
+          {isActive && conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6">
               <div className="text-center max-w-xs">
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
@@ -441,18 +486,13 @@ export default function AvatarModePage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
-                    resetStreamingTts();
                     sendGreeting({
-                      onTokenDelta: (delta: string) => {
-                        if (mutedRef.current) return;
-                        feedStreamTts(delta, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current);
-                      },
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t: string) => {
                         const cleaned = cleanDisplay(t);
                         if (cleaned) playCaption(cleaned, Math.max(3000, cleaned.length * 65)).catch(() => {});
-                        if (mutedRef.current) return;
-                        flushStreamTts(getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
+                        if (mutedRef.current || !cleaned) return;
+                        speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                       },
                     })
                       .then(() => {
@@ -498,13 +538,16 @@ export default function AvatarModePage() {
               mode={avatarMode}
               modelUrl={avatarModelUrl}
               cameraMode="front"
-              caption={caption}
               onSystemReady={(sys) => {
                 emotionSystemRef.current = sys;
                 if (speakingRef.current) sys.startTalking?.();
               }}
             />
           </div>
+
+          {/* Live caption — floats just above the mic controls so the viewport
+              keeps its full height and the avatar stays visible through it */}
+          <AvatarCaptionsOverlay caption={caption} className="bottom-32" />
 
           {/* Partial transcript */}
           {voice.partialTranscript && (
@@ -639,7 +682,7 @@ export default function AvatarModePage() {
                 <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-white/70'
                 }`}>
-                  {voice.isListening ? 'Listening...' : 'Tap to Speak'}
+                  {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
               </div>
 
@@ -830,6 +873,7 @@ export default function AvatarModePage() {
               corrections={coachOpen ? lastCorrections : []}
               suggestedReplies={coachOpen ? suggestedReplies : []}
               retryTarget={pendingRetry}
+              disabled={!isActive || sending}
               onRetry={() => { setCoachOpen(false); retryCorrection(); }}
               onDismiss={() => setCoachOpen(false)}
               onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}

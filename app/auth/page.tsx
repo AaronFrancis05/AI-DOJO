@@ -338,7 +338,10 @@ function AuthPageContent() {
       </div>
 
       {showForgotPassword && (
-        <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />
+        <ForgotPasswordModal
+          initialEmail={email}
+          onClose={() => setShowForgotPassword(false)}
+        />
       )}
     </div>
   );

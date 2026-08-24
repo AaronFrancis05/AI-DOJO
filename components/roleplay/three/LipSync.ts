@@ -1,39 +1,121 @@
 import * as THREE from 'three';
 import { getCurrentViseme, getTtsAnalyser, isSpeaking } from '@/lib/roleplay/tts';
+import { asMorphMesh, type MorphMesh } from './ExpressionEngine';
 
-const LERP_SPEED = 24;
+/* ── Timing ──────────────────────────────────────────────────────────────
+   A real jaw has mass: it drops onto a vowel quickly and comes back up more
+   slowly, and the shapes either side of a consonant overlap rather than
+   switching frame to frame. Driving open and closed at one high speed made
+   the mouth flutter at the audio's frame rate — technically in sync, but read
+   as chattering rather than talking.
+
+   Each constant is an exponential rate: the weight covers ~63% of the
+   remaining distance in 1/speed seconds. 16 ≈ 60 ms, 9 ≈ 110 ms — the range
+   human articulators actually move in.
+   ────────────────────────────────────────────────────────────────────── */
+
+/** How fast the mouth opens as a sound starts (jaw drop). */
+const MOUTH_OPEN_SPEED = 16;
+
+/** How fast it closes again. Deliberately slower — jaws fall shut, they don't snap. */
+const MOUTH_CLOSE_SPEED = 9;
+
+/** How fast one mouth shape gives way to the next. */
+const VISEME_BLEND_SPEED = 12;
 
 /**
- * How fast one mouth shape gives way to the next. Slower than LERP_SPEED (the
- * overall open/closed amount) so consecutive visemes overlap the way real
- * articulation does, instead of cutting between shapes frame to frame.
+ * Smoothing on the loudness reading itself. The analyser reports per-frame RMS,
+ * which jitters well above syllable rate; without this the jaw traced the
+ * waveform instead of the speech.
  */
-const VISEME_BLEND_SPEED = 16;
+const LOUDNESS_SPEED = 15;
 
-/** Azure viseme id groupings — see the table in update(). */
-const CLOSED_CONSONANTS = new Set([13, 14, 15, 16, 17, 18, 19, 20, 21]);
-const AA_VISEMES = new Set([1, 2, 9, 11]);
-const O_VISEMES = new Set([3, 8, 10]);
-const E_VISEMES = new Set([4, 5]);
+/* ── Mouth shapes ────────────────────────────────────────────────────────
+   Every avatar in public/ai-avatars/models ships the Oculus viseme set
+   (viseme_aa … viseme_RR), which maps almost one-to-one onto the viseme ids
+   Azure sends. Consonants used to be collapsed into "crack the jaw a little",
+   which is why speech read as a jaw hinging open and shut rather than as
+   articulation. Four rigs in the catalog carry no jawOpen/mouthFunnel, and
+   older rigs only have the five vowels, so every shape names a stand-in in
+   SHAPE_FALLBACK.
+   ────────────────────────────────────────────────────────────────────── */
 
-interface ResolvedShapes {
-  aa?: number;
-  o?: number;
-  i?: number;
-  u?: number;
-  e?: number;
-  jaw?: number;
+type ShapeKey =
+  | 'aa' | 'e' | 'i' | 'o' | 'u'
+  | 'pp' | 'ff' | 'th' | 'dd' | 'kk' | 'ch' | 'ss' | 'nn' | 'rr'
+  | 'jaw' | 'funnel' | 'pucker';
+
+const SHAPE_CANDIDATES: Record<ShapeKey, string[]> = {
+  aa: ['viseme_aa', 'aa', 'v_aa', 'blendShape.aa', 'blendShape.AA'],
+  e: ['viseme_E', 'eh', 'v_E', 'blendShape.e', 'blendShape.E'],
+  i: ['viseme_I', 'ih', 'v_I', 'blendShape.ih', 'blendShape.IH'],
+  o: ['viseme_O', 'oh', 'v_O', 'blendShape.oh', 'blendShape.OH'],
+  u: ['viseme_U', 'uh', 'v_U', 'blendShape.ou', 'blendShape.U'],
+  pp: ['viseme_PP', 'viseme_pp'],
+  ff: ['viseme_FF', 'viseme_ff'],
+  th: ['viseme_TH', 'viseme_th'],
+  dd: ['viseme_DD', 'viseme_dd'],
+  kk: ['viseme_kk', 'viseme_KK'],
+  ch: ['viseme_CH', 'viseme_ch'],
+  ss: ['viseme_SS', 'viseme_ss'],
+  nn: ['viseme_nn', 'viseme_NN'],
+  rr: ['viseme_RR', 'viseme_rr'],
+  jaw: ['jawOpen', 'jaw_open', 'jawOpenLeft', 'jaw_drop', 'blendShape.jawOpen', 'mouthOpen', 'mouth_drop'],
+  funnel: ['mouthFunnel'],
+  pucker: ['mouthPucker'],
+};
+
+/** What a shape borrows when the rig has no morph of its own for it. */
+const SHAPE_FALLBACK: Partial<Record<ShapeKey, ShapeKey>> = {
+  ff: 'i', th: 'i', ss: 'i', ch: 'u',
+  dd: 'aa', kk: 'aa', nn: 'aa', rr: 'o',
+  funnel: 'o', pucker: 'u', jaw: 'aa',
+};
+
+interface VisemeShape {
+  /** Morph weights at full openness, before the loudness gain. */
+  shapes: Partial<Record<ShapeKey, number>>;
+  /** How far the jaw drops for this sound, as a fraction of openness. */
+  jaw: number;
+  /** Vowels scale with loudness; consonants stay crisp at any volume. */
+  vowel: boolean;
 }
 
-const VISEME_TARGETS = [
-  'viseme_aa', 'aa', 'v_aa', 'blendShape.aa', 'blendShape.AA',
-  'viseme_I', 'ih', 'v_I', 'blendShape.ih', 'blendShape.IH',
-  'viseme_O', 'oh', 'v_O', 'blendShape.oh', 'blendShape.OH',
-  'viseme_U', 'uh', 'v_U', 'blendShape.ou', 'blendShape.U',
-  'viseme_E', 'eh', 'v_E', 'blendShape.e', 'blendShape.E',
-  'jawOpen', 'jaw_open', 'jawOpenLeft', 'jaw_drop', 'blendShape.jawOpen',
-  'mouthOpen', 'mouthClose', 'mouth_drop',
-];
+/**
+ * Azure viseme ids (forwarded unchanged from the speech service) to mouth
+ * shapes:
+ *   0=silence, 1=ae/ax/ah, 2=aa, 3=ao, 4=ey/eh/uh, 5=er, 6=iy/ih, 7=w/uw,
+ *   8=ow, 9=aw, 10=oy, 11=ay, 12=h, 13=r, 14=l, 15=s/z, 16=sh/ch, 17=th/dh,
+ *   18=f/v, 19=d/t/n, 20=k/g, 21=p/b/m.
+ */
+const AZURE_VISEMES: Record<number, VisemeShape> = {
+  0: { shapes: {}, jaw: 0, vowel: true },
+  1: { shapes: { aa: 0.70 }, jaw: 0.55, vowel: true },
+  2: { shapes: { aa: 1.00 }, jaw: 0.80, vowel: true },
+  3: { shapes: { o: 0.90, funnel: 0.30 }, jaw: 0.60, vowel: true },
+  4: { shapes: { e: 0.90 }, jaw: 0.45, vowel: true },
+  5: { shapes: { rr: 0.80, e: 0.30 }, jaw: 0.35, vowel: true },
+  6: { shapes: { i: 0.90 }, jaw: 0.25, vowel: true },
+  7: { shapes: { u: 0.90, pucker: 0.40 }, jaw: 0.20, vowel: true },
+  8: { shapes: { o: 1.00, pucker: 0.30 }, jaw: 0.45, vowel: true },
+  9: { shapes: { aa: 0.80, o: 0.50 }, jaw: 0.70, vowel: true },
+  10: { shapes: { o: 0.70, i: 0.40 }, jaw: 0.50, vowel: true },
+  11: { shapes: { aa: 0.90, i: 0.30 }, jaw: 0.70, vowel: true },
+  12: { shapes: { aa: 0.40 }, jaw: 0.40, vowel: true },
+  13: { shapes: { rr: 0.90 }, jaw: 0.25, vowel: false },
+  14: { shapes: { nn: 0.80 }, jaw: 0.30, vowel: false },
+  15: { shapes: { ss: 0.90 }, jaw: 0.12, vowel: false },
+  16: { shapes: { ch: 0.90, pucker: 0.25 }, jaw: 0.18, vowel: false },
+  17: { shapes: { th: 0.90 }, jaw: 0.20, vowel: false },
+  18: { shapes: { ff: 0.90 }, jaw: 0.12, vowel: false },
+  19: { shapes: { dd: 0.90 }, jaw: 0.25, vowel: false },
+  20: { shapes: { kk: 0.90 }, jaw: 0.30, vowel: false },
+  // Bilabial: the lips must actually meet, so no jaw at all.
+  21: { shapes: { pp: 1.00 }, jaw: 0, vowel: false },
+};
+
+/** Amplitude-only fallback shape when no viseme stream is available. */
+const NEUTRAL_OPEN: VisemeShape = { shapes: { aa: 0.85, o: 0.15 }, jaw: 0.55, vowel: true };
 
 export interface VisemeFrame {
   id: number;
@@ -53,10 +135,17 @@ export class LipSync {
   currentMouthOpen = 0;
   targetMouthOpen = 0;
 
+  /** Loudness after LOUDNESS_SPEED smoothing — see update(). */
+  private _loudness = 0;
+
   private _expressionEngine: { setTalkingState: (t: boolean) => void } | null = null;
   private _externalAnalyser: AnalyserNode | null = null;
-  private _cachedFaceMesh: THREE.SkinnedMesh | null = null;
-  private _shapes: ResolvedShapes | null = null;
+  private _faceMeshes: MorphMesh[] | null = null;
+  private _shapes: Partial<Record<ShapeKey, string>> | null = null;
+  /** Distinct morph names in _shapes — a rig without jawOpen aliases it. */
+  private _shapeNames: string[] = [];
+  /** This system's own weight per morph name — see _applyWeights(). */
+  private _weights = new Map<string, number>();
   private _visemeTimeline: VisemeFrame[] | null = null;
   private _visemeIndex = 0;
 
@@ -128,7 +217,7 @@ export class LipSync {
         this._source = this._audioCtx.createMediaElementSource(this.audio);
         this._analyser = this._audioCtx.createAnalyser();
         this._analyser.fftSize = 1024;
-        this._analyser.smoothingTimeConstant = 0.4;
+        this._analyser.smoothingTimeConstant = 0.6;
         this._source.connect(this._analyser);
         this._analyser.connect(this._audioCtx.destination);
         this._audioData = new Uint8Array(this._analyser.fftSize) as unknown as Uint8Array<ArrayBuffer>;
@@ -152,6 +241,7 @@ export class LipSync {
     this.playing = false;
     this.targetMouthOpen = 0;
     this.currentMouthOpen = 0;
+    this._loudness = 0;
     this._visemeTimeline = null;
     this._visemeIndex = 0;
 
@@ -182,44 +272,41 @@ export class LipSync {
   }
 
   private _clearMouthShapes(): void {
-    const faceMesh = this._findFaceMesh();
-    if (!faceMesh) return;
-    const dict = faceMesh.morphTargetDictionary;
-    const influences = faceMesh.morphTargetInfluences;
-    if (!dict || !influences) return;
-    VISEME_TARGETS.forEach((m) => {
-      const idx = dict[m];
-      if (idx !== undefined) influences[idx] = 0;
-    });
+    const meshes = this._findFaceMeshes();
+    if (meshes.length === 0) return;
+    this._resolveShapes(meshes);
+
+    for (const name of this._shapeNames) {
+      this._weights.set(name, 0);
+      for (const mesh of meshes) {
+        const idx = mesh.morphTargetDictionary[name];
+        if (idx !== undefined) mesh.morphTargetInfluences[idx] = 0;
+      }
+    }
   }
 
-  private _findFaceMesh(): THREE.SkinnedMesh | null {
-    if (this._cachedFaceMesh) return this._cachedFaceMesh;
-    let best: THREE.SkinnedMesh | null = null;
-    let bestScore = -1;
+  /**
+   * Every mesh carrying mouth morphs, not just the head: on these rigs the
+   * teeth and tongue are separate meshes with their own jawOpen/viseme set,
+   * and driving the head alone leaves the teeth hanging in place while the
+   * jaw drops.
+   */
+  private _findFaceMeshes(): MorphMesh[] {
+    if (this._faceMeshes) return this._faceMeshes;
+
+    const known = new Set(Object.values(SHAPE_CANDIDATES).flat());
+    const meshes: MorphMesh[] = [];
 
     this.model.traverse((obj) => {
-      if (
-        obj instanceof THREE.SkinnedMesh &&
-        obj.morphTargetDictionary &&
-        obj.morphTargetInfluences
-      ) {
-        const dict = obj.morphTargetDictionary;
-        const nameHint = (obj.name?.toLowerCase().includes('head') ?? false) ? 1 : 0;
-        const hasVisemeOrJaw =
-          'viseme_aa' in dict || 'viseme_O' in dict || 'jawOpen' in dict
-            ? 2
-            : 0;
-        const score = hasVisemeOrJaw + nameHint;
-        if (score > bestScore) {
-          bestScore = score;
-          best = obj;
-        }
+      const morph = asMorphMesh(obj);
+      if (!morph) return;
+      if (Object.keys(morph.morphTargetDictionary).some((name) => known.has(name))) {
+        meshes.push(morph);
       }
     });
 
-    this._cachedFaceMesh = best;
-    return best;
+    this._faceMeshes = meshes;
+    return meshes;
   }
 
   private _resolveVisemeId(): number {
@@ -235,51 +322,77 @@ export class LipSync {
     return getCurrentViseme();
   }
 
+  /**
+   * Loudness of the audio actually coming out, normalized to 0..1, or null
+   * when nothing measurable is routed through a Web Audio graph.
+   * `getTtsAnalyser()` only hands back an analyser while real audio is passing
+   * through it, so a near-zero reading here means a genuine pause in speech
+   * rather than an unrouted voice.
+   */
+  private _readLoudness(analyser: AnalyserNode | null): number | null {
+    if (!analyser) return null;
+    if (!this._audioData || this._audioData.length !== analyser.fftSize) {
+      this._audioData = new Uint8Array(analyser.fftSize) as unknown as Uint8Array<ArrayBuffer>;
+    }
+    analyser.getByteTimeDomainData(this._audioData);
+    let sum = 0;
+    for (let i = 0; i < this._audioData.length; i++) {
+      const v = (this._audioData[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / this._audioData.length);
+    return Math.min(1, Math.max(0, (rms - 0.012) * 7));
+  }
+
   update(delta: number): void {
     const dt = delta || 0.016;
     const analyser = this._externalAnalyser || this._analyser || getTtsAnalyser();
     const speakingActive = this.playing || isSpeaking();
 
-    const realVisemeId = this._resolveVisemeId();
-    const hasViseme = realVisemeId > 0;
+    const visemeId = this._resolveVisemeId();
+    // Below zero means no viseme stream at all; zero is a real silence frame
+    // that Azure sends at pauses, and must close the mouth. The id is only
+    // trusted while something is actually speaking — a leftover id from the
+    // last utterance would otherwise hold the mouth in that shape.
+    const hasVisemeStream = speakingActive && visemeId >= 0;
 
-    if (hasViseme) {
-      this.playing = true;
-      this.targetMouthOpen = 0.35;
-    } else if (speakingActive && analyser) {
-      if (!this._audioData) {
-        this._audioData = new Uint8Array(analyser.fftSize) as unknown as Uint8Array<ArrayBuffer>;
-      }
-      analyser.getByteTimeDomainData(this._audioData);
-      let sum = 0;
-      for (let i = 0; i < this._audioData.length; i++) {
-        const v = (this._audioData[i] - 128) / 128;
-        sum += v * v;
-      }
-      const rms = Math.sqrt(sum / this._audioData.length);
-      const fromAnalyser = Math.min(0.46, Math.max(0, (rms - 0.012) * 3.2));
-      if (fromAnalyser > 0.02) {
-        this.targetMouthOpen = fromAnalyser;
-      } else {
-        // audio is supposedly playing but the Web Audio graph is silent (e.g.
-        // browser speechSynthesis fallback, which never routes through the
-        // ttsAnalyser). Drive a synthetic talking pattern so the mouth moves
-        // instead of freezing shut mid-utterance.
-        const t = performance.now() * 0.001;
-        const wave =
-          Math.abs(Math.sin(t * 9.5)) * 0.7 + Math.abs(Math.sin(t * 5.3 + 1.3)) * 0.3;
-        this.targetMouthOpen = 0.06 + wave * 0.40;
-      }
-    } else if (speakingActive && !analyser) {
+    const rawLoudness = this._readLoudness(analyser);
+    let loudness: number | null = null;
+    if (rawLoudness === null) {
+      this._loudness = 0;
+    } else {
+      this._loudness += (rawLoudness - this._loudness) * (1 - Math.exp(-LOUDNESS_SPEED * dt));
+      loudness = this._loudness;
+    }
+
+    if (hasVisemeStream) {
+      // The viseme decides the SHAPE; loudness decides how far the mouth opens
+      // for it. A fixed opening made every syllable identically wide, which
+      // reads as chewing rather than speaking.
+      this.targetMouthOpen = visemeId === 0
+        ? 0
+        : loudness === null
+          ? 0.70
+          : Math.min(0.95, 0.35 + loudness * 0.65);
+    } else if (speakingActive && loudness !== null) {
+      this.targetMouthOpen = loudness > 0.04 ? loudness : 0;
+    } else if (speakingActive) {
+      // Audio is playing but never reaches the Web Audio graph (the browser
+      // speechSynthesis fallback). Drive a synthetic talking pattern so the
+      // mouth moves instead of freezing shut mid-utterance.
+      // ~2.4 openings a second, the rate an unhurried speaker articulates at.
       const t = performance.now() * 0.001;
       const wave =
-        Math.abs(Math.sin(t * 9.5)) * 0.7 + Math.abs(Math.sin(t * 5.3 + 1.3)) * 0.3;
-      this.targetMouthOpen = 0.06 + wave * 0.40;
+        Math.abs(Math.sin(t * 7.4)) * 0.7 + Math.abs(Math.sin(t * 4.1 + 1.3)) * 0.3;
+      this.targetMouthOpen = 0.12 + wave * 0.75;
     } else {
       this.targetMouthOpen = 0;
     }
 
-    const lerpFactor = 1 - Math.exp(-LERP_SPEED * dt);
+    const jawSpeed = this.targetMouthOpen > this.currentMouthOpen
+      ? MOUTH_OPEN_SPEED
+      : MOUTH_CLOSE_SPEED;
+    const lerpFactor = 1 - Math.exp(-jawSpeed * dt);
     this.currentMouthOpen +=
       (this.targetMouthOpen - this.currentMouthOpen) * lerpFactor;
     this.currentMouthOpen = Math.max(0, Math.min(1, this.currentMouthOpen));
@@ -288,59 +401,40 @@ export class LipSync {
       this._expressionEngine &&
       typeof this._expressionEngine.setTalkingState === 'function'
     ) {
-      this._expressionEngine.setTalkingState(this.currentMouthOpen > 0.02);
+      // Tied to the utterance, not to the current frame's mouth opening:
+      // ExpressionEngine ducks its mouth weights while this is true, and
+      // toggling it per syllable pumped the character's smile in and out.
+      this._expressionEngine.setTalkingState(speakingActive);
     }
 
-    const faceMesh = this._findFaceMesh();
-    if (!faceMesh) return;
+    const meshes = this._findFaceMeshes();
+    if (meshes.length === 0) return;
 
-    const dict = faceMesh.morphTargetDictionary;
-    const influences = faceMesh.morphTargetInfluences;
-    if (!dict || !influences) return;
+    const shapes = this._resolveShapes(meshes);
+    const open = this.currentMouthOpen;
 
-    const shapes = this._resolveShapes(dict);
-
-    // Where each morph should be *heading* this frame. Anything not named
-    // here is heading to zero.
-    const targets = new Map<number, number>();
-    const want = (idx: number | undefined, value: number) => {
-      if (idx === undefined) return;
-      targets.set(idx, Math.min(1, Math.max(targets.get(idx) ?? 0, value)));
+    // Where each morph should be *heading* this frame. Anything resolved but
+    // not named here is heading to zero.
+    const targets = new Map<string, number>();
+    const want = (key: ShapeKey, value: number) => {
+      const name = shapes[key];
+      if (name === undefined || value <= 0) return;
+      targets.set(name, Math.min(1, Math.max(targets.get(name) ?? 0, value)));
     };
 
-    const open = Math.min(1, this.currentMouthOpen);
-
-    // Azure viseme IDs (forwarded unchanged from the speech service):
-    //   0=silence, 1=ae/ax/ah, 2=aa, 3=ao, 4=ey/eh/uh, 5=er, 6=iy/ih, 7=w/uw,
-    //   8=ow, 9=aw, 10=oy, 11=ay, 12=h, 13=r, 14=l, 15=s/z, 16=sh/ch, 17=th/dh,
-    //   18=f/v, 19=d/t/n, 20=k/g, 21=p/b/m.
-    // Vowels map to an open mouth shape; consonants must NOT be forced into a
-    // vowel shape. Most consonants still crack the jaw so the mouth moves with
-    // speech, while 21 (bilabial p/b/m) closes it completely.
-    if (realVisemeId === 21) {
-      // Lips together — no jaw, no vowel.
-    } else if (CLOSED_CONSONANTS.has(realVisemeId)) {
-      want(shapes.jaw, open * 0.5);
-    } else if (AA_VISEMES.has(realVisemeId)) {
-      want(shapes.aa, open);
-    } else if (O_VISEMES.has(realVisemeId)) {
-      want(shapes.o, open);
-    } else if (E_VISEMES.has(realVisemeId)) {
-      want(shapes.e, open);
-    } else if (realVisemeId === 6) {
-      want(shapes.i, open);
-    } else if (realVisemeId === 7) {
-      want(shapes.u, open);
-    } else if (realVisemeId === 12) {
-      want(shapes.jaw ?? shapes.aa, open);
-    } else if (realVisemeId > 0 || open > 0) {
-      // No viseme stream (amplitude-driven fallback): a neutral open shape.
-      if (shapes.aa !== undefined && shapes.o !== undefined) {
-        want(shapes.aa, open * 0.85);
-        want(shapes.o, open * 0.15);
-      } else {
-        want(shapes.aa ?? shapes.o ?? shapes.jaw, open);
+    const viseme = hasVisemeStream
+      // An id outside 0-21 would be a service change, not a silence.
+      ? AZURE_VISEMES[visemeId] ?? NEUTRAL_OPEN
+      : open > 0 ? NEUTRAL_OPEN : null;
+    if (viseme) {
+      // Consonants are short and often quiet — scaling them by loudness alone
+      // made whole clusters vanish, so they keep most of their shape at any
+      // volume while vowels track the envelope.
+      const gain = viseme.vowel ? open : 0.55 + 0.45 * open;
+      for (const [key, weight] of Object.entries(viseme.shapes) as [ShapeKey, number][]) {
+        want(key, weight * gain);
       }
+      want('jaw', viseme.jaw * open);
     }
 
     // Ease every mouth morph toward its target rather than snapping. Without
@@ -348,37 +442,58 @@ export class LipSync {
     // which reads as a chattering mouth instead of speech. Real articulation
     // overlaps — the jaw is still closing as the next vowel opens.
     const blend = 1 - Math.exp(-VISEME_BLEND_SPEED * dt);
-    for (const name of VISEME_TARGETS) {
-      const idx = dict[name];
-      if (idx === undefined) continue;
-      const target = targets.get(idx) ?? 0;
-      const currentValue = influences[idx] ?? 0;
-      const next = currentValue + (target - currentValue) * blend;
-      influences[idx] = next < 0.001 ? 0 : next;
+    for (const name of this._shapeNames) {
+      const target = targets.get(name) ?? 0;
+      const current = this._weights.get(name) ?? 0;
+      const next = current + (target - current) * blend;
+      this._weights.set(name, next < 0.001 ? 0 : next);
+    }
+
+    this._applyWeights(meshes);
+  }
+
+  /**
+   * Composes this frame's mouth weights over whatever the ExpressionEngine
+   * already wrote.
+   *
+   * The blend above deliberately runs on _weights rather than on the meshes'
+   * influence arrays. ExpressionEngine writes the whole face — mouth shapes
+   * included — immediately before this in the frame, so reading an influence
+   * back as "the value we set last frame" restarted the ease from the
+   * expression's weight every single frame and pinned the mouth at roughly a
+   * fifth of its target. That is what made speech barely visible.
+   */
+  private _applyWeights(meshes: MorphMesh[]): void {
+    for (const mesh of meshes) {
+      const dict = mesh.morphTargetDictionary;
+      const influences = mesh.morphTargetInfluences;
+      this._weights.forEach((weight, name) => {
+        const idx = dict[name];
+        if (idx === undefined) return;
+        influences[idx] = Math.min(1, Math.max(influences[idx] ?? 0, weight));
+      });
     }
   }
 
   /** Resolves this model's naming convention for each mouth shape, once. */
-  private _resolveShapes(dict: Record<string, number>): ResolvedShapes {
+  private _resolveShapes(meshes: MorphMesh[]): Partial<Record<ShapeKey, string>> {
     if (this._shapes) return this._shapes;
 
-    const pick = (...names: string[]): number | undefined => {
-      for (const n of names) {
-        if (dict[n] !== undefined) return dict[n];
-      }
-      return undefined;
-    };
+    const has = (name: string) =>
+      meshes.some((m) => m.morphTargetDictionary[name] !== undefined);
 
-    this._shapes = {
-      aa: pick('viseme_aa', 'aa', 'v_aa', 'blendShape.aa', 'blendShape.AA'),
-      o: pick('viseme_O', 'oh', 'v_O', 'blendShape.oh', 'blendShape.OH'),
-      i: pick('viseme_I', 'ih', 'v_I', 'blendShape.ih', 'blendShape.IH'),
-      u: pick('viseme_U', 'uh', 'v_U', 'blendShape.ou', 'blendShape.U'),
-      e: pick('viseme_E', 'eh', 'v_E', 'blendShape.e', 'blendShape.E'),
-      jaw: pick('jawOpen', 'jaw_open', 'jawOpenLeft', 'jaw_drop', 'blendShape.jawOpen')
-        ?? pick('mouthOpen', 'mouth_drop'),
-    };
+    const direct = (key: ShapeKey): string | undefined =>
+      SHAPE_CANDIDATES[key].find(has);
 
-    return this._shapes;
+    const resolved: Partial<Record<ShapeKey, string>> = {};
+    for (const key of Object.keys(SHAPE_CANDIDATES) as ShapeKey[]) {
+      const fallback = SHAPE_FALLBACK[key];
+      const name = direct(key) ?? (fallback ? direct(fallback) : undefined);
+      if (name !== undefined) resolved[key] = name;
+    }
+
+    this._shapes = resolved;
+    this._shapeNames = [...new Set(Object.values(resolved))];
+    return resolved;
   }
 }

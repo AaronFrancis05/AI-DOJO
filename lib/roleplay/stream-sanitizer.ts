@@ -1,15 +1,20 @@
 /**
  * Strips internal scaffolding from streamed AI text before it reaches the
- * learner: the 【VOCAB N】 bookkeeping marker and any leaked meta labels like
- * "TEACHER:" or "[Turn 3]". Only the exact 【VOCAB N】 marker is stripped — any
- * other 【...】 text is legitimate content (e.g. Japanese quotation marks). The
- * raw fullAiText (with markers) is still kept for engine-side state parsing.
+ * learner: the 【VOCAB N】 bookkeeping marker, any leaked meta labels like
+ * "TEACHER:" or "[Turn 3]", and stray markdown bold markers. Only the exact
+ * 【VOCAB N】 marker is stripped — any other 【...】 text is legitimate content
+ * (e.g. Japanese quotation marks). The reply-contract prompt tells the model
+ * to never output markdown, but it occasionally leaks `**word**` anyway,
+ * which renders as literal asterisks in captions/chat — strip it like the
+ * rest of the scaffolding. The raw fullAiText (with markers) is still kept
+ * for engine-side state parsing.
  */
 export function sanitizeStreamedChunk(text: string): string {
   return text
     .replace(/【VOCAB\s+\d+】/g, '')
     .replace(/^(?:TEACHER|STUDENT|COACH|ASSISTANT|AI|SYSTEM)\s*:\s*/gim, '')
     .replace(/\[Turn\s*\d+\]\s*/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/ {2,}/g, ' ');
 }
 
@@ -42,6 +47,14 @@ export function createStreamTextSanitizer(): StreamTextSanitizer {
       if (idx !== -1 && !text.slice(idx + open.length).includes(close)) {
         safe = Math.min(safe, idx);
       }
+    }
+    // An odd number of ** so far means a bold span is still open — hold back
+    // from its opening marker so the leading "**" doesn't get emitted before
+    // its closer arrives (which would otherwise leak literal asterisks for
+    // one chunk, then vanish once the pair completes and gets stripped).
+    const asteriskPairs = (text.match(/\*\*/g) ?? []).length;
+    if (asteriskPairs % 2 === 1) {
+      safe = Math.min(safe, text.lastIndexOf('**'));
     }
     // Role labels only matter at the start of a line; hold back a line that is
     // still a partial label or a finished label (with colon) awaiting content.

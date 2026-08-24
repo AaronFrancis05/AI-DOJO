@@ -238,7 +238,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-white/70'
                 }`}>
-                  {voice.isListening ? 'Listening...' : 'Tap to Speak'}
+                  {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
               </div>
 
