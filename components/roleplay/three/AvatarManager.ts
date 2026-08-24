@@ -97,7 +97,10 @@ export class AvatarManager {
 
           AvatarScale.apply(wrapper.scene, customization);
 
-          if (settled) return;
+          if (settled) {
+            disposeObject3D(gltf.scene);
+            return;
+          }
           if (myToken !== this._loadToken) {
             settled = true;
             clearTimeout(timeoutId);
@@ -119,6 +122,7 @@ export class AvatarManager {
           if (myToken !== this._loadToken) {
             settled = true;
             clearTimeout(timeoutId);
+            reject(new Error('Superseded by a newer avatar load'));
             return;
           }
           settled = true;

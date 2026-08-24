@@ -29,6 +29,18 @@ export function splitIntoCaptionChunks(text: string, maxChars = 130): string[] {
     const words = sentence.split(/\s+/);
     let current = '';
     for (const word of words) {
+      // Split whitespace-free oversized words (e.g. Japanese no-space sentences)
+      // into bounded slices so captions never exceed maxChars.
+      if (word.length > maxChars) {
+        if (current) {
+          chunks.push(current);
+          current = '';
+        }
+        for (let i = 0; i < word.length; i += maxChars) {
+          chunks.push(word.slice(i, i + maxChars));
+        }
+        continue;
+      }
       const next = current ? `${current} ${word}` : word;
       if (next.length > maxChars && current) {
         chunks.push(current);
@@ -103,15 +115,16 @@ export function useAvatarCaptions(): UseAvatarCaptionsReturn {
 
       lastId = showCaption(chunk);
 
-      if (i < chunks.length - 1) {
-        await new Promise<void>((resolve) => {
-          activeTimerRef.current = window.setTimeout(resolve, chunkDuration) as unknown as number;
-        });
-      }
+      await new Promise<void>((resolve) => {
+        activeTimerRef.current = window.setTimeout(resolve, chunkDuration) as unknown as number;
+      });
     }
 
+    if (lastId != null) {
+      hideCaption(lastId);
+    }
     return lastId;
-  }, [showCaption]);
+  }, [showCaption, hideCaption]);
 
   return { caption, captionId, showCaption, hideCaption, playCaption, clear };
 }

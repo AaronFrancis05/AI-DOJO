@@ -9,6 +9,7 @@ interface AvatarPickerProps {
   selectedId?: string | null;
   onSelect: (avatar: AvatarSource) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -16,7 +17,7 @@ interface AvatarPickerProps {
  * Uses AI DOJO design tokens (bg-dojo-*, text-dojo-*, border-dojo-*) and
  * thumbnails from public/ai-avatars/thumbnails/*.webp.
  */
-export function AvatarPicker({ selectedId, onSelect, className }: AvatarPickerProps) {
+export function AvatarPicker({ selectedId, onSelect, className, disabled }: AvatarPickerProps) {
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
@@ -39,7 +40,7 @@ export function AvatarPicker({ selectedId, onSelect, className }: AvatarPickerPr
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search avatars — e.g. Apio, casual, coordinator…"
-          className="h-10 w-full rounded-xl border border-dojo-border bg-dojo-surface-raised pl-10 pr-4 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none focus:border-dojo-accent/40"
+          className="h-10 w-full rounded-xl border border-dojo-border bg-dojo-surface-raised pl-10 pr-4 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none focus-visible:border-dojo-accent focus-visible:ring-2 focus-visible:ring-dojo-accent"
         />
       </div>
 
@@ -51,8 +52,9 @@ export function AvatarPicker({ selectedId, onSelect, className }: AvatarPickerPr
               key={avatar.id}
               type="button"
               onClick={() => onSelect(avatar)}
+              disabled={disabled}
               className={cn(
-                'group relative flex flex-col overflow-hidden rounded-xl border bg-dojo-surface-raised text-left transition-colors',
+                'group relative flex flex-col overflow-hidden rounded-xl border bg-dojo-surface-raised text-left transition-colors focus-visible:ring-2 focus-visible:ring-dojo-accent disabled:opacity-50',
                 selected
                   ? 'border-dojo-accent ring-1 ring-dojo-accent'
                   : 'border-dojo-border hover:border-dojo-accent/40',
@@ -71,14 +73,14 @@ export function AvatarPicker({ selectedId, onSelect, className }: AvatarPickerPr
                 />
                 {selected && (
                   <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-dojo-accent text-white shadow">
-                    <Check className="h-3.5 w-3.5" />
+                    <Check className="h-4 w-4" />
                   </span>
                 )}
               </div>
               <div className="p-3">
                 <p className="text-sm font-semibold leading-none text-dojo-text-primary">{avatar.name}</p>
                 <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-dojo-text-muted">{avatar.persona}</p>
-                <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-dojo-text-muted/60">{avatar.id}</p>
+                <p className="mt-1 text-xs font-medium uppercase tracking-wider text-dojo-text-muted">{avatar.id}</p>
               </div>
             </button>
           );
@@ -91,7 +93,7 @@ export function AvatarPicker({ selectedId, onSelect, className }: AvatarPickerPr
 
       <p className="text-xs text-dojo-text-muted">
         {filtered.length} of {AVATAR_SOURCES.length} avatars — from ai-avatar-ui catalog, served from{' '}
-        <code className="rounded bg-dojo-surface px-1 py-0.5">/ai-avatars/models/*.glb</code>
+        <code className="rounded bg-dojo-surface px-1 py-1">/ai-avatars/models/*.glb</code>
       </p>
     </div>
   );

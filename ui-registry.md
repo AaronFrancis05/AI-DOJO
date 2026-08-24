@@ -66,14 +66,15 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
 | `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
 | `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
-| `AvatarCaptionsOverlay` | `bg-black/70 backdrop-blur` pill at `bottom-6`; `caption:string|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. |
+| `AvatarCaptionsOverlay` | `bg-black/70 backdrop-blur` pill at `bottom-6`; `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. |
 | `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`); otherwise same as before. |
 
 ## Avatar Catalog (`/lib/avatar/`)
+
 | Module | Notes |
 |--------|-------|
 | `lib/avatar/catalog.ts` | 43-entry `AVATAR_DATA` + `AVATAR_SOURCES` (`/ai-avatars/models/*.glb` + `/ai-avatars/thumbnails/*.webp`); `getAvatar/getAllAvatars/setPersonaOverride` cache keyed `${instanceId}::${avatarId}` — port of `ai-avatar-ui/src/avatar/AvatarSources.js`. |
-| `lib/avatar/dojo-adapter.ts` | `DojoBrainAdapter` replacing `CharacterBrain` (`CharacterBrain.js:117-232`): `ask→POST /api/chat/stream` SSE + `POST /api/tts`, `history→GET /api/sessions/[id]`, `getSettings→GET /api/user/preferences|/api/user/avatars`. |
+| `lib/avatar/dojo-adapter.ts` | `DojoBrainAdapter` replacing `CharacterBrain` (`CharacterBrain.js:117-232`): `ask→POST /api/chat/stream` SSE + `POST /api/tts`, `history→GET /api/sessions/[id]`, `getSettings→GET /api/user/preferences\|/api/user/avatars`. |
 | `lib/hooks/useAvatarCaptions.ts` | `splitIntoCaptionChunks(130)` + `playCaption(text,totalDurationMs)` (`MIN_CHUNK_MS=900` proportional) — port of `AvatarController.js:758-817`. |
 
 ## Route Map (Phase F1-F4)

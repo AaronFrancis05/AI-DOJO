@@ -522,7 +522,12 @@ export function getAvatar(avatarId: string, instanceId = "default"): AvatarSourc
 }
 
 export function setPersonaOverridesCache(overrides: Record<string, Partial<AvatarDef>> = {}): void {
-  overridesCache = { ...overridesCache, ...(overrides || {}) };
+  const normalized: Record<string, Partial<AvatarDef>> = {};
+  for (const [rawKey, value] of Object.entries(overrides || {})) {
+    const key = rawKey.includes('::') ? rawKey : overrideKey('default', rawKey);
+    normalized[key] = value;
+  }
+  overridesCache = { ...overridesCache, ...normalized };
 }
 
 export function getPersonaOverridesCache(): Record<string, Partial<AvatarDef>> {

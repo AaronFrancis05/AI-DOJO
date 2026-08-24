@@ -25,7 +25,7 @@ export function AvatarCaptionsOverlay({ caption, className }: AvatarCaptionsOver
       aria-live="polite"
       aria-atomic="true"
     >
-      <div className="max-w-xl rounded-xl border border-white/15 bg-black/70 px-4 py-2.5 text-center text-sm leading-relaxed text-white shadow-lg backdrop-blur-md">
+      <div className="max-w-xl rounded-xl border border-white/15 bg-black/70 px-4 py-2 text-center text-sm leading-relaxed text-white shadow-lg backdrop-blur-md">
         {caption}
       </div>
     </div>

@@ -19,7 +19,6 @@ import { useUser } from '@/lib/auth/user-context';
 import { useAvatar } from '@/lib/auth/avatar-context';
 import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
 import { AvatarPicker } from '@/components/roleplay/AvatarPicker';
-import { getAvatar } from '@/lib/avatar/catalog';
 import { Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
 
 const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
@@ -51,7 +50,7 @@ interface AvatarSettingsDialogProps {
 
 export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProps) {
   const user = useUser();
-  const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar } = useAvatar();
+  const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar, refresh } = useAvatar();
   const [showAvaturn, setShowAvaturn] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState(50);
   const [voicePitch, setVoicePitch] = useState(50);
@@ -59,6 +58,7 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
   const [savingGender, setSavingGender] = useState<Record<number, boolean>>({});
   const [catalogPick, setCatalogPick] = useState<string | null>(null);
   const [savingCatalog, setSavingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -196,22 +196,27 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                   Choose any of the 43 catalog avatars. They are served from <code className="rounded bg-dojo-surface px-1">/ai-avatars/models/*.glb</code> + thumbnails and persist via <code className="rounded bg-dojo-surface px-1">/api/user/avatars</code>.
                 </p>
                 <AvatarPicker
+                  disabled={savingCatalog}
                   selectedId={catalogPick ?? selectedAvatar?.avatarUrl?.match(/\/([^/]+)\.glb$/)?.[1] ?? null}
                   onSelect={async (avatar) => {
+                    if (savingCatalog) return;
+                    const previousPick = catalogPick;
                     setCatalogPick(avatar.id);
-                    const data = getAvatar(avatar.id);
+                    setCatalogError(null);
                     setSavingCatalog(true);
                     try {
                       const res = await fetch('/api/user/avatars', {
                         method: 'POST',
                         credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ avatarUrl: data.file, thumbnailUrl: data.thumbnail }),
+                        body: JSON.stringify({ avatarUrl: avatar.file, thumbnailUrl: avatar.thumbnail }),
                       });
                       if (!res.ok) throw new Error('save failed');
-                      // refresh avatar context by reloading — simplest
-                      window.location.reload();
+                      await refresh();
                     } catch {
+                      setCatalogPick(previousPick);
+                      setCatalogError('Failed to save avatar — please try again.');
+                    } finally {
                       setSavingCatalog(false);
                     }
                   }}
@@ -221,6 +226,9 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-dojo-accent border-t-transparent" />
                     Saving…
                   </p>
+                )}
+                {catalogError && (
+                  <p className="text-xs text-dojo-danger" role="alert">{catalogError}</p>
                 )}
               </div>
             );

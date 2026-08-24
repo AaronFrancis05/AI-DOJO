@@ -41,27 +41,37 @@ export interface AvatarBehavior {
   _offline?: boolean;
 }
 
-function sseParse(streamText: string): { fullText: string; emotionTone?: string; gestureHint?: string } {
-  let fullText = "";
-  let emotionTone: string | undefined;
-  let gestureHint: string | undefined;
-  for (const line of streamText.split("\n")) {
-    if (!line.startsWith("data: ")) continue;
-    try {
-      const payload = JSON.parse(line.slice(6));
-      if (payload.type === "token" && typeof payload.text === "string") fullText += payload.text;
-      if (payload.type === "text_done" && payload.fullText) fullText = payload.fullText;
-      if (payload.analysis) {
-        emotionTone = payload.analysis.emotionTone;
-        gestureHint = payload.analysis.gestureHint;
-      }
-      if (payload.type === "done" && payload.analysis) {
-        emotionTone = payload.analysis.emotionTone ?? emotionTone;
-        gestureHint = payload.analysis.gestureHint ?? gestureHint;
-      }
-    } catch { /* ignore */ }
+type SseState = { fullText: string; emotionTone?: string; gestureHint?: string };
+
+function handleSseLine(line: string, state: SseState): void {
+  if (!line.startsWith("data: ")) return;
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(line.slice(6)) as Record<string, unknown>;
+  } catch { return; }
+  if (payload.type === "token" && typeof payload.text === "string") {
+    state.fullText += payload.text as string;
   }
-  return { fullText, emotionTone, gestureHint };
+  if (payload.type === "text_done" && typeof payload.fullText === "string") {
+    state.fullText = payload.fullText as string;
+  }
+  const analysis = (payload as { analysis?: { emotionTone?: string; gestureHint?: string } }).analysis;
+  if (analysis?.emotionTone) state.emotionTone = analysis.emotionTone;
+  if (analysis?.gestureHint) state.gestureHint = analysis.gestureHint;
+  if (payload.type === "done") {
+    const doneAnalysis = (payload as { analysis?: { emotionTone?: string; gestureHint?: string } }).analysis;
+    if (doneAnalysis?.emotionTone) state.emotionTone = doneAnalysis.emotionTone;
+    if (doneAnalysis?.gestureHint) state.gestureHint = doneAnalysis.gestureHint;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function sseParse(streamText: string): { fullText: string; emotionTone?: string; gestureHint?: string } {
+  const state: SseState = { fullText: "" };
+  for (const line of streamText.split("\n")) {
+    handleSseLine(line, state);
+  }
+  return state;
 }
 
 export class DojoBrainAdapter {
@@ -91,15 +101,23 @@ export class DojoBrainAdapter {
       return this.offlineBehavior(text);
     }
 
+    const numericSessionId = Number(this.sessionId);
+    if (!Number.isFinite(numericSessionId)) {
+      throw new Error(`Invalid sessionId for ask: ${String(this.sessionId)}`);
+    }
+
+    const streamController = new AbortController();
+    const streamTimeout = setTimeout(() => streamController.abort(), 30_000);
     try {
       const res = await fetch(`/api/chat/stream`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          sessionId: Number(this.sessionId),
+          sessionId: numericSessionId,
           userRawInput: text,
         }),
+        signal: streamController.signal,
       });
 
       if (!res.ok || !res.body) {
@@ -109,9 +127,7 @@ export class DojoBrainAdapter {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let fullText = "";
-      let emotionTone: string | undefined;
-      let gestureHint: string | undefined;
+      const sseState: SseState = { fullText: "" };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -120,39 +136,23 @@ export class DojoBrainAdapter {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          let payload: Record<string, unknown>;
-          try {
-            payload = JSON.parse(line.slice(6));
-          } catch { continue; }
-          if (payload.type === "token" && typeof payload.text === "string") {
-            fullText += payload.text as string;
-          }
-          if (payload.type === "text_done" && typeof payload.fullText === "string") {
-            fullText = payload.fullText as string;
-          }
-          const analysis = (payload as { analysis?: { emotionTone?: string; gestureHint?: string } }).analysis;
-          if (analysis?.emotionTone) emotionTone = analysis.emotionTone;
-          if (analysis?.gestureHint) gestureHint = analysis.gestureHint;
-          if (payload.type === "done") {
-            const doneAnalysis = (payload as { analysis?: { emotionTone?: string; gestureHint?: string } }).analysis;
-            if (doneAnalysis?.emotionTone) emotionTone = doneAnalysis.emotionTone;
-            if (doneAnalysis?.gestureHint) gestureHint = doneAnalysis.gestureHint;
-          }
+          handleSseLine(line, sseState);
         }
       }
       // flush remaining buffer
       if (buffer.startsWith("data: ")) {
-        const tail = sseParse(buffer + "\n");
-        if (tail.fullText) fullText = tail.fullText;
-        emotionTone = tail.emotionTone ?? emotionTone;
-        gestureHint = tail.gestureHint ?? gestureHint;
+        handleSseLine(buffer, sseState);
       }
+      const fullText = sseState.fullText;
+      const emotionTone = sseState.emotionTone;
+      const gestureHint = sseState.gestureHint;
 
       // TTS — reuse DOJO's existing endpoint; visemes are delivered here
       // for LipSync. Failure falls back to text-only behavior (no audio).
       let audioUrl = "";
       let visemes: { id: number; offsetMs: number }[] = [];
+      const ttsController = new AbortController();
+      const ttsTimeout = setTimeout(() => ttsController.abort(), 15_000);
       try {
         // language is inferred from session; pass raw reply for now
         const ttsRes = await fetch(`/api/tts`, {
@@ -160,6 +160,7 @@ export class DojoBrainAdapter {
           credentials: "include",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: fullText, lang: _speakLanguage === "ja" ? "ja-JP" : "en-US" }),
+          signal: ttsController.signal,
         });
         if (ttsRes.ok) {
           const ttsData = await ttsRes.json();
@@ -170,6 +171,9 @@ export class DojoBrainAdapter {
           }
         }
       } catch { /* TTS optional */ }
+      finally {
+        clearTimeout(ttsTimeout);
+      }
 
       return {
         reply: fullText,
@@ -188,6 +192,8 @@ export class DojoBrainAdapter {
       };
     } catch {
       return this.offlineBehavior(text);
+    } finally {
+      clearTimeout(streamTimeout);
     }
   }
 
