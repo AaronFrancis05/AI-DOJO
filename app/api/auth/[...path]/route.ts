@@ -239,13 +239,12 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
 
 async function handlePOST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');
-  let verifiedRequest: NextRequest;
+  let verifiedRequest: Request;
   try {
-    const verified = withVerifiedRequestOrigin(request);
-    // Already a NextRequest when the Origin header matched (the common case) —
-    // re-wrapping an existing NextRequest in `new NextRequest(...)` throws
-    // ("Cannot read private member #state...") in this Next.js version.
-    verifiedRequest = verified instanceof NextRequest ? verified : new NextRequest(verified);
+    // withVerifiedRequestOrigin now mutates the existing request in place
+    // instead of `new Request(request, ...)` which throws for NextRequest
+    // ("Cannot read private member #state"). No re-wrapping needed.
+    verifiedRequest = withVerifiedRequestOrigin(request);
   } catch (err) {
     console.error('[auth-proxy] Origin check failed', {
       path,

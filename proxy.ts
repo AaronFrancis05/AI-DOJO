@@ -15,7 +15,13 @@ function withPublicOrigin(request: NextRequest): NextRequest {
   const publicOrigin = getAppOrigin();
   const current = new URL(request.url);
   if (current.origin === publicOrigin) return request;
-  return new NextRequest(new URL(current.pathname + current.search, publicOrigin), request);
+  // Avoid `new NextRequest(url, request)` — passing a NextRequest as init
+  // throws "Cannot read private member #state" in this Next.js version.
+  // Rebuild explicitly from URL string + method/headers.
+  return new NextRequest(new URL(current.pathname + current.search, publicOrigin).toString(), {
+    method: request.method,
+    headers: new Headers(request.headers),
+  });
 }
 
 async function checkSessionAndRedirect(request: NextRequest) {

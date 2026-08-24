@@ -75,7 +75,26 @@ export function withVerifiedRequestOrigin(request: Request): Request {
 
   if (requestOrigin) return request;
 
-  const headers = new Headers(request.headers);
-  headers.set('origin', configuredOrigin);
-  return new Request(request, { headers });
+  // Origin missing — inject APP_ORIGIN without cloning via `new Request(request, ...)`
+  // which throws "Cannot read private member #state" when `request` is a
+  // NextRequest (extends Request with private #state). Mutating the existing
+  // Headers is safe — Request/NextRequest headers are mutable via `.set()`.
+  try {
+    request.headers.set('origin', configuredOrigin);
+    return request;
+  } catch {
+    // Fallback for immutable headers (should not happen in Next.js, but be safe):
+    // rebuild from URL string, not from the NextRequest instance itself.
+    const headers = new Headers(request.headers);
+    headers.set('origin', configuredOrigin);
+    return new Request(request.url, {
+      method: request.method,
+      headers,
+      // body is null for GET/HEAD; clone via arrayBuffer would be more correct
+      // but sign-out is POST with no body, so undefined is fine here.
+      body: (request as Request & { body?: BodyInit | null }).body ?? undefined,
+      // @ts-expect-error duplex required for Node 18+ when body is a stream
+      duplex: 'half',
+    });
+  }
 }
