@@ -74,8 +74,10 @@ function resolveProviderOrder(): string[] {
 // and the next /api/chat/stream turn failed without an API call being made.
 const CIRCUIT_PASSES = [false, true] as const;
 
+// Deliberately neutral about the cause: a null candidate here can mean missing
+// credentials, an unsupported AI_PROVIDER name, or a factory init failure.
 const NOTHING_CONFIGURED_MESSAGE =
-  'No AI provider is available — every configured provider is missing credentials (check AI_PROVIDER / AI_FALLBACK_PROVIDERS and the matching API keys)';
+  'No AI provider is available — none of the configured providers could be initialized (check AI_PROVIDER / AI_FALLBACK_PROVIDERS and the matching API keys)';
 
 const providerCache = new Map<string, AIProvider>();
 

@@ -35,7 +35,7 @@ const PORTRAIT_MASK = 'radial-gradient(ellipse 68% 72% at 50% 46%, #000 62%, tra
 export function ResultsAvatarBackdrop({ src, glow, fit = 'fill' }: ResultsAvatarBackdropProps) {
   const reduced = prefersReducedMotion();
   const portrait = fit === 'portrait';
-  const heroSizeClass = portrait ? 'h-[min(70vh,620px)] w-auto' : 'h-full w-auto';
+  const heroSizeClass = portrait ? 'h-3/4 max-h-152 w-auto' : 'h-full w-auto';
   const heroMask = portrait ? PORTRAIT_MASK : EDGE_MASK;
 
   return (

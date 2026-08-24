@@ -29,7 +29,7 @@ html {
      readable as small text on the light canvas/surface tokens (>=4.5:1).
      The base hues above are tuned for fills, dots and borders — using them
      for 11px labels reads washed out. Text uses -strong, fills use the base. */
-  --color-success-strong: #15803D;
+  --color-success-strong: #166534;
   --color-warning-strong: #B45309;
   --color-danger-strong: #B91C1C;
   --color-streak-strong: #C2410C;

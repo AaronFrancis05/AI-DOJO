@@ -71,7 +71,7 @@ export function PhaseTransitionCard({ transition, onDismiss, autoDismissMs = 300
             {meta.title}
           </h2>
           <p
-            className="mt-1.5 max-w-56 text-sm leading-snug text-white/85"
+            className="mt-2 max-w-56 text-sm leading-snug text-white/85"
             style={{ textShadow: '0 1px 3px rgba(0,0,0,0.85)' }}
           >
             {meta.description}

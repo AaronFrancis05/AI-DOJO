@@ -363,6 +363,10 @@ async function prepareSsmlDirect(ssml: string, generation: number): Promise<Prep
   // pre-synthesized utterance silent until its turn comes up. Buffering
   // continues either way — that is the whole point.
   player.onAudioStart = () => {
+    // closeAll() does not stop a pending notifyPlayback() from firing this —
+    // a late callback must not re-attach the analyser after its route was
+    // released (or resurrect audioStarted for an utterance that never plays).
+    if (closed) return;
     audioStarted = true;
     if (!wantPlay) {
       try { player.pause(); } catch { /* ignore */ }

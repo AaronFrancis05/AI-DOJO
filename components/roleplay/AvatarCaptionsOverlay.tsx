@@ -25,17 +25,20 @@ interface AvatarCaptionsOverlayProps {
  * sits in front of the avatar, and the learner should still see through it.
  */
 export function AvatarCaptionsOverlay({ caption, className }: AvatarCaptionsOverlayProps) {
-  if (!caption) return null;
-
+  // The live region stays mounted even when there is nothing to show —
+  // unmounting it between captions would stop screen readers announcing
+  // each new line as it arrives.
   return (
     <div
       className={cn('pointer-events-none absolute inset-x-4 bottom-6 z-10 flex justify-center', className)}
       aria-live="polite"
       aria-atomic="true"
     >
-      <div className="line-clamp-2 max-w-xl rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-center text-sm leading-relaxed text-white shadow-lg backdrop-blur-sm">
-        {caption}
-      </div>
+      {caption && (
+        <div className="line-clamp-2 max-w-xl rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-center text-sm leading-relaxed text-white shadow-lg backdrop-blur-sm">
+          {caption}
+        </div>
+      )}
     </div>
   );
 }

@@ -204,6 +204,9 @@ export default function AvatarModePage() {
     if (!text || mutedRef.current) { dismissRecap(); return; }
 
     const cancel = speakWhenAudioUnlocked(() => {
+      // The unlock can be deferred to the learner's first gesture — if that
+      // gesture was the mute button, the pre-check above is stale by now.
+      if (mutedRef.current) { dismissRecap(); return; }
       playCaption(text, Math.max(3000, text.length * 65)).catch(() => {});
       speakMixedText(
         text,

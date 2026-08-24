@@ -81,7 +81,7 @@ export default function ForgotPasswordModal({
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-dojo-border bg-dojo-surface-raised py-3 pl-10 pr-3 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
+                  className="w-full rounded-lg border border-dojo-border bg-dojo-surface-raised py-2 pl-10 pr-4 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
                 />
               </div>
               {error && (
@@ -94,14 +94,14 @@ export default function ForgotPasswordModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 rounded-lg border border-dojo-border py-3 text-sm font-medium text-dojo-text-muted transition-colors hover:bg-dojo-surface-raised hover:text-dojo-text-primary"
+                  className="flex-1 rounded-lg border border-dojo-border px-4 py-2 text-sm font-medium text-dojo-text-muted transition-colors hover:bg-dojo-surface-raised hover:text-dojo-text-primary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading || !email.trim()}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-dojo-accent py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-dojo-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
                   {loading && <LoaderIcon className="h-4 w-4 animate-spin" />}
                   {loading ? 'Sending…' : 'Send link'}
@@ -118,7 +118,7 @@ export default function ForgotPasswordModal({
             </p>
             <button
               onClick={onClose}
-              className="mt-4 w-full rounded-lg bg-dojo-accent py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              className="mt-4 w-full rounded-lg bg-dojo-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
             >
               Done
             </button>

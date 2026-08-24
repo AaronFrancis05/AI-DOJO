@@ -80,6 +80,7 @@ export default function VoiceOnlyPage() {
 
   const sendingRef = useRef(false);
   const mutedRef = useRef(false);
+  const isActiveRef = useRef(false);
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
@@ -134,6 +135,7 @@ export default function VoiceOnlyPage() {
   }, [sessionId, router]);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
@@ -166,6 +168,9 @@ export default function VoiceOnlyPage() {
     if (!text || mutedRef.current) { dismissRecap(); return; }
 
     const cancel = speakWhenAudioUnlocked(() => {
+      // The unlock can be deferred to the learner's first gesture — if that
+      // gesture was the mute button, the pre-check above is stale by now.
+      if (mutedRef.current) { dismissRecap(); return; }
       speakMixedText(
         text,
         getBCP47(targetLangRef.current, 'tts'),
@@ -198,7 +203,7 @@ export default function VoiceOnlyPage() {
   }, [unacknowledgedCompletion, completionResult, session, evaluation]);
 
   const handleUserUtterance = useCallback(async (text: string) => {
-    if (sendingRef.current || !text.trim()) return;
+    if (sendingRef.current || !text.trim() || !isActiveRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setAiTurnActive(true);
@@ -803,6 +808,7 @@ export default function VoiceOnlyPage() {
               corrections={coachOpen ? lastCorrections : []}
               suggestedReplies={coachOpen ? suggestedReplies : []}
               retryTarget={pendingRetry}
+              disabled={!isActive || sending}
               onRetry={() => { setCoachOpen(false); retryCorrection(); }}
               onDismiss={() => setCoachOpen(false)}
               onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}

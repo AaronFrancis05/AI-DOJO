@@ -75,7 +75,7 @@ function ResetPasswordForm() {
             <button
               type="button"
               onClick={() => setShowForgotPassword(true)}
-              className="mt-4 w-full rounded-lg bg-dojo-accent py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              className="mt-4 w-full rounded-lg bg-dojo-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
             >
               Request a new link
             </button>
@@ -117,7 +117,7 @@ function ResetPasswordForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-dojo-accent py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-dojo-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {loading && <LoaderIcon className="h-4 w-4 animate-spin" />}
                 {loading ? 'Updating…' : 'Update password'}
