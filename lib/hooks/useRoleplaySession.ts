@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { AvatarSource } from '@/lib/avatar/catalog';
 import { getTargetLangConfig } from '@/lib/language';
 import { setVoiceGender } from '@/lib/roleplay/tts';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
@@ -64,6 +65,7 @@ export interface SessionState {
   situation: any;
   domain: any;
   character: any;
+  selectedAvatar: AvatarSource | null;
   goals: GoalData[];
   conversations: TurnData[];
   completedGoals: number[];
@@ -85,7 +87,14 @@ export interface UseRoleplaySessionReturn extends SessionState {
     isRetry?: boolean;
     accuracyScore?: number;
     responseTimeMs?: number;
+    /** Cumulative reply text so far — for rendering the streaming caption. */
     onToken?: (text: string) => void;
+    /**
+     * Just-arrived text, not the accumulated string. Speech synthesis has to
+     * consume the reply incrementally, so it needs the delta rather than the
+     * running total `onToken` reports.
+     */
+    onTokenDelta?: (delta: string) => void;
     onTextDone?: (text: string) => void;
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
@@ -93,7 +102,11 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
     onComplete?: (analysis: any) => void;
   }) => Promise<void>;
-  sendGreeting: (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<string>;
+  sendGreeting: (opts?: {
+    onToken?: (t: string) => void;
+    onTokenDelta?: (delta: string) => void;
+    onTextDone?: (t: string) => void;
+  }) => Promise<string>;
   pendingRetry: PendingRetry | null;
   retryCorrection: () => Promise<void>;
   dismissRetry: () => void;
@@ -107,6 +120,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const [situation, setSituation] = useState<any>(null);
   const [domain, setDomain] = useState<any>(null);
   const [character, setCharacter] = useState<any>(null);
+  const [selectedAvatar, setSelectedAvatar] = useState<AvatarSource | null>(null);
   const [goals, setGoals] = useState<GoalData[]>([]);
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals, setCompletedGoals] = useState<number[]>([]);
@@ -136,6 +150,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         setSituation(data.situation);
         setDomain(data.domain);
         setCharacter(data.character);
+        setSelectedAvatar(data.selectedAvatar ?? null);
         setGoals(data.goals ?? []);
         const convList: TurnData[] = (data.conversations ?? []).map((c: any) => ({
           id: c.id,
@@ -230,6 +245,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       accuracyScore?: number;
       responseTimeMs?: number;
       onToken?: (text: string) => void;
+      onTokenDelta?: (delta: string) => void;
       onTextDone?: (text: string) => void;
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
@@ -305,6 +321,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         switch (payload.type) {
           case 'token':
             collectedAiText += payload.text;
+            options?.onTokenDelta?.(payload.text);
             options?.onToken?.(collectedAiText);
             break;
           case 'text_done':
@@ -432,10 +449,15 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }
   }, [sessionId, phase, conversations.length]);
 
-  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => {
+  const sendGreeting = useCallback(async (opts?: {
+    onToken?: (t: string) => void;
+    onTokenDelta?: (delta: string) => void;
+    onTextDone?: (t: string) => void;
+  }) => {
     let fullText = '';
     await submitTurnStream('__session_start__', {
       onToken: (t) => { if (t) fullText = t; opts?.onToken?.(t); },
+      onTokenDelta: (delta) => opts?.onTokenDelta?.(delta),
       onTextDone: (t) => { if (t) fullText = t; opts?.onTextDone?.(t); },
     });
     return fullText;
@@ -463,7 +485,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   }, [sessionId]);
 
   return {
-    session, scenario, situation, domain, character,
+    session, scenario, situation, domain, character, selectedAvatar,
     goals, conversations, completedGoals, phase,
     loading, error, isActive, isCompleted,
     phaseTransition, unacknowledgedCompletion,

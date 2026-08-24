@@ -1,10 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveAzureVoice } from '../../../lib/language';
+import { getAuthUser } from '@/lib/auth/server';
+import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
 
 export const runtime = 'nodejs';
 
+// Guests reach this route through the marketing tryout, so it can't simply
+// require auth. Mirrors the allowance in app/api/speech/token/route.ts.
+const MAX_GUEST_SYNTHESES_PER_IP_PER_HOUR = 40;
+
 export async function POST(req: NextRequest) {
   try {
+    // Synthesis is billed per character, so this route must not be an open
+    // relay to the Azure account — it previously accepted any caller.
+    const user = await getAuthUser();
+    if (!user) {
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      const rateLimitKey = cacheKeys.tryoutRateLimit(`tts:${ip}`);
+      const currentCount = (await cacheGet<number>(rateLimitKey)) ?? 0;
+      if (currentCount >= MAX_GUEST_SYNTHESES_PER_IP_PER_HOUR) {
+        return NextResponse.json(
+          { error: 'Too many speech requests. Please try again later.' },
+          { status: 429 },
+        );
+      }
+      await cacheSet(rateLimitKey, currentCount + 1, TTL.TRYOUT_RATE_LIMIT);
+    }
+
     const body = await req.json();
     const { text, lang, ssml, gender } = body;
 

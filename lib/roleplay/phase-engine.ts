@@ -21,6 +21,28 @@ export function nextPhase(
   return current;
 }
 
+/**
+ * Weights for the composite score. Must sum to 1.0, because every input
+ * dimension is an independent 0-100 value (see SCORE_DIMENSIONS in
+ * lib/ai-engine.ts) — this function is the single place they are combined.
+ *
+ * `expressionAppropriateness` previously had no weight at all: it was graded,
+ * persisted, and shown on the report, but silently contributed nothing to the
+ * pass/fail verdict despite the per-language appropriateness rubric driving it.
+ */
+const SCORE_WEIGHTS = {
+  vocabulary: 0.20,
+  grammar: 0.20,
+  fluency: 0.20,
+  cultural: 0.15,
+  task: 0.15,
+  expressionAppropriateness: 0.10,
+} as const;
+
+/**
+ * Combines the six 0-100 dimension scores into a single 0-100 composite,
+ * which is what `PASSING_SCORE_THRESHOLD` is compared against.
+ */
 export function computeCompositeScore(phase: SessionPhase, scores: {
   vocabularyScore: number;
   grammarScore: number;
@@ -29,10 +51,15 @@ export function computeCompositeScore(phase: SessionPhase, scores: {
   taskScore: number;
   expressionAppropriatenessScore?: number;
 }): number {
-  const v = scores.vocabularyScore ?? 0;
-  const g = scores.grammarScore ?? 0;
-  const f = scores.fluencyScore ?? 0;
-  const c = scores.culturalScore ?? 0;
-  const t = scores.taskScore ?? 0;
-  return Math.round(v * 0.25 + g * 0.25 + f * 0.20 + c * 0.15 + t * 0.15);
+  const clamp = (n: number | undefined | null) =>
+    Math.max(0, Math.min(100, Number(n) || 0));
+
+  return Math.round(
+    clamp(scores.vocabularyScore) * SCORE_WEIGHTS.vocabulary +
+    clamp(scores.grammarScore) * SCORE_WEIGHTS.grammar +
+    clamp(scores.fluencyScore) * SCORE_WEIGHTS.fluency +
+    clamp(scores.culturalScore) * SCORE_WEIGHTS.cultural +
+    clamp(scores.taskScore) * SCORE_WEIGHTS.task +
+    clamp(scores.expressionAppropriatenessScore) * SCORE_WEIGHTS.expressionAppropriateness,
+  );
 }

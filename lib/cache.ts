@@ -11,6 +11,8 @@ SESSION: 60,         // 1 min (session state changes often)
   CHARACTER: 3600,     // 1 hr
   DOMAIN: 3600,        // 1 hr
   TRYOUT_RATE_LIMIT: 3600, // 1 hr window for guest tryout throttling
+  SPEECH_TOKEN: 540,   // 9 min (Azure issueToken lifetime is 10 min)
+  PROFICIENCY: 300,    // 5 min (only changes when a session completes)
 } as const;
 
 let redis: Redis | null = null;
@@ -61,6 +63,7 @@ function key(prefix: string, ...parts: (string | number)[]): string {
 export const cacheKeys = {
   userAvatars: (userId: string) => key('avatars', userId),
   userProfile: (userId: string) => key('user-profile', userId),
+  learnerProficiency: (userId: string, lang: string) => key('proficiency', `${userId}:${lang}`),
   session: (sessionId: number) => key('session', sessionId),
   scenario: (scenarioId: number) => key('scenario', scenarioId),
   scenarioLocalization: (scenarioId: number, lang: string) => key('scenario-loc', scenarioId, lang),
@@ -73,6 +76,7 @@ export const cacheKeys = {
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
   tryoutRateLimit: (ip: string) => key('tryout-rate-limit', ip),
+  speechToken: (region: string) => key('speech-token', region),
 };
 
 export { TTL };

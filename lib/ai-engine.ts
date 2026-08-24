@@ -1,4 +1,8 @@
 import { getTargetLangConfig, getNativeLangName, TARGET_LANGUAGES } from './language';
+// Imported from the leaf module rather than the prompts barrel: the barrel
+// pulls in the phase builders, which import buildIdentityAndGuardBlock from
+// this file. reply-contract.ts has no imports of its own, so there is no cycle.
+import { describeReplyContract } from './roleplay/prompts/reply-contract';
 import { getDifficultyTierDescription, getAppropriatenessRubric } from './language-packs';
 import { getAIProvider } from './ai-providers';
 import type { ChatTurn } from './ai-providers';
@@ -40,14 +44,8 @@ export interface UserTurnAnalysis {
   emotionTone?: string;
   gestureHint?: GestureHint;
   suggestedReplies?: string[];
-  scores: {
-    vocabulary: number;
-    grammar: number;
-    fluency: number;
-    cultural: number;
-    task: number;
-    expressionAppropriateness: number;
-  };
+  /** Every dimension independently scaled 0-100 — see SCORE_DIMENSIONS. */
+  scores: TurnScores;
   feedback: string;
   corrections: CorrectionItem[];
   goalsAddressedThisTurn: number[];
@@ -63,14 +61,8 @@ export interface AIResponseAnalysis {
   emotionTone?: string;
   gestureHint?: GestureHint;
   suggestedReplies?: string[];
-  scores: {
-    vocabulary: number;
-    grammar: number;
-    fluency: number;
-    cultural: number;
-    task: number;
-    expressionAppropriateness: number;
-  };
+  /** Every dimension independently scaled 0-100 — see SCORE_DIMENSIONS. */
+  scores: TurnScores;
   feedback: string;
   corrections: CorrectionItem[];
   nextAiReply: {
@@ -104,12 +96,69 @@ NEVER output an unresolved template artifact as visible text — no "___", no br
 NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`;
 }
 
+/**
+ * The six scoring dimensions, every one on an independent 0-100 scale.
+ *
+ * These used to be requested on mixed scales that summed to 100 (vocabulary
+ * 0-25, grammar 0-20, fluency 0-20, cultural 0-10, task 0-10, expression
+ * 0-15). But `computeCompositeScore` in lib/roleplay/phase-engine.ts consumes
+ * them as percentages and applies weights that ALSO sum to 1.0 — so a flawless
+ * session composited to roughly 18 against a passing threshold of 70, and
+ * every learner was permanently reported as underperforming. The same
+ * conflation reached the persisted `sessions`/`evaluations` score columns,
+ * `buildSessionMetrics`, and `qualitativeTag`.
+ *
+ * Weighting is now the sole responsibility of `computeCompositeScore`; the
+ * model reports each dimension independently out of 100.
+ */
+export const SCORE_DIMENSIONS = [
+  'vocabulary',
+  'grammar',
+  'fluency',
+  'cultural',
+  'task',
+  'expressionAppropriateness',
+] as const;
+
+export type ScoreDimension = typeof SCORE_DIMENSIONS[number];
+export type TurnScores = Record<ScoreDimension, number>;
+
+/** Shared prompt text so the two prompts below cannot drift apart on scale. */
+const SCORING_INSTRUCTION = `Grade the learner on each of these six dimensions INDEPENDENTLY, as an integer from 0 to 100, where 0 means "no evidence at all" and 100 means "indistinguishable from a competent speaker in this situation". These are six separate percentages — they are NOT parts of a shared budget and they do NOT need to sum to anything:
+  - vocabulary: range and accuracy of the words/phrases they reached for
+  - grammar: structural correctness of what they produced
+  - fluency: flow, hesitation, and naturalness of delivery
+  - cultural: register, politeness level, and situational appropriateness
+  - task: how far this turn advanced the actual goal of the scenario
+  - expressionAppropriateness: whether the expression chosen fits this specific context
+Judge against what is reasonable for this learner's stated difficulty level, not against a native speaker.`;
+
+const SCORES_SCHEMA_LINE = `  "scores": { "vocabulary": 0-100, "grammar": 0-100, "fluency": 0-100, "cultural": 0-100, "task": 0-100, "expressionAppropriateness": 0-100 },`;
+
+/**
+ * Coerces a model-supplied score object into six integers in [0, 100].
+ *
+ * Defends the persisted score columns against a malformed or out-of-range
+ * model response — a missing dimension, a string, or a stale 0-25 style value
+ * would otherwise be written straight into `sessions`/`evaluations` and skew
+ * the learner's running average for the rest of the session.
+ */
+export function normalizeScores(raw: unknown): TurnScores {
+  const source = (raw ?? {}) as Record<string, unknown>;
+  const out = {} as TurnScores;
+
+  for (const dimension of SCORE_DIMENSIONS) {
+    const value = Number(source[dimension]);
+    out[dimension] = Number.isFinite(value)
+      ? Math.max(0, Math.min(100, Math.round(value)))
+      : 0;
+  }
+
+  return out;
+}
+
 const TARGET_LANG_NAMES: Record<string, string> = Object.fromEntries(
   TARGET_LANGUAGES.map(l => [l.code, l.name]),
-);
-
-const TARGET_LANG_NATIVE: Record<string, string> = Object.fromEntries(
-  TARGET_LANGUAGES.map(l => [l.code, l.nativeName]),
 );
 
 export async function analyzeAndGenerateTurn(
@@ -181,17 +230,13 @@ The AI character should be cooperative, friendly, and helpful. They should:
   const correctionPhoneticInstruction = hasPhonetic
     ? `      "originalPhonetic": "Phonetic of originalText (Japanese only, else null)",\n      "correctedPhonetic": "Phonetic of correctedText (Japanese only, else null)",`
     : '';
-  const phoneticInstruction = hasPhonetic
-    ? `  - "phonetic": "Phonetic transcription of what the user said (only if target language is Japanese, otherwise null)"`
-    : '';
-  const aiPhoneticInstruction = hasPhonetic
-    ? `    "phonetic": "Phonetic transcription of that AI response sentence (only if target language is Japanese, otherwise null)",`
-    : '';
 
   const learnerIdentityBlock = buildIdentityAndGuardBlock(learnerName, learnerCountry);
 
   const systemInstruction = `
-You are an advanced backend AI processor engine handling a multi-turn ${targetLangName} language simulation game called "AI DOJO".
+You are an experienced ${targetLangName} tutor, assessing one turn a learner just took in a role-play practice session.
+
+Grade the way a good tutor grades: against what this learner can reasonably manage at their stated level, and against what this specific moment in the scene actually asked of them — not against a native speaker, and not by applying a rubric blindly. Be generous about effort and strict about whether they could be understood.
 
 ===== NARRATIVE CONTEXT =====
 - Scenario context: ${effectiveContext}
@@ -253,7 +298,7 @@ For the user's turn, optionally detect:
 - Hold a natural, flowing conversation as the AI character. Do NOT rush to close. Each turn, check which goals remain [PENDING], and steer your next reply toward naturally drawing out the next uncovered goal through realistic dialogue — not by listing it mechanically. Only move toward a warm closing statement once all goals show [COVERED].
 
 YOUR THREE JOBS:
-1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges (vocabulary 0-25, grammar 0-20, fluency 0-20, cultural 0-10, task 0-10, expressionAppropriateness 0-15 = 100 total), translate it, provide custom feedback. Set isValidInContext based on the VALIDATION RULE above. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses and list their sequenceOrder numbers in goalsAddressedThisTurn. If any errors are detected, populate the corrections array with structured correction objects.
+1. EVALUATE: Analyze the user's input, translate it, and provide custom feedback. ${SCORING_INSTRUCTION} Set isValidInContext based on the VALIDATION RULE above. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses and list their sequenceOrder numbers in goalsAddressedThisTurn. If any errors are detected, populate the corrections array with structured correction objects.
 2. CORRECT: If the user made a grammar, vocabulary, particle, verb conjugation, politeness level, or spelling error (in their ${targetLangName} attempt), add a structured correction object. If no corrections needed, return an empty array [].
 3. RESPOND: Generate a dynamic context-aware response from the perspective of ${scenario.aiCharacterName}. Based on the goals, drive the conversation forward naturally.
 
@@ -273,7 +318,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "emotionTone": "friendly",
   "gestureHint": "none",
   "suggestedReplies": ["2-3 short options in ${nativeLangName} the user might say next (can code-switch a ${targetLangName} phrase naturally)"],
-  "scores": { "vocabulary": 0-25, "grammar": 0-20, "fluency": 0-20, "cultural": 0-10, "task": 0-10, "expressionAppropriateness": 0-15 },
+${SCORES_SCHEMA_LINE}
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [
     {
@@ -312,6 +357,7 @@ ${correctionPhoneticInstruction}      "correctedText": "corrected version",
 
   if (parsed.gestureHint) parsed.gestureHint = normalizeGesture(parsed.gestureHint);
   if (parsed.nextAiReply?.gestureHint) parsed.nextAiReply.gestureHint = normalizeGesture(parsed.nextAiReply.gestureHint);
+  parsed.scores = normalizeScores(parsed.scores);
 
   return parsed;
 }
@@ -324,10 +370,10 @@ ${correctionPhoneticInstruction}      "correctedText": "corrected version",
  * Includes the pre-generated AI reply text as context so the model
  * can evaluate the user's input in relation to the full exchange.
  */
-export async function analyzeUserTurn(
-  userInput: string,
-  aiReplyText: string,
-  currentTurnNo: number,
+export interface AnalyzeUserTurnInput {
+  userInput: string;
+  aiReplyText: string;
+  currentTurnNo: number;
   scenario: {
     id: number;
     context: string;
@@ -337,24 +383,49 @@ export async function analyzeUserTurn(
     userCharacterName: string;
     userCharacterRole: string;
     difficulty?: string;
-  },
+  };
   goals: Array<{
     id: number;
     sequenceOrder: number;
     goalText: string;
     goalType: string;
     targetPhrase: string | null;
-  }>,
-  completedGoalSequenceOrders: number[],
-  conversationHistory: ChatTurn[] = [],
-  behaviorMode?: string,
-  situationContext?: string,
-  situationLearningGoals?: string,
-  targetLanguage: string = 'ja',
-  nativeLanguage: string = 'en',
-  learnerName?: string,
-  learnerCountry?: string | null,
-): Promise<UserTurnAnalysis> {
+  }>;
+  completedGoalSequenceOrders: number[];
+  conversationHistory?: ChatTurn[];
+  behaviorMode?: string;
+  situationContext?: string;
+  situationLearningGoals?: string;
+  targetLanguage?: string;
+  nativeLanguage?: string;
+  learnerName?: string;
+  learnerCountry?: string | null;
+  /** Session phase the graded reply was generated in — decides the reply contract. */
+  phase: string;
+  /** True when target and native language match (no ⟦ ⟧ delimiters are used). */
+  isSameLanguage: boolean;
+}
+
+export async function analyzeUserTurn(input: AnalyzeUserTurnInput): Promise<UserTurnAnalysis> {
+  const {
+    userInput,
+    aiReplyText,
+    currentTurnNo,
+    scenario,
+    goals,
+    completedGoalSequenceOrders,
+    conversationHistory = [],
+    behaviorMode,
+    situationContext,
+    situationLearningGoals,
+    targetLanguage = 'ja',
+    nativeLanguage = 'en',
+    learnerName,
+    learnerCountry,
+    phase,
+    isSameLanguage,
+  } = input;
+
   const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
@@ -392,14 +463,13 @@ The AI character should be cooperative, friendly, and helpful. They should:
   const correctionPhoneticInstruction = hasPhonetic
     ? `      "originalPhonetic": "Phonetic of originalText (Japanese only, else null)",\n      "correctedPhonetic": "Phonetic of correctedText (Japanese only, else null)",`
     : '';
-  const phoneticInstruction = hasPhonetic
-    ? `  - "phonetic": "Phonetic transcription of what the user said (only if target language is Japanese, otherwise null)"`
-    : '';
 
   const learnerIdentityBlock = buildIdentityAndGuardBlock(learnerName, learnerCountry);
 
   const systemInstruction = `
-You are an advanced backend AI processor engine handling a multi-turn ${targetLangName} language simulation game called "AI DOJO".
+You are an experienced ${targetLangName} tutor, assessing one turn a learner just took in a role-play practice session.
+
+Grade the way a good tutor grades: against what this learner can reasonably manage at their stated level, and against what this specific moment in the scene actually asked of them — not against a native speaker, and not by applying a rubric blindly. Be generous about effort and strict about whether they could be understood.
 
 ===== NARRATIVE CONTEXT =====
 - Scenario context: ${effectiveContext}
@@ -416,11 +486,10 @@ ${difficultyDesc}
 
 IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}") is a FICTIONAL NARRATIVE DEVICE used in the scenario description. The REAL user is a different person and will use their OWN real name, details, and phrasing. You must NEVER require the user to match the placeholder name or wording.
 
-===== LANGUAGE RULES =====
-- The AI character replied in a code-switching style (primarily ${nativeLangName} with embedded ${targetLangName} phrases). Evaluate the user's input in that context.
-- Code-switching is expected — the user may respond primarily in ${nativeLangName}, primarily in ${targetLangName}, or a mix. All are valid.
+===== SESSION PHASE: ${phase.toUpperCase()} =====
+${describeReplyContract(phase, isSameLanguage, targetLangName, nativeLangName)}
 - ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is.
-- messageNative should contain the user's full utterance. messageTarget should contain only the ${targetLangName} phrase(s) the user produced, or empty string if none.
+- Grade the learner against what this phase actually asks of them. Do not penalise them for not doing something the phase never invited.
 ${hasPhonetic ? '- Provide phonetic transcription for Japanese target-language text (messagePhonetic and correction phonetic fields below).' : '- Phonetic is NOT relevant for this language — always set phonetic fields to null.'}
 
 ===== SCENARIO GOALS =====
@@ -430,7 +499,9 @@ ${goalsBlock}
 isValidInContext must be set to TRUE unless the user's input is genuinely off-topic or inconsistent with the SCENARIO SITUATION.
 
 ===== isEnglishWhenExpected =====
-Set isEnglishWhenExpected to true only if the user explicitly refuses to engage in the roleplay or writes unrelated content. Code-switching is expected — using only ${nativeLangName} is acceptable.
+${phase === 'unguided'
+  ? `This is the full-immersion phase, so ${targetLangName} genuinely is expected. Set isEnglishWhenExpected to true if the learner abandoned ${targetLangName} entirely and answered wholly in ${nativeLangName}, or refused to participate. A learner who attempts ${targetLangName} and only reaches for ${nativeLangName} to fill a gap is trying — leave it false.`
+  : `Set isEnglishWhenExpected to true ONLY if the learner explicitly refuses to engage or writes unrelated content. In this phase mixing languages is expected and answering only in ${nativeLangName} is perfectly acceptable — neither warrants true.`}
 
 ===== EMOTION TONE & GESTURE HINT =====
 For the user's turn, optionally detect:
@@ -438,7 +509,7 @@ For the user's turn, optionally detect:
 - gestureHint: one of these exact values — "bow" | "wave" | "shake_hands" | "nod" | "none"
 
 YOUR JOBS:
-1. EVALUATE: Analyze the user's input. Grade their performance integers out of the max scale ranges (vocabulary 0-25, grammar 0-20, fluency 0-20, cultural 0-10, task 0-10, expressionAppropriateness 0-15 = 100 total), translate it, provide custom feedback. Set isValidInContext. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses.
+1. EVALUATE: Analyze the user's input, translate it, and provide custom feedback. ${SCORING_INSTRUCTION} Set isValidInContext. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses.
 2. CORRECT: If the user made any errors, add structured correction objects. If no corrections needed, return an empty array [].
 
 ===== EXPRESSION APPROPRIATENESS RUBRIC =====
@@ -457,7 +528,7 @@ Provide your response strictly as a single JSON object matching this schema blue
   "emotionTone": "friendly",
   "gestureHint": "none",
   "suggestedReplies": ["2-3 short options in ${nativeLangName} the user might say next (can code-switch a ${targetLangName} phrase naturally)"],
-  "scores": { "vocabulary": 0-25, "grammar": 0-20, "fluency": 0-20, "cultural": 0-10, "task": 0-10, "expressionAppropriateness": 0-15 },
+${SCORES_SCHEMA_LINE}
   "feedback": "Constructive linguistic analysis coaching feedback targeted at the learner",
   "corrections": [
     {
@@ -500,7 +571,7 @@ ${correctionPhoneticInstruction}      "correctedText": "corrected version",
     emotionTone: parsed.emotionTone,
     gestureHint: parsed.gestureHint,
     suggestedReplies: parsed.suggestedReplies,
-    scores: parsed.scores,
+    scores: normalizeScores(parsed.scores),
     feedback: parsed.feedback,
     corrections: parsed.corrections,
     goalsAddressedThisTurn: parsed.goalsAddressedThisTurn,

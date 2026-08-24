@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const CLIP_BASE = '/ai-avatars/animations/';
 
@@ -13,16 +13,25 @@ const ANIMATION_ALIASES: Record<string, string> = {
 
 export { ANIMATION_ALIASES, CLIP_BASE };
 
+/**
+ * Clips are served as .glb (generated from the .fbx sources by
+ * `npm run avatars:convert`). The FBX originals were ~10.2 MB in total and
+ * were parsed on the main thread by FBXLoader on every single avatar mount;
+ * the GLB equivalents are ~2.5 MB and go through the same GLTFLoader the
+ * character models already use.
+ */
 const ANIMATION_MANIFEST: Record<string, string> = {
-  idle: 'Idle.fbx',
-  talk: 'Talking.fbx',
-  think: 'Thinking.fbx',
-  listening: 'Listening.fbx',
-  thankful: 'Thankful.fbx',
-  nod: 'Nod.fbx',
-  greeting: 'Greeting.fbx',
-  offline: 'Offline.fbx',
+  idle: 'Idle.glb',
+  talk: 'Talking.glb',
+  think: 'Thinking.glb',
+  listening: 'Listening.glb',
+  thankful: 'Thankful.glb',
+  nod: 'Nod.glb',
+  greeting: 'Greeting.glb',
+  offline: 'Offline.glb',
 };
+
+const ONE_SHOT_CLIPS = new Set(['greeting', 'thankful', 'nod']);
 
 const isFaceTrack = (name: string): boolean => {
   const lower = name.toLowerCase();
@@ -39,6 +48,43 @@ const isFaceTrack = (name: string): boolean => {
   );
 };
 
+/* ── Shared clip cache ──────────────────────────────────────────────────
+   Clip files are identical for every avatar, so they are fetched and
+   parsed once per page load and shared by every AnimationManager instance.
+   Promises (not results) are cached so concurrent mounts coalesce onto one
+   request instead of racing.
+
+   This also makes freeze/unfreeze cheap: re-initializing used to re-download
+   and re-parse the entire manifest.
+   ────────────────────────────────────────────────────────────────────── */
+
+const clipCache = new Map<string, Promise<THREE.AnimationClip | null>>();
+let sharedLoader: GLTFLoader | null = null;
+
+function getLoader(): GLTFLoader {
+  if (!sharedLoader) sharedLoader = new GLTFLoader();
+  return sharedLoader;
+}
+
+function loadClip(file: string): Promise<THREE.AnimationClip | null> {
+  const cached = clipCache.get(file);
+  if (cached) return cached;
+
+  const promise = getLoader()
+    .loadAsync(CLIP_BASE + file)
+    .then((gltf) => gltf.animations?.[0] ?? null)
+    .catch((err) => {
+      console.warn(`[AnimationManager] Failed to load clip "${file}":`, err);
+      // Drop the rejection from the cache so a later mount can retry rather
+      // than inheriting a permanent failure from one flaky request.
+      clipCache.delete(file);
+      return null;
+    });
+
+  clipCache.set(file, promise);
+  return promise;
+}
+
 export class AnimationManager {
   model: THREE.Group | null = null;
   mixer: THREE.AnimationMixer | null = null;
@@ -47,7 +93,6 @@ export class AnimationManager {
   ready = false;
   private _activeListener: ((e: THREE.Event) => void) | null = null;
   isTalking = false;
-  private fbxLoader = new FBXLoader();
 
   async init(
     model: THREE.Group,
@@ -68,6 +113,27 @@ export class AnimationManager {
     return this._initFromManifest(boneNames);
   }
 
+  private _registerClip(
+    name: string,
+    clip: THREE.AnimationClip,
+    boneNames?: Set<string>,
+  ): boolean {
+    if (!this.mixer) return false;
+
+    const key = ANIMATION_ALIASES[name] ?? name;
+    const filtered = this._filterFaceTracks(clip);
+    filtered.name = key;
+
+    const cleanClip = boneNames ? this._filterBoneTracks(filtered, boneNames, key) : filtered;
+
+    const action = this.mixer.clipAction(cleanClip);
+    action.setEffectiveTimeScale(1);
+    if (!this._actionHasBindings(action)) return false;
+
+    this.actions[key] = action;
+    return true;
+  }
+
   private _initWithClips(
     clips: Map<string, THREE.AnimationClip>,
     boneNames?: Set<string>,
@@ -75,18 +141,7 @@ export class AnimationManager {
     let loaded = 0;
     for (const [name, clip] of clips.entries()) {
       if (!clip) continue;
-      const key = ANIMATION_ALIASES[name] ?? name;
-      const filtered = this._filterFaceTracks(clip);
-      filtered.name = key;
-      let cleanClip = filtered;
-      if (boneNames) {
-        cleanClip = this._filterBoneTracks(filtered, boneNames, key);
-      }
-      const action = this.mixer!.clipAction(cleanClip);
-      action.setEffectiveTimeScale(1);
-      if (!this._actionHasBindings(action)) continue;
-      this.actions[key] = action;
-      loaded += 1;
+      if (this._registerClip(name, clip, boneNames)) loaded += 1;
     }
     this.ready = loaded > 0;
     if (this.ready) this.play('idle', { loop: true, fade: 0 });
@@ -95,29 +150,22 @@ export class AnimationManager {
 
   private async _initFromManifest(boneNames?: Set<string>): Promise<boolean> {
     const entries = Object.entries(ANIMATION_MANIFEST);
-    let loaded = 0;
 
-    await Promise.all(entries.map(async ([name, file]) => {
-      try {
-        const fbx = await this.fbxLoader.loadAsync(CLIP_BASE + file);
-        if (!fbx?.animations?.length) return;
-        const clip = fbx.animations[0];
-        const key = ANIMATION_ALIASES[name] ?? name;
-        const filtered = this._filterFaceTracks(clip);
-        filtered.name = key;
-        let cleanClip = filtered;
-        if (boneNames) {
-          cleanClip = this._filterBoneTracks(filtered, boneNames, key);
-        }
-        const action = this.mixer!.clipAction(cleanClip);
-        action.setEffectiveTimeScale(1);
-        if (!this._actionHasBindings(action)) return;
-        this.actions[key] = action;
-        loaded += 1;
-      } catch (err) {
-        console.warn(`[AnimationManager] Failed to load clip "${name}" from "${file}":`, err);
-      }
-    }));
+    const results = await Promise.all(
+      entries.map(async ([name, file]) => ({ name, clip: await loadClip(file) })),
+    );
+
+    // The mixer may have been disposed while clips were in flight (a fast
+    // unmount); registering onto a dead mixer would throw.
+    if (!this.mixer) return false;
+
+    let loaded = 0;
+    for (const { name, clip } of results) {
+      if (!clip) continue;
+      // Each instance needs its own AnimationClip: clipAction caches by clip
+      // object, so sharing one across avatars would make them share actions.
+      if (this._registerClip(name, clip.clone(), boneNames)) loaded += 1;
+    }
 
     this.ready = loaded > 0;
     if (this.ready) this.play('idle', { loop: true, fade: 0 });
@@ -136,16 +184,31 @@ export class AnimationManager {
     boneNames: Set<string>,
     clipName: string,
   ): THREE.AnimationClip {
-    const isGestureClip = clipName === 'greeting' || clipName === 'thankful' || clipName === 'nod';
+    // Head and neck tracks are deliberately KEPT for every clip, including
+    // idle and talk. They used to be stripped from non-gesture clips, which
+    // left the character's head locked rigidly forward the entire session —
+    // the single biggest reason the avatar read as lifeless.
     const bodyTracks = clip.tracks.filter((t) => {
       const boneName = t.name.split('.')[0];
       if (!boneName) return true;
       if (!boneNames.has(boneName)) return false;
+      // Root motion would slide the character away from its framed position.
       if (t.name.includes('.position')) return false;
-      if (isGestureClip) return true;
-      if (/head|neck/i.test(boneName)) return false;
       return true;
     });
+
+    // A near-total wipe means the clip's node names don't match this model's
+    // skeleton rather than that the tracks were genuinely unwanted. Keep the
+    // clip intact and let three bind whatever it can, instead of silently
+    // producing an animation that moves nothing.
+    if (bodyTracks.length < clip.tracks.length * 0.1) {
+      console.warn(
+        `[AnimationManager] Clip "${clipName}" matched almost no bones on this ` +
+        `skeleton (${bodyTracks.length}/${clip.tracks.length}); using it unfiltered.`,
+      );
+      return clip;
+    }
+
     if (bodyTracks.length === clip.tracks.length) return clip;
     return new THREE.AnimationClip(clip.name, clip.duration, bodyTracks);
   }
@@ -169,17 +232,16 @@ export class AnimationManager {
     this.isTalking = !!talking;
 
     if (this.current && this.current === this.actions['offline']) return;
-    if (
-      this.current &&
-      (this.current === this.actions['greeting'] ||
-        this.current === this.actions['thankful'] ||
-        this.current === this.actions['nod'])
-    ) {
-      return;
-    }
+    if (this.current && ONE_SHOT_CLIPS.has(this._keyForAction(this.current))) return;
 
-    const fallbackState = this.isTalking ? 'talk' : 'idle';
-    this.play(fallbackState, { loop: true, fade: 0.7 });
+    this.play(this.isTalking ? 'talk' : 'idle', { loop: true, fade: 0.7 });
+  }
+
+  private _keyForAction(action: THREE.AnimationAction): string {
+    for (const [key, value] of Object.entries(this.actions)) {
+      if (value === action) return key;
+    }
+    return '';
   }
 
   play(
@@ -193,10 +255,8 @@ export class AnimationManager {
 
     if (!key || !this.actions[key]) return false;
 
-    const isOneShot = key === 'greeting' || key === 'thankful' || key === 'nod';
-    const targetLoop = isOneShot ? false : loop;
-
-    this._playAction(key, { loop: targetLoop, fade });
+    const isOneShot = ONE_SHOT_CLIPS.has(key);
+    this._playAction(key, { loop: isOneShot ? false : loop, fade });
     return true;
   }
 
@@ -212,6 +272,10 @@ export class AnimationManager {
       this._activeListener = null;
     }
 
+    // Re-issuing the clip that is already looping would restart it from frame
+    // zero, producing a visible hitch every time state is re-asserted.
+    if (this.current === next && next.isRunning() && loop) return;
+
     next.reset();
     next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
     next.clampWhenFinished = true;
@@ -225,20 +289,15 @@ export class AnimationManager {
       next.play();
     }
 
-    const isOneShot = key === 'greeting' || key === 'thankful' || key === 'nod';
-
-    if (isOneShot) {
+    if (ONE_SHOT_CLIPS.has(key)) {
       const onFinished = (e: THREE.Event) => {
         const eventAction = (e as unknown as { action: THREE.AnimationAction }).action;
         if (eventAction !== next) return;
 
         this.mixer!.removeEventListener('finished', onFinished);
-        if (this._activeListener === onFinished) {
-          this._activeListener = null;
-        }
+        if (this._activeListener === onFinished) this._activeListener = null;
 
-        const fallbackClip = this.isTalking ? 'talk' : 'idle';
-        this.play(fallbackClip, { loop: true, fade: 0.7 });
+        this.play(this.isTalking ? 'talk' : 'idle', { loop: true, fade: 0.7 });
       };
 
       this._activeListener = onFinished;
@@ -255,6 +314,16 @@ export class AnimationManager {
     }
     this.isTalking = false;
     return this.play('idle', { loop: true, fade: 0.7 });
+  }
+
+  /**
+   * Suspends playback without tearing down the mixer or the loaded actions,
+   * so resuming is instant. Used for the off-screen/idle-freeze optimization,
+   * which previously called dispose() and then re-ran the whole init.
+   */
+  setPaused(paused: boolean): void {
+    if (!this.mixer) return;
+    this.mixer.timeScale = paused ? 0 : 1;
   }
 
   update(delta: number): void {

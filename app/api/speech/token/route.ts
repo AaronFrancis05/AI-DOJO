@@ -26,6 +26,14 @@ export async function GET(req: Request) {
     );
   }
 
+  // Azure tokens live 10 minutes — reuse one instead of minting per page load.
+  // Every mint is an outbound HTTPS call that can hit a connect timeout.
+  const tokenCacheKey = cacheKeys.speechToken(region);
+  const cachedToken = await cacheGet<string>(tokenCacheKey);
+  if (cachedToken) {
+    return Response.json({ token: cachedToken, region });
+  }
+
   try {
     const tokenRes = await fetch(
       `https://${region}.api.cognitive.microsoft.com/sts/v1.0/issueToken`,
@@ -37,6 +45,7 @@ export async function GET(req: Request) {
     }
 
     const token = await tokenRes.text();
+    await cacheSet(tokenCacheKey, token, TTL.SPEECH_TOKEN);
 
     return Response.json({ token, region });
   } catch (err) {

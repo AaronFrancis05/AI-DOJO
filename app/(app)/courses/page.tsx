@@ -59,6 +59,9 @@ export default function CoursesPage() {
     async function load() {
       try {
         const res = await fetch('/api/courses');
+        // A failed route handler can return an empty body — parsing it blindly
+        // throws "Unexpected end of JSON input" and hides the real status.
+        if (!res.ok) throw new Error(`/api/courses returned ${res.status}`);
         const data = await res.json();
         if (data.success && Array.isArray(data.courses)) {
           if (!cancelled) setCourses(data.courses);

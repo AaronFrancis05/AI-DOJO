@@ -66,9 +66,8 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
   useEffect(() => { mutedRef.current = muted; }, [muted]);
 
   useEffect(() => {
-    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
-    }
+    // Microphone acquisition is handled once by the recognizer prewarm in
+    // useVoiceInput, which holds the stream open for the whole session.
   }, []);
 
   useEffect(() => {

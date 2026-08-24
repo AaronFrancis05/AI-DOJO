@@ -14,6 +14,7 @@ import {
   subscribeWarnings,
 } from '@/components/roleplay/three/AnimatedModel';
 import { AvatarCaptionsOverlay } from '@/components/roleplay/AvatarCaptionsOverlay';
+import { SHARED_FEMALE_MODEL_URL, resolveAvatarModelUrl } from '@/lib/avatar/catalog';
 
 /* ── Error boundary around the Canvas ──────────────── */
 class AvatarErrorBoundary extends React.Component<
@@ -122,7 +123,7 @@ function detectWebGLSupport(): boolean {
   } catch { return false; }
 }
 
-export const DEFAULT_AVATAR_MODEL_URL = '/ai-avatars/models/female_jp.glb';
+export const DEFAULT_AVATAR_MODEL_URL = SHARED_FEMALE_MODEL_URL;
 
 /* ── Exported component ──────────────────────────── */
 export function AvatarViewport3D({
@@ -144,7 +145,10 @@ export function AvatarViewport3D({
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
 
-  const activeModelUrl = modelUrl || DEFAULT_AVATAR_MODEL_URL;
+  // Every render path funnels through here, so resolving the female swap at
+  // this point covers catalog picks and character rows seeded with their own
+  // per-character GLB alike.
+  const activeModelUrl = resolveAvatarModelUrl(modelUrl) || DEFAULT_AVATAR_MODEL_URL;
 
   const onFramedRef = useRef(onFramed);
   useEffect(() => {

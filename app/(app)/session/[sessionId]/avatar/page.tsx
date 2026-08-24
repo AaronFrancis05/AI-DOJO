@@ -12,7 +12,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, resetStreamingTts, feedStreamTts, flushStreamTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
 import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
@@ -44,7 +44,7 @@ export default function AvatarModePage() {
   const sessionId = Number(params.sessionId);
 
   const {
-    session, scenario, character, conversations, phase,
+    session, scenario, character, selectedAvatar, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     evaluation, avgPronunciationScore, newWordsCount,
@@ -56,7 +56,7 @@ export default function AvatarModePage() {
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
-  const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [greetingSent, setGreetingSent] = useState(false);
@@ -95,10 +95,12 @@ export default function AvatarModePage() {
   const phaseRef = useRef('');
   const sendingRef = useRef(false);
 
-  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
+  // The avatar the learner picked for this session wins over the scenario's
+  // seeded character — scenario rows are shared across sessions, the pick is not.
+  const charName = selectedAvatar?.name ?? character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
-  const charRole = character?.role ?? scenario?.aiCharacterRole ?? undefined;
-  const avatarModelUrl = character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
+  const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
+  const avatarModelUrl = selectedAvatar?.file ?? character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
 
   // Session timer
   useEffect(() => {
@@ -151,16 +153,13 @@ export default function AvatarModePage() {
     setVoiceGender(session?.voiceGender || character?.gender || 'Female');
   }, [session, character]);
 
-  useEffect(() => {
-    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
-    }
-  }, []);
+  // Microphone acquisition is handled once by the recognizer prewarm in
+  // useVoiceInput, which holds the stream open for the whole session.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
       speakingRef.current = speaking;
-      setAvatarMode(speaking ? 'talking' : 'idle');
+      setIsAiSpeaking(speaking);
       if (!speaking) lastAiCompletedRef.current = Date.now();
       if (speaking) {
         emotionSystemRef.current?.startTalking?.();
@@ -212,6 +211,18 @@ export default function AvatarModePage() {
     try {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
+        // Speak each sentence as soon as it completes rather than waiting for
+        // the whole reply, so the avatar's mouth starts moving while the model
+        // is still generating.
+        onTokenDelta: (delta) => {
+          if (mutedRef.current) return;
+          feedStreamTts(
+            delta,
+            getBCP47(targetLangRef.current, 'tts'),
+            getNativeLangBcp47(nativeLangRef.current),
+            phaseRef.current,
+          );
+        },
         onToken: (t) => {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
@@ -221,8 +232,7 @@ export default function AvatarModePage() {
           const estDuration = Math.max(3000, cleaned.length * 65);
           if (cleaned) playCaption(cleaned, estDuration).catch(() => {});
           if (!mutedRef.current && cleaned) {
-            speakMixedText(
-              cleaned,
+            flushStreamTts(
               getBCP47(targetLangRef.current, 'tts'),
               getNativeLangBcp47(nativeLangRef.current),
               phaseRef.current,
@@ -299,19 +309,19 @@ export default function AvatarModePage() {
     onFinal: handleUserUtterance,
   });
 
+  // Single source of truth for what the avatar is doing. This was previously
+  // driven only by TTS speaking state, while the listening clip was played
+  // imperatively — so the two fought, and any speaking-state change stomped
+  // the listening pose back to idle. The AI talking outranks listening (a mic
+  // press stops TTS anyway), and idle is the resting state. Derived rather
+  // than stored, so it can never drift out of sync with its two inputs.
+  const avatarMode: 'idle' | 'listening' | 'talking' =
+    isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
+
   const handleMicStart = useCallback(async () => {
     if (avatarMode === 'talking') stopTts();
     await voice.start();
   }, [avatarMode, voice]);
-
-  // Mirror mic capture state onto the 3D avatar so it's visibly "listening",
-  // not just idle, for the duration the mic button is held.
-  useEffect(() => {
-    const emo = emotionSystemRef.current;
-    if (!emo) return;
-    if (voice.isListening) emo.startListening();
-    else emo.stopListening();
-  }, [voice.isListening]);
 
   const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
   const skillLevelLabel = situation?.skillLevel
@@ -422,14 +432,18 @@ export default function AvatarModePage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
+                    resetStreamingTts();
                     sendGreeting({
+                      onTokenDelta: (delta: string) => {
+                        if (mutedRef.current) return;
+                        feedStreamTts(delta, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current);
+                      },
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t: string) => {
                         const cleaned = cleanDisplay(t);
                         if (cleaned) playCaption(cleaned, Math.max(3000, cleaned.length * 65)).catch(() => {});
-                        if (!mutedRef.current && cleaned) {
-                          speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
-                        }
+                        if (mutedRef.current) return;
+                        flushStreamTts(getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                       },
                     })
                       .then(() => {

@@ -9,6 +9,7 @@ import {
   SceneLoadingFallback,
   CameraIntent,
 } from '@/components/roleplay/three/AnimatedModel';
+import { resolveAvatarModelUrl } from '@/lib/avatar/catalog';
 
 export type AvatarMode = 'idle' | 'listening' | 'talking';
 
@@ -26,8 +27,10 @@ interface SessionStageProps {
 }
 
 export function SessionStage({ ai, user }: SessionStageProps) {
-  const hasAiModel   = !!ai.modelUrl;
-  const hasUserModel = !!user.modelUrl;
+  const aiModelUrl   = resolveAvatarModelUrl(ai.modelUrl);
+  const userModelUrl = resolveAvatarModelUrl(user.modelUrl);
+  const hasAiModel   = !!aiModelUrl;
+  const hasUserModel = !!userModelUrl;
 
   return (
     <div className="h-full w-full">
@@ -73,7 +76,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
           {hasAiModel && (
             <group position={[-0.9, 0, 0]}>
               <AnimatedModel
-                url={ai.modelUrl!}
+                url={aiModelUrl!}
                 mode={ai.mode ?? 'idle'}
                 emotion={ai.emotion}
                 gesture={ai.gesture}
@@ -89,7 +92,7 @@ export function SessionStage({ ai, user }: SessionStageProps) {
           {hasUserModel && (
             <group position={[0.9, 0, 0]}>
               <AnimatedModel
-                url={user.modelUrl!}
+                url={userModelUrl!}
                 mode={user.mode ?? 'idle'}
                 emotion={user.emotion}
                 gesture={user.gesture}

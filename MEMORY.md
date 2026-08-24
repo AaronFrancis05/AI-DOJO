@@ -89,3 +89,104 @@ pm run db:migrate fails at 0002 (stale backlog, schema already applied out-of-ba
 - Wired `components/roleplay/AvatarViewport3D.tsx:124-141` — added `caption?:string|null` prop + `<AvatarCaptionsOverlay>`; `app/(app)/session/[sessionId]/avatar/page.tsx:15,80,193,214,460,411` — `useAvatarCaptions` driven on `onTextDone` (`estDuration=max(3000,len*65)`) and greeting, cleared on turn start, passed to viewport.
 - `components/settings/AvatarSettingsDialog.tsx:6-228` — added `Catalog` tab with `AvatarPicker` + `POST /api/user/avatars {avatarUrl,thumbnailUrl}` persistence.
 - Verification: `npx tsc --noEmit` clean, `npm run lint` no new `lib/avatar|Avatar*` errors, `drei` meshopt path `three/examples/jsm/libs/meshopt_decoder.module.js` exists.
+
+## 2026-08-24 — Reshape phases 0-2 (correctness, latency, avatars)
+
+Three latent bugs found and fixed, each invisible but product-defining:
+
+- **AI had no conversation memory.** `analyze-turn.ts` built history as `row.messageNative ?? row.messageTarget`, but AI turns are stored with `messageNative: ''`. `'' ?? x` returns `''` (nullish coalescing only falls through on null/undefined), so every assistant turn in the model's history was an empty string. Root cause of the re-greeting, repeated questions and icebreaker looping that the `STRICT NO-LOOP` / `Do NOT greet again` prompt rules were written to suppress. Fixed via new `lib/roleplay/conversation-history.ts` (`buildConversationHistory`), used by both `analyze-turn.ts` and `app/api/chat/route.ts`.
+- **No learner could ever pass.** Prompts requested sub-scores on mixed scales summing to 100 (vocab 0-25, grammar 0-20, …) while `computeCompositeScore` consumed them as 0-100 percentages with weights *also* summing to 1.0 — a flawless session composited to ~18 vs a threshold of 70. Now every dimension is independently 0-100 (`SCORE_DIMENSIONS` / `normalizeScores` in `lib/ai-engine.ts`), weighting lives only in `computeCompositeScore`, and `expressionAppropriateness` finally carries weight (0.10) instead of being graded and ignored. NOTE: historical `sessions`/`evaluations` score rows are still on the old scale — no rescale script written yet.
+- **Analyzer was grading a format that never existed.** It was told the AI "replied in a code-switching style"; the live prompts actually enforce ⟦ ⟧ span separation and unguided is 100% target language. `analyzeUserTurn` now takes an options object including `phase` + `isSameLanguage` and builds the real contract via `describeReplyContract`.
+
+Latency (mic release → first audio, was ~2-4s):
+- `feedStreamTts` existed in `tts.ts` but was **called from nowhere** — every page spoke in `onTextDone`, i.e. after the whole LLM response. Added `onTokenDelta` to `useRoleplaySession` (`onToken` passes cumulative text, useless for TTS) and wired both session pages to speak per sentence as it streams.
+- `tts.ts` rewritten to synthesize in-browser via the Azure SDK with `SpeakerAudioDestination` (plays while arriving) + live `visemeReceived`. `/api/tts` kept as fallback. Speaking state is reference-counted with a 350ms settle, otherwise the avatar flickers talk/idle per sentence.
+- `pronunciation.ts`: one shared `MediaStream` + `AudioContext` (the volume meter used to call `getUserMedia` a *second* time per press), websocket pre-opened via `Connection.fromRecognizer`, handlers attached once, `Speech_SegmentationSilenceTimeoutMs=350`, auto-reconnect on `canceled`. `getToken()` exported so TTS shares one token cache.
+- `loadSessionTurnData` ran ~6 sequential DB/Redis waves before the first token; everything is keyed on ids known upfront, so it's now one `Promise.all`. Vocabulary top-up (a blocking LLM call!) only awaits on the `orientation` turn; later phases generate in the background.
+- Removed the `audio_jobs` enqueue from the stream route: it synthesized every AI turn a *second* time server-side and stored base64 `data:` URLs in `conversations.audio_url` that nothing ever played. The second call site never even dispatched its Inngest event, so rows sat 'pending' forever. Table + `processAudio` worker left in place but dormant (dropping them is destructive — decision pending).
+- `/api/tts` had **no auth** — open relay to the Azure account. Now `getAuthUser()` + guest IP rate limit, mirroring `/api/speech/token`.
+- Gemini `generateStream` now sets `maxOutputTokens: 400` and `thinkingBudget: 0` for 2.5-series models.
+
+Avatars:
+- Animation clips converted FBX→GLB via new `scripts/convert-avatar-animations.ts` (`npm run avatars:convert`, idempotent, uses the repo's `fbx2gltf.exe`): **10.20 MB → 2.51 MB**. `AnimationManager` now uses `GLTFLoader` + a module-level shared clip cache.
+- `_filterBoneTracks` used to strip **all head/neck tracks** from non-gesture clips — the character's head was locked rigidly forward all session. Now kept. Added a guard: if filtering would drop >90% of tracks it's a name mismatch, so use the clip unfiltered.
+- `freezeOnIdle` used to `dispose()` then re-`init()`, re-downloading and re-parsing every clip. Now `setPaused()` on the mixer.
+- The avatar never visibly listened: pages played the listening clip imperatively while `avatarMode` simultaneously forced idle. `avatarMode` is now derived at render from `isAiSpeaking` + `voice.isListening`.
+- `LipSync` blends between mouth shapes instead of hard-switching each frame.
+
+Unresolved / flagged: `public/ai-avatars/sunset.hdr` is 7.6 MB and referenced nowhere (the used one is `public/studio_small_03_1k.hdr`, 1.6 MB).
+
+## 2026-08-24 — Reshape phase 3 (teaching engine + prompts)
+
+- **Prompts extracted** from `app/api/chat/stream/route.ts` (1332 → 937 lines) into `lib/roleplay/prompts/`: `types.ts`, `shared.ts`, `phases.ts`, `icebreaker-phrases.ts`, `reply-contract.ts`, `phase-messages.ts`, `index.ts`. `userAttemptsVocabWord` moved to `lib/roleplay/vocab-match.ts`. The route is now orchestration only (load → stream → analyze → persist → transition).
+- `describeReplyContract` deleted from `ai-engine.ts` and moved into `prompts/reply-contract.ts`, so generation and analysis share one source. **`ai-engine.ts` imports it from the leaf path (`./roleplay/prompts/reply-contract`), NOT the barrel** — the barrel pulls in `phases.ts` → `shared.ts` → `ai-engine.ts`, which would be a cycle.
+- **Persona rewritten.** Both `ai-engine.ts` prompts opened with "You are an advanced backend AI processor engine handling a multi-turn language simulation game" — a large part of why output read as generated rather than taught. Now framed as an experienced tutor grading against the learner's level and what the moment asked of them.
+- **Anti-loop scaffolding deleted, not rewritten.** The old prompts carried `STRICT NO-LOOP RETRY RULE`, `NEVER RE-TEACH A MASTERED WORD`, `NEVER REVERT TO AN EARLIER WORD`, and `Do NOT greet the student again` repeated across six variants. All of it existed to compensate for the empty-history bug fixed in phase 0. Replaced by a short `PACING` block; the code-side vocab index and retry gate in the route remain authoritative.
+- Added `CONVERSATION_CRAFT` (one thing per turn, react to what they said, vary openings, concrete scene detail) and per-phase pedagogy: guided corrects only what blocks communication, one correction per turn; unguided repairs in character (ask them to repeat, or model the natural phrasing in your own reply) with no teacher voice at all.
+- **Adaptive difficulty** (`lib/roleplay/proficiency.ts`): averages composite score over the last 5 completed `evaluations` for that user+language, needs ≥3 sessions, promotes at ≥85 / demotes at ≤55, capped at one tier of movement. Exposed as `SessionTurnData.effectiveDifficulty` and used by BOTH the prompt and the analyzer — grading a promoted learner against the authored tier would mark them down for the harder conversation they were given. Cached via new `TTL.PROFICIENCY` + `cacheKeys.learnerProficiency`.
+- Fixed a straggler from phase 0's rescale: `GENERIC_APPROPRIATENESS_RUBRIC` and `JA_APPROPRIATENESS_RUBRIC` still told the model to score expressionAppropriateness `(0-15)`.
+- Lint across `lib/` + `app/api/chat/` went 69 → 63 problems (46 → 45 errors); no new issues introduced.
+
+## 2026-08-24 — Reshape phase 4 (structure, retention, feedback) — PARTIAL
+
+Done:
+- **`/review` page built** (`app/(app)/review/page.tsx`) + added to Sidebar nav. The SM-2 backend (`/api/review/due`, `/api/review/answer`, `srsCards`) was fully working and had **no UI at all**. Three self-grade buttons mapped to SM-2 quality 1/3/5 (a 0-5 scale is not a decision anyone makes quickly mid-drill, and the extra resolution barely moves the schedule). Auto-plays the word on reveal.
+- **Two real bugs found in the same area:**
+  1. The streaming flow **never wrote `vocabulary_encounters`** — only the legacy `/api/sessions/[id]/icebreaker` drill route did. Now written when the icebreaker moves off a word (`usedCorrectly` true on clean production / model advance, false on forced advance).
+  2. Because of (1), `icebreakerPassRate` was always 0, and `finalVocabScore = (blendedVocab + 0) / 2` — **silently halving every streaming session's vocabulary score.** Now only blends when encounters exist.
+- **SRS seeding moved onto the session path.** Card creation lived only in `recordLessonActivity`, so it fired for curriculum lessons and never for freeform sessions — most practice produced nothing to review. The stream route now seeds cards for every word met, `onConflictDoNothing` so existing schedules aren't reset.
+- **Score display fixed everywhere.** Phase 0.2 changed scores to six independent 0-100 dimensions but four UI surfaces still assumed the old maxes: the report page (25/20/20/10/10/15), home + sessions lists (sum/100), and the share page (30/25/20/15/10 — a *third* scale). All now go through new `sessionCompositePct()` in `lib/roleplay/session-metrics.ts`, which delegates to `computeCompositeScore`. **Rule: never render a per-dimension max, never sum-and-divide.**
+- **Session report verdict card**: "You can handle this scenario" / "Not quite there yet" against `PASSING_SCORE_THRESHOLD`, names the two weakest dimensions as "work on next", links to `/review` and (on fail) a retry.
+- **Home daily loop**: due-review card (only when count > 0), and "Continue Practice" now resumes an in-progress session (`/session/[id]`) instead of always dumping the learner at `/hub`.
+
+NOT done in phase 4 — still outstanding:
+- **4.3 Placement + CEFR level tracking** (initial assessment in `app/onboarding/`, seeding `studentProgress`). Not started.
+- 4.1's fuller lesson-path work — the level→unit→lesson path with locked/available/in-progress/completed **already existed** in `app/(app)/courses/[slug]/page.tsx`, so only the daily-loop pieces were added.
+- Phase 5 (LiveKit self-hosted tutor platform) not started.
+
+Carry-overs still open: historical `sessions`/`evaluations` rows are on the pre-phase-0 score scale (no rescale script written); `public/ai-avatars/sunset.hdr` (7.6 MB) is referenced nowhere.
+
+## 2026-08-24 — Reshape phase 5 (live tutoring, self-hosted LiveKit)
+
+Code-complete and **shipping dark** — every surface is gated behind `NEXT_PUBLIC_TUTORS_ENABLED`, which stays unset until a LiveKit server is deployed.
+
+- **Schema** (migration `drizzle/0033_melted_miss_america.sql`, generated via `npm run db:generate` — NOT yet applied; `npm run db:migrate` is still broken by the stale backlog at 0002, so apply manually per the 2026-08-21 note): `tutors`, `tutor_availability` (recurring weekly pattern: day-of-week + minute-of-day, so no timezone arithmetic is stored), `tutor_bookings`, `tutor_evaluations`.
+- `tutorEvaluations` scores use the **same independent 0-100 dimensions as the AI** so human and machine verdicts sit side by side, plus `agreesWithAi` ('agrees' | 'too_generous' | 'too_harsh') — that comparison is the whole point of an evaluation booking.
+- **Deps added** (authorized by the user): `livekit-server-sdk`, `livekit-client`.
+- **Security boundary is `/api/live/token`.** A LiveKit token IS access to a room, so membership + join window are verified server-side before minting. `livekitRoomName` is random (`generateRoomName()`), never derived from the booking id — a sequential name would let anyone with a valid token for their own booking guess someone else's room. The room name is returned only alongside a valid token; `/api/bookings` deliberately omits it.
+- `loadBookingForUser()` in `lib/tutors/bookings.ts` collapses "not found" and "not yours" into a single null (both → 404) so booking ids can't be probed. It lives in lib/, not the route file — route files should only export HTTP handlers.
+- **Reuses the existing `chatRooms` tables** for tutor↔learner chat (including per-member `preferredLanguage` translation, a genuinely good fit when the two may not share a language). No second messaging system.
+- Booking creation validates: tutor is verified + accepting, not booking yourself, slot not in the past, duration in `BOOKING_DURATIONS_MINUTES`, no overlap with a live booking, and — for an evaluation booking — **that the learner owns the referenced session** (otherwise it'd be a way to expose someone else's transcript).
+- Session report now links to `/tutors?session=<id>` ("Get a tutor's opinion") when the flag is on.
+- **Deployment artifacts, not deployed**: `docker-compose.livekit.yml` + `livekit.yaml` (separate from the app's compose files — the media server has its own lifecycle: host networking, UDP 50000-60000, its own TLS). `livekit.yaml` ships a placeholder secret with a loud warning. `.env.example` documents `NEXT_PUBLIC_TUTORS_ENABLED` / `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`.
+- Production caveats recorded in the compose file: browsers need `wss://` for camera/mic off localhost; TURN is needed behind symmetric NAT (coturn stanza present but commented out); generate a real API secret.
+
+Verification: `tsc --noEmit` clean, `npm run build` clean, all 12 new/related routes registered, 7/7 tests pass, **zero lint issues across all tutor code**.
+
+Still outstanding across the whole programme: **4.3 placement/CEFR tracking** (never started), the historical score rescale, and the unreferenced 7.6 MB `public/ai-avatars/sunset.hdr`.
+
+## 2026-08-24 — Dev-server error triage (post-migration/seed run)
+
+None of the logged failures were caused by the migrations or the seed data — the DB is reachable and the curriculum tables are populated (1 course / 2 levels / 5 units / 9 lessons, 8 domains, 64 situations). Every error traced back to outbound-network fragility plus a handful of unguarded call sites.
+
+- **`TypeError: fetch failed` on Neon queries** (`sync-user`, `/api/courses`). Each neon-http query is its own HTTPS request, so a burst of parallel route handlers can exhaust the connect budget — undici's 10s connect timeout fires and drizzle surfaces it as a query failure. `src/db.ts` now installs a `neonConfig.fetchFunction` wrapper that retries **connect-phase failures only** (`UND_ERR_CONNECT_TIMEOUT`, `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`, `ConnectTimeoutError`), 2 retries with 150ms/300ms backoff. Deliberately does **not** retry mid-flight errors — a replayed write is worse than a surfaced error.
+- **`/api/speech/token` 500 (`UND_ERR_CONNECT_TIMEOUT` to `eastus.api.cognitive.microsoft.com`)**, which cascaded into `[TTS] direct synthesis failed` → `/api/tts` → browser voice. Azure `issueToken` responses live 10 min but were being minted on **every** page load. Now cached in Redis (`cacheKeys.speechToken(region)`, `TTL.SPEECH_TOKEN = 540`). Measured 12.9s → 2.6s on the running dev server.
+- **`unhandledRejection: TimeoutError: signal timed out`** was `CharacterSelectDialog.startSession` — `AbortSignal.timeout(10000)` aborting during the cold dev compile of `/api/sessions`, rejecting out of an unawaited click handler so the user saw nothing at all happen. Wrapped in try/catch (alert + log) and raised to 30s.
+- **`Unexpected end of JSON input` on the courses page** — the client called `res.json()` without checking `res.ok`, so a 500 with an empty body masked the real status. Guarded.
+- **`metadataBase` warning** — set in `app/layout.tsx` from the existing `getAppOrigin()`, not a second origin source.
+- **Workspace-root warning** — a stray empty `package-lock.json` in the parent dir (`Desktop/ai_dojo/`) made Next infer the wrong root. Pinned `outputFileTracingRoot` in `next.config.ts` (deleting the stray lockfile would also work).
+- **`[getAuthUserReadOnly] JWT verify failed`** — an expired `session_data` cookie is the normal steady state (the `session_token` fallback re-establishes it), so it no longer logs at error level. The `[getSessionDataFromCookie] Invalid session cookie` line comes from the Neon Auth SDK itself and can't be silenced from here.
+
+**Left alone deliberately:** `THREE.Clock is deprecated` comes from inside three/drei, not our code. And **`getAuthUser()` runs `syncUser()` on every authenticated request** — 2 DB round-trips *plus a write* per API call, the main amplifier behind the connect storm. Caching the email→db-id mapping via `lib/cache.ts` would remove nearly all of it; not done here because it's a perf change beyond the reported errors.
+
+## 2026-08-24 — Per-session avatar identity (`sessions.selected_avatar_id`)
+
+The two-card practice-partner picker forwarded `avatarId` to `/api/sessions` but nothing persisted it: `sessions` stored only `voiceGender` and a `characterId` that the picker deliberately leaves null. So the *voice* was right for a male pick while the *name, role and 3D model* fell back to whatever seeded the shared `scenarios` row (and every male rendered `female_ug.glb`). Worse, scenario rows are shared by every session practising the same situation — patching the row per pick would rewrite the identity of past sessions' transcripts.
+
+- **Schema:** `sessions.selectedAvatarId` (`varchar(40)`, nullable), migration `drizzle/0034_add-selected-avatar-id.sql`. Written in `app/api/sessions/route.ts` from the same catalog lookup that already decided `voiceGender`, so voice and identity can't disagree.
+- **Resolution is at read time, never a write to the shared row.** `applySessionAvatarIdentity(scenario, selectedAvatarId)` in `lib/avatar/catalog.ts` returns the scenario with `aiCharacterName`/`aiCharacterRole` overlaid (unchanged when there's no pick). Used by `loadSessionTurnData` (prompts + greeting), `GET /api/sessions/[id]` (UI, report), `/api/chat`, and `/api/share/[token]` — historical sessions keep the avatar they were actually practised with.
+- **Ordering matters in `loadSessionTurnData`:** the overlay is applied *after* native/target scenario localization, so the avatar the learner picked wins over a localized character name.
+- `avatarRoleLine()` is the single derivation of role-from-persona (first sentence, 145 chars for the varchar(150) column) — it was inlined in three places before.
+- **Client:** `useRoleplaySession` now returns `selectedAvatar: AvatarSource | null` from the session GET; the avatar/voice pages prefer it for `charName`/`charRole`, and the avatar page passes `selectedAvatar.file` as `modelUrl`, so a male pick renders its own GLB instead of the shared female rig. `AvatarViewport3D` still funnels every URL through `resolveAvatarModelUrl`, so female picks keep collapsing onto `female_ug.glb` (the intentional shared-rig behaviour).
+
+Verification: `tsc --noEmit` clean; `npm run lint` unchanged from baseline (269 problems, none in the touched code).

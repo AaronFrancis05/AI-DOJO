@@ -16,6 +16,18 @@ export function createGeminiProvider(): AIProvider {
   const modelName = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
   const ai = new GoogleGenAI({ apiKey });
 
+  // Roleplay replies are specified as 1-3 sentences. Capping output keeps a
+  // model that ignores that from stalling the turn, and bounds the worst case
+  // for the streaming speech queue downstream.
+  const REPLY_MAX_OUTPUT_TOKENS = 400;
+
+  // Spoken conversation is latency-critical: a thinking pass before the first
+  // token is dead air the learner hears. Disabled explicitly rather than
+  // relying on the current default for whichever 2.5-series model is
+  // configured. Analysis (generateJSON) is off the critical path and is left
+  // alone so it can reason about scoring.
+  const thinkingConfig = modelName.includes('2.5') ? { thinkingBudget: 0 } : undefined;
+
   return {
     name: 'gemini',
 
@@ -62,7 +74,11 @@ export function createGeminiProvider(): AIProvider {
         const stream = await ai.models.generateContentStream({
           model: modelName,
           contents,
-          config: { systemInstruction },
+          config: {
+            systemInstruction,
+            maxOutputTokens: REPLY_MAX_OUTPUT_TOKENS,
+            ...(thinkingConfig ? { thinkingConfig } : {}),
+          },
         });
 
         for await (const chunk of stream) {

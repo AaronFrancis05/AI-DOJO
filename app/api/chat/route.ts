@@ -2,8 +2,8 @@ import { db } from '../../../src/db';
 import { dbPool, withSessionLock } from '../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, countries } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
-import type { ChatTurn } from '../../../lib/ai-providers';
 import { AIProviderError, AIQuotaError, AIModelError } from '../../../lib/ai-providers';
+import { buildConversationHistory } from '../../../lib/roleplay/conversation-history';
 import { getTargetLangConfig } from '../../../lib/language';
 import {
   nextPhase,
@@ -17,6 +17,7 @@ import {
 } from '../../../lib/roleplay/phase-engine';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../lib/auth/server';
+import { applySessionAvatarIdentity } from '../../../lib/avatar/catalog';
 
 export async function POST(req: Request) {
   try {
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     const nativeLanguage = session.nativeLanguage ?? 'en';
     const currentPhase = session.phase as 'guided' | 'unguided' | 'evaluation' | 'completed';
 
-    const [currentScenario, conversationRows, goalsResult, completionsResult, situationResult, learnerProfile] = await Promise.all([
+    const [currentScenarioRow, conversationRows, goalsResult, completionsResult, situationResult, learnerProfile] = await Promise.all([
       db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null),
 
       db
@@ -94,9 +95,13 @@ export async function POST(req: Request) {
         .then(r => r[0] ?? { name: '', countryName: null }),
     ]);
 
-    if (!currentScenario) {
+    if (!currentScenarioRow) {
       return Response.json({ error: 'Scenario not found' }, { status: 404 });
     }
+
+    // The AI plays the avatar this session was created with; the shared
+    // scenario row only carries whoever practised the situation first.
+    const currentScenario = applySessionAvatarIdentity(currentScenarioRow, session.selectedAvatarId);
 
     const goals = goalsResult;
     const completedSequenceOrders = completionsResult.map(c => c.seqOrder);
@@ -112,10 +117,7 @@ export async function POST(req: Request) {
       ? Math.max(...conversationRows.map(c => c.turnNo)) + 1
       : 1;
 
-    const conversationHistory: ChatTurn[] = conversationRows.map(row => ({
-      role: row.speaker === 'ai' ? 'assistant' as const : 'user' as const,
-      content: row.messageNative ?? row.messageTarget,
-    }));
+    const conversationHistory = buildConversationHistory(conversationRows);
 
     const mlPipelineOutput = await analyzeAndGenerateTurn(
       userRawInput,
