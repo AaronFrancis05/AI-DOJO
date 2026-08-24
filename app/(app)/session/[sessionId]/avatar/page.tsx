@@ -13,6 +13,7 @@ import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
@@ -79,6 +80,7 @@ export default function AvatarModePage() {
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
   const { status: connectionStatus } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const { caption, playCaption, clear: clearCaption } = useAvatarCaptions();
 
   useEffect(() => {
     if (lastAiCompletedRef.current === 0) {
@@ -192,6 +194,7 @@ export default function AvatarModePage() {
     emotionSystemRef.current?.startThinking();
     stopTts();
     resetStreamingTts();
+    clearCaption();
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -212,6 +215,8 @@ export default function AvatarModePage() {
         },
         onTextDone: (t: string) => {
           const cleaned = cleanDisplay(t);
+          const estDuration = Math.max(3000, cleaned.length * 65);
+          if (cleaned) playCaption(cleaned, estDuration).catch(() => {});
           if (!mutedRef.current && cleaned) {
             speakMixedText(
               cleaned,
@@ -409,6 +414,7 @@ export default function AvatarModePage() {
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t: string) => {
                         const cleaned = cleanDisplay(t);
+                        if (cleaned) playCaption(cleaned, Math.max(3000, cleaned.length * 65)).catch(() => {});
                         if (!mutedRef.current && cleaned) {
                           speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                         }
@@ -457,6 +463,7 @@ export default function AvatarModePage() {
               mode={avatarMode}
               modelUrl={avatarModelUrl}
               cameraMode="front"
+              caption={caption}
               onSystemReady={(sys) => {
                 emotionSystemRef.current = sys;
                 if (speakingRef.current) sys.startTalking?.();

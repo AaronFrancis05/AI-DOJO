@@ -13,6 +13,7 @@ import {
   getDevWarnings,
   subscribeWarnings,
 } from '@/components/roleplay/three/AnimatedModel';
+import { AvatarCaptionsOverlay } from '@/components/roleplay/AvatarCaptionsOverlay';
 
 /* ── Error boundary around the Canvas ──────────────── */
 class AvatarErrorBoundary extends React.Component<
@@ -125,7 +126,7 @@ export const DEFAULT_AVATAR_MODEL_URL = '/ai-avatars/models/female_jp.glb';
 
 /* ── Exported component ──────────────────────────── */
 export function AvatarViewport3D({
-  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed, freezeOnIdle, onSystemReady,
+  name, accentColor, mode = 'idle', emotion, gesture, cameraMode, modelUrl, cameraIntent = 'face-camera', onFramed, freezeOnIdle, onSystemReady, caption,
 }: {
   name: string;
   accentColor: string;
@@ -138,6 +139,7 @@ export function AvatarViewport3D({
   onFramed?: () => void;
   freezeOnIdle?: boolean;
   onSystemReady?: (system: EmotionSystem) => void;
+  caption?: string | null;
 }) {
   const [webglSupported, setWebglSupported] = useState<boolean | null>(null);
   const [framed, setFramed] = useState(false);
@@ -209,6 +211,7 @@ export function AvatarViewport3D({
           />
         </div>
       </AvatarErrorBoundary>
+      <AvatarCaptionsOverlay caption={caption ?? null} />
     </div>
   );
 }

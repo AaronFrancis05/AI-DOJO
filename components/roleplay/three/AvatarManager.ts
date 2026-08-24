@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { AvatarScale } from './AvatarScale';
 
 function disposeObject3D(object: THREE.Object3D): void {
@@ -25,10 +26,12 @@ export class AvatarManager {
   scene: THREE.Scene;
   currentAvatar: { scene: THREE.Group; dispose: () => void } | null = null;
   loader: GLTFLoader;
+  private _loadToken = 0;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.loader = new GLTFLoader();
+    this.loader.setMeshoptDecoder(MeshoptDecoder);
   }
 
   get avatarModel() {
@@ -63,10 +66,21 @@ export class AvatarManager {
     url: string,
     _personaName?: string | null,
     customization?: { scale?: number; verticalOffset?: number },
+    timeoutMs = 30000,
   ): Promise<{ scene: THREE.Group; dispose: () => void }> {
     this._removeCurrent();
 
+    this._loadToken += 1;
+    const myToken = this._loadToken;
+
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(`Avatar load timed out after ${timeoutMs}ms for "${url}" — check your connection.`));
+      }, timeoutMs);
+
       this.loader.load(
         url,
         (gltf) => {
@@ -83,13 +97,32 @@ export class AvatarManager {
 
           AvatarScale.apply(wrapper.scene, customization);
 
+          if (settled) return;
+          if (myToken !== this._loadToken) {
+            settled = true;
+            clearTimeout(timeoutId);
+            disposeObject3D(gltf.scene);
+            reject(new Error('Superseded by a newer avatar load'));
+            return;
+          }
+
           this.scene.add(gltf.scene);
           this.currentAvatar = wrapper;
 
+          settled = true;
+          clearTimeout(timeoutId);
           resolve(wrapper);
         },
         undefined,
         (error) => {
+          if (settled) return;
+          if (myToken !== this._loadToken) {
+            settled = true;
+            clearTimeout(timeoutId);
+            return;
+          }
+          settled = true;
+          clearTimeout(timeoutId);
           const errorObj = error as Error | null;
           const raw = (errorObj?.message) || String(error || '');
           const friendly =

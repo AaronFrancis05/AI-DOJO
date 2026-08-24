@@ -18,6 +18,8 @@ import type { CharacterFixture } from '@/lib/data/characters';
 import { useUser } from '@/lib/auth/user-context';
 import { useAvatar } from '@/lib/auth/avatar-context';
 import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
+import { AvatarPicker } from '@/components/roleplay/AvatarPicker';
+import { getAvatar } from '@/lib/avatar/catalog';
 import { Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
 
 const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
@@ -31,6 +33,7 @@ const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-varia
 
 const tabs: Tab[] = [
   { id: 'avatar', label: 'My Avatar' },
+  { id: 'catalog', label: 'Catalog' },
   { id: 'voice', label: 'AI Voice Preferences' },
 ];
 
@@ -54,6 +57,8 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
   const [voicePitch, setVoicePitch] = useState(50);
   const [characters, setCharacters] = useState<CharacterFixture[]>([]);
   const [savingGender, setSavingGender] = useState<Record<number, boolean>>({});
+  const [catalogPick, setCatalogPick] = useState<string | null>(null);
+  const [savingCatalog, setSavingCatalog] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -178,7 +183,45 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                       </button>
                     </div>
                   )}
+                  <p className="mt-3 text-xs text-dojo-text-muted">
+                    Or pick from the <span className="font-medium text-dojo-text-primary">Catalog</span> tab — 43 built-in avatars with thumbnails, ported from ai-avatar-ui.
+                  </p>
                 </div>
+              </div>
+            );
+          case 'catalog':
+            return (
+              <div className="space-y-4">
+                <p className="text-xs text-dojo-text-muted leading-relaxed">
+                  Choose any of the 43 catalog avatars. They are served from <code className="rounded bg-dojo-surface px-1">/ai-avatars/models/*.glb</code> + thumbnails and persist via <code className="rounded bg-dojo-surface px-1">/api/user/avatars</code>.
+                </p>
+                <AvatarPicker
+                  selectedId={catalogPick ?? selectedAvatar?.avatarUrl?.match(/\/([^/]+)\.glb$/)?.[1] ?? null}
+                  onSelect={async (avatar) => {
+                    setCatalogPick(avatar.id);
+                    const data = getAvatar(avatar.id);
+                    setSavingCatalog(true);
+                    try {
+                      const res = await fetch('/api/user/avatars', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ avatarUrl: data.file, thumbnailUrl: data.thumbnail }),
+                      });
+                      if (!res.ok) throw new Error('save failed');
+                      // refresh avatar context by reloading — simplest
+                      window.location.reload();
+                    } catch {
+                      setSavingCatalog(false);
+                    }
+                  }}
+                />
+                {savingCatalog && (
+                  <p className="flex items-center gap-2 text-xs text-dojo-text-muted">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-dojo-accent border-t-transparent" />
+                    Saving…
+                  </p>
+                )}
               </div>
             );
           case 'voice':
