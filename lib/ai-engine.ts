@@ -1,4 +1,4 @@
-import { getTargetLangConfig, getNativeLangName } from './language';
+import { getTargetLangConfig, getNativeLangName, TARGET_LANGUAGES } from './language';
 import { getDifficultyTierDescription, getAppropriatenessRubric } from './language-packs';
 import { getAIProvider } from './ai-providers';
 import type { ChatTurn } from './ai-providers';
@@ -84,15 +84,33 @@ export interface AIResponseAnalysis {
   scenarioComplete: boolean;
 }
 
-const TARGET_LANG_NAMES: Record<string, string> = {
-  ja: 'Japanese',
-  en: 'English',
-};
+/**
+ * Single source of truth for the learner-identity + placeholder-guard
+ * instruction block. Every prompt that generates or evaluates a reply the
+ * learner will read must include this — duplicating it inline per call site
+ * is how the "[Your Name]"-style placeholder bug slipped past one prompt
+ * (lib/ai-engine.ts) while still shipping live in another (the streaming
+ * prompt in app/api/chat/stream/route.ts).
+ */
+export function buildIdentityAndGuardBlock(learnerName?: string, learnerCountry?: string | null): string {
+  return learnerName
+    ? `- The REAL learner you are talking to is named "${learnerName}"${learnerCountry ? ` and they are from ${learnerCountry}` : ''}. Use this real information whenever the roleplay calls for the learner's name or country — never invent a placeholder, never leave a blank unfilled, and never ask for information you already have here.
 
-const TARGET_LANG_NATIVE: Record<string, string> = {
-  ja: '日本語',
-  en: 'English',
-};
+===== PLACEHOLDER GUARD =====
+NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`
+    : `- The real learner's profile name/country were not provided. If the roleplay requires their name or country, ask for it naturally in-character before using it — never guess and never emit a placeholder token.
+
+===== PLACEHOLDER GUARD =====
+NEVER output an unresolved template artifact as visible text — no "___", no bracketed placeholders like "[Name]" or "[Country]", no unfilled blanks of any kind. If you need information about the learner that isn't provided above, ask for it naturally in-character before using it in a sentence — never guess or emit a placeholder token.`;
+}
+
+const TARGET_LANG_NAMES: Record<string, string> = Object.fromEntries(
+  TARGET_LANGUAGES.map(l => [l.code, l.name]),
+);
+
+const TARGET_LANG_NATIVE: Record<string, string> = Object.fromEntries(
+  TARGET_LANGUAGES.map(l => [l.code, l.nativeName]),
+);
 
 export async function analyzeAndGenerateTurn(
   userInput: string,
@@ -122,6 +140,8 @@ export async function analyzeAndGenerateTurn(
   targetLanguage: string = 'ja',
   nativeLanguage: string = 'en',
   isRetryOfPreviousMistake: boolean = false,
+  learnerName?: string,
+  learnerCountry?: string | null,
 ): Promise<AIResponseAnalysis> {
 
   const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
@@ -168,6 +188,8 @@ The AI character should be cooperative, friendly, and helpful. They should:
     ? `    "phonetic": "Phonetic transcription of that AI response sentence (only if target language is Japanese, otherwise null)",`
     : '';
 
+  const learnerIdentityBlock = buildIdentityAndGuardBlock(learnerName, learnerCountry);
+
   const systemInstruction = `
 You are an advanced backend AI processor engine handling a multi-turn ${targetLangName} language simulation game called "AI DOJO".
 
@@ -176,6 +198,7 @@ You are an advanced backend AI processor engine handling a multi-turn ${targetLa
 - Learning goals: ${effectiveGoals}
 - AI character you play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
 - The scenario has a placeholder user character named "${scenario.userCharacterName}" with role "${scenario.userCharacterRole}".
+${learnerIdentityBlock}
 
 ${modeInstruction}
 
@@ -329,6 +352,8 @@ export async function analyzeUserTurn(
   situationLearningGoals?: string,
   targetLanguage: string = 'ja',
   nativeLanguage: string = 'en',
+  learnerName?: string,
+  learnerCountry?: string | null,
 ): Promise<UserTurnAnalysis> {
   const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
   const nativeLangName = getNativeLangName(nativeLanguage);
@@ -371,6 +396,8 @@ The AI character should be cooperative, friendly, and helpful. They should:
     ? `  - "phonetic": "Phonetic transcription of what the user said (only if target language is Japanese, otherwise null)"`
     : '';
 
+  const learnerIdentityBlock = buildIdentityAndGuardBlock(learnerName, learnerCountry);
+
   const systemInstruction = `
 You are an advanced backend AI processor engine handling a multi-turn ${targetLangName} language simulation game called "AI DOJO".
 
@@ -379,6 +406,7 @@ You are an advanced backend AI processor engine handling a multi-turn ${targetLa
 - Learning goals: ${effectiveGoals}
 - AI character you play: ${scenario.aiCharacterName} (${scenario.aiCharacterRole})
 - The scenario has a placeholder user character named "${scenario.userCharacterName}" with role "${scenario.userCharacterRole}".
+${learnerIdentityBlock}
 
 ${modeInstruction}
 

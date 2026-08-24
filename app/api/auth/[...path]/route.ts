@@ -239,10 +239,21 @@ async function handleGET(request: NextRequest, { params }: { params: Promise<{ p
 
 async function handlePOST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');
-  let verifiedRequest: NextRequest;
+  let verifiedRequest: Request;
   try {
-    verifiedRequest = new NextRequest(withVerifiedRequestOrigin(request));
-  } catch {
+    // withVerifiedRequestOrigin now mutates the existing request in place
+    // instead of `new Request(request, ...)` which throws for NextRequest
+    // ("Cannot read private member #state"). No re-wrapping needed.
+    verifiedRequest = withVerifiedRequestOrigin(request);
+  } catch (err) {
+    console.error('[auth-proxy] Origin check failed', {
+      path,
+      origin: request.headers.get('origin'),
+      // Never call getAppOrigin() here — it throws when APP_ORIGIN is unset
+      // in production, which would mask the original error before the 403.
+      appOrigin: process.env.APP_ORIGIN ?? '(unset)',
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Invalid Origin' }, { status: 403 });
   }
 
@@ -251,6 +262,14 @@ async function handlePOST(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const response = await builtin.POST!(verifiedRequest, { params });
+
+  if (path === 'sign-out' && (!response.ok || response.status >= 400)) {
+    const bodyPreview = await response.clone().text().catch(() => '');
+    console.error('[auth-proxy] sign-out upstream error', {
+      status: response.status,
+      bodyPreview: bodyPreview.slice(0, 300),
+    });
+  }
 
   if (!response.ok || response.status !== 200) return response;
 

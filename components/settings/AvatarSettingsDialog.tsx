@@ -18,6 +18,7 @@ import type { CharacterFixture } from '@/lib/data/characters';
 import { useUser } from '@/lib/auth/user-context';
 import { useAvatar } from '@/lib/auth/avatar-context';
 import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
+import { AvatarPicker } from '@/components/roleplay/AvatarPicker';
 import { Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
 
 const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
@@ -31,6 +32,7 @@ const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-varia
 
 const tabs: Tab[] = [
   { id: 'avatar', label: 'My Avatar' },
+  { id: 'catalog', label: 'Catalog' },
   { id: 'voice', label: 'AI Voice Preferences' },
 ];
 
@@ -48,12 +50,15 @@ interface AvatarSettingsDialogProps {
 
 export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProps) {
   const user = useUser();
-  const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar } = useAvatar();
+  const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar, refresh } = useAvatar();
   const [showAvaturn, setShowAvaturn] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState(50);
   const [voicePitch, setVoicePitch] = useState(50);
   const [characters, setCharacters] = useState<CharacterFixture[]>([]);
   const [savingGender, setSavingGender] = useState<Record<number, boolean>>({});
+  const [catalogPick, setCatalogPick] = useState<string | null>(null);
+  const [savingCatalog, setSavingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -178,7 +183,53 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                       </button>
                     </div>
                   )}
+                  <p className="mt-3 text-xs text-dojo-text-muted">
+                    Or pick from the <span className="font-medium text-dojo-text-primary">Catalog</span> tab — 43 built-in avatars with thumbnails, ported from ai-avatar-ui.
+                  </p>
                 </div>
+              </div>
+            );
+          case 'catalog':
+            return (
+              <div className="space-y-4">
+                <p className="text-xs text-dojo-text-muted leading-relaxed">
+                  Choose any of the 43 catalog avatars. They are served from <code className="rounded bg-dojo-surface px-1">/ai-avatars/models/*.glb</code> + thumbnails and persist via <code className="rounded bg-dojo-surface px-1">/api/user/avatars</code>.
+                </p>
+                <AvatarPicker
+                  disabled={savingCatalog}
+                  selectedId={catalogPick ?? selectedAvatar?.avatarUrl?.match(/\/([^/]+)\.glb$/)?.[1] ?? null}
+                  onSelect={async (avatar) => {
+                    if (savingCatalog) return;
+                    const previousPick = catalogPick;
+                    setCatalogPick(avatar.id);
+                    setCatalogError(null);
+                    setSavingCatalog(true);
+                    try {
+                      const res = await fetch('/api/user/avatars', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ avatarUrl: avatar.file, thumbnailUrl: avatar.thumbnail }),
+                      });
+                      if (!res.ok) throw new Error('save failed');
+                      await refresh();
+                    } catch {
+                      setCatalogPick(previousPick);
+                      setCatalogError('Failed to save avatar — please try again.');
+                    } finally {
+                      setSavingCatalog(false);
+                    }
+                  }}
+                />
+                {savingCatalog && (
+                  <p className="flex items-center gap-2 text-xs text-dojo-text-muted">
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-dojo-accent border-t-transparent" />
+                    Saving…
+                  </p>
+                )}
+                {catalogError && (
+                  <p className="text-xs text-dojo-danger" role="alert">{catalogError}</p>
+                )}
               </div>
             );
           case 'voice':

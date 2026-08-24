@@ -357,6 +357,7 @@ function AnimationSystemHost({
     AvatarScale.apply(scene);
 
     const emo = await initAnimSystem();
+    emo.animation.play('idle', { loop: true, fade: 0 });
     setInitialized(true);
     onSystemReady?.(emo);
     onGrounded?.();

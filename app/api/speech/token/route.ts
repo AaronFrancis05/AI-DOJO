@@ -1,9 +1,19 @@
 import { getAuthUser } from '@/lib/auth/server';
+import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
+
+const MAX_SPEECH_TOKENS_PER_IP_PER_HOUR = 30;
 
 export async function GET(req: Request) {
   const user = await getAuthUser();
   if (!user) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    // Allow unauthenticated tryout guests with rate limiting (same window as tryout)
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const rateLimitKey = cacheKeys.tryoutRateLimit(`speech:${ip}`);
+    const currentCount = (await cacheGet<number>(rateLimitKey)) ?? 0;
+    if (currentCount >= MAX_SPEECH_TOKENS_PER_IP_PER_HOUR) {
+      return Response.json({ error: 'Too many speech requests. Please try again later.' }, { status: 429 });
+    }
+    await cacheSet(rateLimitKey, currentCount + 1, TTL.TRYOUT_RATE_LIMIT);
   }
 
   const region = process.env.AZURE_SPEECH_REGION;

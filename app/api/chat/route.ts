@@ -1,6 +1,6 @@
 import { db } from '../../../src/db';
 import { dbPool, withSessionLock } from '../../../src/db-pool';
-import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters } from '../../../src/schema';
+import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, countries } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import type { ChatTurn } from '../../../lib/ai-providers';
 import { AIProviderError, AIQuotaError, AIModelError } from '../../../lib/ai-providers';
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     const nativeLanguage = session.nativeLanguage ?? 'en';
     const currentPhase = session.phase as 'guided' | 'unguided' | 'evaluation' | 'completed';
 
-    const [currentScenario, conversationRows, goalsResult, completionsResult, situationResult] = await Promise.all([
+    const [currentScenario, conversationRows, goalsResult, completionsResult, situationResult, learnerProfile] = await Promise.all([
       db.select().from(scenarios).where(eq(scenarios.id, scenarioId)).then(r => r[0] ?? null),
 
       db
@@ -85,6 +85,13 @@ export async function POST(req: Request) {
       session.situationId
         ? db.select().from(situations).where(eq(situations.id, session.situationId)).then(r => r[0] ?? null)
         : Promise.resolve(null),
+
+      db
+        .select({ name: users.name, countryName: countries.name })
+        .from(users)
+        .leftJoin(countries, eq(users.countryCode, countries.code))
+        .where(eq(users.id, session.userId))
+        .then(r => r[0] ?? { name: '', countryName: null }),
     ]);
 
     if (!currentScenario) {
@@ -123,6 +130,8 @@ export async function POST(req: Request) {
       targetLanguage,
       nativeLanguage,
       isRetryOfPreviousMistake,
+      learnerProfile.name,
+      learnerProfile.countryName,
     );
 
     const targetCfg = getTargetLangConfig(targetLanguage);

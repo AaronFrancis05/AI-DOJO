@@ -13,6 +13,8 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "db:seed": "tsx src/seed.ts",
     "db:localize": "tsx scripts/generate-scenario-localizations.ts",
+    "db:backfill-target-localizations": "tsx scripts/backfill-target-localizations.ts",
+    "db:export-localizations": "tsx scripts/export-localizations.ts",
     "db:check-localization": "tsx scripts/check-course-localization.ts",
     "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
     "docker:prod": "docker compose up --build -d",

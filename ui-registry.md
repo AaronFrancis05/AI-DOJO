@@ -4,22 +4,27 @@
 **File:** `lib/design-tokens.ts`  
 **CSS Vars:** Defined in `app/globals.css` under `:root`
 
-| Token | CSS Variable | Tailwind Class | Hex |
-|-------|-------------|----------------|-----|
-| Canvas bg | `--color-canvas` | `bg-dojo-canvas` | `#050B14` |
-| Sidebar bg | `--color-sidebar` | `bg-dojo-sidebar` | `#010A18` |
-| Surface bg | `--color-surface` | `bg-dojo-surface` | `#0B1526` |
-| Surface raised | `--color-surface-raised` | `bg-dojo-surface-raised` | `#111D33` |
-| Border | `--color-border` | `border-dojo-border` | `#1C2A42` |
-| Accent (primary) | `--color-accent` | `bg-dojo-accent` | `#2D3BC5` |
-| Success | `--color-success` | `bg-dojo-success` | `#2FAE66` |
-| Warning | `--color-warning` | `bg-dojo-warning` | `#E3A939` |
-| Danger | `--color-danger` | `bg-dojo-danger` | `#D14343` |
-| Streak | `--color-streak` | `text-dojo-streak` | `#F0A93B` |
-| Text primary | `--color-text-primary` | `text-dojo-text-primary` | `#F4F4F8` |
-| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#8A93A8` |
+Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm dark variant — see `app/globals.css`.
+
+| Token | CSS Variable | Tailwind Class | Hex (light) | Hex (dark) |
+|-------|-------------|----------------|-----|-----|
+| Canvas bg | `--color-canvas` | `bg-dojo-canvas` | `#F5F0E6` | `#1B1512` |
+| Sidebar bg | `--color-sidebar` | `bg-dojo-sidebar` | `#EFE8D8` | `#130F0C` |
+| Surface bg | `--color-surface` | `bg-dojo-surface` | `#FAF6EE` | `#241C17` |
+| Surface raised | `--color-surface-raised` | `bg-dojo-surface-raised` | `#FFFFFF` | `#2C2119` |
+| Border | `--color-border` | `border-dojo-border` | `#E3D9C4` | `#3C2E24` |
+| Accent (primary) | `--color-accent` | `bg-dojo-accent` | `#C1392B` | `#DD5B47` |
+| Accent soft | `--color-accent-soft` | `bg-dojo-accent-soft` | `#F5DAD3` | `#472922` |
+| Success | `--color-success` | `bg-dojo-success` | `#16A34A` | `#2FAE66` |
+| Warning | `--color-warning` | `bg-dojo-warning` | `#D97706` | `#E3A939` |
+| Danger | `--color-danger` | `bg-dojo-danger` | `#DC2626` | `#D14343` |
+| Streak | `--color-streak` | `text-dojo-streak` | `#EA580C` | `#F0A93B` |
+| Text primary | `--color-text-primary` | `text-dojo-text-primary` | `#221A14` | `#F5F0E6` |
+| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#6B6153` | `#A99C8B` |
 
 **Radius:** `--radius-sm: 8px`, `--radius-md: 12px`, `--radius-lg: 16px`
+
+**Fonts:** `--font-sans` (Inter, body/UI), `--font-mono` (Geist Mono), `--font-display` (Playfair Display, `font-display` utility) — used for hero/section headings on the marketing site.
 
 ## UI Primitives (`/components/ui/`)
 | Component | Props | Usage Notes |
@@ -39,6 +44,13 @@
 | `BehaviorModeToggle` | `value`, `onChange` | Standard/Trouble pill toggle |
 | `SliderRow` | `label`, `value`, `min/max`, `onChange` | Labelled range slider for settings |
 
+## Marketing Components (`/components/marketing/`)
+| Component | Props | Notes |
+|-----------|-------|-------|
+| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar |
+| `DemoVideoDialog` | — | Fullscreen modal with custom video controls, triggered from the hero |
+| `TryoutPanel` | — | Client-side target/native language picker on the hero; pulls target languages from `lib/language.ts` `TARGET_LANGUAGES` and native languages from `NATIVE_LANGUAGES`. Links to `/tryout?targetLanguage=..&nativeLanguage=..`, which runs a real (unauthenticated, client-local) guest roleplay preview — see `app/tryout/`, `app/api/tryout/turn/route.ts`, `lib/hooks/useGuestRoleplaySession.ts`. On preview completion the user is prompted to sign up via `/auth?targetLanguage=..&nativeLanguage=..`, which prefills those preferences and skips onboarding |
+
 ## App Shell (`/components/shell/`)
 | Component | Notes |
 |-----------|-------|
@@ -53,6 +65,17 @@
 | `RoleplayInputBar` | Text/voice toggle input + send button. Input has `min-w-0 flex-1` for proper shrink on narrow viewports. |
 | `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
 | `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
+| `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
+| `AvatarCaptionsOverlay` | `bg-black/70 backdrop-blur` pill at `bottom-6`; `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. |
+| `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`); otherwise same as before. |
+
+## Avatar Catalog (`/lib/avatar/`)
+
+| Module | Notes |
+|--------|-------|
+| `lib/avatar/catalog.ts` | 43-entry `AVATAR_DATA` + `AVATAR_SOURCES` (`/ai-avatars/models/*.glb` + `/ai-avatars/thumbnails/*.webp`); `getAvatar/getAllAvatars/setPersonaOverride` cache keyed `${instanceId}::${avatarId}` — port of `ai-avatar-ui/src/avatar/AvatarSources.js`. |
+| `lib/avatar/dojo-adapter.ts` | `DojoBrainAdapter` replacing `CharacterBrain` (`CharacterBrain.js:117-232`): `ask→POST /api/chat/stream` SSE + `POST /api/tts`, `history→GET /api/sessions/[id]`, `getSettings→GET /api/user/preferences\|/api/user/avatars`. |
+| `lib/hooks/useAvatarCaptions.ts` | `splitIntoCaptionChunks(130)` + `playCaption(text,totalDurationMs)` (`MIN_CHUNK_MS=900` proportional) — port of `AvatarController.js:758-817`. |
 
 ## Route Map (Phase F1-F4)
 | Route | Panel | Status |
@@ -111,6 +134,13 @@ Last updated: 2026-07-25
 - Barge-in: pressing mic while AI speaking calls `stopTts()` before starting recognition
 - Caption bubble uses dashed border to distinguish from chat bubble
 - Live caption falls back from external partial to voice.partialTranscript
+- Note: this component is currently unreferenced — the live mic UI lives inline in `app/(app)/session/[sessionId]/voice/page.tsx` and `avatar/page.tsx`, both built on `useVoiceInput`/`lib/roleplay/pronunciation.ts`. Docs below describe that actual live implementation.
+
+**`useVoiceInput` / `lib/roleplay/pronunciation.ts` (live mic capture, 2026-08-24):**
+- `pronunciation.ts` prewarms the Azure Speech token + `SpeechRecognizer` on mount (`prewarmRecognizer`) so the first mic press doesn't pay for a network round trip before capture starts; the auth token is refreshed on an interval so long sessions don't silently stop capturing after the ~10min token TTL.
+- `useVoiceInput().stop()` awaits any in-flight `start()` before issuing the stop, so a fast push-to-talk tap-and-release can't race ahead of the recognizer attaching its handlers and drop the utterance.
+- `voice.volumeLevel` is driven by a real `AnalyserNode` RMS reading of the mic stream (independent of the Speech SDK's own audio input), not a proxy off transcript length — this is what the mic button's ring/scale and the voice-only orb's swell react to.
+- `VoiceOnlyStage`'s `mode` prop now includes `'thinking'` (three pulsing dots + "Thinking" status pill) for the gap between mic release and the first streamed AI token, so the user isn't staring at a "Ready" orb wondering if their voice was dropped. The avatar (3D) page mirrors capture state via `EmotionSystem.startListening()/stopListening()` and shows a "Thinking…" caption for the same gap.
 
 ### ConnectionLatencyIndicator
 

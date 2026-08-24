@@ -86,6 +86,44 @@ test('rejects a mismatched browser Origin without replacing it', () => {
   );
 });
 
+test('preserves abort signal when rebuilding request without Origin', () => {
+  const env = process.env as Record<string, string | undefined>;
+  const prev = {
+    NODE_ENV: env.NODE_ENV,
+    APP_ORIGIN: env.APP_ORIGIN,
+  };
+  env.NODE_ENV = 'production';
+  env.APP_ORIGIN = 'https://ai-dojo.akademia.co.jp';
+  try {
+    // Force the fallback branch by making headers.set throw.
+    const controller = new AbortController();
+    const req = new Request('https://0.0.0.0:3000/api/auth/sign-out', {
+      method: 'POST',
+      signal: controller.signal,
+    });
+    Object.defineProperty(req, 'headers', {
+      value: new Proxy(req.headers, {
+        get(target, prop) {
+          if (prop === 'set') throw new Error('immutable');
+          const v = (target as unknown as Record<string, unknown>)[prop as string];
+          return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+        },
+      }),
+      configurable: true,
+    });
+    const rebuilt = withVerifiedRequestOrigin(req);
+    assert.equal(rebuilt.signal.aborted, false);
+    controller.abort();
+    assert.equal(rebuilt.signal.aborted, true);
+    assert.equal(rebuilt.headers.get('origin'), 'https://ai-dojo.akademia.co.jp');
+  } finally {
+    if (prev.NODE_ENV === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = prev.NODE_ENV;
+    if (prev.APP_ORIGIN === undefined) delete env.APP_ORIGIN;
+    else env.APP_ORIGIN = prev.APP_ORIGIN;
+  }
+});
+
 test('forwards SDK cookies once without changing security attributes', () => {
   const source = new Headers();
   source.append(

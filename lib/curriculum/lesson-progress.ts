@@ -64,6 +64,13 @@ export async function recordLessonActivity({
     ? Math.max(existingLessonProgress.bestScore ?? 0, score ?? 0)
     : (score ?? null);
   const attempts = (existingLessonProgress?.attempts ?? 0) + 1;
+  // A retry of an already-completed lesson must not re-award XP or
+  // re-count toward the course's lessonsCompleted total.
+  const isFirstCompletion = complete && existingLessonProgress?.status !== 'completed';
+  // Replaying an already-completed lesson (e.g. "Try Again" with different
+  // language settings) must not move the course's current-position pointer
+  // backwards to this lesson.
+  const isReplay = existingLessonProgress?.status === 'completed';
 
   const [lessonProgressRow] = await db
     .insert(studentLessonProgress)
@@ -109,8 +116,8 @@ export async function recordLessonActivity({
         currentUnitId: lesson.unitId,
         currentLessonId: lesson.id,
         currentPhaseKey: phaseKey,
-        lessonsCompleted: complete ? 1 : 0,
-        xpEarned: complete ? LESSON_COMPLETION_XP : 0,
+        lessonsCompleted: isFirstCompletion ? 1 : 0,
+        xpEarned: isFirstCompletion ? LESSON_COMPLETION_XP : 0,
         status: 'in_progress',
         lastActivityAt: now,
         updatedAt: now,
@@ -118,14 +125,14 @@ export async function recordLessonActivity({
       .onConflictDoUpdate({
         target: [studentProgress.userId, studentProgress.courseId, studentProgress.targetLanguage],
         set: {
-          currentLevelId: unit?.levelId ?? null,
-          currentUnitId: lesson.unitId,
-          currentLessonId: lesson.id,
-          currentPhaseKey: phaseKey,
-          lessonsCompleted: complete
+          currentLevelId: isReplay ? studentProgress.currentLevelId : (unit?.levelId ?? null),
+          currentUnitId: isReplay ? studentProgress.currentUnitId : lesson.unitId,
+          currentLessonId: isReplay ? studentProgress.currentLessonId : lesson.id,
+          currentPhaseKey: isReplay ? studentProgress.currentPhaseKey : phaseKey,
+          lessonsCompleted: isFirstCompletion
             ? sql`${studentProgress.lessonsCompleted} + 1`
             : studentProgress.lessonsCompleted,
-          xpEarned: complete
+          xpEarned: isFirstCompletion
             ? sql`${studentProgress.xpEarned} + ${LESSON_COMPLETION_XP}`
             : studentProgress.xpEarned,
           status: 'in_progress',

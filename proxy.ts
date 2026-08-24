@@ -15,7 +15,24 @@ function withPublicOrigin(request: NextRequest): NextRequest {
   const publicOrigin = getAppOrigin();
   const current = new URL(request.url);
   if (current.origin === publicOrigin) return request;
-  return new NextRequest(new URL(current.pathname + current.search, publicOrigin), request);
+  // Avoid `new NextRequest(url, request)` — passing a NextRequest as init
+  // throws "Cannot read private member #state" in this Next.js version.
+  // Rebuild explicitly from URL string + method/headers/body.
+  const headers = new Headers(request.headers);
+  const init: RequestInit & { duplex?: string } = {
+    method: request.method,
+    headers,
+  };
+  // Preserve body for non-GET/HEAD so a POST that reaches protectedMiddleware
+  // doesn't arrive with body === null (and a stale content-length).
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.body) {
+    // Clone the stream so the original request remains readable.
+    init.body = request.clone().body as unknown as BodyInit;
+    init.duplex = 'half';
+    // Let fetch set content-length from the stream; a stale header would mismatch.
+    headers.delete('content-length');
+  }
+  return new NextRequest(new URL(current.pathname + current.search, publicOrigin).toString(), init as unknown as never);
 }
 
 async function checkSessionAndRedirect(request: NextRequest) {
@@ -72,6 +89,11 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow unauthenticated access to tryout guest preview (no DB session)
+  if (pathname.startsWith('/tryout')) {
+    return NextResponse.next();
+  }
+
   // Public routes — redirect authenticated users to /home
   if (PUBLIC_REFRESH_PATHS.has(pathname)) {
     return checkSessionAndRedirect(req);
@@ -82,5 +104,5 @@ export default async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|restaurant.png|.+\.hdr$|.+\.mp4$|.+\.png$|.+\.jpg$|.+\.jpeg$|.+\.webp$|.+\.gif$|.+\.svg$|.+\.ico$|.+\.woff2?$|.+\.ttf$|.+\.glb$|.+\.css$|.+\.js$|.+\.json$|auth(?:/|$)|api(?:/|$)|share(?:/|$)).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|avatar.png|background.png|restaurant.png|.+\\.hdr$|.+\\.mp4$|.+\\.png$|.+\\.jpg$|.+\\.jpeg$|.+\\.webp$|.+\\.gif$|.+\\.svg$|.+\\.ico$|.+\\.woff2?$|.+\\.ttf$|.+\\.glb$|.+\\.css$|.+\\.js$|.+\\.json$|auth(?:/|$)|api(?:/|$)|share(?:/|$)|tryout(?:/|$)).*)'],
 };
