@@ -1,31 +1,36 @@
 'use client';
 
+import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
 import PasswordInput from '@/components/PasswordInput';
+import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { LoaderIcon, AlertCircleIcon, CheckCircleIcon } from '@/components/Icons';
 
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') ?? '';
+  // Neon Auth validates the emailed link itself and bounces here with
+  // ?error=INVALID_TOKEN (expired, already used, or tampered with) instead of
+  // a token. Without reading it, a spent link renders a working-looking form
+  // that only fails once the learner has typed a new password twice.
+  const linkError = searchParams.get('error');
+  const linkIsUsable = Boolean(token) && !linkError;
 
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
 
-    if (!token) {
-      setError('This reset link is invalid or missing a token. Request a new one.');
-      return;
-    }
     if (password !== confirm) {
       setError("Passwords don't match.");
       return;
@@ -51,12 +56,40 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-neutral-50 px-4 py-12">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-        {!done ? (
+    <div className="flex min-h-dvh items-center justify-center bg-dojo-canvas px-4 py-12">
+      <div className="w-full max-w-sm rounded-2xl border border-dojo-border bg-dojo-surface p-6 shadow-sm sm:p-8">
+        {done ? (
+          <div className="flex flex-col items-center py-2 text-center">
+            <CheckCircleIcon className="h-10 w-10 text-dojo-success" />
+            <h2 className="mt-3 text-lg font-bold text-dojo-text-primary">Password updated</h2>
+            <p className="mt-1 text-sm text-dojo-text-muted">Redirecting you to log in…</p>
+          </div>
+        ) : !linkIsUsable ? (
+          <div className="flex flex-col items-center py-2 text-center">
+            <AlertCircleIcon className="h-10 w-10 text-dojo-danger" />
+            <h2 className="mt-3 text-lg font-bold text-dojo-text-primary">This link no longer works</h2>
+            <p className="mt-1 text-sm text-dojo-text-muted leading-relaxed">
+              Reset links can only be used once and expire an hour after they&apos;re sent.
+              Request a fresh one and we&apos;ll email it straight over.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              className="mt-4 w-full rounded-lg bg-dojo-accent py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              Request a new link
+            </button>
+            <Link
+              href="/auth"
+              className="mt-3 text-sm font-medium text-dojo-accent hover:underline"
+            >
+              Back to log in
+            </Link>
+          </div>
+        ) : (
           <>
-            <h1 className="text-lg font-semibold text-neutral-900">Set a new password</h1>
-            <p className="mt-1 text-sm text-neutral-500">
+            <h1 className="text-lg font-bold text-dojo-text-primary">Set a new password</h1>
+            <p className="mt-1 text-sm text-dojo-text-muted leading-relaxed">
               Choose a new password for your account.
             </p>
             <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-3">
@@ -76,7 +109,7 @@ function ResetPasswordForm() {
                 minLength={6}
               />
               {error && (
-                <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                <div className="flex items-center gap-2 rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-sm text-dojo-danger">
                   <AlertCircleIcon className="h-4 w-4 shrink-0" />
                   {error}
                 </div>
@@ -84,21 +117,19 @@ function ResetPasswordForm() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-neutral-900 py-3 text-[15px] font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-60"
+                className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-dojo-accent py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {loading && <LoaderIcon className="h-4 w-4" />}
+                {loading && <LoaderIcon className="h-4 w-4 animate-spin" />}
                 {loading ? 'Updating…' : 'Update password'}
               </button>
             </form>
           </>
-        ) : (
-          <div className="flex flex-col items-center py-2 text-center">
-            <CheckCircleIcon className="h-10 w-10 text-emerald-500" />
-            <h2 className="mt-3 text-lg font-semibold text-neutral-900">Password updated</h2>
-            <p className="mt-1 text-sm text-neutral-500">Redirecting you to log in…</p>
-          </div>
         )}
       </div>
+
+      {showForgotPassword && (
+        <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ function SeverityDot({ severity }: { severity: string }) {
 }
 
 export function VoiceCoachPanel({
-  corrections, suggestedReplies, retryTarget, onRetry, onDismiss, onPickSuggestion,
+  corrections, suggestedReplies, retryTarget, onRetry, onDismiss, onPickSuggestion, disabled = false,
 }: {
   corrections: CorrectionTip[];
   suggestedReplies: string[];
@@ -21,6 +21,12 @@ export function VoiceCoachPanel({
   onRetry?: () => void;
   onDismiss: () => void;
   onPickSuggestion?: (text: string) => void;
+  /**
+   * Blocks the actions that send a turn (retry, suggestion chips) while one is
+   * in flight or the session has ended — tips linger after the last turn, and
+   * a chip clicked then is a turn the server has no session left to accept.
+   */
+  disabled?: boolean;
 }) {
   const hasContent = corrections.length > 0 || suggestedReplies.length > 0 || !!retryTarget;
 
@@ -64,7 +70,8 @@ export function VoiceCoachPanel({
                 <button
                   type="button"
                   onClick={onRetry}
-                  className="flex items-center gap-1.5 rounded-xl bg-dojo-accent px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
+                  disabled={disabled}
+                  className="flex items-center gap-1.5 rounded-xl bg-dojo-accent px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:active:scale-100 transition-all"
                 >
                   <Check className="h-3.5 w-3.5" />
                   Try this
@@ -105,7 +112,8 @@ export function VoiceCoachPanel({
                     key={i}
                     type="button"
                     onClick={() => onPickSuggestion?.(r)}
-                    className="rounded-full border border-dojo-border bg-dojo-surface-raised px-2.5 py-1 text-[11px] text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/10 active:scale-95 transition-all"
+                    disabled={disabled}
+                    className="rounded-full border border-dojo-border bg-dojo-surface-raised px-2.5 py-1 text-[11px] text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/10 active:scale-95 disabled:opacity-40 disabled:active:scale-100 transition-all"
                   >
                     {r}
                   </button>

@@ -25,6 +25,16 @@ html {
   --color-text-primary: #221A14;
   --color-text-muted: #6B6153;
 
+  /* "-strong" variants: the same status/phase hues darkened enough to stay
+     readable as small text on the light canvas/surface tokens (>=4.5:1).
+     The base hues above are tuned for fills, dots and borders — using them
+     for 11px labels reads washed out. Text uses -strong, fills use the base. */
+  --color-success-strong: #15803D;
+  --color-warning-strong: #B45309;
+  --color-danger-strong: #B91C1C;
+  --color-streak-strong: #C2410C;
+  --color-icebreaker-strong: #A21CAF;
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -48,6 +58,13 @@ html {
   --color-icebreaker: #D946EF;
   --color-text-primary: #F5F0E6;
   --color-text-muted: #A99C8B;
+
+  /* Same idea inverted: lifted for readability on the dark canvas. */
+  --color-success-strong: #4ADE80;
+  --color-warning-strong: #FBBF24;
+  --color-danger-strong: #F87171;
+  --color-streak-strong: #F5B65C;
+  --color-icebreaker-strong: #E879F9;
   color-scheme: dark;
 }
 
@@ -75,6 +92,13 @@ html {
   --color-dojo-icebreaker: var(--color-icebreaker);
   --color-dojo-text-primary: var(--color-text-primary);
   --color-dojo-text-muted: var(--color-text-muted);
+
+  /* Text-safe variants of the status/phase hues — see :root above. */
+  --color-dojo-success-strong: var(--color-success-strong);
+  --color-dojo-warning-strong: var(--color-warning-strong);
+  --color-dojo-danger-strong: var(--color-danger-strong);
+  --color-dojo-streak-strong: var(--color-streak-strong);
+  --color-dojo-icebreaker-strong: var(--color-icebreaker-strong);
 }
 
 body {

@@ -1000,7 +1000,13 @@ export async function POST(req: Request) {
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        // `no-transform` and `X-Accel-Buffering` stop an intermediary (the
+        // nginx in front of the container, a CDN) from holding tokens back and
+        // releasing them in bursts. The client speaks each sentence as it
+        // arrives, so buffered delivery reaches the learner as stalls in the
+        // middle of a reply even though the model streamed it smoothly.
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
         Connection: 'keep-alive',
       },
     });

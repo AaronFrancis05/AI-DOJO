@@ -7,6 +7,23 @@ interface GeminiMessage {
   parts: { text: string }[];
 }
 
+// Gemini rejects an empty `contents` array ("contents are required"), so when
+// no history is supplied we still need a valid user turn. The
+// systemInstruction carries the actual task; this placeholder is just a legal
+// first message for the API. Callers that pass `[]` are real: the session
+// recap and the per-phase hand-off lines are both prompt-only generations.
+const EMPTY_HISTORY_PLACEHOLDER = 'Generate the requested output described in the system instruction.';
+
+function toContents(history: ChatTurn[]): GeminiMessage[] {
+  if (history.length === 0) {
+    return [{ role: 'user', parts: [{ text: EMPTY_HISTORY_PLACEHOLDER }] }];
+  }
+  return history.map(t => ({
+    role: t.role === 'assistant' ? ('model' as const) : ('user' as const),
+    parts: [{ text: t.content }],
+  }));
+}
+
 export function createGeminiProvider(): AIProvider {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -37,16 +54,7 @@ export function createGeminiProvider(): AIProvider {
 
     async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
       try {
-        // Gemini rejects an empty `contents` array ("contents are required"),
-        // so when no history is supplied we still need a valid user turn. The
-        // systemInstruction carries the actual task; this placeholder is just
-        // a legal first message for the API.
-        const contents: GeminiMessage[] = history.length > 0
-          ? history.map(t => ({
-              role: t.role === 'assistant' ? 'model' as const : 'user' as const,
-              parts: [{ text: t.content }],
-            }))
-          : [{ role: 'user' as const, parts: [{ text: 'Generate the requested output described in the system instruction.' }] }];
+        const contents = toContents(history);
 
         const response = await ai.models.generateContent({
           model: modelName,
@@ -70,10 +78,7 @@ export function createGeminiProvider(): AIProvider {
 
     async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
       try {
-        const contents: GeminiMessage[] = history.map(t => ({
-          role: t.role === 'assistant' ? 'model' as const : 'user' as const,
-          parts: [{ text: t.content }],
-        }));
+        const contents = toContents(history);
 
         const stream = await ai.models.generateContentStream({
           model: modelName,

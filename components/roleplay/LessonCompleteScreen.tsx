@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { Crown, ShieldCheck, Flame, Target, MessagesSquare, Mic, Star, PartyPopper, RotateCcw } from 'lucide-react';
 import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
+import { ResultsAvatarBackdrop } from '@/components/roleplay/ResultsAvatarBackdrop';
 import { qualitativeTag, type SessionMetrics } from '@/lib/roleplay/session-metrics';
 
 interface LessonCompleteScreenProps {
@@ -31,18 +32,10 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
 
   return (
     <div className="fixed inset-0 z-40 overflow-y-auto bg-dojo-canvas">
-      <div className="fixed inset-0 -z-10">
-        <img
-          src="/characters/session_phase_avatars/lessoncomplete_avatar.png"
-          alt=""
-          className="h-full w-full object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-dojo-canvas via-dojo-canvas/65 to-dojo-canvas/15" />
-        <div
-          className="absolute inset-0"
-          style={{ background: 'radial-gradient(ellipse at center 25%, rgba(240,169,59,0.32), transparent 55%)' }}
-        />
-      </div>
+      <ResultsAvatarBackdrop
+        src="/characters/session_phase_avatars/celebration_avatar.png"
+        glow="rgba(240,169,59,0.28)"
+      />
 
       <div className="relative z-10 mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 py-10 sm:px-8 lg:px-12">
         <div className="text-center">

@@ -86,7 +86,29 @@ const testimonials = [
   { quote: 'I love how I can practice anytime, anywhere. It’s like having a personal language coach in my pocket.', name: 'Aisha R.', role: 'Student' },
 ];
 
-const partners = ['AKADEMIA LTD', 'IUEA', 'MAKERERE', 'AI AVATAR', 'AI DOJO'];
+// `logo` is optional — partners without a brand asset fall back to an initial badge.
+const partners: { name: string; logo?: string }[] = [
+  { name: 'AKADEMIA LTD', logo: '/brands/akademia.png' },
+  { name: 'IUEA', logo: '/brands/iuea.jpeg' },
+  { name: 'MAKERERE', logo: '/brands/makerere.svg' },
+  { name: 'AI AVATAR' },
+  { name: 'AI DOJO', logo: '/brands/ai_dojo.png' },
+];
+
+function PartnerBadge({ name, logo }: { name: string; logo?: string }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3">
+      <div className="relative flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface-raised">
+        {logo ? (
+          <Image src={logo} alt="" fill sizes="56px" className="object-contain p-2" />
+        ) : (
+          <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
+        )}
+      </div>
+      <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
+    </div>
+  );
+}
 
 const navLinks = ['Scenarios', 'Partners', 'How It Works'];
 
@@ -339,7 +361,7 @@ export default async function LandingPage() {
               Trusted by learners &amp; teams worldwide
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-              {partners.map((name) => (
+              {partners.map(({ name }) => (
                 <span key={name} className="text-sm font-semibold tracking-wide text-dojo-text-muted">
                   {name}
                 </span>
@@ -503,21 +525,11 @@ export default async function LandingPage() {
           <div className="mt-10 relative">
             <div className="flex overflow-hidden">
               <div className="flex animate-marquee gap-16 sm:gap-24 items-center">
-                {partners.map((name) => (
-                  <div key={name} className="flex shrink-0 items-center gap-3">
-                    <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
-                      <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
-                    </div>
-                    <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
-                  </div>
+                {partners.map((partner) => (
+                  <PartnerBadge key={partner.name} name={partner.name} logo={partner.logo} />
                 ))}
-                <div aria-hidden="true" className="flex gap-16 sm:gap-24">{partners.map((name) => (
-                  <div key={`${name}-dup`} className="flex shrink-0 items-center gap-3">
-                    <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border border-dojo-border bg-dojo-surface-raised">
-                      <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
-                    </div>
-                    <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
-                  </div>
+                <div aria-hidden="true" className="flex gap-16 sm:gap-24">{partners.map((partner) => (
+                  <PartnerBadge key={`${partner.name}-dup`} name={partner.name} logo={partner.logo} />
                 ))}</div>
               </div>
             </div>

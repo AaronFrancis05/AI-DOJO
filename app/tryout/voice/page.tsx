@@ -231,7 +231,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted/60'
                 }`}>
-                  {voice.isListening ? 'Listening...' : 'Tap to Speak'}
+                  {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
               </div>
 

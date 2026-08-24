@@ -11,7 +11,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
-import { speakMixedText, stop as stopTts, resetStreamingTts, feedStreamTts, flushStreamTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
@@ -49,6 +49,7 @@ export default function VoiceOnlyPage() {
     submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection,
     phaseTransition, dismissPhaseTransition,
+    recap, dismissRecap,
     unacknowledgedCompletion, acknowledgeCompletion,
   } = useRoleplaySessionContext();
 
@@ -67,7 +68,6 @@ export default function VoiceOnlyPage() {
   const [chatInput, setChatInput] = useState('');
   const [tipsOpen, setTipsOpen] = useState(false);
   const [chatTab, setChatTab] = useState<'all' | 'key' | 'notes'>('all');
-  const [sessionStartTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
@@ -90,14 +90,24 @@ export default function VoiceOnlyPage() {
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
 
+  // Anchored on the session's own start time rather than this page's mount:
+  // avatar and voice are two views of one session, so switching between them
+  // (or reloading) has to carry the clock over instead of restarting at 00:00.
+  const sessionStartTime: number | null = session?.startedAt
+    ? new Date(session.startedAt).getTime()
+    : null;
+
   // Session timer
   useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = Math.floor((Date.now() - sessionStartTime) / 1000);
+    if (sessionStartTime === null) return;
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000));
       const m = String(Math.floor(diff / 60)).padStart(2, '0');
       const s = String(diff % 60).padStart(2, '0');
       setElapsed(`${m}:${s}`);
-    }, 1000);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [sessionStartTime]);
 
@@ -147,6 +157,28 @@ export default function VoiceOnlyPage() {
     return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
 
+  // Recite the welcome-back recap. It reaches the transcript on its own, so
+  // unlike every other AI line it never passes through the streaming callbacks
+  // that drive speech — without this it would only ever be readable in chat.
+  useEffect(() => {
+    if (!recap) return;
+    const text = cleanDisplay(recap.text);
+    if (!text || mutedRef.current) { dismissRecap(); return; }
+
+    const cancel = speakWhenAudioUnlocked(() => {
+      speakMixedText(
+        text,
+        getBCP47(targetLangRef.current, 'tts'),
+        targetLangRef.current === nativeLangRef.current
+          ? getBCP47(targetLangRef.current, 'tts')
+          : getNativeLangBcp47(nativeLangRef.current),
+        phaseRef.current,
+      ).catch(() => {});
+      dismissRecap();
+    });
+    return cancel;
+  }, [recap, dismissRecap]);
+
   useEffect(() => {
     if (unacknowledgedCompletion && !completionResult) {
       const source = evaluation ?? session ?? {};
@@ -170,9 +202,13 @@ export default function VoiceOnlyPage() {
     sendingRef.current = true;
     setSending(true);
     setAiTurnActive(true);
+    // The learner has spoken, so last turn's prompts are spent. Clearing them
+    // here keeps the conversation flowing: the coach panel only ever shows
+    // suggestions for the turn being corrected right now, and a clean turn
+    // leaves no leftover chips to answer.
+    setSuggestedReplies([]);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     stopTts();
-    resetStreamingTts();
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -187,29 +223,19 @@ export default function VoiceOnlyPage() {
     try {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
-        // Speak each sentence the moment it completes, while the model is
-        // still generating the rest — the character starts talking in
-        // roughly the time it takes to produce one sentence instead of
-        // waiting for the whole reply to finish first.
-        onTokenDelta: (delta) => {
-          if (mutedRef.current) return;
-          feedStreamTts(
-            delta,
-            getBCP47(targetLangRef.current, 'tts'),
-            getNativeLangBcp47(nativeLangRef.current),
-            phaseRef.current,
-          );
-        },
         onToken: (t) => {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
         },
+        // Speak the reply as one complete clip once the model has finished,
+        // same as the replay button — synthesizing per-sentence as the model
+        // streamed made every sentence boundary pay its own Azure connect
+        // round trip, which read as slow/choppy compared to a single clip.
         onTextDone: (t: string) => {
           const cleaned = cleanDisplay(t);
           if (!mutedRef.current && cleaned) {
-            // Speak the trailing fragment (the last sentence often has no
-            // terminating punctuation) and wait for the queue to drain.
-            flushStreamTts(
+            speakMixedText(
+              cleaned,
               getBCP47(targetLangRef.current, 'tts'),
               getNativeLangBcp47(nativeLangRef.current),
               phaseRef.current,
@@ -394,16 +420,12 @@ export default function VoiceOnlyPage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
-                    resetStreamingTts();
                     sendGreeting({
-                      onTokenDelta: (delta: string) => {
-                        if (mutedRef.current) return;
-                        feedStreamTts(delta, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current);
-                      },
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
-                      onTextDone: () => {
-                        if (mutedRef.current) return;
-                        flushStreamTts(getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
+                      onTextDone: (t: string) => {
+                        const cleaned = cleanDisplay(t);
+                        if (mutedRef.current || !cleaned) return;
+                        speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                       },
                     })
                       .then(() => {
@@ -588,7 +610,7 @@ export default function VoiceOnlyPage() {
                 <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted/60'
                 }`}>
-                  {voice.isListening ? 'Listening...' : 'Tap to Speak'}
+                  {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
               </div>
 
