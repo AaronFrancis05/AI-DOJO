@@ -3,7 +3,7 @@
 interface VoiceOnlyStageProps {
   name: string;
   accentColor: string;
-  mode: 'idle' | 'listening' | 'talking';
+  mode: 'idle' | 'listening' | 'thinking' | 'talking';
   role?: string;
   volumeLevel?: number;
 }
@@ -14,7 +14,7 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
   const center = svgSize / 2;
 
   const orbPulse = mode === 'talking' ? 'pulse 0.6s ease-in-out infinite' : 'none';
-  const glowIntensity = mode === 'talking' ? 24 : mode === 'listening' ? 16 : 6;
+  const glowIntensity = mode === 'talking' ? 24 : mode === 'listening' ? 16 : mode === 'thinking' ? 12 : 6;
 
   // Live input meter — the orb swells with the user's voice while listening.
   const listenScale = mode === 'listening' ? 1 + volumeLevel * 0.55 : 1;
@@ -167,6 +167,24 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
               </rect>
             </g>
           )}
+
+          {/* Thinking dots — reassures the learner a reply is on the way */}
+          {mode === 'thinking' && (
+            <g>
+              <circle cx={center - 14} cy={center} r="4" fill="white" opacity="0.9">
+                <animate attributeName="cy" values={`${center};${center - 6};${center}`} dur="0.9s" repeatCount="indefinite" begin="0s" />
+                <animate attributeName="opacity" values="0.4;0.9;0.4" dur="0.9s" repeatCount="indefinite" begin="0s" />
+              </circle>
+              <circle cx={center} cy={center} r="4" fill="white" opacity="0.9">
+                <animate attributeName="cy" values={`${center};${center - 6};${center}`} dur="0.9s" repeatCount="indefinite" begin="0.15s" />
+                <animate attributeName="opacity" values="0.4;0.9;0.4" dur="0.9s" repeatCount="indefinite" begin="0.15s" />
+              </circle>
+              <circle cx={center + 14} cy={center} r="4" fill="white" opacity="0.9">
+                <animate attributeName="cy" values={`${center};${center - 6};${center}`} dur="0.9s" repeatCount="indefinite" begin="0.3s" />
+                <animate attributeName="opacity" values="0.4;0.9;0.4" dur="0.9s" repeatCount="indefinite" begin="0.3s" />
+              </circle>
+            </g>
+          )}
         </svg>
       </div>
 
@@ -181,6 +199,11 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
             <>
               <span className="h-1.5 w-1.5 rounded-full bg-dojo-warning animate-pulse" />
               Listening
+            </>
+          ) : mode === 'thinking' ? (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-dojo-accent animate-pulse" />
+              Thinking
             </>
           ) : mode === 'talking' ? (
             <>

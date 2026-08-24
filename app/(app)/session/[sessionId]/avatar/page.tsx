@@ -195,6 +195,9 @@ export default function AvatarModePage() {
     stopTts();
     resetStreamingTts();
     clearCaption();
+    // Bridge the gap between the mic release and the first streamed token so
+    // the learner sees the reply is coming, not that their voice was dropped.
+    playCaption('Thinking…', 4000).catch(() => {});
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -280,7 +283,7 @@ export default function AvatarModePage() {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [submitTurnStream, conversations]);
+  }, [submitTurnStream, conversations, clearCaption, playCaption]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -300,6 +303,15 @@ export default function AvatarModePage() {
     if (avatarMode === 'talking') stopTts();
     await voice.start();
   }, [avatarMode, voice]);
+
+  // Mirror mic capture state onto the 3D avatar so it's visibly "listening",
+  // not just idle, for the duration the mic button is held.
+  useEffect(() => {
+    const emo = emotionSystemRef.current;
+    if (!emo) return;
+    if (voice.isListening) emo.startListening();
+    else emo.stopListening();
+  }, [voice.isListening]);
 
   const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
   const skillLevelLabel = situation?.skillLevel
