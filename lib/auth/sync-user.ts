@@ -1,12 +1,20 @@
 import { db } from '@/src/db';
 import { users } from '@/src/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 export type AuthUser = {
   id: string;
   email: string;
-  name: string;
+  // Optional on purpose: the auth provider's metadata may carry no display
+  // name (email-link signups, OAuth without a name claim). A missing name is
+  // NEVER a reason to write a placeholder over an existing display name.
+  name?: string | null;
 };
+
+function realName(name: string | null | undefined): string {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  return trimmed;
+}
 
 export async function syncUser(authUser: AuthUser): Promise<string> {
   // Look up by email — the auth provider's id may differ from the DB row's id
@@ -18,19 +26,23 @@ export async function syncUser(authUser: AuthUser): Promise<string> {
     .limit(1);
 
   if (existing) {
-    // Keep the existing id so FK refs from sessions stay intact.
-    // Only update the display name.
+    // Keep the existing id so FK refs from sessions stay intact. Only touch
+    // the display name when the provider actually has one — previously this
+    // wrote the caller's fallback string (e.g. 'Learner') over real names.
+    const name = realName(authUser.name);
+    if (!name) return existing.id;
     await db
       .update(users)
-      .set({ name: authUser.name })
+      .set({ name })
       .where(eq(users.id, existing.id));
     return existing.id;
   }
 
-  // New user — insert with the auth provider's id.
+  // New user — insert with the auth provider's id. The column is notNull, so
+  // an absent name inserts as '' rather than inventing an identity.
   await db.insert(users).values({
     id: authUser.id,
-    name: authUser.name,
+    name: realName(authUser.name),
     email: authUser.email,
   });
   return authUser.id;

@@ -17,6 +17,7 @@ import { LiveBadge } from '@/components/ui/LiveBadge';
 import { HexBadge } from '@/components/ui/HexBadge';
 import { Button } from '@/components/ui/Button';
 import { useUser } from '@/lib/auth/user-context';
+import { resolveDisplayName } from '@/lib/auth/display-name';
 import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
@@ -193,7 +194,8 @@ export default function HomePage() {
   const user = useUser();
   const currentAvatarModelUrl = useCurrentAvatarModel();
   const greeting = greet(user?.nativeLanguage);
-  usePageTitle(`${greeting}, ${user?.name ?? 'Learner'}!`);
+  const displayName = resolveDisplayName(user);
+  usePageTitle(displayName ? `${greeting}, ${displayName}!` : `${greeting}!`);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -332,11 +334,11 @@ export default function HomePage() {
               <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
               <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
                 {currentAvatarModelUrl ? (
-                  <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={user?.name} />
+                  <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={displayName} />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
-                      {user?.name?.[0] ?? '?'}
+                      {displayName[0]}
                     </div>
                   </div>
                 )}
@@ -347,7 +349,7 @@ export default function HomePage() {
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight">{greeting}, {user?.name ?? 'Learner'}!</h1>
+                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight leading-none">{displayName ? `${greeting}, ${displayName}!` : `${greeting}!`}</h1>
               </div>
               <p className="mt-1 text-dojo-text-muted">{completedSessions.length > 0 ? `Master of ${completedSessions.length} real-world scenarios. Keep up the great work!` : 'Start your first conversation to begin tracking your progress.'}</p>
               
