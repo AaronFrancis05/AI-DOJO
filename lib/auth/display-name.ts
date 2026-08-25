@@ -1,17 +1,20 @@
 import type { UserContextValue } from './user-context';
 
+// Rows stamped by the old `?? 'Learner'` fallback before it was removed are
+// treated as unnamed so the name prompt reaches them too.
+const LEGACY_PLACEHOLDER = 'learner';
+
 /**
- * The name to show for the signed-in user, resolved honestly:
- * stored display name → email local-part → neutral "You".
+ * The signed-in account's stored display name — or '' when it has none.
  *
- * A missing name must never read as a fake identity (the old `?? 'Learner'`
- * fallbacks made a signed-in user look like an anonymous placeholder).
+ * Deliberately never invents an identity (no email local-part, no 'You'):
+ * an unnamed account is asked for its real name once (NamePromptDialog),
+ * which persists through Neon Auth and lib/auth/sync-user.ts.
  */
 export function resolveDisplayName(
-  user: Pick<UserContextValue, 'name' | 'email'> | null | undefined,
+  user: Pick<UserContextValue, 'name'> | null | undefined,
 ): string {
   const name = user?.name?.trim();
-  if (name) return name;
-  const emailLocal = user?.email?.split('@')[0]?.trim();
-  return emailLocal || 'You';
+  if (!name || name.toLowerCase() === LEGACY_PLACEHOLDER) return '';
+  return name;
 }

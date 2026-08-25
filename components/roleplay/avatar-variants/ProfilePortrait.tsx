@@ -26,7 +26,7 @@ export function ProfilePortrait({ modelUrl, userName }: ProfilePortraitProps) {
   return (
     <div className="relative h-full w-full overflow-hidden rounded-full bg-dojo-surface">
       <AvatarViewport
-        name={userName ?? 'You'}
+        name={userName || ''}
         accentColor="#2D3BC5"
         cameraMode="portrait"
         cameraIntent="face-camera"

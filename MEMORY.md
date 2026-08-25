@@ -311,3 +311,12 @@ Three separate causes behind "slow to load, floats with its hands up, then final
 - Chat rooms/messages still show 'Unknown' for OTHER members with null names (server-side join fallback) - separate follow-up if wanted.
 - Verified: 
 px tsc --noEmit clean; eslint on touched files clean (only pre-existing warnings).
+
+## 2026-08-25 - Identity hardening: real name only, one-time capture gate
+
+- Revision of the same-day 'Learner' fix after product feedback: email-local-part and 'You' display fallbacks felt off-brand and eroded trust. resolveDisplayName() now returns ONLY the stored display name - '' when the account has none or still carries the legacy 'Learner' stamp (matched case-insensitively). No invented identities anywhere.
+- Guarantee that every account ends up with its real name: new NamePromptDialog (components/shell) rendered from AppShell whenever a signed-in user resolves to no name - non-dismissible one-field modal ('What should we call you?'). Save goes through authClient.updateUser (Neon Auth), then router.refresh(); the layout's syncUser persists it into users.name on that render and the gate unmounts. One mechanism covers both stores; legacy-stamped rows self-heal on the user's next visit without a migration.
+- Session (/session/*) routes stay immersive - the gate renders on all other (app) routes.
+- Signup hardened: whitespace-only names rejected in handleSubmit (HTML required alone allows them).
+- Greeting/title render conditionally (plain 'Good evening!' with no comma-name) while unnamed - which now only happens behind the gate overlay.
+- Verified: npx tsc --noEmit clean; eslint on touched files clean (pre-existing warnings only).
