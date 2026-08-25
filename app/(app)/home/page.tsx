@@ -338,7 +338,7 @@ export default function HomePage() {
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
-                      {user?.name?.[0] ?? '?'}
+                      {displayName[0]}
                     </div>
                   </div>
                 )}
@@ -349,7 +349,7 @@ export default function HomePage() {
             </div>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight">{greeting}, {displayName}!</h1>
+                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight leading-none">{greeting}, {displayName}!</h1>
               </div>
               <p className="mt-1 text-dojo-text-muted">{completedSessions.length > 0 ? `Master of ${completedSessions.length} real-world scenarios. Keep up the great work!` : 'Start your first conversation to begin tracking your progress.'}</p>
               
