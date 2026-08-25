@@ -628,7 +628,7 @@ export default function AvatarModePage() {
           </div>
 
           {/* ── Bottom Controls: Mute / Mic / Chat (Transparent to reveal avatar) ── */}
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-8 safe-bottom z-10 px-4 pointer-events-none">
+          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-6 safe-bottom z-10 px-4 pointer-events-none">
             <div className="flex items-center justify-center gap-6 sm:gap-8 rounded-2xl bg-black/10 backdrop-blur-[2px] border border-white/10 px-6 sm:px-8 py-3 pointer-events-auto">
               <div className="flex flex-col items-center gap-1">
                 <button
