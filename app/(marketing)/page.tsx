@@ -361,10 +361,8 @@ export default async function LandingPage() {
               Trusted by learners &amp; teams worldwide
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-              {partners.map(({ name }) => (
-                <span key={name} className="text-sm font-semibold tracking-wide text-dojo-text-muted">
-                  {name}
-                </span>
+              {partners.map((partner) => (
+                <PartnerBadge key={partner.name} name={partner.name} logo={partner.logo} />
               ))}
             </div>
           </div>
