@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Inter, Geist_Mono, Playfair_Display } from "next/font/google";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { getAppOrigin } from "@/lib/auth/app-origin";
 import "./globals.css";
 
 const inter = Inter({
@@ -26,6 +27,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  // Resolves relative og:image / twitter:image URLs. Uses the same origin the
+  // auth boundary trusts (APP_ORIGIN), so it stays correct per environment.
+  metadataBase: new URL(getAppOrigin()),
   title: "AI DOJO",
   description: "A practical virtual simulation arena for Ugandan learners to practice Japanese through realistic AI role-play: office scenarios, social situations, and daily-life interactions.",
   keywords: [

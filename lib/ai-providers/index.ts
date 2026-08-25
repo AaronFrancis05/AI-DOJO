@@ -63,10 +63,26 @@ function resolveProviderOrder(): string[] {
   return order.length > 0 ? order : [primary];
 }
 
+// Each request walks `order` twice: the first pass respects the circuit
+// breakers, the second ignores them. The second pass only runs when the first
+// called nothing at all — every provider skipped because its circuit is open.
+// A breaker exists to steer traffic towards a healthier provider, so with no
+// healthy provider left to steer towards, refusing to call anything just turns
+// "might work" into a guaranteed failure for the whole cooldown window. That
+// is exactly how one bad request shape (an empty history Gemini rejected)
+// took the live session down with it: three recap failures opened the circuit
+// and the next /api/chat/stream turn failed without an API call being made.
+const CIRCUIT_PASSES = [false, true] as const;
+
+// Deliberately neutral about the cause: a null candidate here can mean missing
+// credentials, an unsupported AI_PROVIDER name, or a factory init failure.
+const NOTHING_CONFIGURED_MESSAGE =
+  'No AI provider is available — none of the configured providers could be initialized (check AI_PROVIDER / AI_FALLBACK_PROVIDERS and the matching API keys)';
+
 const providerCache = new Map<string, AIProvider>();
 
-async function getHealthyProvider(name: string): Promise<AIProvider | null> {
-  if (isCircuitOpen(name)) return null;
+async function getHealthyProvider(name: string, ignoreCircuit = false): Promise<AIProvider | null> {
+  if (!ignoreCircuit && isCircuitOpen(name)) return null;
 
   const cached = providerCache.get(name);
   if (cached) return cached;
@@ -102,53 +118,63 @@ export async function getAIProvider(): Promise<AIProvider> {
 
     async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
       let lastError: unknown = null;
+      let attempted = false;
 
-      for (const name of order) {
-        const candidate = await getHealthyProvider(name);
-        if (!candidate) continue;
+      for (const ignoreCircuit of CIRCUIT_PASSES) {
+        for (const name of order) {
+          const candidate = await getHealthyProvider(name, ignoreCircuit);
+          if (!candidate) continue;
+          attempted = true;
 
-        try {
-          const result = await candidate.generateJSON(systemInstruction, history);
-          recordSuccess(name);
-          return result;
-        } catch (err) {
-          lastError = err;
-          recordFailure(name);
-          console.warn(`[ai-provider] "${name}" generateJSON failed, ${order.filter((n) => n !== name).length > 0 ? 'trying fallback' : 'no fallback left'}:`, err instanceof Error ? err.message : String(err));
+          try {
+            const result = await candidate.generateJSON(systemInstruction, history);
+            recordSuccess(name);
+            return result;
+          } catch (err) {
+            lastError = err;
+            recordFailure(name);
+            console.warn(`[ai-provider] "${name}" generateJSON failed, ${order.filter((n) => n !== name).length > 0 ? 'trying fallback' : 'no fallback left'}:`, err instanceof Error ? err.message : String(err));
+          }
         }
+        if (attempted) break;
       }
 
       if (lastError instanceof AIProviderError) throw lastError;
-      throw new AIProviderError(primaryName, 'All AI providers failed', lastError);
+      throw new AIProviderError(primaryName, attempted ? 'All AI providers failed' : NOTHING_CONFIGURED_MESSAGE, lastError);
     },
 
     async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
       let lastError: unknown = null;
+      let attempted = false;
 
-      for (const name of order) {
-        const candidate = await getHealthyProvider(name);
-        if (!candidate) continue;
+      for (const ignoreCircuit of CIRCUIT_PASSES) {
+        for (const name of order) {
+          const candidate = await getHealthyProvider(name, ignoreCircuit);
+          if (!candidate) continue;
+          attempted = true;
 
-        let yielded = false;
-        try {
-          for await (const chunk of candidate.generateStream(systemInstruction, history)) {
-            yielded = true;
-            yield chunk;
+          let yielded = false;
+          try {
+            for await (const chunk of candidate.generateStream(systemInstruction, history)) {
+              yielded = true;
+              yield chunk;
+            }
+            recordSuccess(name);
+            return;
+          } catch (err) {
+            lastError = err;
+            recordFailure(name);
+            // Only fall back if nothing was streamed yet — a mid-stream
+            // failure can't be replayed without corrupting the transcript.
+            if (yielded) throw err;
+            console.warn(`[ai-provider] "${name}" generateStream failed before output, ${order.filter((n) => n !== name).length > 0 ? 'trying fallback' : 'no fallback left'}:`, err instanceof Error ? err.message : String(err));
           }
-          recordSuccess(name);
-          return;
-        } catch (err) {
-          lastError = err;
-          recordFailure(name);
-          // Only fall back if nothing was streamed yet — a mid-stream
-          // failure can't be replayed without corrupting the transcript.
-          if (yielded) throw err;
-          console.warn(`[ai-provider] "${name}" generateStream failed before output, ${order.filter((n) => n !== name).length > 0 ? 'trying fallback' : 'no fallback left'}:`, err instanceof Error ? err.message : String(err));
         }
+        if (attempted) break;
       }
 
       if (lastError instanceof AIProviderError) throw lastError;
-      throw new AIProviderError(primaryName, 'All AI providers failed', lastError);
+      throw new AIProviderError(primaryName, attempted ? 'All AI providers failed' : NOTHING_CONFIGURED_MESSAGE, lastError);
     },
   };
 

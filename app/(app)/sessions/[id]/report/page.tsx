@@ -16,7 +16,9 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Avatar } from '@/components/ui/Avatar';
 import { sessionHistory } from '@/lib/data/sessions';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { computeCompositeScore, PASSING_SCORE_THRESHOLD } from '@/lib/roleplay/phase-engine';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { ArrowLeft, ExternalLink, Trophy, Target, Repeat2, RotateCcw, Users } from 'lucide-react';
 
 interface DataRecord {
   session: any;
@@ -106,18 +108,42 @@ export default function SessionReportPage() {
 
   const expressionScore = evaluation?.expressionAppropriatenessScore ?? session.expressionAppropriatenessScore;
 
+  // Every dimension is an independent 0-100 score (see SCORE_DIMENSIONS in
+  // lib/ai-engine.ts). These used to be shown against mixed maxes — 25/20/20/
+  // 10/10/15 — which matched the old prompt scale and would now render as
+  // "87/25" with every bar pegged full.
   const scoreFields = [
-    { label: 'Vocabulary', value: evaluation?.vocabularyScore ?? session.vocabularyScore, max: 25, color: 'accent' as const },
-    { label: 'Grammar',    value: evaluation?.grammarScore ?? session.grammarScore,    max: 20, color: 'success' as const },
-    { label: 'Fluency',    value: evaluation?.fluencyScore ?? session.fluencyScore,    max: 20, color: 'warning' as const },
-    { label: 'Cultural',   value: evaluation?.culturalScore ?? session.culturalScore,  max: 10, color: 'accent' as const },
-    { label: 'Task',       value: evaluation?.taskScore ?? session.taskScore,          max: 10, color: 'success' as const },
-    { label: 'Expression', value: expressionScore,                                       max: 15, color: 'accent' as const },
+    { label: 'Vocabulary', value: evaluation?.vocabularyScore ?? session.vocabularyScore, color: 'accent' as const },
+    { label: 'Grammar',    value: evaluation?.grammarScore ?? session.grammarScore,       color: 'success' as const },
+    { label: 'Fluency',    value: evaluation?.fluencyScore ?? session.fluencyScore,       color: 'warning' as const },
+    { label: 'Cultural',   value: evaluation?.culturalScore ?? session.culturalScore,     color: 'accent' as const },
+    { label: 'Task',       value: evaluation?.taskScore ?? session.taskScore,             color: 'success' as const },
+    { label: 'Expression', value: expressionScore,                                        color: 'accent' as const },
   ];
 
-  const totalScore = scoreFields.reduce((s, x) => s + (x.value ?? 0), 0);
-  const totalMax = scoreFields.reduce((s, x) => s + x.max, 0);
-  const pct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : null;
+  const hasScores = scoreFields.some((f) => f.value != null);
+
+  // Weighting lives only in computeCompositeScore — the report must not
+  // re-derive an overall percentage its own way, or the number shown here
+  // would disagree with the pass/fail the session actually recorded.
+  const pct = hasScores
+    ? computeCompositeScore('completed', {
+        vocabularyScore: evaluation?.vocabularyScore ?? session.vocabularyScore ?? 0,
+        grammarScore: evaluation?.grammarScore ?? session.grammarScore ?? 0,
+        fluencyScore: evaluation?.fluencyScore ?? session.fluencyScore ?? 0,
+        culturalScore: evaluation?.culturalScore ?? session.culturalScore ?? 0,
+        taskScore: evaluation?.taskScore ?? session.taskScore ?? 0,
+        expressionAppropriatenessScore: expressionScore ?? 0,
+      })
+    : null;
+
+  const passed = pct !== null && pct >= PASSING_SCORE_THRESHOLD;
+
+  // The two dimensions furthest from the pass mark — what to actually work on.
+  const weakest = scoreFields
+    .filter((f) => f.value != null && f.value < PASSING_SCORE_THRESHOLD)
+    .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))
+    .slice(0, 2);
 
   const feedbackText = evaluation?.feedback ?? session.feedback;
   const scenarioTitle = scenario?.title ?? session.scenarioTitle ?? `Session #${session.id}`;
@@ -145,6 +171,61 @@ export default function SessionReportPage() {
         </div>
       </div>
 
+      {/* Verdict — the answer to "did I actually learn this?", which is the
+          question the report exists to settle. */}
+      {pct !== null && !isActive && (
+        <Card className={passed ? 'border-dojo-success/30' : 'border-dojo-warning/30'}>
+          <div className="flex items-start gap-4">
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${passed ? 'bg-dojo-success/10' : 'bg-dojo-warning/10'}`}>
+              {passed
+                ? <Trophy className="h-6 w-6 text-dojo-success" />
+                : <Target className="h-6 w-6 text-dojo-warning" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">
+                {passed ? 'You can handle this scenario' : 'Not quite there yet'}
+              </h2>
+              <p className="mt-1 text-sm leading-relaxed text-dojo-text-muted">
+                {passed
+                  ? `You scored ${pct}% overall — above the ${PASSING_SCORE_THRESHOLD}% mark for this scenario.`
+                  : `You scored ${pct}%. ${PASSING_SCORE_THRESHOLD}% is the mark for handling this one confidently.`}
+              </p>
+              {weakest.length > 0 && (
+                <p className="mt-3 text-sm leading-relaxed text-dojo-text-primary">
+                  <span className="font-semibold">Work on next:</span>{' '}
+                  {weakest.map((w) => w.label.toLowerCase()).join(' and ')}.
+                </p>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href="/review"
+                  className="inline-flex items-center gap-2 rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-4 py-2 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+                >
+                  <Repeat2 className="h-4 w-4" /> Review the words
+                </Link>
+                {!passed && (
+                  <Link
+                    href="/hub"
+                    className="inline-flex items-center gap-2 rounded-[--radius-md] bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
+                  >
+                    <RotateCcw className="h-4 w-4" /> Try it again
+                  </Link>
+                )}
+                {/* A human second opinion on what the AI just assessed. */}
+                {TUTORS_ENABLED && (
+                  <Link
+                    href={`/tutors?session=${session.id}`}
+                    className="inline-flex items-center gap-2 rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-4 py-2 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+                  >
+                    <Users className="h-4 w-4" /> Get a tutor&apos;s opinion
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Score Overview */}
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -158,9 +239,9 @@ export default function SessionReportPage() {
             <div key={sf.label}>
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-dojo-text-primary">{sf.label}</span>
-                <span className="text-dojo-text-muted">{sf.value ?? '-'}/{sf.max}</span>
+                <span className="text-dojo-text-muted">{sf.value != null ? `${sf.value}%` : '—'}</span>
               </div>
-              <ProgressBar value={sf.value ?? 0} max={sf.max} color={sf.color} size="sm" />
+              <ProgressBar value={sf.value ?? 0} color={sf.color} size="sm" />
             </div>
           ))}
         </div>

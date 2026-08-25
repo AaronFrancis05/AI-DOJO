@@ -5,6 +5,7 @@ import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../lib/language';
 import { eq, and, count, desc } from 'drizzle-orm';
+import { AVATAR_SOURCES, FEMALE_AVATAR_IDS, avatarRoleLine } from '../../../lib/avatar/catalog';
 
 export async function GET(req: Request) {
   const user = await getAuthUser();
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, lessonId } = body;
+  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId } = body;
 
   const [profile] = await db
     .select({
@@ -111,23 +112,30 @@ export async function POST(req: Request) {
 
       let charName = 'Assistant';
       let charRole = 'Assistant';
-      if (resolvedCharacterId) {
+
+      // Avatar-driven selection takes precedence — it is domain-agnostic and
+      // carries its own display profile from the catalog. This powers the
+      // two-card practice-partner UI (one female / one male) where the
+      // underlying characterId is fixed to the gender default.
+      const avatarIdStr = typeof avatarId === 'string' ? avatarId.trim() : '';
+      const pickedAvatar = avatarIdStr ? AVATAR_SOURCES.find(a => a.id === avatarIdStr) : null;
+      if (pickedAvatar) {
+        charName = pickedAvatar.name;
+        charRole = avatarRoleLine(pickedAvatar);
+      } else if (resolvedCharacterId) {
         const [char] = await db
           .select()
           .from(characters)
           .where(eq(characters.id, resolvedCharacterId));
         if (char) {
-          // Guard: reject if the character's default domain doesn't match
-          // the situation's domain. This catches the ID-collision bug where
-          // fixture character IDs point to wrong real characters.
+          // Formerly a hard reject — now a soft warning. The two-card UI
+          // intentionally uses gender-fixed defaults (female_ug / male_jp)
+          // regardless of the situation's domain.
           if (char.defaultForDomainId != null && char.defaultForDomainId !== situation.domainId) {
             console.warn(
               `[session-create] character ${char.id} (${char.name}) default domain ${char.defaultForDomainId} `
-              + `does not match situation ${numericSituationId} domain ${situation.domainId}. Rejecting.`,
+              + `does not match situation ${numericSituationId} domain ${situation.domainId}. Allowing.`,
             );
-            return Response.json({
-              error: `Character "${char.name}" is not available for this situation. Please select a different character.`,
-            }, { status: 400 });
           }
           charName = char.name;
           charRole = char.role;
@@ -257,7 +265,10 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   const sessionNumber = (result?.count ?? 0) + 1;
 
   let voiceGender = 'female';
-  if (characterId) {
+  const avatarForVoice = typeof avatarId === 'string' ? AVATAR_SOURCES.find(a => a.id === avatarId.trim()) ?? null : null;
+  if (avatarForVoice) {
+    voiceGender = FEMALE_AVATAR_IDS.has(avatarForVoice.id) ? 'female' : 'male';
+  } else if (characterId) {
     const [char] = await db
       .select({ gender: characters.gender })
       .from(characters)
@@ -273,6 +284,9 @@ Each item must be a single ${langName} word or short phrase that is directly rel
     lessonId: resolvedLessonId,
     situationId: situationId ? Number(situationId) : scenario.situationId,
     characterId: characterId ? Number(characterId) : null,
+    // Persisted so this session keeps the avatar the learner picked, even
+    // when the underlying scenario row is shared across many sessions.
+    selectedAvatarId: avatarForVoice?.id ?? null,
     behaviorMode: behaviorMode ?? 'standard',
     phase: 'orientation',
     targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? 'ja',

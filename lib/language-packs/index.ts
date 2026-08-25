@@ -19,7 +19,7 @@ function loadLanguagePack(langCode: string): Record<string, string> | null {
   }
 }
 
-const GENERIC_APPROPRIATENESS_RUBRIC = `Score expressionAppropriateness (0-15) based on how socially and situationally appropriate the user's expression was for the scene. This is NOT about grammatical correctness — it is about register, politeness level, and social fit. For example: using formal language with a superior vs casual speech with a peer; choosing a situationally fitting phrase rather than a technically correct but odd one; matching the formality expected by the scenario setting.`;
+const GENERIC_APPROPRIATENESS_RUBRIC = `Score expressionAppropriateness (0-100) based on how socially and situationally appropriate the user's expression was for the scene. This is NOT about grammatical correctness — it is about register, politeness level, and social fit. For example: using formal language with a superior vs casual speech with a peer; choosing a situationally fitting phrase rather than a technically correct but odd one; matching the formality expected by the scenario setting.`;
 
 function loadAppropriatenessRubric(langCode: string): string | null {
   try {

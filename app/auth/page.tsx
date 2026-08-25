@@ -45,6 +45,14 @@ function AuthPageContent() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    // The HTML `required` on the name field allows whitespace-only input —
+    // an account must never be created without a usable display name.
+    if (!isLogin && !name.trim()) {
+      setError('Please enter your full name.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -338,7 +346,10 @@ function AuthPageContent() {
       </div>
 
       {showForgotPassword && (
-        <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />
+        <ForgotPasswordModal
+          initialEmail={email}
+          onClose={() => setShowForgotPassword(false)}
+        />
       )}
     </div>
   );

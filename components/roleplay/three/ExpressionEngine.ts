@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 
-type MorphMesh = THREE.Object3D & {
+export type MorphMesh = THREE.Object3D & {
   morphTargetDictionary: Record<string, number>;
   morphTargetInfluences: number[];
 };
 
-function asMorphMesh(obj: THREE.Object3D): MorphMesh | null {
+/** Shared by LipSync, which drives the same meshes' mouth morphs. */
+export function asMorphMesh(obj: THREE.Object3D): MorphMesh | null {
   const m = obj as unknown as MorphMesh;
   if (m.morphTargetDictionary && m.morphTargetInfluences) {
     return m;

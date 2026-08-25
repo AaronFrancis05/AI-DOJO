@@ -10,7 +10,9 @@
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
+import { NamePromptDialog } from './NamePromptDialog';
 import { useUser } from '@/lib/auth/user-context';
+import { resolveDisplayName } from '@/lib/auth/display-name';
 import { AvatarProvider } from '@/lib/auth/avatar-context';
 import { PageTitleProvider, usePageTitleValue } from '@/lib/hooks/PageTitleContext';
 import { Menu, X } from 'lucide-react';
@@ -41,9 +43,14 @@ function MobileTopBar({ onToggle, sidebarOpen }: { onToggle: () => void; sidebar
 export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
+  const user = useUser();
 
   // Session pages are full-screen immersive — no sidebar, no scroll wrapper
   const isSessionRoute = pathname.startsWith('/session/');
+
+  // Every signed-in account must carry its real name — unnamed accounts (and
+  // rows still carrying the legacy 'Learner' stamp) are asked once, here.
+  const needsDisplayName = !!user && !resolveDisplayName(user);
 
   if (isSessionRoute) {
     return (
@@ -56,6 +63,8 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <PageTitleProvider>
       <div className="flex h-dvh w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">
+        {/* One-time display-name gate */}
+        {needsDisplayName && <NamePromptDialog />}
         {/* Mobile top bar with centered title */}
         <MobileTopBar onToggle={() => setSidebarOpen(!sidebarOpen)} sidebarOpen={sidebarOpen} />
 

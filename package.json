@@ -16,6 +16,7 @@
     "db:backfill-target-localizations": "tsx scripts/backfill-target-localizations.ts",
     "db:export-localizations": "tsx scripts/export-localizations.ts",
     "db:check-localization": "tsx scripts/check-course-localization.ts",
+    "avatars:convert": "tsx scripts/convert-avatar-animations.ts",
     "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
     "docker:prod": "docker compose up --build -d",
     "docker:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down"
@@ -43,6 +44,8 @@
     "inngest": "^4.14.0",
     "jose": "^6.2.8",
     "jsonwebtoken": "^9.0.3",
+    "livekit-client": "^2.22.0",
+    "livekit-server-sdk": "^2.18.0",
     "lucide-react": "^1.24.0",
     "meshoptimizer": "^1.2.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.50.0",

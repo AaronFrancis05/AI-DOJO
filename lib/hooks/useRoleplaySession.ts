@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { AvatarSource } from '@/lib/avatar/catalog';
 import { getTargetLangConfig } from '@/lib/language';
 import { setVoiceGender } from '@/lib/roleplay/tts';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
@@ -58,12 +59,26 @@ export interface PhaseTransitionEvent {
   message: string;
 }
 
+/**
+ * A welcome-back line generated for a learner returning after a long gap.
+ * Raised as an event rather than only appended to `conversations` because the
+ * character has to *say* it: speech is driven by the session views (they own
+ * the mute state, the caption overlay, and the TTS voices), and nothing in the
+ * views watches the transcript for new AI turns.
+ */
+export interface RecapEvent {
+  /** Matches the appended turn's id, so a view can locate it in the transcript. */
+  id: number;
+  text: string;
+}
+
 export interface SessionState {
   session: any;
   scenario: any;
   situation: any;
   domain: any;
   character: any;
+  selectedAvatar: AvatarSource | null;
   goals: GoalData[];
   conversations: TurnData[];
   completedGoals: number[];
@@ -73,6 +88,7 @@ export interface SessionState {
   isActive: boolean;
   isCompleted: boolean;
   phaseTransition: PhaseTransitionEvent | null;
+  recap: RecapEvent | null;
   unacknowledgedCompletion: boolean;
   evaluation: any | null;
   avgPronunciationScore: number | null;
@@ -85,7 +101,14 @@ export interface UseRoleplaySessionReturn extends SessionState {
     isRetry?: boolean;
     accuracyScore?: number;
     responseTimeMs?: number;
+    /** Cumulative reply text so far — for rendering the streaming caption. */
     onToken?: (text: string) => void;
+    /**
+     * Just-arrived text, not the accumulated string. Speech synthesis has to
+     * consume the reply incrementally, so it needs the delta rather than the
+     * running total `onToken` reports.
+     */
+    onTokenDelta?: (delta: string) => void;
     onTextDone?: (text: string) => void;
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
@@ -93,11 +116,16 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onCelebration?: (info?: { variant?: string; passed?: boolean; score?: number; xpGained?: number; newStreak?: number }) => void;
     onComplete?: (analysis: any) => void;
   }) => Promise<void>;
-  sendGreeting: (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<string>;
+  sendGreeting: (opts?: {
+    onToken?: (t: string) => void;
+    onTokenDelta?: (delta: string) => void;
+    onTextDone?: (t: string) => void;
+  }) => Promise<string>;
   pendingRetry: PendingRetry | null;
   retryCorrection: () => Promise<void>;
   dismissRetry: () => void;
   dismissPhaseTransition: () => void;
+  dismissRecap: () => void;
   acknowledgeCompletion: () => Promise<void>;
 }
 
@@ -107,6 +135,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const [situation, setSituation] = useState<any>(null);
   const [domain, setDomain] = useState<any>(null);
   const [character, setCharacter] = useState<any>(null);
+  const [selectedAvatar, setSelectedAvatar] = useState<AvatarSource | null>(null);
   const [goals, setGoals] = useState<GoalData[]>([]);
   const [conversations, setConversations] = useState<TurnData[]>([]);
   const [completedGoals, setCompletedGoals] = useState<number[]>([]);
@@ -114,6 +143,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [phaseTransition, setPhaseTransition] = useState<PhaseTransitionEvent | null>(null);
+  const [recap, setRecap] = useState<RecapEvent | null>(null);
   const [unacknowledgedCompletion, setUnacknowledgedCompletion] = useState(false);
   const [evaluation, setEvaluation] = useState<any | null>(null);
   const [avgPronunciationScore, setAvgPronunciationScore] = useState<number | null>(null);
@@ -121,6 +151,9 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const targetLanguageRef = useRef('ja');
   const nativeLanguageRef = useRef('en');
   const isRetryRef = useRef(false);
+  // Read inside submitTurnStream, which callers hold across renders — the
+  // `session` state itself would be a stale closure there.
+  const sessionStatusRef = useRef<string | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
   const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
 
@@ -132,10 +165,12 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         const data = await res.json();
         setVoiceGender(data.session?.voiceGender || data.character?.gender || 'Female');
         setSession(data.session);
+        sessionStatusRef.current = data.session?.status ?? null;
         setScenario(data.scenario);
         setSituation(data.situation);
         setDomain(data.domain);
         setCharacter(data.character);
+        setSelectedAvatar(data.selectedAvatar ?? null);
         setGoals(data.goals ?? []);
         const convList: TurnData[] = (data.conversations ?? []).map((c: any) => ({
           id: c.id,
@@ -188,6 +223,11 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
                   receivedAt: Date.now(),
                 };
                 setConversations(prev => [...prev, recapTurn]);
+                // The transcript entry alone is silent — the views speak the
+                // character's lines, and they only ever see reply text through
+                // the streaming callbacks. Raise it as an event so the recap is
+                // recited like any other thing the character says.
+                setRecap({ id: recapTurn.id, text: body.recapText });
               }
             })
             .catch(err => console.warn('[RECAP] failed to fetch recap:', err));
@@ -207,6 +247,28 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const isCompleted = session?.status === 'completed';
 
   const targetLangName = getTargetLangConfig(targetLanguage).name;
+
+  /**
+   * Bring local state in line with a session the server considers finished and
+   * pull the final evaluation. `announce` is for completions this client did
+   * not drive (another tab, a turn that finished while this one was in flight):
+   * the session really is over, so the completion screen has to be raised here
+   * rather than by the celebration flow that never ran.
+   */
+  const syncCompletedSession = useCallback(async (announce: boolean) => {
+    sessionStatusRef.current = 'completed';
+    setSession((p: any) => (p ? { ...p, status: 'completed' } : p));
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
+      const data = await res.json();
+      setEvaluation(data.evaluation ?? null);
+      setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
+      setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
+      if (announce && data.session && !data.session.completionAcknowledged) {
+        setUnacknowledgedCompletion(true);
+      }
+    } catch { /* the completion screen falls back to the session's own scores */ }
+  }, [sessionId]);
 
   const submitTurn = useCallback(async (input: string, responseTimeMs?: number) => {
     const res = await fetch('/api/chat/stream', {
@@ -230,6 +292,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       accuracyScore?: number;
       responseTimeMs?: number;
       onToken?: (text: string) => void;
+      onTokenDelta?: (delta: string) => void;
       onTextDone?: (text: string) => void;
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
@@ -241,6 +304,13 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     const trimmed = input.trim();
     if (!trimmed) return;
 
+    // A finished session takes no further turns — /api/chat/stream rejects them
+    // with a 400. UI that outlives the final turn (a coach suggestion chip, a
+    // mic release that lands after the session completed) could still call in
+    // here, and the rejection surfaced to the learner as a thrown
+    // "Session is already completed" instead of their results screen.
+    if (sessionStatusRef.current === 'completed') return;
+
     let optimisticId: number | null = null;
     if (trimmed !== '__session_start__') {
       optimisticId = Date.now();
@@ -249,6 +319,9 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
 
     const rollback = () => {
       if (optimisticId) setConversations(prev => prev.map(t => t.id === optimisticId ? { ...t, pending: false, failed: true } : t));
+    };
+    const dropOptimistic = () => {
+      if (optimisticId) setConversations(prev => prev.filter(t => t.id !== optimisticId));
     };
 
     let res: Response;
@@ -272,10 +345,18 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }
 
     if (!res.ok) {
-      rollback();
       isRetryRef.current = false;
       setPendingRetry(null);
       const errData = await res.json().catch(() => ({}));
+      // The session finished server-side without this client knowing. The turn
+      // was never accepted, so drop it rather than leaving a failed bubble, and
+      // show the learner the completion they actually reached.
+      if (res.status === 400 && errData.error === 'Session is already completed') {
+        dropOptimistic();
+        syncCompletedSession(true);
+        return;
+      }
+      rollback();
       throw new Error(errData.error || `Chat request failed (${res.status})`);
     }
 
@@ -305,6 +386,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         switch (payload.type) {
           case 'token':
             collectedAiText += payload.text;
+            options?.onTokenDelta?.(payload.text);
             options?.onToken?.(collectedAiText);
             break;
           case 'text_done':
@@ -420,22 +502,21 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }
 
     if (finalAnalysis?.scenarioComplete) {
-      setSession((p: any) => ({ ...p, status: 'completed' }));
-      fetch(`/api/sessions/${sessionId}`, { credentials: 'include' })
-        .then(r => r.json())
-        .then(data => {
-          setEvaluation(data.evaluation ?? null);
-          setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
-          setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
-        })
-        .catch(() => {});
+      // Not announced: this client drove the completion, so the celebration
+      // flow raises the results screen once the farewell has finished playing.
+      syncCompletedSession(false);
     }
-  }, [sessionId, phase, conversations.length]);
+  }, [sessionId, phase, conversations.length, syncCompletedSession]);
 
-  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => {
+  const sendGreeting = useCallback(async (opts?: {
+    onToken?: (t: string) => void;
+    onTokenDelta?: (delta: string) => void;
+    onTextDone?: (t: string) => void;
+  }) => {
     let fullText = '';
     await submitTurnStream('__session_start__', {
       onToken: (t) => { if (t) fullText = t; opts?.onToken?.(t); },
+      onTokenDelta: (delta) => opts?.onTokenDelta?.(delta),
       onTextDone: (t) => { if (t) fullText = t; opts?.onTextDone?.(t); },
     });
     return fullText;
@@ -452,6 +533,8 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
 
   const dismissPhaseTransition = useCallback(() => setPhaseTransition(null), []);
 
+  const dismissRecap = useCallback(() => setRecap(null), []);
+
   const acknowledgeCompletion = useCallback(async () => {
     setUnacknowledgedCompletion(false);
     await fetch(`/api/sessions/${sessionId}`, {
@@ -463,13 +546,13 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   }, [sessionId]);
 
   return {
-    session, scenario, situation, domain, character,
+    session, scenario, situation, domain, character, selectedAvatar,
     goals, conversations, completedGoals, phase,
     loading, error, isActive, isCompleted,
-    phaseTransition, unacknowledgedCompletion,
+    phaseTransition, recap, unacknowledgedCompletion,
     evaluation, avgPronunciationScore, newWordsCount,
     submitTurn, submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection, dismissRetry,
-    dismissPhaseTransition, acknowledgeCompletion,
+    dismissPhaseTransition, dismissRecap, acknowledgeCompletion,
   };
 }

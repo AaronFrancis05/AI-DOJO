@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "selected_avatar_id" varchar(40);

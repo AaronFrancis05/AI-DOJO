@@ -14,23 +14,23 @@ const STATUS_CONFIG: Record<ConnectionStatus, { label: string; bg: string; borde
   good: {
     label: 'Good — real-time',
     bg: 'bg-dojo-success/10',
-    border: 'border-dojo-success/30',
+    border: 'border-dojo-success/40',
     dot: 'bg-dojo-success',
-    text: 'text-dojo-success',
+    text: 'text-dojo-success-strong',
   },
   degraded: {
     label: 'Degraded — slight delay',
     bg: 'bg-dojo-warning/10',
-    border: 'border-dojo-warning/30',
+    border: 'border-dojo-warning/40',
     dot: 'bg-dojo-warning',
-    text: 'text-dojo-warning',
+    text: 'text-dojo-warning-strong',
   },
   offline: {
     label: 'Offline — try voice',
     bg: 'bg-dojo-danger/10',
-    border: 'border-dojo-danger/30',
+    border: 'border-dojo-danger/40',
     dot: 'bg-dojo-danger',
-    text: 'text-dojo-danger',
+    text: 'text-dojo-danger-strong',
   },
 };
 

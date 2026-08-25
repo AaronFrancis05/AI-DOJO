@@ -11,7 +11,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio, setVoiceGender } from '@/lib/roleplay/tts';
+import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
@@ -42,19 +42,20 @@ export default function VoiceOnlyPage() {
   const sessionId = Number(params.sessionId);
 
   const {
-    session, scenario, character, conversations, phase,
+    session, scenario, character, selectedAvatar, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     evaluation, avgPronunciationScore, newWordsCount,
     submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection,
     phaseTransition, dismissPhaseTransition,
+    recap, dismissRecap,
     unacknowledgedCompletion, acknowledgeCompletion,
   } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
   const [nativeLanguage, setNativeLanguage] = useState('en');
-  const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [greetingSent, setGreetingSent] = useState(false);
@@ -67,7 +68,6 @@ export default function VoiceOnlyPage() {
   const [chatInput, setChatInput] = useState('');
   const [tipsOpen, setTipsOpen] = useState(false);
   const [chatTab, setChatTab] = useState<'all' | 'key' | 'notes'>('all');
-  const [sessionStartTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
@@ -80,22 +80,35 @@ export default function VoiceOnlyPage() {
 
   const sendingRef = useRef(false);
   const mutedRef = useRef(false);
+  const isActiveRef = useRef(false);
   const targetLangRef = useRef('ja');
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
 
-  const charName = character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
+  // The avatar the learner picked for this session wins over the scenario's
+  // seeded character — scenario rows are shared across sessions, the pick is not.
+  const charName = selectedAvatar?.name ?? character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
-  const charRole = character?.role ?? scenario?.aiCharacterRole ?? undefined;
+  const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
+
+  // Anchored on the session's own start time rather than this page's mount:
+  // avatar and voice are two views of one session, so switching between them
+  // (or reloading) has to carry the clock over instead of restarting at 00:00.
+  const sessionStartTime: number | null = session?.startedAt
+    ? new Date(session.startedAt).getTime()
+    : null;
 
   // Session timer
   useEffect(() => {
-    const interval = setInterval(() => {
-      const diff = Math.floor((Date.now() - sessionStartTime) / 1000);
+    if (sessionStartTime === null) return;
+    const tick = () => {
+      const diff = Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000));
       const m = String(Math.floor(diff / 60)).padStart(2, '0');
       const s = String(diff % 60).padStart(2, '0');
       setElapsed(`${m}:${s}`);
-    }, 1000);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [sessionStartTime]);
 
@@ -122,6 +135,7 @@ export default function VoiceOnlyPage() {
   }, [sessionId, router]);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { targetLangRef.current = targetLanguage; }, [targetLanguage]);
   useEffect(() => { nativeLangRef.current = nativeLanguage; }, [nativeLanguage]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
@@ -132,19 +146,43 @@ export default function VoiceOnlyPage() {
     setVoiceGender(session?.voiceGender || character?.gender || 'Female');
   }, [session, character]);
 
-  useEffect(() => {
-    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
-    }
-  }, []);
+  // Microphone acquisition is handled once by the recognizer prewarm in
+  // useVoiceInput, which holds the stream open for the whole session. A
+  // separate permission-priming getUserMedia here would just acquire and
+  // immediately release a second device handle.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => {
-      setAvatarMode(speaking ? 'talking' : 'idle');
+      setIsAiSpeaking(speaking);
       if (!speaking) lastAiCompletedRef.current = Date.now();
     });
     return () => { setOnSpeakingChange(null); stopTts(); };
   }, []);
+
+  // Recite the welcome-back recap. It reaches the transcript on its own, so
+  // unlike every other AI line it never passes through the streaming callbacks
+  // that drive speech — without this it would only ever be readable in chat.
+  useEffect(() => {
+    if (!recap) return;
+    const text = cleanDisplay(recap.text);
+    if (!text || mutedRef.current) { dismissRecap(); return; }
+
+    const cancel = speakWhenAudioUnlocked(() => {
+      // The unlock can be deferred to the learner's first gesture — if that
+      // gesture was the mute button, the pre-check above is stale by now.
+      if (mutedRef.current) { dismissRecap(); return; }
+      speakMixedText(
+        text,
+        getBCP47(targetLangRef.current, 'tts'),
+        targetLangRef.current === nativeLangRef.current
+          ? getBCP47(targetLangRef.current, 'tts')
+          : getNativeLangBcp47(nativeLangRef.current),
+        phaseRef.current,
+      ).catch(() => {});
+      dismissRecap();
+    });
+    return cancel;
+  }, [recap, dismissRecap]);
 
   useEffect(() => {
     if (unacknowledgedCompletion && !completionResult) {
@@ -155,19 +193,27 @@ export default function VoiceOnlyPage() {
         fluencyScore: source.fluencyScore ?? 0,
         culturalScore: source.culturalScore ?? 0,
         taskScore: source.taskScore ?? 0,
+        // Weighted at 0.10 by computeCompositeScore. Omitting it here scored
+        // the same evaluation lower than the report page does, so a session
+        // could celebrate as failed and read as passed.
+        expressionAppropriatenessScore: source.expressionAppropriatenessScore ?? 0,
       });
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
   }, [unacknowledgedCompletion, completionResult, session, evaluation]);
 
   const handleUserUtterance = useCallback(async (text: string) => {
-    if (sendingRef.current || !text.trim()) return;
+    if (sendingRef.current || !text.trim() || !isActiveRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setAiTurnActive(true);
+    // The learner has spoken, so last turn's prompts are spent. Clearing them
+    // here keeps the conversation flowing: the coach panel only ever shows
+    // suggestions for the turn being corrected right now, and a clean turn
+    // leaves no leftover chips to answer.
+    setSuggestedReplies([]);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     stopTts();
-    resetStreamingTts();
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -186,6 +232,10 @@ export default function VoiceOnlyPage() {
           if (t) fullText = t;
           setStreamingText(t ? cleanDisplay(t) : null);
         },
+        // Speak the reply as one complete clip once the model has finished,
+        // same as the replay button — synthesizing per-sentence as the model
+        // streamed made every sentence boundary pay its own Azure connect
+        // round trip, which read as slow/choppy compared to a single clip.
         onTextDone: (t: string) => {
           const cleaned = cleanDisplay(t);
           if (!mutedRef.current && cleaned) {
@@ -231,6 +281,9 @@ export default function VoiceOnlyPage() {
       }
     } catch (e: any) {
       console.error(e);
+      // Whatever was queued belongs to a turn that failed; leaving it to drain
+      // talks over the learner's retry.
+      stopTts();
       setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
@@ -251,6 +304,13 @@ export default function VoiceOnlyPage() {
     lang: bcp47,
     onFinal: handleUserUtterance,
   });
+
+  // Single source of truth for the stage's visual state: the AI talking
+  // outranks listening (a mic press stops TTS anyway), idle is the default.
+  // Derived rather than stored, so it can never drift out of sync with the
+  // two inputs that define it.
+  const avatarMode: 'idle' | 'listening' | 'talking' =
+    isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
 
   const handleMicStart = useCallback(async () => {
     if (avatarMode === 'talking') stopTts();
@@ -369,15 +429,14 @@ export default function VoiceOnlyPage() {
                       onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t: string) => {
                         const cleaned = cleanDisplay(t);
-                        if (!mutedRef.current && cleaned) {
-                          speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
-                        }
+                        if (mutedRef.current || !cleaned) return;
+                        speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
                       },
                     })
                       .then(() => {
                         setStreamingText(null);
                       })
-                      .catch(() => { setStreamingText(null); setGreetingSent(false); });
+                      .catch(() => { stopTts(); setStreamingText(null); setGreetingSent(false); });
                   }}
                   className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >
@@ -556,7 +615,7 @@ export default function VoiceOnlyPage() {
                 <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted/60'
                 }`}>
-                  {voice.isListening ? 'Listening...' : 'Tap to Speak'}
+                  {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
               </div>
 
@@ -749,6 +808,7 @@ export default function VoiceOnlyPage() {
               corrections={coachOpen ? lastCorrections : []}
               suggestedReplies={coachOpen ? suggestedReplies : []}
               retryTarget={pendingRetry}
+              disabled={!isActive || sending}
               onRetry={() => { setCoachOpen(false); retryCorrection(); }}
               onDismiss={() => setCoachOpen(false)}
               onPickSuggestion={(text) => { setCoachOpen(false); handleUserUtterance(text); }}

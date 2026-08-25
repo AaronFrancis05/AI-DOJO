@@ -2,6 +2,23 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AIProvider, ChatTurn } from './types';
 import { AIProviderError, categorizeProviderError } from './types';
 
+// Anthropic rejects an empty `messages` array, so when no history is supplied
+// we still need a valid user turn. The system instruction carries the actual
+// task; this placeholder is just a legal message. Callers that pass `[]` are
+// real: the session recap and the per-phase hand-off lines are both
+// prompt-only generations.
+const EMPTY_HISTORY_PLACEHOLDER = 'Generate the requested output described in the system instruction.';
+
+function toMessages(history: ChatTurn[]): { role: 'user' | 'assistant'; content: string }[] {
+  if (history.length === 0) {
+    return [{ role: 'user', content: EMPTY_HISTORY_PLACEHOLDER }];
+  }
+  return history.map(t => ({
+    role: t.role as 'user' | 'assistant',
+    content: t.content,
+  }));
+}
+
 export function createAnthropicProvider(): AIProvider {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -18,15 +35,7 @@ export function createAnthropicProvider(): AIProvider {
       try {
         const systemWithJson = `${systemInstruction}\n\nCRITICAL: Respond with raw JSON only. No markdown fences, no code blocks, no surrounding text — just the JSON object.`;
 
-        // Anthropic rejects an empty `messages` array, so when no history is
-        // supplied we still need a valid user turn. The system instruction
-        // carries the actual task; this placeholder is just a legal message.
-        const messages: { role: 'user' | 'assistant'; content: string }[] = history.length > 0
-          ? history.map(t => ({
-              role: t.role as 'user' | 'assistant',
-              content: t.content,
-            }))
-          : [{ role: 'user' as const, content: 'Generate the requested output described in the system instruction.' }];
+        const messages = toMessages(history);
 
         const response = await client.messages.create({
           model: modelName,
@@ -59,10 +68,7 @@ export function createAnthropicProvider(): AIProvider {
 
     async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
       try {
-        const messages = history.map(t => ({
-          role: t.role as 'user' | 'assistant',
-          content: t.content,
-        }));
+        const messages = toMessages(history);
 
         const stream = await client.messages.create({
           model: modelName,

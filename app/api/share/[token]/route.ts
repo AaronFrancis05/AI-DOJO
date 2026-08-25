@@ -1,6 +1,7 @@
 import { db } from '../../../../src/db';
 import { shareTokens, sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios } from '../../../../src/schema';
 import { eq, asc } from 'drizzle-orm';
+import { applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
 
 export async function GET(
   req: Request,
@@ -23,7 +24,10 @@ export async function GET(
     return Response.json({ error: 'Session not found' }, { status: 404 });
   }
 
-  const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId));
+  const [scenarioRow] = await db.select().from(scenarios).where(eq(scenarios.id, session.scenarioId));
+  // The shared transcript names the avatar this session was practised with,
+  // not whoever seeded the shared scenario row.
+  const scenario = scenarioRow ? applySessionAvatarIdentity(scenarioRow, session.selectedAvatarId) : scenarioRow;
   if (!scenario) {
     return Response.json({ error: 'Scenario not found' }, { status: 404 });
   }

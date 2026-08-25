@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, timestamp, integer, boolean, numeric, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, timestamp, integer, boolean, numeric, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const users = pgTable('users', {
@@ -222,6 +222,7 @@ export const sessions = pgTable('sessions', {
   feedback:        text('feedback'),
   avatarEnabled:   boolean('avatar_enabled').default(false).notNull(),
   voiceGender:     varchar('voice_gender', { length: 10 }).default('female').notNull(),
+  selectedAvatarId: varchar('selected_avatar_id', { length: 40 }),
   expressionAppropriatenessScore: integer('expression_appropriateness_score'),
   startedAt:       timestamp('started_at').defaultNow().notNull(),
   lastActiveAt:    timestamp('last_active_at').defaultNow().notNull(),
@@ -714,4 +715,123 @@ export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => 
 
 export const chatMessageTranslationsRelations = relations(chatMessageTranslations, ({ one }) => ({
   message: one(chatMessages, { fields: [chatMessageTranslations.messageId], references: [chatMessages.id] }),
+}));
+
+// ── Live tutoring (human tutors over self-hosted LiveKit) ───────────────
+//
+// Learners book a real tutor for a lesson, or for a human read on whether
+// the AI actually taught them what it claims. Sessions run in a LiveKit
+// room; tutor↔learner text uses the existing chatRooms tables rather than a
+// second messaging system.
+//
+// The UI is gated behind NEXT_PUBLIC_TUTORS_ENABLED until a LiveKit server
+// is deployed — see docker-compose.livekit.yml.
+
+export const tutors = pgTable('tutors', {
+  id:             serial('id').primaryKey(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  headline:       varchar('headline', { length: 160 }).notNull(),
+  bio:            text('bio'),
+  // Comma-separated language codes this tutor teaches, matching the codes in
+  // lib/language.ts (e.g. "ja,fr"). Kept denormalized for the same reason
+  // scenarios keep their vocabulary inline: it is read on every listing and
+  // never queried independently.
+  languages:      text('languages').notNull(),
+  hourlyRateCents: integer('hourly_rate_cents').default(0).notNull(),
+  currency:        varchar('currency', { length: 3 }).default('USD').notNull(),
+  timezone:        varchar('timezone', { length: 60 }).default('UTC').notNull(),
+  // 'pending' until a human verifies them; only 'verified' tutors are listed.
+  verificationStatus: varchar('verification_status', { length: 20 }).default('pending').notNull(),
+  isAcceptingBookings: boolean('is_accepting_bookings').default(true).notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+});
+
+export const tutorAvailability = pgTable('tutor_availability', {
+  id:         serial('id').primaryKey(),
+  tutorId:    integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  // 0 = Sunday … 6 = Saturday, in the tutor's own timezone.
+  dayOfWeek:  integer('day_of_week').notNull(),
+  // Minutes from midnight, so a slot is timezone-arithmetic-free to store.
+  startMinute: integer('start_minute').notNull(),
+  endMinute:   integer('end_minute').notNull(),
+  createdAt:  timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqSlot: uniqueIndex('uq_tutor_availability_slot').on(t.tutorId, t.dayOfWeek, t.startMinute),
+}));
+
+export const tutorBookings = pgTable('tutor_bookings', {
+  id:          serial('id').primaryKey(),
+  tutorId:     integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:   text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // Set when the booking is a human review of one specific AI session.
+  sessionId:   integer('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  scheduledAt: timestamp('scheduled_at').notNull(),
+  durationMinutes: integer('duration_minutes').default(30).notNull(),
+  // 'requested' | 'confirmed' | 'cancelled' | 'completed'
+  status:      varchar('status', { length: 20 }).default('requested').notNull(),
+  // 'lesson' — ordinary practice; 'evaluation' — verify what the AI taught.
+  purpose:     varchar('purpose', { length: 20 }).default('lesson').notNull(),
+  learnerNote: text('learner_note'),
+  // The LiveKit room this booking meets in. Generated at booking time so both
+  // sides resolve the same room without a negotiation step.
+  livekitRoomName: varchar('livekit_room_name', { length: 80 }).notNull().unique(),
+  // Reuses the existing messaging tables for tutor↔learner chat.
+  chatRoomId:  integer('chat_room_id').references(() => chatRooms.id, { onDelete: 'set null' }),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  // Every read of this table is "this tutor's bookings, in time order" (the
+  // overlap check on booking, the availability expansion) or "my bookings".
+  idxTutorSchedule: index('idx_tutor_bookings_tutor_scheduled').on(t.tutorId, t.scheduledAt),
+  idxLearner:       index('idx_tutor_bookings_learner').on(t.learnerId),
+}));
+
+/**
+ * A tutor's verdict on a learner, on the SAME 0-100 dimensions the AI grades
+ * (see SCORE_DIMENSIONS in lib/ai-engine.ts) so the two can be shown
+ * side by side. `agreesWithAi` is the point of the whole feature: did the AI's
+ * assessment hold up against a human's?
+ */
+export const tutorEvaluations = pgTable('tutor_evaluations', {
+  id:          serial('id').primaryKey(),
+  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).notNull().unique(),
+  tutorId:     integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:   text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // Null when the booking wasn't tied to a specific AI session.
+  sessionId:   integer('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+  vocabularyScore: integer('vocabulary_score'),
+  grammarScore:    integer('grammar_score'),
+  fluencyScore:    integer('fluency_score'),
+  culturalScore:   integer('cultural_score'),
+  taskScore:       integer('task_score'),
+  expressionAppropriatenessScore: integer('expression_appropriateness_score'),
+  // 'agrees' | 'too_generous' | 'too_harsh' — how the AI's score compared.
+  agreesWithAi: varchar('agrees_with_ai', { length: 20 }),
+  notes:       text('notes'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+});
+
+export const tutorsRelations = relations(tutors, ({ one, many }) => ({
+  user:         one(users, { fields: [tutors.userId], references: [users.id] }),
+  availability: many(tutorAvailability),
+  bookings:     many(tutorBookings),
+}));
+
+export const tutorAvailabilityRelations = relations(tutorAvailability, ({ one }) => ({
+  tutor: one(tutors, { fields: [tutorAvailability.tutorId], references: [tutors.id] }),
+}));
+
+export const tutorBookingsRelations = relations(tutorBookings, ({ one }) => ({
+  tutor:    one(tutors,    { fields: [tutorBookings.tutorId],    references: [tutors.id] }),
+  learner:  one(users,     { fields: [tutorBookings.learnerId],  references: [users.id] }),
+  session:  one(sessions,  { fields: [tutorBookings.sessionId],  references: [sessions.id] }),
+  chatRoom: one(chatRooms, { fields: [tutorBookings.chatRoomId], references: [chatRooms.id] }),
+}));
+
+export const tutorEvaluationsRelations = relations(tutorEvaluations, ({ one }) => ({
+  booking: one(tutorBookings, { fields: [tutorEvaluations.bookingId], references: [tutorBookings.id] }),
+  tutor:   one(tutors,        { fields: [tutorEvaluations.tutorId],   references: [tutors.id] }),
+  learner: one(users,         { fields: [tutorEvaluations.learnerId], references: [users.id] }),
+  session: one(sessions,      { fields: [tutorEvaluations.sessionId], references: [sessions.id] }),
 }));

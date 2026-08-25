@@ -26,7 +26,7 @@ export function WelcomeBanner({ modelUrl, userName }: WelcomeBannerProps) {
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl">
       <AvatarViewport
-        name={userName ?? 'Learner'}
+        name={userName || ''}
         accentColor="#2D3BC5"
         cameraMode="banner"
         cameraIntent="face-camera"

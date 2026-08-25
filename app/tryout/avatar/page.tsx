@@ -65,11 +65,8 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-  useEffect(() => {
-    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => {});
-    }
-  }, []);
+  // Microphone acquisition is handled once by the recognizer prewarm in
+  // useVoiceInput, which holds the stream open for the whole session.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => setAvatarMode(speaking ? 'talking' : 'idle'));
@@ -241,7 +238,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-white/70'
                 }`}>
-                  {voice.isListening ? 'Listening...' : 'Tap to Speak'}
+                  {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
               </div>
 

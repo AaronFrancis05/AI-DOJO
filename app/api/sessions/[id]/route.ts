@@ -3,6 +3,7 @@ import { sessions, scenarios, conversations, corrections, evaluations, goalCompl
 import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray, and, isNotNull, sql } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
+import { AVATAR_SOURCES, applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
 import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
 import {
   getScenarioLocalization,
@@ -222,13 +223,25 @@ export async function GET(
     if (targetVocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(localizedVocab, targetVocabLoc);
   }
 
+  // Per-session avatar override — resolves the catalog entry the user picked
+  // in the two-card picker. Keeps historical sessions isolated even when the
+  // shared `scenarios` row is reused across many sessions/situations.
+  const selectedAvatarId = session.selectedAvatarId;
+  const selectedAvatar = selectedAvatarId ? AVATAR_SOURCES.find(a => a.id === selectedAvatarId) ?? null : null;
+  // Surface the override on the scenario so every consumer (report, title,
+  // transcript header) sees the right name/role without mutating the shared row.
+  const scenarioForClient = localizedScenario
+    ? applySessionAvatarIdentity(localizedScenario, selectedAvatarId)
+    : null;
+
   return Response.json({
     success: true,
     session,
-    scenario: localizedScenario ?? null,
+    scenario: scenarioForClient,
     situation,
     domain: domainResult,
     character,
+    selectedAvatar,
     vocabulary: localizedVocab,
     goals,
     conversations: conversationWithCorrections,

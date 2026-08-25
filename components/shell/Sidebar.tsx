@@ -13,7 +13,9 @@ import { authClient } from '@/lib/auth/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useUser } from '@/lib/auth/user-context';
+import { resolveDisplayName } from '@/lib/auth/display-name';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import {
   LayoutDashboard,
   Compass,
@@ -25,6 +27,8 @@ import {
   Settings,
   LogOut,
   History,
+  Repeat2,
+  Users,
 } from 'lucide-react';
 
 interface NavItem {
@@ -35,8 +39,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Home',      href: '/home',        icon: LayoutDashboard },
+  ...(TUTORS_ENABLED ? [{ label: 'Tutors', href: '/tutors', icon: Users }] : []),
   { label: 'Hub',       href: '/hub',         icon: Compass },
   { label: 'Courses',   href: '/courses',     icon: GraduationCap },
+  { label: 'Review',    href: '/review',      icon: Repeat2 },
   { label: 'Sessions',  href: '/sessions',    icon: History },
   { label: 'Progress',  href: '/progress',    icon: BarChart3 },
   { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },
@@ -54,6 +60,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const router = useRouter();
   const user = useUser();
   const currentAvatarUrl = useCurrentAvatar();
+  // Honest identity: stored name → email local-part → "You" (never a fake
+  // placeholder name like 'Learner').
+  const displayName = resolveDisplayName(user);
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
@@ -107,14 +116,14 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       <div className="border-t border-dojo-border p-4">
         <div className="flex items-center gap-3">
           <Avatar
-            name={user?.name ?? 'Learner'}
+            name={displayName}
             src={currentAvatarUrl ?? user?.avatarSrc}
             color={user?.avatarColor ?? '#2D3BC5'}
             size="md"
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-dojo-text-primary truncate">
-              {user?.name ?? 'Learner'}
+              {displayName}
             </p>
           </div>
         </div>

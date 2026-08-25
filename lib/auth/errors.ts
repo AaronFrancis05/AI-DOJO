@@ -38,6 +38,9 @@ function normalizeCode(code: unknown, message: string): string {
   if (lower.includes('network') || lower.includes('failed to fetch')) {
     return 'network_error';
   }
+  if (lower.includes('invalid token') || lower.includes('token expired')) {
+    return 'invalid_token';
+  }
   return '';
 }
 
@@ -67,6 +70,16 @@ function messageForCode(code: string, context: AuthErrorContext): string | null 
 
   if (code === 'email_not_confirmed' || code === 'email_not_verified') {
     return 'Please verify your email before continuing.';
+  }
+
+  // A reset link is single-use and short-lived, so "invalid" and "expired" are
+  // the same thing to the person holding it: the link is spent, get a new one.
+  if (
+    code === 'invalid_token' ||
+    code === 'token_expired' ||
+    code === 'invalid_or_expired_token'
+  ) {
+    return 'This reset link has expired or was already used. Request a new one.';
   }
 
   if (code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit') {

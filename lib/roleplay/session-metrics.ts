@@ -1,4 +1,39 @@
 import type { TurnData, GoalData } from '@/lib/hooks/useRoleplaySession';
+import { computeCompositeScore } from './phase-engine';
+
+/** The six persisted dimension scores, as they appear on a session/evaluation row. */
+export interface DimensionScores {
+  vocabularyScore?: number | null;
+  grammarScore?: number | null;
+  fluencyScore?: number | null;
+  culturalScore?: number | null;
+  taskScore?: number | null;
+  expressionAppropriatenessScore?: number | null;
+}
+
+/**
+ * Overall percentage for a scored session.
+ *
+ * Delegates to `computeCompositeScore` so every surface agrees with the
+ * pass/fail the session actually recorded. Three separate hand-rolled versions
+ * of this existed — the home and sessions lists both summed five dimensions
+ * and divided by 100, and the public share page divided by maxes of
+ * 30/25/20/15/10. All three predated the move to independent 0-100 scores and
+ * would now report percentages well over 100.
+ */
+export function sessionCompositePct(s: DimensionScores & { status?: string }): number | null {
+  if (s.status && s.status !== 'completed') return null;
+  if (s.vocabularyScore == null) return null;
+
+  return computeCompositeScore('completed', {
+    vocabularyScore: s.vocabularyScore ?? 0,
+    grammarScore: s.grammarScore ?? 0,
+    fluencyScore: s.fluencyScore ?? 0,
+    culturalScore: s.culturalScore ?? 0,
+    taskScore: s.taskScore ?? 0,
+    expressionAppropriatenessScore: s.expressionAppropriatenessScore ?? 0,
+  });
+}
 
 export interface SessionMetrics {
   vocabulary: number;

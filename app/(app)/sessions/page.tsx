@@ -15,6 +15,7 @@ import { LiveBadge } from '@/components/ui/LiveBadge';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { type SessionRecord } from '@/lib/types';
+import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
 import {
   ArrowLeft,
   Share2,
@@ -24,11 +25,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
-function computeTotalPct(s: SessionRecord): number | null {
-  if (s.status !== 'completed' || s.vocabularyScore === null) return null;
-  const sum = (s.vocabularyScore ?? 0) + (s.grammarScore ?? 0) + (s.fluencyScore ?? 0) + (s.culturalScore ?? 0) + (s.taskScore ?? 0);
-  return Math.round((sum / 100) * 100);
-}
+const computeTotalPct = sessionCompositePct;
 
 export default function SessionsPage() {
   usePageTitle('All Sessions');
