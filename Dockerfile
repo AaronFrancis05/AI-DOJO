@@ -32,9 +32,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
 ARG NEON_AUTH_BASE_URL=https://example.invalid
 ARG NEON_AUTH_COOKIE_SECRET=build-time-placeholder-secret-min-32-chars
+ARG APP_ORIGIN=http://localhost:3000
 ENV DATABASE_URL=${DATABASE_URL}
 ENV NEON_AUTH_BASE_URL=${NEON_AUTH_BASE_URL}
 ENV NEON_AUTH_COOKIE_SECRET=${NEON_AUTH_COOKIE_SECRET}
+ENV APP_ORIGIN=${APP_ORIGIN}
 
 RUN npm run build
 
@@ -48,6 +50,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Next standalone binds to HOSTNAME. Docker sets this to the container name;
+# with multiple networks that can resolve to the wrong NIC. Always listen on all interfaces.
+ENV HOSTNAME=0.0.0.0
 
 RUN mkdir .next && chown node:node .next
 
