@@ -17,35 +17,54 @@ export default async function AppLayout({
   let user: import('@/lib/auth/user-context').UserContextValue | null = null;
 
   if (u?.id) {
+    const authId = u.id;
+    // Pass the provider's name through only when it is actually a name —
+    // syncUser must never write a placeholder over an existing display name.
+    const providerName = typeof u.name === 'string' && u.name.trim() ? u.name.trim() : '';
     await syncUser({
-      id: u.id,
+      id: authId,
       email: u.email ?? '',
-      name: u.name ?? 'Learner',
+      name: providerName || null,
     }).catch((err) => console.error('[sync-user] failed', err));
 
-    const [dbUser] = await db
-      .select({
-        name: users.name,
-        email: users.email,
-        level: users.level,
-        xp: users.xp,
-        xpToNext: users.xpToNext,
-        tier: users.tier,
-        streak: users.streak,
-        avatarSrc: users.avatarSrc,
-        dailyGoalMinutes: users.dailyGoalMinutes,
-        nativeLanguage: users.nativeLanguage,
-        preferredTargetLanguage: users.preferredTargetLanguage,
-        countryCode: users.countryCode,
-      })
-      .from(users)
-      .where(eq(users.id, u.id))
-      .limit(1);
+    const loadDbUser = () =>
+      db
+        .select({
+          name: users.name,
+          email: users.email,
+          level: users.level,
+          xp: users.xp,
+          xpToNext: users.xpToNext,
+          tier: users.tier,
+          streak: users.streak,
+          avatarSrc: users.avatarSrc,
+          dailyGoalMinutes: users.dailyGoalMinutes,
+          nativeLanguage: users.nativeLanguage,
+          preferredTargetLanguage: users.preferredTargetLanguage,
+          countryCode: users.countryCode,
+        })
+        .from(users)
+        .where(eq(users.id, authId))
+        .limit(1);
+
+    // A transient pool/network blip must not silently degrade the whole
+    // identity to fallbacks — retry once before giving up on the row.
+    let dbUser: Awaited<ReturnType<typeof loadDbUser>>[number] | undefined;
+    try {
+      [dbUser] = await loadDbUser();
+    } catch (firstErr) {
+      console.error('[app-layout] user read failed, retrying', firstErr);
+      try {
+        [dbUser] = await loadDbUser();
+      } catch (err) {
+        console.error('[app-layout] user read failed twice', err);
+      }
+    }
 
     user = {
-      id: u.id,
-      name: dbUser?.name ?? u.name ?? 'Learner',
-      email: dbUser?.email ?? u.email ?? '',
+      id: authId,
+      name: dbUser?.name || providerName || '',
+      email: dbUser?.email || u.email || '',
       level: dbUser?.level ?? 'beginner',
       tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,

@@ -301,3 +301,13 @@ Three separate causes behind "slow to load, floats with its hands up, then final
   - `/auth/reset`, `ForgotPasswordModal` and `PasswordInput` were all hardcoded `neutral-*`/`white` — i.e. white cards in dark mode, and on `/auth` the password field visibly didn't match the email field directly above it. All three are on `dojo-*` tokens now. `PasswordInput`'s strength bar uses `dojo-danger`/`warning`/`success`.
   - Unrelated but worth knowing: the Neon project **requires email verification to sign in** (`EMAIL_NOT_VERIFIED` on an unverified account).
 - Verified with `npx tsc --noEmit` (clean), `npx eslint` on the touched files (no new reports), the three `/auth/reset` states rendering correctly off the dev server, and the API probes above. **The recap speech itself was not heard in a browser** — that needs a live session idle for five minutes.
+
+## 2026-08-25 - 'Learner' identity fix: stop persisting placeholder names, honest fallbacks
+
+- **Root cause of the phantom 'Learner' user**: pp/(app)/layout.tsx resolved the display name as dbUser?.name ?? u.name ?? 'Learner' and then passed that *fallback string* into syncUser, whose update path wrote it over the existing row's real name (lib/auth/sync-user.ts). One render while Neon Auth metadata lacked a name (email-link signup, OAuth without name claim, pre-name-field records) permanently stamped 'Learner' into users.name. A transient DB failure degraded silently the same way (sync errors swallowed, select returns nothing, fallback chain).
+- **Fix 1 - syncUser never persists placeholders** (lib/auth/sync-user.ts): AuthUser.name is now optional; updates are skipped entirely when the provider has no real trimmed name; new rows insert '' (column is notNull) instead of an invented identity. Both call sites (layout + getAuthUser) are covered by the guard.
+- **Fix 2 - layout distinguishes failure from absence**: DB read retries once before giving up; context name is dbUser?.name || providerName || '' - empty means "not set", never a fake persona.
+- **Fix 3 - neutral render fallbacks**: new esolveDisplayName() in lib/auth/display-name.ts (stored name -> email local-part -> 'You'); used by Sidebar user card, home greeting/title, WelcomeBanner. Session role chips (userCharacterRole ?? 'Learner') left alone - roleplay-fiction semantics, not identity; scenario prompts already treat placeholder names as fictional devices.
+- Chat rooms/messages still show 'Unknown' for OTHER members with null names (server-side join fallback) - separate follow-up if wanted.
+- Verified: 
+px tsc --noEmit clean; eslint on touched files clean (only pre-existing warnings).
