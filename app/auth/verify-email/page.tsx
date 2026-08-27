@@ -28,9 +28,23 @@ const inputClass =
  * else is an open redirect wearing a sign-up flow as a disguise. `//host`
  * is protocol-relative and leaves the site, which is why a bare `/` prefix
  * is not enough on its own.
+ *
+ * Neither is rejecting `//`. The URL parser treats a backslash as a forward
+ * slash in an http(s) URL and strips tab/newline/carriage-return outright
+ * before parsing, so `/\host`, `/\/host` and `/<TAB>/host` all clear a
+ * `startsWith('//')` test and then resolve to `https://host` — the same open
+ * redirect through a different spelling. Any of those characters means the
+ * string was written to be re-read as something other than what it looks
+ * like, so the whole value is refused rather than normalized.
+ *
+ * Kept in step with the copy in `app/auth/page.tsx`: both pages hand the same
+ * `next` on to each other, so a gap in either one is a gap in both.
  */
+const NEXT_SMUGGLING = /[\\\t\n\r]/;
+
 function safeNext(next: string | null): string | null {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+  if (NEXT_SMUGGLING.test(next)) return null;
   return next;
 }
 

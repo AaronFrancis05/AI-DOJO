@@ -19,11 +19,22 @@ import Link from 'next/link';
  * redirect. `//host` is protocol-relative and leaves the site, which is why a
  * bare `/` prefix is not enough on its own.
  *
+ * Neither is rejecting `//`. The URL parser treats a backslash as a forward
+ * slash in an http(s) URL and strips tab/newline/carriage-return outright
+ * before parsing, so `/\host`, `/\/host` and `/<TAB>/host` all clear a
+ * `startsWith('//')` test and then resolve to `https://host` — the same open
+ * redirect through a different spelling. Any of those characters means the
+ * string was written to be re-read as something other than what it looks
+ * like, so the whole value is refused rather than normalized.
+ *
  * The destination still guards itself: `/tutor` redirects anyone without the
  * role to `/home`, so a forged `next` grants nothing.
  */
+const NEXT_SMUGGLING = /[\\\t\n\r]/;
+
 function safeNext(next: string | null): string | null {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+  if (NEXT_SMUGGLING.test(next)) return null;
   return next;
 }
 
