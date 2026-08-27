@@ -68,6 +68,15 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `FooterNewsletter` | — | "Stay in the loop" email capture in the marketing footer's 6th column. **No backend**: there is no newsletter route under `app/api/`, so submit only flips to a local acknowledgement — wire the handler when an endpoint exists |
 | `PartnerBadge` (local to `app/(marketing)/page.tsx`) | `name`, `logo?` | Marquee tile in the Partners section. Tile is `h-16 w-24 / sm:h-20 sm:w-28` — deliberately wider than tall, because the assets in `public/brands/` range from a 4:1 wordmark to detailed university crests that were unreadable in the old 56px square. Uses **hardcoded `bg-white`** (documented exception): every logo file has a baked-in white background, so a themed surface only framed a white rectangle in dark mode. Partners with no `logo` fall back to an initial badge |
 
+## Auth Components (`/components/auth/`)
+
+| Component | Props | Notes |
+|---|---|---|
+| `AuthScreen` | `role: UserRole`, `mode: 'signin' \| 'signup'` | The whole credential screen — every door renders this one component. `role` is the *door*, not a claim: it selects copy, showcase panel and defaults, and grants nothing. A successful sign-in lands via `roleHome(await fetchUserRole())`, i.e. off the server's answer, never off `role`. Admin variant drops the Google button and the role tabs. Uses `useSearchParams` — wrap in `<Suspense>` |
+| `AuthRoleTabs` | `role`, `mode`, `next?` | Link-based Learner/Tutor segmented control. Links, not state, so the choice survives reload/bookmark/back. Not `ui/Tabs`, which is stateful and owns its own panels. Admin is deliberately absent |
+
+`lib/auth/destinations.ts` is the shared, client-safe source for `roleHome`, `roleSignInPath`, `roleSignUpPath`, `safeNext` and `fetchUserRole`. See **One account system, three doors** in the Route Map.
+
 ## App Shell (`/components/shell/`)
 | Component | Notes |
 |-----------|-------|
@@ -381,7 +390,7 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 ## Route Map (Phase F1-F4)
 | Route | Panel | Status |
 |-------|-------|--------|
-| `/home` | Home Dashboard | Learner dashboard. `app/(app)/home/layout.tsx` redirects `role === 'tutor'` to `/tutor` — `/home` is the default destination of `/auth`, and a tutor's XP/streak/session history are permanently empty |
+| `/home` | Home Dashboard | Learner dashboard. `app/(app)/home/layout.tsx` redirects `role === 'tutor'` to `/tutor` — `/home` is `roleHome('learner')`, the fallback for any account whose role does not name a console, and a tutor's XP/streak/session history are permanently empty |
 | `/hub` | Domain Grid | Listicle of 8 domain cards |
 | `/dojo/[domainSlug]` | Domain Detail | Hero + situation list |
 | `/dojo/[domainSlug]/[situationId]` | Situation Picker | Focus pills + mode toggle |
@@ -405,11 +414,17 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/settings` | Settings | Preferences + Notifications + Privacy |
 | `/settings/avatar` | Avatar & Character | Tabbed: avatar presets + voice prefs |
 | `/settings/billing` | Subscription | Plan cards |
-| `/auth` | Sign in / Register | Email+password and Google. "Forgot password?" opens `ForgotPasswordModal` with the typed email prefilled. Honors `?next=` (same-origin only) and shows a confirmation banner on `?verified=1` |
+| `/auth` | — | Compatibility shim. Redirects to `/auth/signin`, carrying the whole query string across (`?signed_out=1`, `?error=…`, `?verified=1`, `?next=…` all still mean something to the page that now answers) |
+| `/auth/signin` | Sign in | The default door: learner form with a Tutor tab (`AuthRoleTabs`). Email+password and Google. "Forgot password?" opens `ForgotPasswordModal` with the typed email prefilled. Honors `?next=` (same-origin only) and shows a confirmation banner on `?verified=1`. **Where it lands is decided by `users.role`, not by the form** |
+| `/auth/signup` | Create your account | Same screen, sign-up mode. The Tutor tab goes to `/auth/tutor/signup` (the application form) |
+| `/auth/tutor/signin` | Tutor sign in | The same credential form, tutor copy and showcase. Same account system underneath |
+| `/auth/tutor/signup` | Teach on AI DOJO | Account + teaching profile in one form, with an inline verify step before `POST /api/tutors/apply` |
+| `/auth/tutor` | — | Redirects to `/auth/tutor/signup`, where the application used to live |
+| `/auth/admin/signin` | Admin sign in | **Unlinked and `noindex`** — reachable only by typing the URL. Grants nothing on its own; calls `POST /api/auth/admin/claim`, which checks `ADMIN_EMAILS`. A learner who finds it lands on `/home` like any other learner |
+| `/auth/admin/signup` | Create an admin account | **Unlinked and `noindex`.** Creates an ordinary account; it becomes an admin only if the address is in `ADMIN_EMAILS`. Anyone else is told so and left as a learner |
 | `/auth/reset` | Set a new password | Landing page for the emailed reset link |
 | `/auth/suspended` | Account access paused | Where a suspended or closed account lands. The `(app)` layout sends them here rather than to `/auth`, because bouncing someone to a sign-in page they *can* sign into is a loop with no explanation in it — `getAuthUser()` is what refuses them, not their credentials. Reads `users.status` / `suspendedReason` through `getAuthUserReadOnly`, since `getAuthUser()` returns null for exactly the accounts this page serves |
 | `/auth/verify-email` | Verify your email | The shared step between creating an account and being let in. `?email=` (required), `?sent=1` (a code was already mailed — do not auto-send), `?next=` (where to land) |
-| `/auth/tutor` | Teach on AI DOJO | Account + teaching profile in one form, with an inline verify step before `POST /api/tutors/apply` |
 | `/onboarding/[step]` | Learner wizard | Level → goal → domain → mode → age → languages → frequency → account |
 | `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/level`). welcome → native-language → availability → ready |
 
@@ -421,12 +436,12 @@ The Neon project **requires a verified email before it issues a session**. `auth
 
 Two shapes, both live:
 
-- **`/auth` (learner)** hands off to `/auth/verify-email?email=…&sent=1&next=/onboarding`. `sent=1` matters: Neon mails a code as part of the sign-up, and a second one invalidates the code already in their inbox.
-- **`/auth/tutor`** keeps the applicant on the page (`step: 'verify'`) because it is holding a filled-in profile that a redirect would throw away.
+- **`/auth/signin` and `/auth/signup` (learner, tutor, admin)** hand off to `/auth/verify-email?email=…&sent=1&next=/onboarding`. `sent=1` matters: Neon mails a code as part of the sign-up, and a second one invalidates the code already in their inbox.
+- **`/auth/tutor/signup`** keeps the applicant on the page (`step: 'verify'`) because it is holding a filled-in profile that a redirect would throw away.
 
-After `emailOtp.verifyEmail`, **check `getSession()` again** — verification signs anyone in only where the project enables auto-sign-in. `/auth/tutor` falls back to `signIn.email` with the password still in state; `/auth/verify-email` has no password, so it routes to `/auth?verified=1&next=…` and says so rather than failing silently.
+After `emailOtp.verifyEmail`, **check `getSession()` again** — verification signs anyone in only where the project enables auto-sign-in. `/auth/tutor/signup` falls back to `signIn.email` with the password still in state; `/auth/verify-email` has no password, so it routes to `/auth/signin?verified=1&next=…` and says so rather than failing silently.
 
-### Tutor application (`/auth/tutor`)
+### Tutor application (`/auth/tutor/signup`)
 
 1. `establishSession()` — sign up, then check `getSession()`. No session → `step: 'verify'`. A `user_already_exists` sign-up falls through to `signIn.email` (the account is usually theirs, from an attempt that died at the profile step); an `email_not_verified` sign-in also lands on `step: 'verify'`.
 2. `step: 'verify'` — verify the code, re-check the session, sign in if needed, and only then POST the held profile.
@@ -455,13 +470,28 @@ Two rules the flow depends on:
 
 `OnboardingShell` takes the wizard it is rendering (`steps`, `basePath`, `exitHref`), defaulting to the learner one — the progress bar, the back button and the interstitial layout all derive from `StepConfig`, so a wizard declares its steps in exactly one place.
 
-### Where tutors sign in
+### One account system, three doors
 
-There is **one** sign-in page. `users.role` decides what an account opens — `/auth/tutor` is an application form, not a second front door, and no second one should be built.
+There is one set of credentials and one `users` table. `users.role` decides what an account opens. What is split is the **door**, not the identity: `/auth/signin`, `/auth/tutor/signin` and `/auth/admin/signin` (plus their `signup` twins) render the same `components/auth/AuthScreen` with different copy, showcase and defaults.
 
-Returning tutors reach it as `/auth?next=/tutor`, linked from `/auth/tutor`'s header ("Already have an account? Sign in"). `next` is same-origin-only in both pages (`safeNext`); the destination guards itself regardless — `/tutor` redirects anyone without the role to `/home`, so a forged `next` grants nothing.
+**The role of the door never decides the landing.** After a successful sign-in the page asks the server (`GET /api/user/role`) and routes through `roleHome()` in `lib/auth/destinations.ts` — `admin` → `/admin`, `tutor` → `/tutor`, everyone else → `/home`. This is the whole point of the split: a tutor who signs in on the learner form is still a tutor, and the old behaviour (always `/home`, plus an in-component `isLogin` toggle that no URL described) is what made the app disagree with itself about who was signing in. The Google callback in `app/api/auth/[...path]/route.ts` routes the same way, off the `users.role` it already reads.
 
-`/auth/tutor` is linked from the marketing footer (Product → "Teach on AI DOJO") and from the bottom of `/auth`.
+`lib/auth/destinations.ts` is the single source for all of it — `roleHome`, `roleSignInPath`, `roleSignUpPath`, `safeNext`, `fetchUserRole` — and it is client-safe (no Drizzle). **Do not add a second copy of `safeNext`**; `/auth/verify-email` used to carry one.
+
+Role choice is a URL, not component state, so it survives a reload, a bookmark and the back button. `AuthRoleTabs` (`components/auth/AuthRoleTabs.tsx`) is a link-based Learner/Tutor segmented control — deliberately not `components/ui/Tabs`, which is stateful and owns its own panels.
+
+`next` is same-origin-only everywhere (`safeNext`), and the destination guards itself regardless: `/tutor` and `/admin` redirect anyone without the role to `/home`, so a forged `next` grants nothing.
+
+### Admin doors (`/auth/admin/*`)
+
+Unlinked, `noindex` (`app/auth/admin/layout.tsx`), and reachable only by typing the URL — **and none of that is the access control.** The gate is `ADMIN_EMAILS`, a comma-separated env var read server-side by `lib/auth/admin-allowlist.ts`:
+
+- `POST /api/auth/admin/claim` promotes the signed-in account to `role: 'admin'` only if its address is on the list. It **fails closed**: an unset or empty `ADMIN_EMAILS` allows nobody, because a missing env var must not turn the sign-up into an open door.
+- Both the admin sign-in and sign-up call it, and it is idempotent. That is not redundancy — the Neon project will not issue a session until the email is verified, so a fresh admin's first *session* is often their second visit, by which time the sign-up call is long gone.
+- It also stamps `onboardingCompletedAt`, and `app/(app)/layout.tsx` skips the onboarding gate for `admin`. Neither wizard collects anything the console reads.
+- No Google button on the admin pages: the OAuth callback has nowhere to carry an allowlist decision, so promotion stays on the password path where the claim route can answer for it.
+
+Admins can still be created the other way, by an existing admin via `POST /api/admin/users/create` — that writes a `users` row which `syncUser()` picks up by email on first sign-in.
 
 ### Password reset (Neon Auth)
 

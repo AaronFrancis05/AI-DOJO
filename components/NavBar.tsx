@@ -13,7 +13,7 @@ export default function NavBar() {
   async function handleLogout() {
     setLoggingOut(true);
     await authClient.signOut();
-    window.location.href = '/auth?signed_out=1';
+    window.location.href = '/auth/signin?signed_out=1';
   }
 
   const linkClass = (path: string) =>

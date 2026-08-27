@@ -19,7 +19,10 @@ export default async function TutorOnboardingStepPage({
   const { step } = await params;
   const role = await getUserRoleReadOnly();
 
-  if (!role) redirect(`/auth?next=${encodeURIComponent('/onboarding/tutor/welcome')}`);
+  // The tutor door, not the learner one: whoever lands here is mid-way through
+  // tutor onboarding, so the page they are bounced to should be the one that
+  // takes them back.
+  if (!role) redirect(`/auth/tutor/signin?next=${encodeURIComponent('/onboarding/tutor/welcome')}`);
   if (role === 'learner') redirect('/onboarding/level');
 
   return <TutorOnboarding step={step} />;

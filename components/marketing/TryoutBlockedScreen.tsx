@@ -76,7 +76,7 @@ export function TryoutBlockedScreen({ targetLanguage, nativeLanguage, retryAfter
           Keep learning — set up your plan
         </Link>
         <Link
-          href="/auth"
+          href="/auth/signin"
           className="mt-3 block text-xs font-medium text-dojo-text-muted hover:text-dojo-text-primary"
         >
           Already have an account? Log in
