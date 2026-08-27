@@ -257,7 +257,6 @@ export async function GET(
     goalCompletions: goalCompletionList,
     avgPronunciationScore,
     newWordsCount,
-    avaturnSubdomain: process.env.NEXT_PUBLIC_AVATURN_SUBDOMAIN ?? null,
   });
 }
 

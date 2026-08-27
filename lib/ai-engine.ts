@@ -144,9 +144,15 @@ export function normalizeScores(raw: unknown): TurnScores {
   return out;
 }
 
-const TARGET_LANG_NAMES: Record<string, string> = Object.fromEntries(
-  TARGET_LANGUAGES.map(l => [l.code, l.name]),
-);
+/**
+ * Looked up per call, not snapshotted into a module-level map: the catalogue is
+ * hydrated from the `languages` table after this module is imported, so a map
+ * built at import time would never contain an admin-added language and the
+ * prompt would name it by its bare code.
+ */
+function resolveTargetLangName(code: string): string {
+  return TARGET_LANGUAGES.find(l => l.code === code)?.name ?? code.toUpperCase();
+}
 
 export async function analyzeAndGenerateTurn(
   userInput: string,
@@ -180,7 +186,7 @@ export async function analyzeAndGenerateTurn(
   learnerCountry?: string | null,
 ): Promise<AIResponseAnalysis> {
 
-  const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
+  const targetLangName = resolveTargetLangName(targetLanguage);
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
   const hasPhonetic = targetCfg.hasPhonetic;
@@ -416,7 +422,7 @@ export async function analyzeUserTurn(input: AnalyzeUserTurnInput): Promise<User
     isSameLanguage,
   } = input;
 
-  const targetLangName = TARGET_LANG_NAMES[targetLanguage] ?? targetLanguage.toUpperCase();
+  const targetLangName = resolveTargetLangName(targetLanguage);
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
   const hasPhonetic = targetCfg.hasPhonetic;

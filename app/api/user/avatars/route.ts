@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     avatarUrl,
     thumbnailUrl: thumbnailUrl ?? null,
     isSelected: true,
-    source: 'avaturn',
+    source: 'catalog',
   }).returning();
 
   await cacheDel(cacheKeys.userAvatars(user.id));

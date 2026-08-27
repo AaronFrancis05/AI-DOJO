@@ -2,6 +2,11 @@ import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { and, eq, ne } from 'drizzle-orm';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
+import {
+  parseLanguageCodes,
+  serializeLanguageCodes,
+  unknownLanguageCodes,
+} from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';
 
@@ -42,7 +47,7 @@ export async function PATCH(
     isAcceptingBookings?: unknown;
   };
 
-  const update: { verificationStatus?: VerificationStatus; isAcceptingBookings?: boolean } = {};
+  const update: Partial<typeof tutors.$inferInsert> = {};
   if (verificationStatus !== undefined) {
     if (!isStatus(verificationStatus)) {
       return Response.json({ error: 'Unknown verification status' }, { status: 400 });
@@ -52,6 +57,61 @@ export async function PATCH(
   if (typeof isAcceptingBookings === 'boolean') {
     update.isAcceptingBookings = isAcceptingBookings;
   }
+
+  // The profile itself is editable here too. An admin correcting a tutor's
+  // languages is the difference between "your application is wrong, reapply"
+  // and fixing it — and the two language sets are what every scheduling route
+  // validates against, so a wrong one blocks the tutor from working at all.
+  if (typeof body?.headline === 'string' && body.headline.trim()) {
+    update.headline = body.headline.trim().slice(0, 160);
+  }
+  if (typeof body?.bio === 'string' || body?.bio === null) {
+    update.bio = typeof body.bio === 'string' && body.bio.trim() ? body.bio.trim() : null;
+  }
+  if (typeof body?.timezone === 'string' && body.timezone.trim()) {
+    update.timezone = body.timezone.trim().slice(0, 60);
+  }
+  if (body?.hourlyRateCents !== undefined) {
+    // Typed before converting, for the same reason as /api/tutor/profile:
+    // Number('') and Number(null) are 0, which would set the rate to free.
+    if (typeof body.hourlyRateCents !== 'number') {
+      return Response.json({ error: 'Hourly rate is out of range' }, { status: 400 });
+    }
+    const rate = Math.round(body.hourlyRateCents);
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100_000) {
+      return Response.json({ error: 'Hourly rate is out of range' }, { status: 400 });
+    }
+    update.hourlyRateCents = rate;
+  }
+  if (body?.languages !== undefined) {
+    const codes = parseLanguageCodes(body.languages);
+    if (codes.length === 0) {
+      return Response.json({ error: 'A tutor must teach at least one language' }, { status: 400 });
+    }
+    const unknown = await unknownLanguageCodes(codes, 'target');
+    if (unknown.length > 0) {
+      return Response.json({ error: `Unsupported language: ${unknown.join(', ')}` }, { status: 400 });
+    }
+    update.languages = serializeLanguageCodes(codes);
+  }
+  if (body?.instructionLanguages !== undefined) {
+    const codes = parseLanguageCodes(body.instructionLanguages);
+    if (codes.length === 0) {
+      return Response.json(
+        { error: 'A tutor must be able to explain in at least one language' },
+        { status: 400 },
+      );
+    }
+    const unknown = await unknownLanguageCodes(codes, 'native');
+    if (unknown.length > 0) {
+      return Response.json(
+        { error: `Unsupported explanation language: ${unknown.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    update.instructionLanguages = serializeLanguageCodes(codes);
+  }
+
   if (Object.keys(update).length === 0) {
     return Response.json({ error: 'No valid fields to update' }, { status: 400 });
   }

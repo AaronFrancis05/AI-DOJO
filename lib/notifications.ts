@@ -13,7 +13,14 @@ import { notifications } from '@/src/schema';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
 
-export type NotificationType = 'evaluation' | 'booking' | 'class' | 'assessment';
+export type NotificationType =
+  | 'evaluation'
+  | 'booking'
+  | 'class'
+  | 'assessment'
+  // The only one a human writes rather than a completed action producing it —
+  // see POST /api/tutor/announcements.
+  | 'announcement';
 
 export interface CreateNotificationInput {
   userId: string;

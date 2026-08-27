@@ -16,7 +16,8 @@ import { getAuthErrorCode, getAuthErrorMessage } from '@/lib/auth/errors';
 import { AlertCircleIcon, LoaderIcon } from '@/components/Icons';
 import PasswordInput from '@/components/PasswordInput';
 import { Button } from '@/components/ui/Button';
-import { TARGET_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
+import { LanguagePillGroup } from '@/components/tutors/LanguagePillGroup';
 
 const inputClass =
   'w-full rounded-lg border border-dojo-border bg-dojo-surface px-4 py-3 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20';
@@ -41,6 +42,7 @@ function detectTimeZone(): string {
 
 export default function TutorSignupPage() {
   const router = useRouter();
+  const catalog = useLanguageCatalog();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,6 +50,7 @@ export default function TutorSignupPage() {
   const [headline, setHeadline] = useState('');
   const [bio, setBio] = useState('');
   const [languages, setLanguages] = useState<string[]>([]);
+  const [instructionLanguages, setInstructionLanguages] = useState<string[]>([]);
   const [timezone, setTimezone] = useState('UTC');
   const [hourlyRate, setHourlyRate] = useState('25');
 
@@ -75,6 +78,10 @@ export default function TutorSignupPage() {
 
   const toggleLanguage = (code: string) => {
     setLanguages((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
+  };
+
+  const toggleInstructionLanguage = (code: string) => {
+    setInstructionLanguages((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
   };
 
   /** Mails a fresh verification code to the address on the form. */
@@ -153,6 +160,7 @@ export default function TutorSignupPage() {
         headline: headline.trim(),
         bio: bio.trim(),
         languages,
+        instructionLanguages,
         timezone,
         hourlyRateCents: Math.round(Number(hourlyRate) * 100),
       }),
@@ -184,6 +192,10 @@ export default function TutorSignupPage() {
     }
     if (languages.length === 0) {
       setError('Select at least one language you teach.');
+      return;
+    }
+    if (instructionLanguages.length === 0) {
+      setError('Select at least one language you can explain in.');
       return;
     }
 
@@ -419,29 +431,21 @@ export default function TutorSignupPage() {
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-dojo-text-muted">Languages you teach</label>
-                <div className="flex flex-wrap gap-2">
-                  {TARGET_LANGUAGES.map((lang) => {
-                    const selected = languages.includes(lang.code);
-                    return (
-                      <button
-                        key={lang.code}
-                        type="button"
-                        onClick={() => toggleLanguage(lang.code)}
-                        aria-pressed={selected}
-                        className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
-                          selected
-                            ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-text-primary'
-                            : 'border-dojo-border bg-dojo-surface-raised text-dojo-text-muted hover:border-dojo-accent/50'
-                        }`}
-                      >
-                        {lang.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <LanguagePillGroup
+                label="Languages you teach"
+                hint="The target languages a learner practises with you."
+                options={catalog.target}
+                selected={languages}
+                onToggle={toggleLanguage}
+              />
+
+              <LanguagePillGroup
+                label="Languages you can explain in"
+                hint="How you coach and give feedback. Pick every language you can teach in — you choose one per class."
+                options={catalog.native}
+                selected={instructionLanguages}
+                onToggle={toggleInstructionLanguage}
+              />
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">

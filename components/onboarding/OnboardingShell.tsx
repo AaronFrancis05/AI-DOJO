@@ -2,17 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { OnboardingProvider } from '@/lib/onboarding/context';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ONBOARDING_STEPS, type StepConfig } from '@/lib/onboarding/steps';
+import { ArrowLeft } from 'lucide-react';
 
-function OnboardingShellInner({ children, stepIndex, totalSteps, currentStep, navigateBack }: {
+function OnboardingShellInner({ children, stepIndex, totalSteps, isTransition, navigateBack }: {
   children: React.ReactNode;
   stepIndex: number;
   totalSteps: number;
-  currentStep: string;
+  isTransition: boolean;
   navigateBack: () => void;
 }) {
-  const isTransition = isTransitionStep(currentStep);
   const progressPercent = ((stepIndex + 1) / totalSteps) * 100;
 
   return (
@@ -57,55 +56,58 @@ function OnboardingShellInner({ children, stepIndex, totalSteps, currentStep, na
   );
 }
 
-function isTransitionStep(key: string): boolean {
-  return ['social-proof', 'transition-1', 'transition-2', 'personalizing', 'plan-ready'].includes(key);
+interface OnboardingShellProps {
+  children: React.ReactNode;
+  currentStep: string;
+  /** The wizard being walked. Defaults to the learner one; the tutor wizard
+   *  passes `TUTOR_ONBOARDING_STEPS`. Progress, back and the interstitial
+   *  layout all read from it, so a wizard only has to declare its steps once. */
+  steps?: StepConfig[];
+  /** Where a step key resolves against, e.g. `/onboarding/tutor`. */
+  basePath?: string;
+  /** Where "back" goes from the first step. */
+  exitHref?: string;
 }
 
-const STEP_DISPLAY_KEYS: Record<string, string> = {
-  level: 'Level',
-  'social-proof': '',
-  goal: 'Goal',
-  'transition-1': '',
-  domain: 'Domain',
-  mode: 'Mode',
-  'transition-2': '',
-  age: 'Age',
-  'target-language': 'Target Language',
-  'native-language': 'Native Language',
-  frequency: 'Frequency',
-  personalizing: '',
-  'plan-ready': '',
-  account: 'Account',
-};
-
-export function OnboardingShell({ children, currentStep }: { children: React.ReactNode; currentStep: string }) {
+export function OnboardingShell({
+  children,
+  currentStep,
+  steps = ONBOARDING_STEPS,
+  basePath = '/onboarding',
+  exitHref = '/auth',
+}: OnboardingShellProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const stepKeys = [
-    'level', 'social-proof', 'goal', 'transition-1', 'domain', 'mode',
-    'transition-2', 'age', 'target-language', 'native-language', 'frequency',
-    'personalizing', 'plan-ready', 'account',
-  ];
+  const stepKeys = steps.map((s) => s.key);
   const currentIndex = stepKeys.indexOf(currentStep);
+  const isTransition = steps.some((s) => s.key === currentStep && s.transition);
   const prevStepRef = useRef(currentStep);
 
+  // Keyed on `transition` rather than on the learner wizard's two interstitial
+  // keys, so the tutor wizard — and any step added later — gets the same
+  // behaviour without naming its steps here.
   useEffect(() => {
-    if (mounted && currentStep !== 'personalizing' && currentStep !== 'plan-ready') {
+    if (mounted && !isTransition) {
       prevStepRef.current = currentStep;
     }
-  }, [currentStep, mounted]);
+  }, [currentStep, mounted, isTransition]);
 
   const navigateBack = () => {
-    if (currentStep === stepKeys[0]) {
-      router.push('/auth');
+    // Back out of an interstitial goes to the step the wizard was last really
+    // on. The key immediately before it is often another transition, which
+    // would re-run the animation the tutor was trying to leave.
+    if (isTransition && prevStepRef.current !== currentStep) {
+      router.push(`${basePath}/${prevStepRef.current}`);
       return;
     }
     const idx = stepKeys.indexOf(currentStep);
-    if (idx > 0) {
-      router.push(`/onboarding/${stepKeys[idx - 1]}`);
+    if (idx <= 0) {
+      router.push(exitHref);
+      return;
     }
+    router.push(`${basePath}/${stepKeys[idx - 1]}`);
   };
 
   if (!mounted) return null;
@@ -114,7 +116,7 @@ export function OnboardingShell({ children, currentStep }: { children: React.Rea
     <OnboardingShellInner
       stepIndex={currentIndex}
       totalSteps={stepKeys.length}
-      currentStep={currentStep}
+      isTransition={isTransition}
       navigateBack={navigateBack}
     >
       {children}

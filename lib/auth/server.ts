@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { createNeonAuth } from '@neondatabase/auth/next/server';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
@@ -35,11 +36,39 @@ export async function getAuthUser() {
       console.error('[sync-user] failed', err);
       return user.id;
     });
+    // Access revocation is enforced here, with authorisation, rather than in
+    // the UI: every API route funnels through getAuthUser() (directly or via
+    // requireRole), so a suspended or soft-deleted account stops being able to
+    // do anything at the same moment an admin flips the column. Hiding the nav
+    // would leave every endpoint open to a saved URL or a stale tab.
+    if (await isAccountBlocked(dbUserId)) return null;
+
     // Use the DB's user id so FK constraints (sessions.user_id, etc.) work.
     // The auth provider's id may differ from the DB row after a provider rotation.
     return { ...user, id: dbUserId };
   }
   return user;
+}
+
+/**
+ * Whether this account has had its access revoked.
+ *
+ * Fails **open** on a database error, deliberately: an outage must not sign
+ * every user out of the product. Suspension is an administrative action on a
+ * handful of accounts, not a security boundary against a compromised database.
+ */
+export async function isAccountBlocked(userId: string): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ status: users.status })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row ? row.status !== 'active' : false;
+  } catch (err) {
+    console.error('[auth] status check failed', err instanceof Error ? err.message : String(err));
+    return false;
+  }
 }
 
 async function resolveDbId(user: { id: string; email?: string } | null) {
@@ -59,8 +88,13 @@ async function resolveDbId(user: { id: string; email?: string } | null) {
 
 /** Read-only session check safe for Server Components.
  *  Tries the cached session_data JWT first; falls back to calling the
- *  auth handler with the session_token cookie (no cookie rotation). */
-export async function getAuthUserReadOnly() {
+ *  auth handler with the session_token cookie (no cookie rotation).
+ *
+ *  Wrapped in React `cache()` because the app shell asks twice per render:
+ *  `app/(app)/layout.tsx` needs the user and the nested `home/layout.tsx` needs
+ *  the role, and each verify can reach the auth handler and then the database.
+ *  The cache is per-request, so nothing leaks between users. */
+export const getAuthUserReadOnly = cache(async function getAuthUserReadOnly() {
   const cookieStore = await cookies();
 
   // Fast path: try the cached session_data JWT (HTTPS only)
@@ -102,7 +136,7 @@ export async function getAuthUserReadOnly() {
     console.error('[getAuthUserReadOnly] Fallback failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
-}
+});
 
 export async function requireAuthUser() {
   const user = await getAuthUser();
@@ -122,6 +156,27 @@ export async function getUserRole(): Promise<UserRole | null> {
   const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, user.id)).limit(1);
   return toUserRole(row?.role);
 }
+
+/**
+ * The same answer as `getUserRole`, off the read-only session path.
+ *
+ * For Server Components — layouts and pages that only want to route on the
+ * role. `getAuthUser` can rotate the session cookie, which a component render
+ * is not allowed to do; `getAuthUserReadOnly` exists precisely for this.
+ *
+ * Never for authorisation: routes gate with `requireRole`.
+ */
+export const getUserRoleReadOnly = cache(async function getUserRoleReadOnly(): Promise<UserRole | null> {
+  const user = await getAuthUserReadOnly();
+  if (!user?.id) return null;
+  try {
+    const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, user.id)).limit(1);
+    return toUserRole(row?.role);
+  } catch (err) {
+    console.error('[getUserRoleReadOnly] role read failed', err);
+    return null;
+  }
+});
 
 /**
  * Thrown by `requireRole`. Carries the status a route handler should answer

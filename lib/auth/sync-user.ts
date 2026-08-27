@@ -20,7 +20,7 @@ export async function syncUser(authUser: AuthUser): Promise<string> {
   // Look up by email — the auth provider's id may differ from the DB row's id
   // (e.g. after a Neon auth provider key rotation), but the email is stable.
   const [existing] = await db
-    .select({ id: users.id })
+    .select({ id: users.id, authUserId: users.authUserId })
     .from(users)
     .where(eq(users.email, authUser.email))
     .limit(1);
@@ -30,10 +30,14 @@ export async function syncUser(authUser: AuthUser): Promise<string> {
     // the display name when the provider actually has one — previously this
     // wrote the caller's fallback string (e.g. 'Learner') over real names.
     const name = realName(authUser.name);
-    if (!name) return existing.id;
+    // Stamp the auth identity if it is missing or has moved (a provider key
+    // rotation reissues ids). Without it the row looks like an unclaimed
+    // invitation to reconcileDeletedAuthUsers() and outlives its own account.
+    const authUserId = existing.authUserId !== authUser.id ? authUser.id : undefined;
+    if (!name && !authUserId) return existing.id;
     await db
       .update(users)
-      .set({ name })
+      .set({ ...(name ? { name } : {}), ...(authUserId ? { authUserId } : {}) })
       .where(eq(users.id, existing.id));
     return existing.id;
   }
@@ -42,6 +46,7 @@ export async function syncUser(authUser: AuthUser): Promise<string> {
   // an absent name inserts as '' rather than inventing an identity.
   await db.insert(users).values({
     id: authUser.id,
+    authUserId: authUser.id,
     name: realName(authUser.name),
     email: authUser.email,
   });

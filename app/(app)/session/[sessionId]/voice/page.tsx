@@ -8,7 +8,7 @@ import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
-import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
+import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
@@ -309,7 +309,14 @@ export default function VoiceOnlyPage() {
 
   const bcp47 = getBCP47(targetLanguage, 'stt');
 
-  const voice = useVoiceInput({
+  // Barge-in lives in useVoiceInput.start(): it silences the character on
+  // every press, not only when the derived mode below says it is talking. That
+  // mode dips to false in the gap between utterances of one reply, and a press
+  // landing in the gap used to leave the rest of the reply playing into an open
+  // mic. usePushToTalk holds the press/release gesture itself — notably the
+  // pointer capture that stops a finger sliding off the button being read as a
+  // release.
+  const voice = usePushToTalk({
     lang: bcp47,
     onFinal: handleUserUtterance,
     // RoleplaySessionProvider owns the recognizer for the whole session, so it
@@ -323,15 +330,6 @@ export default function VoiceOnlyPage() {
   // two inputs that define it.
   const avatarMode: 'idle' | 'listening' | 'talking' =
     isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
-
-  // Barge-in lives in useVoiceInput.start(): it silences the character on
-  // every press, not only when this derived mode says it is talking. That
-  // mode dips to false in the gap between utterances of one reply, and a
-  // press landing in the gap used to leave the rest of the reply playing
-  // into an open mic.
-  const handleMicStart = useCallback(async () => {
-    await voice.start();
-  }, [voice]);
 
   const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
   const skillLevelLabel = situation?.skillLevel
@@ -621,13 +619,7 @@ export default function VoiceOnlyPage() {
                   )}
                   <button
                     type="button"
-                    onPointerDown={handleMicStart}
-                    onPointerUp={voice.stop}
-                    onPointerLeave={voice.stop}
-                    onPointerCancel={voice.stop}
-                    onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleMicStart(); } }}
-                    onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
-                    onBlur={voice.stop}
+                    {...voice.buttonProps}
                     disabled={!isActive || sending}
                     aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
                     aria-pressed={voice.isListening}
@@ -636,7 +628,7 @@ export default function VoiceOnlyPage() {
                         ? 'bg-dojo-warning shadow-[0_0_32px_rgba(242,169,59,0.5)] ring-4 ring-dojo-warning/20'
                         : 'bg-dojo-accent hover:scale-105 shadow-[0_8px_24px_rgba(45,59,197,0.4)]'
                     } disabled:opacity-40`}
-                    style={{ touchAction: 'none', transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
+                    style={{ ...voice.buttonProps.style, transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
                   >
                     <Mic className="h-7 w-7 text-white" />
                   </button>

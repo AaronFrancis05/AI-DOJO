@@ -18,6 +18,7 @@ import {
   TUTORS_ENABLED,
 } from '@/lib/tutors/config';
 import { dbPool } from '@/src/db-pool';
+import { tutorLanguageError } from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';
 
@@ -111,6 +112,7 @@ export async function GET(req: Request) {
       unitId: r.classSession.unitId,
       unitTitle: r.unitTitle,
       targetLanguage: r.classSession.targetLanguage,
+      instructionLanguage: r.classSession.instructionLanguage,
       scheduledAt: r.classSession.scheduledAt,
       durationMinutes: r.classSession.durationMinutes,
       capacity: r.classSession.capacity,
@@ -162,6 +164,9 @@ export async function POST(req: Request) {
   const title = String(body.title ?? '').trim().slice(0, 150);
   const description = body.description ? String(body.description).slice(0, 2000) : null;
   const targetLanguage = String(body.targetLanguage ?? '').trim();
+  const instructionLanguage = body.instructionLanguage
+    ? String(body.instructionLanguage).trim()
+    : null;
   const durationMinutes = Number(body.durationMinutes ?? 60);
   const capacity = Number(body.capacity ?? 12);
   const courseId = body.courseId != null ? Number(body.courseId) : null;
@@ -170,6 +175,12 @@ export async function POST(req: Request) {
 
   if (!title || !targetLanguage) {
     return Response.json({ error: 'title and targetLanguage are required' }, { status: 400 });
+  }
+  // A tutor may only schedule in a pair they actually hold. Checked here and
+  // not only in the console, which is a convenience rather than a boundary.
+  const languageError = tutorLanguageError(tutorProfile, targetLanguage, instructionLanguage);
+  if (languageError) {
+    return Response.json({ error: languageError }, { status: 400 });
   }
   if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
     return Response.json({ error: 'scheduledAt must be a future date' }, { status: 400 });
@@ -190,7 +201,13 @@ export async function POST(req: Request) {
   const classId = await dbPool.transaction(async (tx) => {
     const [room] = await tx
       .insert(chatRooms)
-      .values({ name: title.slice(0, 150), isGroup: true, createdBy: user.id })
+      .values({
+        name: title.slice(0, 150),
+        isGroup: true,
+        kind: 'class',
+        ownerTutorId: tutorProfile.id,
+        createdBy: user.id,
+      })
       .returning({ id: chatRooms.id });
 
     if (room) {
@@ -209,6 +226,7 @@ export async function POST(req: Request) {
         title,
         description,
         targetLanguage,
+        instructionLanguage,
         scheduledAt,
         durationMinutes,
         capacity,

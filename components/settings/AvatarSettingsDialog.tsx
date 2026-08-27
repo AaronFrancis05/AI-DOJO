@@ -17,9 +17,8 @@ import { getCharacters } from '@/lib/data/characters';
 import type { CharacterFixture } from '@/lib/data/characters';
 import { useUser } from '@/lib/auth/user-context';
 import { useAvatar } from '@/lib/auth/avatar-context';
-import { AvaturnConnector } from '@/components/roleplay/AvaturnConnector';
 import { AvatarPicker } from '@/components/roleplay/AvatarPicker';
-import { Smile, UserCheck, Headphones, Star, Plus, Trash2, User } from 'lucide-react';
+import { Smile, UserCheck, Headphones, Star, Trash2, User } from 'lucide-react';
 
 const ProfilePortrait = dynamic(() => import('@/components/roleplay/avatar-variants/ProfilePortrait').then(m => ({ default: m.ProfilePortrait })), {
   ssr: false,
@@ -51,7 +50,6 @@ interface AvatarSettingsDialogProps {
 export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProps) {
   const user = useUser();
   const { avatars, selectedAvatar, loading, selectAvatar, deleteAvatar, refresh } = useAvatar();
-  const [showAvaturn, setShowAvaturn] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState(50);
   const [voicePitch, setVoicePitch] = useState(50);
   const [characters, setCharacters] = useState<CharacterFixture[]>([]);
@@ -111,7 +109,7 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                   </p>
                   {selectedAvatar && <Badge variant="accent" className="mt-1">Current</Badge>}
                   {!selectedAvatar && !loading && (
-                    <p className="mt-1 text-xs text-dojo-text-muted">No avatar set — connect Avaturn to create one.</p>
+                    <p className="mt-1 text-xs text-dojo-text-muted">No avatar set — pick one from the Catalog tab.</p>
                   )}
                 </div>
 
@@ -172,19 +170,10 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                           </button>
                         </div>
                       ))}
-
-                      {/* Add new via Avaturn */}
-                      <button
-                        onClick={() => setShowAvaturn(true)}
-                        className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-dojo-border hover:border-dojo-accent p-3 transition-all min-h-[96px]"
-                      >
-                        <Plus className="h-6 w-6 text-dojo-text-muted" />
-                        <span className="text-xs font-medium text-dojo-text-muted text-center leading-tight">Connect Avaturn</span>
-                      </button>
                     </div>
                   )}
                   <p className="mt-3 text-xs text-dojo-text-muted">
-                    Or pick from the <span className="font-medium text-dojo-text-primary">Catalog</span> tab — 43 built-in avatars with thumbnails, ported from ai-avatar-ui.
+                    Add one from the <span className="font-medium text-dojo-text-primary">Catalog</span> tab — 43 built-in avatars with thumbnails, ported from ai-avatar-ui.
                   </p>
                 </div>
               </div>
@@ -297,10 +286,6 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
             return null;
         }
       }} />
-
-      {showAvaturn && (
-        <AvaturnConnector onClose={() => setShowAvaturn(false)} />
-      )}
     </Dialog>
   );
 }

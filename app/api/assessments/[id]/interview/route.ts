@@ -242,6 +242,14 @@ export async function POST(
   const persona = interviewerPersona(found.assessment.aiInterviewerAvatarId);
   const minutes = found.assessment.minutesPerLearner;
 
+  // The language the examiner explains and debriefs in. The tutor picks it per
+  // assessment from the set they can teach in; with none chosen it falls back
+  // to the learner's own, which is what this did before the column existed.
+  // It is not the language of the examination itself — that stays
+  // `targetLanguage`, and the two are deliberately allowed to differ.
+  const instructionLanguage =
+    found.assessment.instructionLanguage ?? learner.nativeLanguage;
+
   const systemInstruction = buildInterviewSystemInstruction({
     persona,
     assessmentTitle: found.assessment.title,
@@ -249,7 +257,7 @@ export async function POST(
     tutorBrief: found.assessment.aiInterviewerBrief,
     unitTitle,
     targetLanguage: found.assessment.targetLanguage,
-    nativeLanguage: learner.nativeLanguage,
+    nativeLanguage: instructionLanguage,
     learnerName: learner.name || user.name,
     learnerLevel: learner.level,
     learnerCountry: learner.countryName,
@@ -362,6 +370,12 @@ export async function PATCH(
 
   const persona = interviewerPersona(found.assessment.aiInterviewerAvatarId);
 
+  // Marked and fed back in the same language the examination was explained in,
+  // so the debrief matches what the learner heard during it — see the POST
+  // handler above, which locks the same choice into the examiner's brief.
+  const instructionLanguage =
+    found.assessment.instructionLanguage ?? learner.nativeLanguage;
+
   let scores = null;
   let feedback: string | null = null;
   let summary = '';
@@ -374,7 +388,7 @@ export async function PATCH(
         unitTitle,
         tutorBrief: found.assessment.aiInterviewerBrief,
         targetLanguage: found.assessment.targetLanguage,
-        nativeLanguage: learner.nativeLanguage,
+        nativeLanguage: instructionLanguage,
         learnerLevel: learner.level,
         learnerName: learner.name || user.name,
         examinerName: persona.name,

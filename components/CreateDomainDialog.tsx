@@ -4,17 +4,23 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
+import { useUser } from '@/lib/auth/user-context';
 import type { CharacterFixture } from '@/lib/mock-data/characters';
 
+/** The field names `POST /api/domains/create-custom` reads. They were `japanese`
+ *  and `english` here, which the route dropped as invalid — every hand-entered
+ *  word was thrown away and replaced by the AI-generated list. */
 interface VocabItem {
-  japanese: string;
+  targetText: string;
   phonetic: string;
-  english: string;
+  translation: string;
 }
 
 export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
+  const catalog = useLanguageCatalog();
+  const user = useUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterFixture[]>([]);
@@ -24,10 +30,25 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
   const [context, setContext] = useState('');
   const [learningGoals, setLearningGoals] = useState('');
   const [vocabItems, setVocabItems] = useState<VocabItem[]>([
-    { japanese: '', phonetic: '', english: '' },
+    { targetText: '', phonetic: '', translation: '' },
   ]);
-  const [targetLanguage, setTargetLanguage] = useState('ja');
-  const [nativeLanguage, setNativeLanguage] = useState('en');
+  // The learner's own pair when the catalogue still offers it, otherwise the
+  // first thing that is offered. A hardcoded 'ja'/'en' could be a language the
+  // admin has since disabled, leaving the select showing one code and
+  // submitting another.
+  const [targetLanguage, setTargetLanguage] = useState(
+    () =>
+      (user?.preferredTargetLanguage &&
+      catalog.target.some((l) => l.code === user.preferredTargetLanguage)
+        ? user.preferredTargetLanguage
+        : catalog.target[0]?.code) ?? '',
+  );
+  const [nativeLanguage, setNativeLanguage] = useState(
+    () =>
+      (user?.nativeLanguage && catalog.native.some((l) => l.code === user.nativeLanguage)
+        ? user.nativeLanguage
+        : catalog.native[0]?.code) ?? '',
+  );
   const [characterId, setCharacterId] = useState<number | null>(null);
   const [skillLevel, setSkillLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
   const [behaviorMode, setBehaviorMode] = useState<'standard' | 'trouble'>('standard');
@@ -61,7 +82,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
           situationTitle: situationTitle.trim(),
           context: context.trim(),
           learningGoals: learningGoals.trim(),
-          vocabulary: vocabItems.filter(v => v.japanese.trim() && v.english.trim()),
+          vocabulary: vocabItems.filter(v => v.targetText.trim() && v.translation.trim()),
           targetLanguage,
           nativeLanguage,
           characterId,
@@ -78,7 +99,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
     }
   };
 
-  const addVocab = () => { if (vocabItems.length < 5) setVocabItems([...vocabItems, { japanese: '', phonetic: '', english: '' }]); };
+  const addVocab = () => { if (vocabItems.length < 5) setVocabItems([...vocabItems, { targetText: '', phonetic: '', translation: '' }]); };
   const removeVocab = (i: number) => setVocabItems(vocabItems.filter((_, idx) => idx !== i));
   const updateVocab = (i: number, field: keyof VocabItem, val: string) => {
     const next = [...vocabItems];
@@ -87,6 +108,14 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
   };
 
   if (!open) return null;
+
+  // The vocabulary columns are the chosen pair, not Japanese/English — the
+  // placeholders said otherwise while the row was being written as
+  // targetText/translation.
+  const targetLanguageName =
+    catalog.target.find(l => l.code === targetLanguage)?.name ?? 'Target language';
+  const nativeLanguageName =
+    catalog.native.find(l => l.code === nativeLanguage)?.name ?? 'Translation';
 
   const inputCls =
     'w-full rounded-[--radius-md] border border-dojo-border bg-dojo-surface-raised px-3 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 focus:outline-none focus:border-dojo-accent transition-colors';
@@ -143,9 +172,9 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
             <div className="space-y-2">
               {vocabItems.map((item, i) => (
                 <div key={i} className="flex gap-2 items-start">
-                  <input type="text" value={item.japanese} onChange={e => updateVocab(i, 'japanese', e.target.value)} placeholder="Japanese" className={`${inputCls} flex-1`} />
+                  <input type="text" value={item.targetText} onChange={e => updateVocab(i, 'targetText', e.target.value)} placeholder={targetLanguageName} className={`${inputCls} flex-1`} />
                   <input type="text" value={item.phonetic} onChange={e => updateVocab(i, 'phonetic', e.target.value)} placeholder="phonetic" className={`${inputCls} flex-1`} />
-                  <input type="text" value={item.english} onChange={e => updateVocab(i, 'english', e.target.value)} placeholder="English" className={`${inputCls} flex-1`} />
+                  <input type="text" value={item.translation} onChange={e => updateVocab(i, 'translation', e.target.value)} placeholder={nativeLanguageName} className={`${inputCls} flex-1`} />
                   {vocabItems.length > 1 && (
                     <button type="button" onClick={() => removeVocab(i)} className="mt-1.5 p-1 text-dojo-text-muted hover:text-dojo-danger transition-colors">
                       <Trash2 className="h-4 w-4" />
@@ -161,13 +190,13 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
             <div>
               <label className={labelCls}>Target Language</label>
               <select value={targetLanguage} onChange={e => setTargetLanguage(e.target.value)} className={inputCls}>
-                {TARGET_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
+                {catalog.target.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
               </select>
             </div>
             <div>
               <label className={labelCls}>Native Language</label>
               <select value={nativeLanguage} onChange={e => setNativeLanguage(e.target.value)} className={inputCls}>
-                {NATIVE_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
+                {catalog.native.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
               </select>
             </div>
           </div>

@@ -52,6 +52,51 @@ test('handles Japanese terminators, keeping the span whole', () => {
   assert.equal(buffer.slice(0, end), '⟦こんにちは。⟧ これは挨拶です。');
 });
 
+test('splits real CJK, which puts no space after 。', () => {
+  // The spaces in the fixture above are an artifact of writing the test in a
+  // Latin-script editor; a model writing Japanese does not emit them. Requiring
+  // whitespace after 。 meant this buffer had no boundary at all, so nothing
+  // was ever spoken until generation finished.
+  const buffer = '⟦こんにちは。⟧これは挨拶です。言ってみましょう';
+  const end = findSentenceEnd(buffer, false);
+  assert.equal(buffer.slice(0, end), '⟦こんにちは。⟧これは挨拶です。');
+});
+
+test('an ASCII terminator still needs its lookahead', () => {
+  // The guard that stops "1.5" and "Mr." being split at a chunk boundary is
+  // unaffected by the CJK terminators being exempted from it.
+  assert.equal(findSentenceEnd('The price is 1.5', false), -1);
+  assert.equal(findSentenceEnd('Bonjour Mr.', false), -1);
+});
+
+test('a full-width terminator inside a span is still not a boundary', () => {
+  assert.equal(findSentenceEnd('⟦こんにちは。元気', false), -1);
+});
+
+test('breaks an over-long buffer that has no terminator at all', () => {
+  // Thai writes without sentence-ending punctuation, so no terminator rule can
+  // find a boundary; the phrase spaces are what it offers instead.
+  const clause = 'สวัสดีครับ ผมชื่อสมชาย ';
+  const buffer = clause.repeat(9);
+  const end = findSentenceEnd(buffer, false);
+  assert.ok(end > 0, 'expected a fallback break');
+  assert.ok(end <= 160, 'fallback must break within the cap');
+  assert.equal(/\s/.test(buffer[end]) || buffer[end - 1] === '⟧', true);
+});
+
+test('the fallback leaves a short unterminated buffer alone', () => {
+  // Under the cap the next chunk may still carry the terminator.
+  assert.equal(findSentenceEnd('สวัสดีครับ ผมชื่อสมชาย', false), -1);
+});
+
+test('the fallback never breaks inside an open span', () => {
+  // A 200-char span with spaces in it: every space is inside ⟦ ⟧, so the only
+  // legal break is the one before the span opened.
+  const buffer = `Voici la phrase ⟦${'mot '.repeat(60)}`;
+  const end = findSentenceEnd(buffer, false);
+  assert.ok(end <= buffer.indexOf('⟦'), 'must not break inside the open span');
+});
+
 test('the last sentence of a finished reply is emitted without trailing space', () => {
   // Same text the streaming pass declined to split — flushStreamTts runs the
   // final pattern precisely so nothing is left unsaid.

@@ -2,7 +2,7 @@ import { getAuthUser } from '../../../../lib/auth/server';
 import { db } from '../../../../src/db';
 import { users } from '../../../../src/schema';
 import { eq } from 'drizzle-orm';
-import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '../../../../lib/language';
+import { isLanguageEnabled } from '../../../../lib/language-registry';
 
 export async function GET() {
   const authUser = await getAuthUser();
@@ -37,17 +37,18 @@ export async function PUT(req: Request) {
   const body = await req.json().catch(() => ({}));
   const updateData: Record<string, unknown> = {};
 
+  // Validated against the configured catalogue, not the compiled-in constants:
+  // a learner must not be able to select a language an admin has disabled, and
+  // must be able to select one an admin has added.
   if (typeof body.preferredTargetLanguage === 'string' && body.preferredTargetLanguage) {
-    const valid = TARGET_LANGUAGES.some((l) => l.code === body.preferredTargetLanguage);
-    if (!valid) {
+    if (!(await isLanguageEnabled(body.preferredTargetLanguage, 'target'))) {
       return Response.json({ error: 'Unknown target language' }, { status: 400 });
     }
     updateData.preferredTargetLanguage = body.preferredTargetLanguage;
   }
 
   if (typeof body.nativeLanguage === 'string' && body.nativeLanguage) {
-    const valid = NATIVE_LANGUAGES.some((l) => l.code === body.nativeLanguage);
-    if (!valid) {
+    if (!(await isLanguageEnabled(body.nativeLanguage, 'native'))) {
       return Response.json({ error: 'Unknown native language' }, { status: 400 });
     }
     updateData.nativeLanguage = body.nativeLanguage;

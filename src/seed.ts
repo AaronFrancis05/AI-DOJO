@@ -11,7 +11,9 @@ import {
   scenarioGoalLocalizations,
   countries, scenarioSettings,
   courses, courseLevels, units, lessons, lessonPhases,
+  languages,
 } from './schema';
+import { BUILT_IN_NATIVE_LANGUAGES, BUILT_IN_TARGET_LANGUAGES } from '../lib/language';
 
 interface ScenarioLocFixtureRow {
   scenario: string;
@@ -64,6 +66,67 @@ interface LocalizationFixture {
 async function seed() {
   try {
     console.log('🌱 Starting AI DOJO database seeding (idempotent — existing rows are preserved)...');
+
+    // ================================================================
+    // 0. LANGUAGES
+    // ================================================================
+    // The compiled-in catalogue becomes the table's starting contents. From
+    // then on the admin console owns it, so this is `onConflictDoNothing` and
+    // never an upsert: re-seeding must not undo a language an admin disabled,
+    // renamed or re-voiced — the same rule enrolInCourse() follows for a
+    // learner's progress.
+    //
+    // A language that is only in NATIVE_LANGUAGES (something the app can
+    // explain in but not yet teach) still gets a row, with the target side off
+    // and placeholder English voices — the columns are NOT NULL because a
+    // target language cannot function without them, and this is the honest
+    // placeholder for a row that will never be used as a target until an admin
+    // fills it in.
+    console.log('Inserting languages...');
+
+    const targetSeed = BUILT_IN_TARGET_LANGUAGES.map((l, i) => ({
+      code: l.code,
+      name: l.name,
+      nativeName: l.nativeName,
+      flag: l.flag,
+      sttBcp47: l.bcp47.stt,
+      ttsBcp47: l.bcp47.tts,
+      azureVoiceFemale: l.azureVoice.female,
+      azureVoiceMale: l.azureVoice.male,
+      hasPhonetic: l.hasPhonetic,
+      ttsSupported: l.ttsSupported,
+      greetingGesture: l.greetingGesture ?? null,
+      isTargetEnabled: true,
+      isNativeEnabled: BUILT_IN_NATIVE_LANGUAGES.some(n => n.code === l.code),
+      displayOrder: i,
+      isBuiltIn: true,
+    }));
+
+    const nativeOnlySeed = BUILT_IN_NATIVE_LANGUAGES
+      .filter(n => !BUILT_IN_TARGET_LANGUAGES.some(t => t.code === n.code))
+      .map((n, i) => ({
+        code: n.code,
+        name: n.name,
+        nativeName: n.nativeName,
+        flag: '🌐',
+        sttBcp47: 'en-US',
+        ttsBcp47: 'en-US',
+        azureVoiceFemale: 'en-US-JennyNeural',
+        azureVoiceMale: 'en-US-GuyNeural',
+        hasPhonetic: false,
+        ttsSupported: false,
+        greetingGesture: null,
+        isTargetEnabled: false,
+        isNativeEnabled: true,
+        displayOrder: targetSeed.length + i,
+        isBuiltIn: true,
+      }));
+
+    await db.insert(languages)
+      .values([...targetSeed, ...nativeOnlySeed])
+      .onConflictDoNothing({ target: languages.code });
+
+    console.log(`  ${targetSeed.length} target + ${nativeOnlySeed.length} native-only languages ensured`);
 
     // ================================================================
     // 1. USERS

@@ -1,5 +1,5 @@
 import { pgTable, serial, varchar, text, timestamp, integer, boolean, numeric, index, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id:                    text('id').primaryKey(),
@@ -11,6 +11,16 @@ export const users = pgTable('users', {
   // teaches; this column is what authorises them — see requireRole() in
   // lib/auth/server.ts. 'admin' satisfies every other role.
   role:                  varchar('role', { length: 20 }).default('learner').notNull(),
+  // 'active' | 'suspended' | 'deleted'. Access is revoked here rather than by
+  // deleting the row: users.id is referenced by sessions, evaluations, class
+  // rosters and grades, so a hard delete rewrites other people's history.
+  // Enforced in getAuthUser() — a suspended account gets no session, so the
+  // check sits with authorisation rather than in the UI. 'deleted' is a soft
+  // delete: the identity is anonymised, the foreign keys stay intact.
+  status:                varchar('status', { length: 20 }).default('active').notNull(),
+  suspendedAt:           timestamp('suspended_at'),
+  suspendedReason:       text('suspended_reason'),
+  deletedAt:             timestamp('deleted_at'),
   xp:                    integer('xp').default(0).notNull(),
   xpToNext:              integer('xp_to_next').default(1000).notNull(),
   tier:                  varchar('tier', { length: 20 }).default('premium').notNull(),
@@ -21,6 +31,15 @@ export const users = pgTable('users', {
   avatarSrc:             text('avatar_src'),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
+  // The `neon_auth."user"` row this account signs in as, stamped by syncUser()
+  // on sign-in. NULL means no auth identity has ever claimed this row — a
+  // pre-provisioned invitation (see /api/admin/users/create) or a seeded
+  // account — and that distinction is the whole point of the column:
+  // reconcileDeletedAuthUsers() removes a row whose stamped identity has since
+  // vanished from neon_auth, and must never sweep up a row that never had one.
+  // Not a foreign key: neon_auth is Neon Auth's schema, not ours, and pinning
+  // its table from a Drizzle migration would make their schema our problem.
+  authUserId:            text('auth_user_id'),
   googleId:              varchar('google_id', { length: 255 }),
   learningGoal:          varchar('learning_goal', { length: 30 }),
   preferredDomainId:     integer('preferred_domain_id').references(() => domains.id),
@@ -30,6 +49,45 @@ export const users = pgTable('users', {
   dailyGoalMinutes:      integer('daily_goal_minutes').default(30).notNull(),
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // One app account per auth identity. Nullable, and Postgres treats every
+  // NULL as distinct, so any number of unclaimed invitations coexist.
+  uqAuthUser: uniqueIndex('uq_users_auth_user_id').on(t.authUserId),
+}));
+
+// ── Languages ────────────────────────────────────────────
+//
+// The runtime language catalogue, seeded from lib/language.ts and thereafter
+// owned by the admin console. A row carries everything TARGET_LANGUAGES'
+// LanguageConfig does, because a language is not just a name: without the BCP47
+// tags and the Azure voice ids nothing can be spoken or transcribed in it.
+//
+// lib/language.ts stays the compiled-in seed and fallback, so a cold deploy or
+// an unreachable database still speaks the built-in set rather than nothing.
+// Read through lib/language/registry.ts, never directly.
+export const languages = pgTable('languages', {
+  code:             varchar('code', { length: 10 }).primaryKey(),
+  name:             varchar('name', { length: 60 }).notNull(),
+  nativeName:       varchar('native_name', { length: 60 }).notNull(),
+  flag:             varchar('flag', { length: 8 }).default('🌐').notNull(),
+  sttBcp47:         varchar('stt_bcp47', { length: 20 }).notNull(),
+  ttsBcp47:         varchar('tts_bcp47', { length: 20 }).notNull(),
+  azureVoiceFemale: varchar('azure_voice_female', { length: 80 }).notNull(),
+  azureVoiceMale:   varchar('azure_voice_male', { length: 80 }).notNull(),
+  hasPhonetic:      boolean('has_phonetic').default(false).notNull(),
+  ttsSupported:     boolean('tts_supported').default(true).notNull(),
+  // 'bow' | 'wave' | null — null means wave, matching getGreetingGesture().
+  greetingGesture:  varchar('greeting_gesture', { length: 10 }),
+  // Which side of the pair this language may be picked for. A language can be
+  // offered as something to learn, something to be taught in, or both.
+  isTargetEnabled:  boolean('is_target_enabled').default(true).notNull(),
+  isNativeEnabled:  boolean('is_native_enabled').default(true).notNull(),
+  displayOrder:     integer('display_order').default(0).notNull(),
+  // True for rows seeded from lib/language.ts. Those cannot be deleted — the
+  // constant would reintroduce them on the next seed — only disabled.
+  isBuiltIn:        boolean('is_built_in').default(false).notNull(),
+  createdAt:        timestamp('created_at').defaultNow().notNull(),
+  updatedAt:        timestamp('updated_at').defaultNow().notNull(),
 });
 
 // ── Domains ──────────────────────────────────────────────
@@ -43,6 +101,12 @@ export const domains = pgTable('domains', {
   heroGradientTo:   varchar('hero_gradient_to', { length: 20 }).notNull(),
   imageUrl:         text('image_url'),
   situationCount:   integer('situation_count').default(0).notNull(),
+  // Archiving, which is what the admin console's "remove" does. Deleting a
+  // domain cascades to its situations, which sets scenarios.situation_id to
+  // null and leaves them orphaned but alive — so a real delete quietly damages
+  // the catalogue. Courses, levels and lessons already had this column;
+  // domains and situations did not.
+  isActive:         boolean('is_active').default(true).notNull(),
   displayOrder:     integer('display_order').default(0).notNull(),
   createdAt:        timestamp('created_at').defaultNow().notNull(),
 });
@@ -57,6 +121,7 @@ export const situations = pgTable('situations', {
   behaviorMode:  varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
   learningGoals: text('learning_goals').notNull(),
   focusPills:    text('focus_pills').notNull(),
+  isActive:      boolean('is_active').default(true).notNull(),   // see domains.isActive
   displayOrder:  integer('display_order').default(0).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
 });
@@ -346,7 +411,7 @@ export const userAvatars = pgTable('user_avatars', {
   avatarUrl:    text('avatar_url').notNull(),
   thumbnailUrl: text('thumbnail_url'),
   isSelected:   boolean('is_selected').default(false).notNull(),
-  source:       varchar('source', { length: 20 }).default('avaturn').notNull(),
+  source:       varchar('source', { length: 20 }).default('catalog').notNull(),
   createdAt:    timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -670,9 +735,33 @@ export const chatRooms = pgTable('chat_rooms', {
   id:        serial('id').primaryKey(),
   name:      varchar('name', { length: 150 }),                       // optional display name (group chats)
   isGroup:   boolean('is_group').default(false).notNull(),
+  // 'direct'  — a 1:1 or ad-hoc group room, de-duplicated by membership.
+  // 'class'   — the room a scheduled class_session creates for itself.
+  // 'cohort'  — a tutor's standing room for their learners, which outlives any
+  //             one class. Found by (ownerTutorId, audienceKey) so re-running
+  //             the create adds newly-enrolled learners instead of a second
+  //             room — see `audienceKey` below for why the name is not enough.
+  kind:      varchar('kind', { length: 20 }).default('direct').notNull(),
+  ownerTutorId: integer('owner_tutor_id').references(() => tutors.id, { onDelete: 'set null' }),
+  // Cohort rooms only. The audience this room was opened for, canonicalised as
+  // `<kind>|<scope…>|<name>` by `cohortAudienceKey()` in
+  // `app/api/tutor/cohorts/route.ts`. Identity has to include the scope: every
+  // unnamed cohort defaults to the same name, so keying re-use on the name
+  // alone made a course room and an all-learners room the *same* room, with one
+  // audience reading the other's history.
+  audienceKey: varchar('audience_key', { length: 200 }),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxOwnerKind: index('idx_chat_rooms_owner_kind').on(t.ownerTutorId, t.kind),
+  // Partial: only cohort rooms carry an audience key, and only they may not be
+  // duplicated. Differently-named or differently-scoped cohorts get different
+  // keys and so still coexist; a concurrent double-create collapses onto one
+  // row instead of racing past the SELECT above it.
+  uqCohortAudience: uniqueIndex('uq_chat_rooms_cohort_audience')
+    .on(t.ownerTutorId, t.audienceKey)
+    .where(sql`${t.kind} = 'cohort'`),
+}));
 
 export const chatRoomMembers = pgTable('chat_room_members', {
   id:                 serial('id').primaryKey(),
@@ -753,6 +842,12 @@ export const tutors = pgTable('tutors', {
   // scenarios keep their vocabulary inline: it is read on every listing and
   // never queried independently.
   languages:      text('languages').notNull(),
+  // The native languages this tutor can *explain* in, same comma-separated
+  // shape as `languages` above. The two are different capabilities: `languages`
+  // is what they teach (the target), this is what they teach it in. A tutor who
+  // speaks five languages can pair any of them, and a class picks one of each —
+  // see class_sessions.instructionLanguage.
+  instructionLanguages: text('instruction_languages'),
   hourlyRateCents: integer('hourly_rate_cents').default(0).notNull(),
   currency:        varchar('currency', { length: 3 }).default('USD').notNull(),
   timezone:        varchar('timezone', { length: 60 }).default('UTC').notNull(),
@@ -782,6 +877,7 @@ export const tutorBookings = pgTable('tutor_bookings', {
   // Set when the booking is a human review of one specific AI session.
   sessionId:   integer('session_id').references(() => sessions.id, { onDelete: 'set null' }),
   targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  instructionLanguage: varchar('instruction_language', { length: 10 }),
   scheduledAt: timestamp('scheduled_at').notNull(),
   durationMinutes: integer('duration_minutes').default(30).notNull(),
   // 'requested' | 'confirmed' | 'cancelled' | 'completed'
@@ -826,6 +922,10 @@ export const classSessions = pgTable('class_sessions', {
   title:          varchar('title', { length: 150 }).notNull(),
   description:    text('description'),
   targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  // The language the tutor explains in, chosen from their own
+  // `tutors.instructionLanguages`. Null means what the app did before this
+  // column existed: each learner reads in their own users.nativeLanguage.
+  instructionLanguage: varchar('instruction_language', { length: 10 }),
   scheduledAt:    timestamp('scheduled_at').notNull(),
   durationMinutes: integer('duration_minutes').default(60).notNull(),
   capacity:       integer('capacity').default(12).notNull(),
@@ -874,6 +974,9 @@ export const assessmentSessions = pgTable('assessment_sessions', {
   title:          varchar('title', { length: 150 }).notNull(),
   description:    text('description'),
   targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  // As on class_sessions — and it also reaches the AI examiner, whose locked
+  // brief tells it to examine in the target language but explain in this one.
+  instructionLanguage: varchar('instruction_language', { length: 10 }),
   scheduledAt:    timestamp('scheduled_at').notNull(),
   durationMinutes: integer('duration_minutes').default(60).notNull(),
   // Shown to a waiting learner as "about N minutes until your turn", derived
@@ -1072,7 +1175,9 @@ export const aiInterviewsRelations = relations(aiInterviews, ({ one }) => ({
 export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  // 'evaluation' | 'class' | 'assessment' | 'booking' — what produced it.
+  // 'evaluation' | 'class' | 'assessment' | 'booking' | 'announcement' — what
+  // produced it. 'announcement' is the only one a human authors; the rest fall
+  // out of an action that already succeeded.
   type:      varchar('type', { length: 40 }).notNull(),
   title:     varchar('title', { length: 160 }).notNull(),
   body:      text('body'),
@@ -1086,6 +1191,31 @@ export const notifications = pgTable('notifications', {
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, { fields: [notifications.userId], references: [users.id] }),
+}));
+
+// The tutor's authored record of an announcement. The delivery is still one
+// `notifications` row per recipient — that is what the live bell already reads,
+// and a per-recipient row is what makes "read" meaningful. This table exists so
+// the tutor can see what they sent and to whom, which a fan-out alone loses.
+export const tutorAnnouncements = pgTable('tutor_announcements', {
+  id:                  serial('id').primaryKey(),
+  tutorId:             integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  title:               varchar('title', { length: 160 }).notNull(),
+  body:                text('body').notNull(),
+  // The course the announcement is about, and the language it is written in.
+  targetLanguage:      varchar('target_language', { length: 10 }),
+  instructionLanguage: varchar('instruction_language', { length: 10 }),
+  // 'class' | 'course' | 'all_my_learners' — resolved by resolveAudience() in
+  // lib/tutors/audience.ts, which is the only place the membership rules live.
+  audienceKind:        varchar('audience_kind', { length: 20 }).notNull(),
+  classSessionId:      integer('class_session_id').references(() => classSessions.id, { onDelete: 'set null' }),
+  courseId:            integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
+  // Counted at send time. The audience changes as learners enrol and leave, so
+  // recomputing it later would not describe what was actually delivered.
+  recipientCount:      integer('recipient_count').default(0).notNull(),
+  createdAt:           timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  idxTutorCreated: index('idx_tutor_announcements_tutor_created').on(t.tutorId, t.createdAt),
 }));
 
 // ── Calendar ─────────────────────────────────────────────────────────
