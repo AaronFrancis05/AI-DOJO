@@ -361,8 +361,10 @@ export default async function LandingPage() {
               Trusted by learners &amp; teams worldwide
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-              {partners.map((partner) => (
-                <PartnerBadge key={partner.name} name={partner.name} logo={partner.logo} />
+              {partners.map(({ name }) => (
+                <span key={name} className="text-sm font-semibold tracking-wide text-dojo-text-muted">
+                  {name}
+                </span>
               ))}
             </div>
           </div>
@@ -593,6 +595,10 @@ export default async function LandingPage() {
                 <li><Link href="#partners" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Partners</Link></li>
                 <li><Link href="#how" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">How It Works</Link></li>
                 <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Get Started</Link></li>
+                {/* The only route to /auth/tutor from the public site — before
+                    this it was reachable solely from a line at the bottom of
+                    /auth, which no prospective tutor has a reason to open. */}
+                <li><Link href="/auth/tutor" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Teach on AI DOJO</Link></li>
               </ul>
             </div>
 

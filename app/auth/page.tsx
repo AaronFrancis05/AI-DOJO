@@ -7,9 +7,25 @@ import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
 import PasswordInput from '@/components/PasswordInput';
 import ForgotPasswordModal from '@/components/ForgotPasswordModal';
-import { MailIcon, UserIcon, LoaderIcon, AlertCircleIcon, GoogleLogo, Trophy } from '@/components/Icons';
+import { MailIcon, UserIcon, LoaderIcon, AlertCircleIcon, CheckCircleIcon, GoogleLogo, Trophy } from '@/components/Icons';
 import { Mic2, Star, BarChart3, Zap } from 'lucide-react';
 import Link from 'next/link';
+
+/**
+ * Where to send someone once they are signed in.
+ *
+ * Only same-origin paths: `next` arrives in the query string — `/auth/tutor`
+ * sends returning tutors here as `?next=/tutor` — so anything else is an open
+ * redirect. `//host` is protocol-relative and leaves the site, which is why a
+ * bare `/` prefix is not enough on its own.
+ *
+ * The destination still guards itself: `/tutor` redirects anyone without the
+ * role to `/home`, so a forged `next` grants nothing.
+ */
+function safeNext(next: string | null): string | null {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+  return next;
+}
 
 export default function AuthPage() {
   // Client-side auth state resolves after mount; the boundary keeps the
@@ -56,13 +72,22 @@ function AuthPageContent() {
     if (errorCode) router.replace('/auth', { scroll: false });
   }
 
+  // `/auth/tutor` sends returning tutors here as `?next=/tutor`; the teaching
+  // console is not a second sign-in page, just a different landing.
+  const next = safeNext(searchParams.get('next'));
+
+  // Someone arriving from /auth/verify-email on a project without auto-sign-in:
+  // the account is verified but they still have to sign in, and without saying
+  // so the trip back here looks like the verification failed.
+  const justVerified = searchParams.has('verified');
+
   const signedOut = searchParams.has('signed_out');
   useEffect(() => {
     if (signedOut) return;
     authClient.getSession().then(({ data }) => {
-      if (data?.user) router.push('/home');
+      if (data?.user) router.push(next ?? '/home');
     });
-  }, [router, signedOut]);
+  }, [router, signedOut, next]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,7 +130,26 @@ function AuthPageContent() {
       // preferences and jumped to /home, which stamped
       // `onboardingCompletedAt` on an account that had never chosen a level,
       // a goal or a course — and the (app) gate would then wave it through.
-      router.push(isLogin ? '/home' : '/onboarding');
+      const destination = isLogin ? next ?? '/home' : '/onboarding';
+
+      // A sign-up leaves no session on this project — it requires a verified
+      // email first, so `signUp.email` returns `token: null` and sets no
+      // cookie. Pushing straight into the app just bounces off the (app) gate
+      // with nothing on screen explaining why, which is how accounts ended up
+      // created-but-stranded. Check rather than assume, and route the ones
+      // that need it through verification with their destination in hand.
+      if (!isLogin) {
+        const { data } = await authClient.getSession();
+        if (!data?.user) {
+          // Neon mailed a code as part of the sign-up (`sent=1`) — a second
+          // one would invalidate the code already in their inbox.
+          const params = new URLSearchParams({ email, sent: '1', next: destination });
+          router.push(`/auth/verify-email?${params}`);
+          return;
+        }
+      }
+
+      router.push(destination);
       router.refresh();
     } catch (err) {
       setError(
@@ -165,6 +209,13 @@ function AuthPageContent() {
               {isLogin ? 'Continue your language journey.' : 'Start your AI-powered language journey.'}
             </p>
           </div>
+
+          {justVerified && isLogin && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-dojo-success/30 bg-dojo-success/10 px-3 py-2.5 text-sm text-dojo-success-strong">
+              <CheckCircleIcon className="h-4 w-4 shrink-0" />
+              Your email is verified — sign in to continue.
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
