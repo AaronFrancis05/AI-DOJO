@@ -32,19 +32,27 @@ export async function GET() {
 
   // How many rows would break if this language were removed. Shown next to the
   // delete button so the decision is made with the number in view.
+  //
+  // Every column DELETE counts is counted here too. A narrower set would show
+  // "0 in use" next to a delete that is then refused, which reads as a bug in
+  // the console rather than as the guard doing its job.
   const [usage] = await db
     .select({
-      byUsersTarget: sql<string>`(
-        select coalesce(json_object_agg(preferred_target_language, n), '{}')
-        from (select preferred_target_language, count(*)::int n from users group by 1) t
-      )`,
-      byUsersNative: sql<string>`(
-        select coalesce(json_object_agg(native_language, n), '{}')
-        from (select native_language, count(*)::int n from users group by 1) t
-      )`,
-      bySessions: sql<string>`(
-        select coalesce(json_object_agg(target_language, n), '{}')
-        from (select target_language, count(*)::int n from sessions group by 1) t
+      byCode: sql<string>`(
+        select coalesce(json_object_agg(code, n), '{}')
+        from (
+          select code, count(*)::int n from (
+            select preferred_target_language as code from users
+            union all select native_language from users
+            union all select target_language from sessions
+            union all select native_language from sessions
+            union all select target_language from student_progress
+            union all select target_language from class_sessions
+            union all select instruction_language from class_sessions
+          ) refs
+          where code is not null
+          group by 1
+        ) t
       )`,
     })
     .from(languages)
@@ -53,17 +61,11 @@ export async function GET() {
   const parse = (v: unknown): Record<string, number> =>
     typeof v === 'string' ? JSON.parse(v) : ((v as Record<string, number>) ?? {});
 
-  const usersTarget = parse(usage?.byUsersTarget);
-  const usersNative = parse(usage?.byUsersNative);
-  const sessions = parse(usage?.bySessions);
+  const byCode = parse(usage?.byCode);
 
   return Response.json({
     success: true,
-    languages: rows.map((row) => ({
-      ...row,
-      inUse:
-        (usersTarget[row.code] ?? 0) + (usersNative[row.code] ?? 0) + (sessions[row.code] ?? 0),
-    })),
+    languages: rows.map((row) => ({ ...row, inUse: byCode[row.code] ?? 0 })),
   });
 }
 

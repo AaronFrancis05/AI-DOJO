@@ -3,10 +3,32 @@ import { db } from '@/src/db';
 import { dbPool } from '@/src/db-pool';
 import { chatRoomMembers, chatRooms, classSessions, tutors } from '@/src/schema';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
-import { isAudienceKind, resolveAudience } from '@/lib/tutors/audience';
+import { isAudienceKind, resolveAudience, type AudienceKind } from '@/lib/tutors/audience';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 
 export const runtime = 'nodejs';
+
+/**
+ * What makes one cohort room the same room on the next run.
+ *
+ * The scope has to be in it. Every unnamed cohort falls back to the same
+ * default name, so keying re-use on (owner, kind, name) alone made the room a
+ * tutor opened for one course and the room they opened for all their learners
+ * the *same* row — two unrelated audiences reading each other's history. The
+ * name stays in the key so a tutor can still keep two differently-named rooms
+ * over the same audience.
+ */
+function cohortAudienceKey(
+  kind: AudienceKind,
+  scope: { classSessionId: number | null; courseId: number | null; targetLanguage: string | null },
+  name: string,
+): string {
+  const parts: string[] = [kind];
+  if (kind === 'class') parts.push(String(scope.classSessionId));
+  if (kind === 'course') parts.push(String(scope.courseId), scope.targetLanguage ?? '*');
+  parts.push(name);
+  return parts.join('|').slice(0, 200);
+}
 
 /**
  * A tutor's standing group chat rooms.
@@ -116,17 +138,24 @@ export async function POST(req: Request) {
     name = body.name.trim();
   }
 
+  const audienceKey = cohortAudienceKey(
+    audienceKind,
+    { classSessionId, courseId, targetLanguage },
+    name.slice(0, 150),
+  );
+
   const roomId = await dbPool.transaction(async (tx) => {
-    // Re-use is keyed on (ownerTutorId, kind, name) rather than on the audience
-    // scope, because the scope can legitimately change — a tutor renames a
-    // cohort or widens it — while the room, and its message history, should not.
+    // Re-use is keyed on the audience the room was opened for, not on the name:
+    // two different audiences share the default name and must not share a room.
+    // `uq_chat_rooms_cohort_audience` is the same key, so a concurrent second
+    // press collapses onto this row rather than racing past the select.
     const [existing] = await tx
       .select({ id: chatRooms.id })
       .from(chatRooms)
       .where(and(
         eq(chatRooms.ownerTutorId, profile.id),
         eq(chatRooms.kind, 'cohort'),
-        eq(chatRooms.name, name.slice(0, 150)),
+        eq(chatRooms.audienceKey, audienceKey),
       ))
       .limit(1);
 
@@ -140,6 +169,7 @@ export async function POST(req: Request) {
               isGroup: true,
               kind: 'cohort',
               ownerTutorId: profile.id,
+              audienceKey,
               createdBy: user.id,
             })
             .returning({ id: chatRooms.id })

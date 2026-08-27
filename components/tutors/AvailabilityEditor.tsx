@@ -48,21 +48,28 @@ export function AvailabilityEditor({ onSaved, saveLabel }: AvailabilityEditorPro
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [retrying, setRetrying] = useState(false);
 
+  // A failed GET used to fall through to an empty schedule, which is
+  // indistinguishable from a tutor who has set no hours — and pressing Save on
+  // it would have replaced their real availability with nothing, since PUT
+  // rewrites the whole pattern. Track the failure instead and edit nothing.
   const load = useCallback(
     () =>
       fetch('/api/tutor/availability', { credentials: 'include' })
         .then((res) => res.json())
         .then((data) => {
           if (!data.success) {
-            setSlots([]);
+            setLoadError(data.error ?? 'Could not load your availability.');
             return;
           }
+          setLoadError('');
           setSlots(data.slots as AvailabilitySlot[]);
           setTimezone(data.timezone ?? 'UTC');
           setAccepting(Boolean(data.isAcceptingBookings));
         })
-        .catch(() => setSlots([])),
+        .catch(() => setLoadError('Could not load your availability.')),
     [],
   );
 
@@ -89,6 +96,30 @@ export function AvailabilityEditor({ onSaved, saveLabel }: AvailabilityEditorPro
       setSaving(false);
     }
   }, [slots, accepting, onSaved]);
+
+  if (loadError) {
+    return (
+      <Card className="!p-5">
+        <h3 className="text-sm font-bold text-dojo-text-primary">Weekly availability</h3>
+        <p className="mt-1 text-sm leading-relaxed text-dojo-danger">{loadError}</p>
+        <p className="mt-1 text-xs leading-relaxed text-dojo-text-muted">
+          Your existing hours are untouched. Editing is disabled until they load.
+        </p>
+        <Button
+          variant="secondary"
+          className="mt-4"
+          loading={retrying}
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void load().finally(() => setRetrying(false));
+          }}
+        >
+          Try again
+        </Button>
+      </Card>
+    );
+  }
 
   if (!slots) {
     return (

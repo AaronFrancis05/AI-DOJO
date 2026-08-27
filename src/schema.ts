@@ -1,5 +1,5 @@
 import { pgTable, serial, varchar, text, timestamp, integer, boolean, numeric, index, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id:                    text('id').primaryKey(),
@@ -31,6 +31,15 @@ export const users = pgTable('users', {
   avatarSrc:             text('avatar_src'),
   consentToDataSharing:  boolean('consent_to_data_sharing').default(false).notNull(),
   authProvider:          varchar('auth_provider', { length: 20 }).default('credentials').notNull(),
+  // The `neon_auth."user"` row this account signs in as, stamped by syncUser()
+  // on sign-in. NULL means no auth identity has ever claimed this row — a
+  // pre-provisioned invitation (see /api/admin/users/create) or a seeded
+  // account — and that distinction is the whole point of the column:
+  // reconcileDeletedAuthUsers() removes a row whose stamped identity has since
+  // vanished from neon_auth, and must never sweep up a row that never had one.
+  // Not a foreign key: neon_auth is Neon Auth's schema, not ours, and pinning
+  // its table from a Drizzle migration would make their schema our problem.
+  authUserId:            text('auth_user_id'),
   googleId:              varchar('google_id', { length: 255 }),
   learningGoal:          varchar('learning_goal', { length: 30 }),
   preferredDomainId:     integer('preferred_domain_id').references(() => domains.id),
@@ -40,7 +49,11 @@ export const users = pgTable('users', {
   dailyGoalMinutes:      integer('daily_goal_minutes').default(30).notNull(),
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  // One app account per auth identity. Nullable, and Postgres treats every
+  // NULL as distinct, so any number of unclaimed invitations coexist.
+  uqAuthUser: uniqueIndex('uq_users_auth_user_id').on(t.authUserId),
+}));
 
 // ── Languages ────────────────────────────────────────────
 //
@@ -398,7 +411,7 @@ export const userAvatars = pgTable('user_avatars', {
   avatarUrl:    text('avatar_url').notNull(),
   thumbnailUrl: text('thumbnail_url'),
   isSelected:   boolean('is_selected').default(false).notNull(),
-  source:       varchar('source', { length: 20 }).default('avaturn').notNull(),
+  source:       varchar('source', { length: 20 }).default('catalog').notNull(),
   createdAt:    timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -725,14 +738,29 @@ export const chatRooms = pgTable('chat_rooms', {
   // 'direct'  — a 1:1 or ad-hoc group room, de-duplicated by membership.
   // 'class'   — the room a scheduled class_session creates for itself.
   // 'cohort'  — a tutor's standing room for their learners, which outlives any
-  //             one class. Found by (ownerTutorId, kind) so re-running the
-  //             create adds newly-enrolled learners instead of a second room.
+  //             one class. Found by (ownerTutorId, audienceKey) so re-running
+  //             the create adds newly-enrolled learners instead of a second
+  //             room — see `audienceKey` below for why the name is not enough.
   kind:      varchar('kind', { length: 20 }).default('direct').notNull(),
   ownerTutorId: integer('owner_tutor_id').references(() => tutors.id, { onDelete: 'set null' }),
+  // Cohort rooms only. The audience this room was opened for, canonicalised as
+  // `<kind>|<scope…>|<name>` by `cohortAudienceKey()` in
+  // `app/api/tutor/cohorts/route.ts`. Identity has to include the scope: every
+  // unnamed cohort defaults to the same name, so keying re-use on the name
+  // alone made a course room and an all-learners room the *same* room, with one
+  // audience reading the other's history.
+  audienceKey: varchar('audience_key', { length: 200 }),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   idxOwnerKind: index('idx_chat_rooms_owner_kind').on(t.ownerTutorId, t.kind),
+  // Partial: only cohort rooms carry an audience key, and only they may not be
+  // duplicated. Differently-named or differently-scoped cohorts get different
+  // keys and so still coexist; a concurrent double-create collapses onto one
+  // row instead of racing past the SELECT above it.
+  uqCohortAudience: uniqueIndex('uq_chat_rooms_cohort_audience')
+    .on(t.ownerTutorId, t.audienceKey)
+    .where(sql`${t.kind} = 'cohort'`),
 }));
 
 export const chatRoomMembers = pgTable('chat_room_members', {

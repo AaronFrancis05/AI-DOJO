@@ -63,7 +63,7 @@ const FALLBACK: LanguageCatalog = {
  */
 export async function loadLanguageCatalog(): Promise<LanguageCatalog> {
   const cached = await cacheGet<LanguageCatalog>(cacheKeys.languageCatalog());
-  if (cached && cached.target.length > 0) {
+  if (cached && cached.target.length > 0 && cached.native.length > 0) {
     hydrateLanguageCatalog(cached.target, cached.native);
     return cached;
   }
@@ -92,7 +92,11 @@ export async function loadLanguageCatalog(): Promise<LanguageCatalog> {
 
   // An admin who disables every target language would otherwise black out the
   // whole app. Treat it as a misconfiguration and keep serving the built-ins.
-  if (catalog.target.length === 0) {
+  //
+  // The native side is not optional either: onboarding's "what do you speak"
+  // step, the tryout panel and every tutor's explanation languages all read it,
+  // and an empty list leaves each of them with nothing to pick.
+  if (catalog.target.length === 0 || catalog.native.length === 0) {
     hydrateLanguageCatalog(FALLBACK.target, FALLBACK.native);
     return FALLBACK;
   }

@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { createNeonAuth } from '@neondatabase/auth/next/server';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
@@ -87,8 +88,13 @@ async function resolveDbId(user: { id: string; email?: string } | null) {
 
 /** Read-only session check safe for Server Components.
  *  Tries the cached session_data JWT first; falls back to calling the
- *  auth handler with the session_token cookie (no cookie rotation). */
-export async function getAuthUserReadOnly() {
+ *  auth handler with the session_token cookie (no cookie rotation).
+ *
+ *  Wrapped in React `cache()` because the app shell asks twice per render:
+ *  `app/(app)/layout.tsx` needs the user and the nested `home/layout.tsx` needs
+ *  the role, and each verify can reach the auth handler and then the database.
+ *  The cache is per-request, so nothing leaks between users. */
+export const getAuthUserReadOnly = cache(async function getAuthUserReadOnly() {
   const cookieStore = await cookies();
 
   // Fast path: try the cached session_data JWT (HTTPS only)
@@ -130,7 +136,7 @@ export async function getAuthUserReadOnly() {
     console.error('[getAuthUserReadOnly] Fallback failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
-}
+});
 
 export async function requireAuthUser() {
   const user = await getAuthUser();
@@ -160,7 +166,7 @@ export async function getUserRole(): Promise<UserRole | null> {
  *
  * Never for authorisation: routes gate with `requireRole`.
  */
-export async function getUserRoleReadOnly(): Promise<UserRole | null> {
+export const getUserRoleReadOnly = cache(async function getUserRoleReadOnly(): Promise<UserRole | null> {
   const user = await getAuthUserReadOnly();
   if (!user?.id) return null;
   try {
@@ -170,7 +176,7 @@ export async function getUserRoleReadOnly(): Promise<UserRole | null> {
     console.error('[getUserRoleReadOnly] role read failed', err);
     return null;
   }
-}
+});
 
 /**
  * Thrown by `requireRole`. Carries the status a route handler should answer

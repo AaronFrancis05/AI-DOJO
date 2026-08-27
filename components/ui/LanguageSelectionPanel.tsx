@@ -61,7 +61,16 @@ export function LanguageSelectionPanel({
       </div>
 
       <div className={`overflow-y-auto rounded-xl border border-dojo-border bg-dojo-surface ${maxHeightClass}`}>
-        {filtered.length === 0 ? (
+        {resolved.length === 0 ? (
+          // Not the same as "nothing matched your search": the catalogue itself
+          // is empty, so there is nothing to pick and no query to clear. Onboarding
+          // renders this panel for the native-language step, where an empty list
+          // would otherwise be a dead end reading "No languages match".
+          <div className="flex flex-col items-center justify-center gap-2 px-6 py-10 text-center text-sm text-dojo-text-muted">
+            <p>No languages are available right now.</p>
+            <p className="text-xs">Reload the page, or contact support if this persists.</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-sm text-dojo-text-muted">
             No languages match &quot;{query}&quot;
           </div>

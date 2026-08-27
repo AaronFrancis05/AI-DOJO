@@ -776,3 +776,153 @@ Courses, Curriculum, Catalogue, Languages.
   untouched line). **Not verified against a live admin account** — the suite has no database, so
   every guard above is argued from the schema and the route code, not exercised. The Stage 5
   block in `PLAN.md` lists the seven things to drive by hand.
+
+## 2026-08-27 (voice pipeline: mic capture, partial STT, TTS delivery)
+
+Three reported symptoms — the mic sometimes capturing nothing, the mic sometimes submitting a
+few words before release, and TTS playing one sentence then stalling — traced to six distinct
+defects. Plan in `PLAN.md`.
+
+**Premature submission was `onPointerLeave={voice.stop}`, in five copies.** The mic button is
+64px; a finger drifting off it mid-sentence fires `pointerleave` while the learner is still
+holding, and the fragment transmits as a complete turn. `pointerleave` was there to catch a
+release the button never saw — pointer *capture* is the right answer to that, so the handler is
+deleted, not adjusted. New `lib/hooks/usePushToTalk.ts` owns the gesture; all five surfaces
+(session voice/avatar, tryout voice/avatar, `AvatarMicOverlay`) spread `voice.buttonProps`.
+`AvatarMicOverlay`'s auto-stop-on-AI-response effect had the same bug by another route: its
+barge-in flag only covered a press landing while `isAiResponding` was *already* true, so a press
+landing in the beat before it flipped was closed mid-utterance. Now gated on `isHeld`.
+
+**The mic "not capturing" was a reconnect eating the press.** On `canceled`, `rebuildRecognizer()`
+returned a recognizer and a fresh push stream the tap was already feeding — but nothing was
+*consuming* it, because a rebuild does not start a recognition session. The rest of that press
+was captured, transmitted, and never transcribed: no result, no error, and the next press worked.
+Fixed by restarting the session when `capturing` is still true. Also closed the rebuild race
+(`rebuildRecognizer` now joins the `recognizerPromise` latch via a shared `startBuild`; two
+concurrent builds would both assign the module-level `pushStream` and orphan one recognizer with
+its websocket open) and made a muted-but-live mic track trigger re-acquisition — `muted` passes
+every `readyState === 'live'` check while feeding the tap digital silence.
+
+**The dropped tail was a grace shorter than the round trip it waited on.** `FINAL_FLUSH_GRACE_MS`
+was 250ms; Azure's forced final after `stopContinuousRecognitionAsync` lands 400–800ms later, so
+the wait expired almost every time and fell back to the last *interim*, which itself trails the
+audio. Raised to 900 — free in the common case, because `finalWaiterRef` ends the wait the instant
+the final arrives. Added `POST_ROLL_MS = 250` mirroring the existing 300ms pre-roll, which had no
+counterpart at the back of the press.
+
+**Japanese/Chinese/Korean never streamed audio at all.** `SENTENCE_BOUNDARY` required whitespace
+after a terminator, and real CJK writes `これは挨拶です。言ってみましょう`. `findSentenceEnd`
+returned -1 for the entire generation, so first audio waited for the last token — on the three
+languages that lead `lib/language.ts`. Full-width `。！？` now terminate on their own (unambiguous:
+no `1。5`, no `Mr。`); ASCII keeps the lookahead. A 160-char fallback breaks at the last phrase
+space for the languages with no terminators at all (th, km, my, lo). **The existing test passed
+only because its fixture had spaces after `。` that real model output does not have** — worth
+remembering as a fixture-realism failure, not a missing test.
+
+**The mid-reply stall was `isQueueIdle()`.** It reads as though it keeps the pipeline fed, but
+`queuePump` stays non-null for the whole reply, so it was only ever true for the opening sentence;
+everything after it waited for `MAX_GROUPED_CHARS` (400, rarely reached) or the final flush.
+`prepareAhead()` had nothing to prepare because the queue was deliberately kept empty. Now keys on
+`utteranceQueue.length < PREPARE_AHEAD`.
+
+**Playback moved to raw PCM on a shared cursor** (`lib/roleplay/pcm-player.ts`) to remove the seam
+the pipeline fix exposes: one module-level cursor means utterance N+1 starts on the exact sample N
+ended. `prepareSsmlDirect` builds the synthesizer with a `null` audio config and reads
+`synthesizing` chunks; `Raw24Khz16BitMonoPcm` confirmed `hasHeader: false` in the SDK, so chunks
+are clean PCM. Consequence worth knowing: **`play()` now resolves when audio is SCHEDULED, not when
+it is heard** — `runQueue` awaits `whenDrained()` for the real end of speech. Deleted along the
+way: `attachToAnalyser`/`routedAudioElements`, the `wantPlay`/`onAudioStart` pause trick, and the
+`DRAIN_TICK_MS`/`STALLED_TICKS`/`NEVER_STARTED_TICKS` watchdog. `/api/tts` deliberately stays MP3.
+
+**Architecture decision: stay on Azure.** The prompting conversation assumed the Web Speech API and
+a server hop between mic and Azure; neither exists here (browser-side Speech SDK over a websocket,
+AudioWorklet push stream), and its advice would have been a regression. Gemini Live emits no
+visemes (see the AI-examiner work in `lib/interview/`), so migrating means re-deriving lip-sync
+from PCM amplitude and losing the 28-language gendered voice map. GetStream/LiveKit ingest would
+add a hop, not remove one.
+
+Verified: `npx tsc --noEmit` clean · `npm test` **99/99** (24 of them new, in `sentence-split.test.ts`
+and the new `pcm-player.test.ts`) · `npm run build` compiles · `npx eslint` clean on every touched
+file (two pre-existing findings in `useVoiceInput.ts` — a `catch (e: any)` and an `onFinal` dep
+warning — left alone, on untouched lines). **Not verified by ear:** every audio claim above is
+argued from the code and the SDK source. The eight manual checks in `PLAN.md` are the ones that
+need a browser, a microphone, and a Japanese session.
+
+## 2026-08-27 — Review pass: admin console, tutor audiences, language catalogue
+
+A batch of review findings, each verified against the code before being fixed.
+
+**Cohort rooms could be the wrong room.** `POST /api/tutor/cohorts` keyed re-use on
+`(ownerTutorId, kind, name)`, and every unnamed cohort falls back to the same default name — so the
+room a tutor opened for one course and the room they opened for *all* their learners were the same
+row, each audience reading the other's history. `chat_rooms` now carries `audience_key`
+(`<kind>|<scope…>|<name>`, built by `cohortAudienceKey()`), the lookup keys on it, and
+`uq_chat_rooms_cohort_audience` — a partial unique index over cohort rows only — makes a concurrent
+double-press collapse onto one room instead of racing past the SELECT. Migration 0045 adds both;
+0046 backfills existing rooms (a room named after one of that tutor's own classes is that class's
+room, everything else is the all-learners room — the only two shapes the shipped UI ever produced).
+
+**`resolveAudience('course')` reached strangers.** `student_progress` is the whole platform's
+enrolment table, not one tutor's, so "announce to the Japanese course" fanned out to every learner
+on it and the cohort room added them to a group chat. Now intersected with `tutorOwnLearnerIds()`,
+the union that `all_my_learners` was already using — one definition, both callers.
+
+**Empty-catalogue guards.** `loadLanguageCatalog` only checked `target`; an admin who disabled every
+*native* language got a catalogue that onboarding's "what do you speak" step, the tryout panel and
+every tutor's explanation list could not render. It now falls back to the built-ins on either side
+being empty, `LanguageSelectionPanel` says so rather than showing "No languages match """, and
+`TryoutPanel` will not build a `/tryout` URL with blank codes.
+
+**Admin console correctness.** `PATCH /api/admin/users` could set `status: 'deleted'` without doing
+any of what DELETE does (anonymise the name, rewrite the uniquely-indexed email, clear credentials),
+leaving a "deleted" account that could be signed straight back into — now a 400 pointing at DELETE.
+Restoring an account no longer silently re-lists a tutor who had turned bookings off themselves.
+`hourlyRateCents` is type-checked before `Number()` in both PATCH routes (`Number('')` is 0, i.e.
+free). The languages tab's "in use" count now covers exactly the columns the DELETE guard counts, so
+"0 in use" can no longer sit next to a delete that is then refused.
+
+**Denormalised columns that nothing recomputed.** Archiving a situation now refreshes
+`domains.situationCount`; renaming a domain slug rewrites `scenarios.domain` beneath it in the same
+transaction; deleting a domain drops the cache keys of the situations that cascade away with it.
+
+**`CreateDomainDialog` was posting `japanese`/`english`** where the route reads
+`targetText`/`translation`, so every hand-entered vocabulary word was dropped and replaced by the
+AI-generated list. Field names fixed and the placeholders now name the chosen pair.
+
+Verified: `npx tsc --noEmit` clean · `npm test` 99/99 · `npx eslint` clean on every touched file ·
+`npm run db:generate` produced 0045, 0046 written by hand as a `--custom` migration.
+
+## 2026-08-27 (cont.) — Avaturn integration removed
+
+Avaturn is obsolete for this project; the whole integration is gone. Deleted
+`components/roleplay/AvaturnConnector.tsx` (the "Connect Avaturn" modal in
+`AvatarSettingsDialog`) and `components/roleplay/AvatarCreator.tsx`, which was already dead — nothing
+imported it, or its `getStoredAvatarUrl`/`clearStoredAvatar` localStorage helpers. Uninstalled
+`@avaturn/sdk` and `@avaturn-live/web-sdk`.
+
+The **Catalog** tab is now the only way to add an avatar, so the avatar grid's dashed "+" tile is
+gone and the empty state points at the catalogue instead. `GET /api/sessions/[id]` no longer returns
+`avaturnSubdomain` (`NEXT_PUBLIC_AVATURN_SUBDOMAIN`, also dropped from `.env.example`) — no client
+ever read it. `Avatar.tsx`'s `isImageUrl` no longer treats an `avaturn` host as an image URL.
+
+`user_avatars.source` defaulted to `'avaturn'` and both writers hard-coded that string; it is now
+`'catalog'`, which is what every row has actually been since the catalogue shipped. Migration
+`0047_curvy_mauler.sql` changes only the column default — **existing rows keep their old `'avaturn'`
+value**, so backfill them if anything ever branches on `source`. Note `AVATAR_EXPORT_API_KEY`
+(`lib/exportAuth.ts`) is unrelated despite the name: it guards the scenario export API. Left in
+place: `avatar-context`'s `addAvatar`, now with no caller — it is a generic POST helper, not
+Avaturn-specific.
+
+Verified: `npx tsc --noEmit` clean · `npx eslint` on every touched file reports only pre-existing
+findings · `npm run db:generate` produced 0047.
+
+## 2026-08-27 (Neon Auth deletions now cascade; Home dashboard rebuild)
+
+- Deleting a user in the Neon Auth console removed the credential only. `public.users` and everything cascading off `users.id` (sessions, conversations, evaluations, SRS cards, enrolments, calendar tasks) survived their own account, kept counting toward the leaderboard, and were handed back to whoever next signed up with that email, because `syncUser()` matches on address. Closed both directions:
+  - New nullable `users.auth_user_id` (migration `drizzle/0048_friendly_cammi.sql`, unique index `uq_users_auth_user_id`), stamped by `syncUser()`. NULL means no auth identity ever claimed the row — a pre-provisioned invitation from `/api/admin/users/create`, or a seeded account — which is what makes an unattended sweep safe. Deliberately NOT a foreign key to `neon_auth."user"`: that schema is Neon Auth's, and pinning it from a Drizzle migration makes their schema our problem.
+  - `lib/auth/reconcile-deleted.ts` deletes rows whose stamped identity is gone. Refuses to run if `neon_auth."user"` is unreadable OR empty — either would otherwise read as "delete every account". Backfills `auth_user_id` first, in two passes (id, then email) so neither can hand one auth id to two rows and trip the unique index.
+  - Runs hourly via the `reconcile-deleted-auth-users` Inngest cron (there is no webhook, and a deleted identity can never sign in to trigger a check, so polling is the only option); on demand via `POST /api/admin/users/reconcile` (`{dryRun:true}` previews); from a terminal via `npm run db:reconcile-auth [-- --dry-run]`.
+  - `POST /api/admin/users/[id]/purge` now deletes the `neon_auth."user"` row FIRST. Without it a purge left a working sign-in that rebuilt a blank account on next use.
+  - KNOWN GAP: accounts deleted in the console before `auth_user_id` existed stay NULL and are indistinguishable from invitations. The sweep leaves them; clear them with the purge route.
+- `/home` rebuilt to the reference design: XP ring around the hero avatar, level + next-level ladder, donut daily goal, working 7/30-day activity range selector, roadmap stage strip under Learning Journey, achievement unlock dates + badge-completion bar, compact session rows. New `components/ui/RadialProgress.tsx` primitive.
+- The Home recharts colours were stale dark-blue tokens (`#2D3BC5`, `#1C2A42`, `#080C18`) from the pre-warm-palette design — wrong in BOTH themes. Now `var(--color-*)` reads, which work in SVG presentation attributes.

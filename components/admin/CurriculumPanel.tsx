@@ -50,11 +50,13 @@ const LEVELS: TreeLevel[] = [
     entity: 'units',
     label: 'unit',
     plural: 'Units',
+    // Reordered with the up/down controls, which write `sequenceOrder`. There
+    // is no editable Order field here: `displayOrder` is a second, unused
+    // column, and offering it looked like the reorder control had no effect.
     reorderable: true,
     fields: [
       { key: 'title', label: 'Title', required: true },
       { key: 'description', label: 'Description', widget: 'textarea' },
-      { key: 'displayOrder', label: 'Order', widget: 'number' },
     ],
   },
   {
@@ -74,7 +76,6 @@ const LEVELS: TreeLevel[] = [
         hint: 'The roleplay this lesson runs, from the Catalogue tab. Leave blank to detach it.',
       },
       { key: 'estimatedMinutes', label: 'Minutes', widget: 'number' },
-      { key: 'displayOrder', label: 'Order', widget: 'number' },
     ],
   },
   {

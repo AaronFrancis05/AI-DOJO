@@ -118,17 +118,21 @@ function CreateRoomForm({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  // Their own preferred language when they actually teach it, otherwise the
-  // first one they do — never a language they cannot teach.
+  // Their own preferred language when it is one of the options actually on
+  // offer, otherwise the first that is. Checked against the filtered lists, not
+  // the raw profile: a language they hold but the admin has since disabled is
+  // not in the select, so preselecting it left the field showing the first
+  // option while submitting a different code — and the route then 400s.
   const [targetLanguage, setTargetLanguage] = useState(
     () =>
-      (user?.preferredTargetLanguage && profile.languages.includes(user.preferredTargetLanguage)
+      (user?.preferredTargetLanguage &&
+      teachOptions.some((l) => l.code === user.preferredTargetLanguage)
         ? user.preferredTargetLanguage
         : teachOptions[0]?.code) ?? '',
   );
   const [instructionLanguage, setInstructionLanguage] = useState(
     () =>
-      (user?.nativeLanguage && profile.instructionLanguages.includes(user.nativeLanguage)
+      (user?.nativeLanguage && explainOptions.some((l) => l.code === user.nativeLanguage)
         ? user.nativeLanguage
         : explainOptions[0]?.code) ?? '',
   );

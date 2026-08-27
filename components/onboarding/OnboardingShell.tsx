@@ -85,13 +85,23 @@ export function OnboardingShell({
   const isTransition = steps.some((s) => s.key === currentStep && s.transition);
   const prevStepRef = useRef(currentStep);
 
+  // Keyed on `transition` rather than on the learner wizard's two interstitial
+  // keys, so the tutor wizard — and any step added later — gets the same
+  // behaviour without naming its steps here.
   useEffect(() => {
-    if (mounted && currentStep !== 'personalizing' && currentStep !== 'plan-ready') {
+    if (mounted && !isTransition) {
       prevStepRef.current = currentStep;
     }
-  }, [currentStep, mounted]);
+  }, [currentStep, mounted, isTransition]);
 
   const navigateBack = () => {
+    // Back out of an interstitial goes to the step the wizard was last really
+    // on. The key immediately before it is often another transition, which
+    // would re-run the animation the tutor was trying to leave.
+    if (isTransition && prevStepRef.current !== currentStep) {
+      router.push(`${basePath}/${prevStepRef.current}`);
+      return;
+    }
     const idx = stepKeys.indexOf(currentStep);
     if (idx <= 0) {
       router.push(exitHref);

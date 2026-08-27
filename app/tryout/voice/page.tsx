@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Mic, Volume2, VolumeX, MessageSquare, X, Send } from 'lucide-react';
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
-import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
+import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useGuestRoleplaySession } from '@/lib/hooks/useGuestRoleplaySession';
 import { stop as stopTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
@@ -119,16 +119,14 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
   }, [chatInput, sending, handleUserUtterance]);
 
   const bcp47 = getBCP47(targetLanguage, 'stt');
-  const voice = useVoiceInput({ lang: bcp47, onFinal: handleUserUtterance });
-
   // Barge-in lives in useVoiceInput.start(): it silences the character on
-  // every press, not only when this derived mode says it is talking. That
-  // mode dips to false in the gap between utterances of one reply, and a
-  // press landing in the gap used to leave the rest of the reply playing
-  // into an open mic.
-  const handleMicStart = useCallback(async () => {
-    await voice.start();
-  }, [voice]);
+  // every press, not only when the derived mode says it is talking. That mode
+  // dips to false in the gap between utterances of one reply, and a press
+  // landing in the gap used to leave the rest of the reply playing into an open
+  // mic. usePushToTalk holds the press/release gesture itself — notably the
+  // pointer capture that stops a finger sliding off the button being read as a
+  // release.
+  const voice = usePushToTalk({ lang: bcp47, onFinal: handleUserUtterance });
 
   if (gate.state === 'blocked' || blocked) {
     return (
@@ -243,10 +241,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
               <div className="flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onPointerDown={handleMicStart}
-                  onPointerUp={voice.stop}
-                  onPointerLeave={voice.stop}
-                  onPointerCancel={voice.stop}
+                  {...voice.buttonProps}
                   disabled={sending || !greetingSent}
                   aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
                   aria-pressed={voice.isListening}
@@ -255,7 +250,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                       ? 'bg-dojo-warning shadow-[0_0_32px_rgba(242,169,59,0.5)] ring-4 ring-dojo-warning/20'
                       : 'bg-dojo-accent hover:scale-105 shadow-[0_8px_24px_rgba(45,59,197,0.4)]'
                   } disabled:opacity-40`}
-                  style={{ touchAction: 'none', transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
+                  style={{ ...voice.buttonProps.style, transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
                 >
                   <Mic className="h-7 w-7 text-white" />
                 </button>

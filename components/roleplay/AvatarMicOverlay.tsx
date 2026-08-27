@@ -1,8 +1,8 @@
 'use client';
 
-import { useRef, useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Mic, Volume2, VolumeX } from 'lucide-react';
-import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
+import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { getBCP47 } from '@/lib/language';
 
 interface AvatarMicOverlayProps {
@@ -22,37 +22,24 @@ export function AvatarMicOverlay({
 }: AvatarMicOverlayProps) {
   const bcp47 = getBCP47(targetLanguage, 'stt');
 
-  const voice = useVoiceInput({
+  const voice = usePushToTalk({
     lang: bcp47,
     onFinal: onFinalTranscript,
   });
 
-  const isAiRespondingRef = useRef(isAiResponding);
-  const stopRef = useRef(voice.stop);
-  stopRef.current = voice.stop;
-  const bargeInRef = useRef(false);
-
+  // Auto-stop when the AI starts replying, so a mic left open doesn't record
+  // the character's own voice.
+  //
+  // Gated on isHeld rather than on a barge-in flag. The flag only covered a
+  // press that landed while isAiResponding was ALREADY true; a press landing
+  // in the beat before it flips — which is most of them, since submitting the
+  // turn is what flips it — was closed by this effect mid-utterance and the
+  // fragment transmitted. A button the learner is physically holding is never
+  // something to close on the app's own initiative.
+  const { isListening, isHeld, stop } = voice;
   useEffect(() => {
-    isAiRespondingRef.current = isAiResponding;
-  }, [isAiResponding]);
-
-  const handleStartListening = useCallback(async () => {
-    // useVoiceInput.start() silences the character on every press; this only
-    // has to record that the press was a deliberate barge-in, so the effect
-    // below doesn't immediately close the mic it just opened.
-    if (isAiRespondingRef.current) bargeInRef.current = true;
-    await voice.start();
-  }, [voice]);
-
-  // Auto-stop on AI response start — skip if user just initiated a barge-in
-  useEffect(() => {
-    if (isAiResponding && voice.isListening && !bargeInRef.current) {
-      stopRef.current();
-    }
-    if (!isAiResponding) {
-      bargeInRef.current = false;
-    }
-  }, [isAiResponding, voice.isListening]);
+    if (isAiResponding && isListening && !isHeld) void stop();
+  }, [isAiResponding, isListening, isHeld, stop]);
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-3 pb-8 safe-bottom">
@@ -83,13 +70,7 @@ export function AvatarMicOverlay({
           )}
           <button
             type="button"
-            onPointerDown={handleStartListening}
-            onPointerUp={voice.stop}
-            onPointerLeave={voice.stop}
-            onPointerCancel={voice.stop}
-            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleStartListening(); } }}
-            onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
-            onBlur={voice.stop}
+            {...voice.buttonProps}
             aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
             aria-pressed={voice.isListening}
             className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all duration-300 select-none ${
@@ -97,7 +78,6 @@ export function AvatarMicOverlay({
                 ? 'bg-dojo-warning scale-110 shadow-[0_0_30px_rgba(242,169,59,0.6)] ring-4 ring-dojo-warning/20'
                 : 'bg-dojo-accent hover:scale-105 shadow-[0_10px_25px_rgba(45,59,197,0.5)]'
             }`}
-            style={{ touchAction: 'none' }}
           >
             <Mic className="h-7 w-7 text-white" />
           </button>

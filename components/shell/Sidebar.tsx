@@ -172,8 +172,22 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         {isTutor ? (
           <div className="mt-3 flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-dojo-text-muted">Tutor</span>
-            <Badge variant={user?.tutorStatus === 'verified' ? 'success' : 'outline'}>
-              {user?.tutorStatus === 'verified' ? 'Verified' : 'Pending review'}
+            {/* Rejected is its own answer: it used to read "Pending review",
+                which told a tutor to keep waiting for a decision already made. */}
+            <Badge
+              variant={
+                user?.tutorStatus === 'verified'
+                  ? 'success'
+                  : user?.tutorStatus === 'rejected'
+                    ? 'default'
+                    : 'outline'
+              }
+            >
+              {user?.tutorStatus === 'verified'
+                ? 'Verified'
+                : user?.tutorStatus === 'rejected'
+                  ? 'Not approved'
+                  : 'Pending review'}
             </Badge>
           </div>
         ) : (

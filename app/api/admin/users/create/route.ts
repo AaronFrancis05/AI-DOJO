@@ -44,6 +44,16 @@ export async function POST(req: Request) {
   if (!name) {
     return Response.json({ error: 'A name is required' }, { status: 400 });
   }
+  // Refused rather than truncated: `syncUser()` matches on the whole address,
+  // so an email silently cut to 150 characters would never be picked up by the
+  // sign-up it was written for, and the duplicate check below would be run
+  // against a different address than the one the admin typed.
+  if (email.length > 150) {
+    return Response.json({ error: 'Email is too long (max 150 characters)' }, { status: 400 });
+  }
+  if (name.length > 100) {
+    return Response.json({ error: 'Name is too long (max 100 characters)' }, { status: 400 });
+  }
 
   const role = isUserRole(body.role) ? body.role : DEFAULT_ROLE;
 

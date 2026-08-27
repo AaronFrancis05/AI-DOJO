@@ -115,6 +115,17 @@ export async function PATCH(req: Request) {
     if (isSelf && body.status !== 'active') {
       return Response.json({ error: 'You cannot suspend your own account' }, { status: 400 });
     }
+    // 'deleted' is not a status this endpoint may set. DELETE below is the
+    // closure path and it does more than flip the column — it anonymises the
+    // name, rewrites the uniquely-indexed email and clears the credentials.
+    // Setting the status here would leave a "deleted" account that still holds
+    // its real address and can be signed straight back into.
+    if (body.status === 'deleted') {
+      return Response.json(
+        { error: 'Close the account with DELETE /api/admin/users instead.' },
+        { status: 400 },
+      );
+    }
 
     updates.status = body.status;
     updates.suspendedAt = body.status === 'suspended' ? new Date() : null;
@@ -122,7 +133,6 @@ export async function PATCH(req: Request) {
       body.status === 'suspended' && typeof body.suspendedReason === 'string'
         ? body.suspendedReason.trim().slice(0, 500) || null
         : null;
-    updates.deletedAt = body.status === 'deleted' ? new Date() : null;
   }
 
   if (typeof body.name === 'string' && body.name.trim()) {
@@ -170,10 +180,14 @@ export async function PATCH(req: Request) {
 
   // A tutor whose account is suspended must also stop being bookable, or
   // learners keep finding them on /tutors and booking a room nobody can join.
-  if (updates.status !== undefined) {
+  //
+  // One-way on purpose: restoring the account must not silently re-list a tutor
+  // who had turned bookings off themselves. `isAcceptingBookings` is their
+  // setting, and they turn it back on from their own console.
+  if (updates.status !== undefined && updates.status !== 'active') {
     await db
       .update(tutors)
-      .set({ isAcceptingBookings: updates.status === 'active' })
+      .set({ isAcceptingBookings: false })
       .where(eq(tutors.userId, userId));
   }
 
@@ -201,7 +215,8 @@ export async function DELETE(req: Request) {
   }
 
   const body = await req.json().catch(() => null);
-  const userId = (body ?? {}) && typeof body.userId === 'string' ? body.userId : '';
+  const userId =
+    body && typeof body === 'object' && typeof body.userId === 'string' ? body.userId : '';
   if (!userId) return Response.json({ error: 'userId is required' }, { status: 400 });
   if (userId === actor.user.id) {
     return Response.json({ error: 'You cannot delete your own account' }, { status: 400 });

@@ -72,7 +72,12 @@ export async function PATCH(
     update.timezone = body.timezone.trim().slice(0, 60);
   }
   if (body?.hourlyRateCents !== undefined) {
-    const rate = Math.round(Number(body.hourlyRateCents));
+    // Typed before converting, for the same reason as /api/tutor/profile:
+    // Number('') and Number(null) are 0, which would set the rate to free.
+    if (typeof body.hourlyRateCents !== 'number') {
+      return Response.json({ error: 'Hourly rate is out of range' }, { status: 400 });
+    }
+    const rate = Math.round(body.hourlyRateCents);
     if (!Number.isFinite(rate) || rate < 0 || rate > 100_000) {
       return Response.json({ error: 'Hourly rate is out of range' }, { status: 400 });
     }

@@ -62,7 +62,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
       avatarUrl,
       thumbnailUrl: thumbnailUrl ?? null,
       isSelected: true,
-      source: 'avaturn',
+      source: 'catalog',
       createdAt: new Date().toISOString(),
     };
     setAvatars(prev => prev.map(a => ({ ...a, isSelected: false })).concat(optimistic));

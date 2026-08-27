@@ -35,7 +35,7 @@ function isImageUrl(url: string): boolean {
   if (ext.endsWith('.png') || ext.endsWith('.jpg') || ext.endsWith('.jpeg')
     || ext.endsWith('.webp') || ext.endsWith('.gif') || ext.endsWith('.svg')
     || ext.endsWith('.avif')) return true;
-  return /^https?:\/\/.*(avaturn|gravatar|googleusercontent|cloudinary)/i.test(url);
+  return /^https?:\/\/.*(gravatar|googleusercontent|cloudinary)/i.test(url);
 }
 
 export function Avatar({ name, src, size = 'md', color = '#2D3BC5', className }: AvatarProps) {

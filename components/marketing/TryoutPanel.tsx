@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLanguageCatalog } from '@/lib/language-context';
+import { BUILT_IN_NATIVE_LANGUAGES, BUILT_IN_TARGET_LANGUAGES } from '@/lib/language';
 import { ChevronRightIcon } from '@/components/Icons';
+
+/** The same last resort `lib/language-registry.ts` falls back to when the
+ *  `languages` table is empty or unreachable. */
+const DEFAULT_TARGET_LANGUAGE = BUILT_IN_TARGET_LANGUAGES[0].code;
+const DEFAULT_NATIVE_LANGUAGE = BUILT_IN_NATIVE_LANGUAGES[0].code;
 
 export function TryoutPanel() {
   const catalog = useLanguageCatalog();
@@ -51,8 +57,12 @@ export function TryoutPanel() {
           </select>
         </label>
 
+        {/* Both selects come from the runtime catalogue, so an unseeded or
+            misconfigured one would leave the codes blank and the link would
+            open /tryout with empty parameters. Fall back to the built-in pair
+            rather than sending a request nothing can resolve. */}
         <Link
-          href={`/tryout?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`}
+          href={`/tryout?targetLanguage=${targetLanguage || DEFAULT_TARGET_LANGUAGE}&nativeLanguage=${nativeLanguage || DEFAULT_NATIVE_LANGUAGE}`}
           className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
         >
           Start Tryout

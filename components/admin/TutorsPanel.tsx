@@ -42,8 +42,11 @@ const STATUS_VARIANT: Record<string, 'success' | 'outline' | 'default'> = {
   rejected: 'default',
 };
 
+/** Two decimals only when there are any, so a $12.50 rate stops reading as $13
+ *  next to an editor that says 12.5. */
 function formatRate(cents: number, currency: string): string {
-  return `${(cents / 100).toFixed(0)} ${currency}/hr`;
+  const units = cents / 100;
+  return `${Number.isInteger(units) ? units : units.toFixed(2)} ${currency}/hr`;
 }
 
 export function TutorsPanel({ onError }: { onError: (msg: string) => void }) {
@@ -152,6 +155,7 @@ export function TutorsPanel({ onError }: { onError: (msg: string) => void }) {
             <TutorEditor
               tutor={tutor}
               saving={busyId === tutor.id}
+              onError={onError}
               onSave={(body) => patch(tutor.id, body)}
             />
           )}
@@ -164,10 +168,12 @@ export function TutorsPanel({ onError }: { onError: (msg: string) => void }) {
 function TutorEditor({
   tutor,
   saving,
+  onError,
   onSave,
 }: {
   tutor: AdminTutor;
   saving: boolean;
+  onError: (msg: string) => void;
   onSave: (body: Record<string, unknown>) => void;
 }) {
   const catalog = useLanguageCatalog();
@@ -227,16 +233,25 @@ function TutorEditor({
         className="mt-6"
         loading={saving}
         disabled={saving}
-        onClick={() =>
+        onClick={() => {
+          // Blank or non-numeric would reach the route as NaN and be refused
+          // there anyway — but as "Hourly rate is out of range" over a field
+          // the admin left empty, which does not say what to do about it.
+          const rateUnits = Number(rate);
+          if (!rate.trim() || !Number.isFinite(rateUnits)) {
+            onError('Enter an hourly rate before saving.');
+            return;
+          }
+          onError('');
           onSave({
             headline,
             bio: bio.trim() || null,
             timezone,
-            hourlyRateCents: Math.round(Number(rate) * 100),
+            hourlyRateCents: Math.round(rateUnits * 100),
             languages,
             instructionLanguages,
-          })
-        }
+          });
+        }}
       >
         Save profile
       </Button>

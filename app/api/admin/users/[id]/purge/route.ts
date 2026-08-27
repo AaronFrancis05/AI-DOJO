@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     body && typeof body.confirmEmail === 'string' ? body.confirmEmail.trim().toLowerCase() : '';
 
   const [existing] = await db
-    .select({ id: users.id, email: users.email, name: users.name })
+    .select({ id: users.id, email: users.email, name: users.name, authUserId: users.authUserId })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -70,6 +70,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .from(users)
     .where(eq(users.id, userId));
 
+  // The credential goes first. Deleting only the `users` row would leave a
+  // sign-in that still works, and `syncUser()` matches on email — so the next
+  // sign-in would silently rebuild a blank account for someone who was purged.
+  // Neon Auth's own cascades take its sessions and OAuth accounts with it.
+  // Best-effort: a row that is already gone (deleted from the console first) is
+  // the normal case, and an auth store we cannot write to must not strand the
+  // erasure request half-done. The reverse direction — deleted there, still here
+  // — is swept by lib/auth/reconcile-deleted.ts.
+  let authIdentityRemoved = false;
+  try {
+    const removed = await db.execute(sql`
+      delete from neon_auth."user"
+       where id = ${existing.authUserId ?? userId}
+          or lower(email) = ${existing.email.toLowerCase()}
+    `);
+    authIdentityRemoved = (removed.rowCount ?? 0) > 0;
+  } catch (err) {
+    console.error('[admin/users/purge] auth identity delete failed', err);
+  }
+
   await db.delete(users).where(eq(users.id, userId));
 
   return Response.json({
@@ -77,6 +97,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     purged: {
       email: existing.email,
       name: existing.name,
+      // False when there was no credential to remove (a pre-provisioned row, or
+      // an account already deleted in the Neon console) — or when the auth store
+      // refused the write, which the server log names.
+      authIdentityRemoved,
       // What went with them. `chat_messages.sender_id` is ON DELETE SET NULL,
       // so those messages survive as authorless rather than disappearing.
       sessions: Number(counts?.sessions ?? 0),

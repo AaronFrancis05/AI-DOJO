@@ -116,20 +116,39 @@ export async function resolveAudience(
       };
     }
 
+    // Enrolment in a course says nothing about who teaches the learner: this
+    // table is the whole platform's, not this tutor's. Without the second half
+    // a tutor announcing to "the Japanese course" reached every learner on it,
+    // including strangers, and the cohort room added them to a group chat.
+    // Intersect with the learners this tutor actually teaches.
+    const own = new Set(await tutorOwnLearnerIds(tutorId));
+    if (own.size === 0) return { learnerIds: [], error: null };
+
     const rows = await db
       .select({ learnerId: studentProgress.userId })
       .from(studentProgress)
       .where(and(
         eq(studentProgress.courseId, courseId),
         inArray(studentProgress.targetLanguage, languages),
+        inArray(studentProgress.userId, [...own]),
       ));
 
     return { learnerIds: await activeLearners(rows.map((r) => r.learnerId)), error: null };
   }
 
-  // all_my_learners — the union of every way a learner can have been taught by
-  // this tutor. Three separate queries rather than one UNION so each stays a
-  // plain indexed lookup on its own table; the sets are small and merged here.
+  // all_my_learners
+  return { learnerIds: await activeLearners(await tutorOwnLearnerIds(tutorId)), error: null };
+}
+
+/**
+ * Every learner this tutor has actually taught — the union of the three ways
+ * that can be true: a class they ran, a booking they took, an assessment they
+ * examined. Not filtered for account status; `activeLearners` does that.
+ *
+ * Three separate queries rather than one UNION so each stays a plain indexed
+ * lookup on its own table; the sets are small and merged here.
+ */
+async function tutorOwnLearnerIds(tutorId: number): Promise<string[]> {
   const [classRows, bookingRows, assessmentRows] = await Promise.all([
     db
       .select({ learnerId: classEnrollments.learnerId })
@@ -153,13 +172,11 @@ export async function resolveAudience(
       .where(eq(assessmentSessions.tutorId, tutorId)),
   ]);
 
-  const ids = [
+  return [...new Set([
     ...classRows.map((r) => r.learnerId),
     ...bookingRows.map((r) => r.learnerId),
     ...assessmentRows.map((r) => r.learnerId),
-  ];
-
-  return { learnerIds: await activeLearners(ids), error: null };
+  ])];
 }
 
 /** The target languages on a tutor's profile. */

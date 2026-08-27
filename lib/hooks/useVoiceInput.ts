@@ -15,7 +15,23 @@ import { stop as stopTts, isSpeechAudibleWithin } from '@/lib/roleplay/tts';
 // back to the last interim. It only ever pays out when a phrase was still being
 // recognized at the moment of release — the common case transmits with no wait —
 // and it ends the moment that final lands.
-const FINAL_FLUSH_GRACE_MS = 250;
+//
+// This was 250ms, which is shorter than the round trip it is waiting on: after
+// stopContinuousRecognitionAsync forces the service to finalize, that last
+// Recognized event routinely lands 400-800ms later. The wait therefore expired
+// almost every time and fell back to the last INTERIM, which itself trails the
+// audio by a word or two — so the tail of the sentence went missing. Because
+// finalWaiterRef resolves the wait the instant the final arrives, a larger cap
+// costs nothing whenever the old value would have been enough; it is only paid
+// in the case that was previously broken.
+const FINAL_FLUSH_GRACE_MS = 900;
+
+// Shown when a press produced no transcript at all. Every failure the voice
+// path can hit below the transcript — a muted device, a reconnect that ate the
+// press, a button held for a fraction of a second — used to end here in total
+// silence, with no callback and no message, which reads to the learner as a
+// dead button rather than as something to try again.
+const NO_SPEECH_MESSAGE = 'No speech detected — hold the button while you speak.';
 
 /* ── Echo guard ─────────────────────────────────────────────────────────
    The learner hears the character through their speakers, and so does their
@@ -236,7 +252,13 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       setFinalTranscript('');
       markMicRelease();
       onFinal?.(buffered);
+      return;
     }
+
+    // Nothing was heard. Say so rather than returning to idle as though the
+    // press had never happened — see NO_SPEECH_MESSAGE. Cleared by the next
+    // start(), so it never outlives the press it describes.
+    setError(NO_SPEECH_MESSAGE);
   }, [onFinal]);
 
   // The recognizer, its Azure connection, and the microphone stream are held

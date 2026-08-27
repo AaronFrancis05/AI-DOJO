@@ -128,7 +128,12 @@ export async function PATCH(req: Request) {
   }
 
   if (body.hourlyRateCents !== undefined) {
-    const rate = Math.round(Number(body.hourlyRateCents));
+    // Typed before converting: Number('') and Number(null) are both 0, so a
+    // blank field would have silently set the rate to free rather than 400.
+    if (typeof body.hourlyRateCents !== 'number') {
+      return Response.json({ error: 'Hourly rate is out of range' }, { status: 400 });
+    }
+    const rate = Math.round(body.hourlyRateCents);
     if (!Number.isFinite(rate) || rate < 0 || rate > MAX_HOURLY_RATE_CENTS) {
       return Response.json({ error: 'Hourly rate is out of range' }, { status: 400 });
     }

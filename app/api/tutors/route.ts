@@ -2,7 +2,7 @@ import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { and, eq } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
-import { parseLanguageCodes, tutorLanguageSets } from '@/lib/tutors/languages';
+import { tutorLanguageSets } from '@/lib/tutors/languages';
 
 /**
  * Lists bookable tutors, optionally filtered to one target language.
@@ -24,6 +24,7 @@ export async function GET(req: Request) {
       headline: tutors.headline,
       bio: tutors.bio,
       languages: tutors.languages,
+      instructionLanguages: tutors.instructionLanguages,
       hourlyRateCents: tutors.hourlyRateCents,
       currency: tutors.currency,
       timezone: tutors.timezone,
@@ -39,17 +40,16 @@ export async function GET(req: Request) {
     ))
     .orderBy(tutors.id);
 
-  // `languages` is a comma-separated code list, so filtering happens here
-  // rather than in SQL to avoid a LIKE that would match 'ja' inside 'jav'.
-  const filtered = lang
-    ? rows.filter((t) => t.languages.split(',').map((s) => s.trim()).includes(lang))
-    : rows;
-
-  return Response.json({
-    success: true,
-    tutors: filtered.map((t) => ({
-      ...t,
-      languages: t.languages.split(',').map((s) => s.trim()).filter(Boolean),
-    })),
+  // Both language fields are comma-separated code lists, parsed through the one
+  // helper so this listing agrees with `/api/tutor/profile` and the scheduling
+  // routes about what a tutor holds. Filtering happens here rather than in SQL
+  // to avoid a LIKE that would match 'ja' inside 'jav'.
+  const parsed = rows.map((t) => {
+    const { teaches, explainsIn } = tutorLanguageSets(t);
+    return { ...t, languages: teaches, instructionLanguages: explainsIn };
   });
+
+  const filtered = lang ? parsed.filter((t) => t.languages.includes(lang)) : parsed;
+
+  return Response.json({ success: true, tutors: filtered });
 }

@@ -135,12 +135,17 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
     setBusyId(u.id);
     onError('');
     try {
-      const data = await adminFetch<{ purged: { sessions: number; classEnrollments: number } }>(
+      const data = await adminFetch<{ purged?: { sessions: number; classEnrollments: number } }>(
         `/api/admin/users/${u.id}/purge`,
         { method: 'POST', body: { confirmEmail: typed } },
       );
+      // The account is gone by the time this runs, so a missing count is a
+      // reporting gap, not a failed purge — throwing here would leave the
+      // deleted row on screen and read as if nothing had happened.
       window.alert(
-        `Deleted. ${data.purged.sessions} session(s) and ${data.purged.classEnrollments} class enrolment(s) went with it.`,
+        data.purged
+          ? `Deleted. ${data.purged.sessions} session(s) and ${data.purged.classEnrollments} class enrolment(s) went with it.`
+          : 'Deleted.',
       );
       reload();
     } catch (e) {

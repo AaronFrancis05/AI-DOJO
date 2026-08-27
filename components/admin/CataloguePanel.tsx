@@ -63,7 +63,7 @@ const LEVELS: TreeLevel[] = [
       { key: 'learningGoals', label: 'Learning goals', widget: 'textarea' },
       { key: 'businessType', label: 'Business type' },
       { key: 'difficulty', label: 'Difficulty', widget: 'select', options: SKILL_LEVELS },
-      { key: 'domain', label: 'Domain slug', hint: 'Denormalised copy of the parent domain’s slug — keep it in step by hand.' },
+      { key: 'domain', label: 'Domain slug', hint: 'Denormalised copy of the parent domain’s slug. Renaming the domain rewrites it here automatically.' },
       { key: 'aiCharacterName', label: 'AI character name' },
       { key: 'aiCharacterRole', label: 'AI character role' },
       { key: 'userCharacterName', label: 'Learner character name' },

@@ -154,14 +154,38 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
   const table = spec.table as unknown as Record<string, never>;
 
   try {
-    const [updated] = await db
-      .update(spec.table)
-      .set(writable(updates))
-      .where(eq(table['id'], id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(spec.table)
+        .set(writable(updates))
+        .where(eq(table['id'], id))
+        .returning();
+      if (!row) return null;
+
+      // `scenarios.domain` is a denormalised copy of the parent domain's slug,
+      // and the hub reads it. Renaming the slug without carrying it down left
+      // every scenario beneath the domain pointing at a slug that no longer
+      // exists, so the rename happens with the domain write, not by hand.
+      if (entity === 'domains' && typeof updates.slug === 'string') {
+        await tx
+          .update(scenarios)
+          .set({ domain: updates.slug })
+          .where(sql`${scenarios.situationId} in (select id from situations where domain_id = ${id})`);
+      }
+
+      return row;
+    });
     if (!updated) return Response.json({ error: `${spec.label} not found` }, { status: 404 });
 
     await invalidate(entity as EntityKey, id);
+
+    // Archiving a situation removes it from the hub, so the denormalised
+    // `domains.situationCount` has to follow — the same reason POST and DELETE
+    // refresh it. Nothing else recomputes the column.
+    if (entity === 'situations') {
+      await refreshSituationCount(Number((updated as Record<string, unknown>).domainId));
+    }
+
     return Response.json({ success: true, row: updated });
   } catch (err) {
     return catalogueError(err, spec.label);
@@ -216,11 +240,18 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
     }
   }
 
+  // Cascaded-away situations, captured before the delete: their cache entries
+  // outlive the rows by up to TTL.SITUATION, and nothing else knows to drop
+  // them once the parent domain is gone.
+  let cascadedSituationIds: number[] = [];
+
   if (entity === 'domains') {
-    const [{ situationCount }] = await db
-      .select({ situationCount: sql<number>`count(*)::int` })
+    const situationRows = await db
+      .select({ id: situations.id })
       .from(situations)
       .where(eq(situations.domainId, id));
+    cascadedSituationIds = situationRows.map((r) => r.id);
+    const situationCount = cascadedSituationIds.length;
 
     if (Number(situationCount) > 0 && body?.force !== true) {
       return Response.json(
@@ -246,6 +277,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
   }
 
   await invalidate(entity as EntityKey, id);
+  for (const situationId of cascadedSituationIds) {
+    await cacheDel(cacheKeys.situation(situationId));
+  }
   if (entity === 'situations' && typeof domainId === 'number') {
     await refreshSituationCount(domainId);
   }

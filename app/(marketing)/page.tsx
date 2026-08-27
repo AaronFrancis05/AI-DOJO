@@ -22,8 +22,13 @@ import {
   ChartIcon,
   StarIcon,
   ChevronRightIcon,
+  XIcon,
+  LinkedInIcon,
+  InstagramIcon,
+  YouTubeIcon,
 } from '@/components/Icons';
 import { DemoVideoDialog } from '@/components/marketing/DemoVideoDialog';
+import { FooterNewsletter } from '@/components/marketing/FooterNewsletter';
 
 const domainIconMap: Record<string, React.FC<{ className?: string }>> = {
   Restaurant: RestaurantIcon,
@@ -56,6 +61,51 @@ const heroIconMap: Record<string, React.FC<{ className?: string }>> = {
   Users: UsersIcon,
   Lightning: LightningIcon,
 };
+
+const socialLinks = [
+  { label: 'X', href: 'https://x.com/aidojo', icon: XIcon },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/company/aidojo', icon: LinkedInIcon },
+  { label: 'Instagram', href: 'https://www.instagram.com/aidojo', icon: InstagramIcon },
+  { label: 'YouTube', href: 'https://www.youtube.com/@aidojo', icon: YouTubeIcon },
+];
+
+const footerColumns = [
+  {
+    title: 'Product',
+    links: [
+      { label: 'Scenarios', href: '#scenarios' },
+      { label: 'How It Works', href: '#how' },
+      { label: 'Pricing', href: '/pricing' },
+      { label: 'Try a Demo', href: '/tryout' },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { label: 'Blog', href: '/blog' },
+      { label: 'Language Tips', href: '/language-tips' },
+      { label: 'Help Center', href: '/help' },
+      { label: 'Community', href: '/community' },
+    ],
+  },
+  {
+    title: 'Company',
+    links: [
+      { label: 'About Us', href: '/about' },
+      { label: 'Our Mission', href: '/mission' },
+      { label: 'Careers', href: '/careers' },
+      { label: 'Contact Us', href: '/contact' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { label: 'Privacy Policy', href: '/privacy' },
+      { label: 'Terms of Service', href: '/terms' },
+      { label: 'Cookie Policy', href: '/cookies' },
+    ],
+  },
+];
 
 const whyChoose = [
   { icon: 'Users', title: 'Realistic AI Partners', body: 'Talk with AI characters that understand context and respond naturally.' },
@@ -90,19 +140,24 @@ const testimonials = [
 const partners: { name: string; logo?: string }[] = [
   { name: 'AKADEMIA LTD', logo: '/brands/akademia.png' },
   { name: 'IUEA', logo: '/brands/iuea.jpeg' },
-  { name: 'MAKERERE', logo: '/brands/makerere.svg' },
+  { name: 'MAKERERE', logo: '/brands/makerere.jpeg' },
   { name: 'AI AVATAR' },
   { name: 'AI DOJO', logo: '/brands/ai_dojo.png' },
 ];
 
 function PartnerBadge({ name, logo }: { name: string; logo?: string }) {
   return (
-    <div className="flex shrink-0 items-center gap-3">
-      <div className="relative flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface-raised">
+    <div className="flex shrink-0 items-center gap-4">
+      {/* Wider-than-tall tile: the partner assets range from a 4:1 wordmark
+          (akademia) to detailed university crests, and a 56px square cropped
+          both to illegibility. `bg-white` is deliberate — every logo file is a
+          JPEG/PNG with a baked-in white background, so a themed surface behind
+          them just framed a white rectangle in dark mode. */}
+      <div className="relative flex h-16 w-24 sm:h-20 sm:w-28 items-center justify-center overflow-hidden rounded-xl border border-dojo-border bg-white">
         {logo ? (
-          <Image src={logo} alt="" fill sizes="56px" className="object-contain p-2" />
+          <Image src={logo} alt="" fill sizes="(min-width: 640px) 112px, 96px" className="object-contain p-2" />
         ) : (
-          <span className="text-lg sm:text-xl font-bold text-dojo-accent">{name.charAt(0)}</span>
+          <span className="text-2xl sm:text-3xl font-bold text-dojo-accent">{name.charAt(0)}</span>
         )}
       </div>
       <span className="whitespace-nowrap text-sm sm:text-base font-semibold text-dojo-text-primary">{name}</span>
@@ -576,68 +631,68 @@ export default async function LandingPage() {
 
       <footer className="border-t border-dojo-border bg-dojo-surface/60">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Brand */}
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-6">
+            {/* Brand + social */}
             <div className="sm:col-span-2 lg:col-span-1">
               <Link href="/" className="inline-flex items-center gap-2.5 text-lg font-bold text-dojo-text-primary">
-                <span>🥋 AI DOJO</span>
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-dojo-accent font-display text-sm text-white">
+                  道
+                </span>
+                <span>AI-Dojo</span>
               </Link>
-              <p className="mt-3 text-sm leading-relaxed text-dojo-text-muted max-w-xs">
-                AI-powered language roleplay training. Practice real conversations. Anywhere, anytime.
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-dojo-text-muted">
+                Immersive AI role-play training to help you speak any language confidently in the real world.
               </p>
-            </div>
-
-            {/* Product */}
-            <div>
-              <h3 className="text-sm font-semibold text-dojo-text-primary">Product</h3>
-              <ul className="mt-4 space-y-3">
-                <li><Link href="#scenarios" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Scenarios</Link></li>
-                <li><Link href="#partners" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Partners</Link></li>
-                <li><Link href="#how" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">How It Works</Link></li>
-                <li><Link href="/auth" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Get Started</Link></li>
-                {/* The only route to /auth/tutor from the public site — before
-                    this it was reachable solely from a line at the bottom of
-                    /auth, which no prospective tutor has a reason to open. */}
-                <li><Link href="/auth/tutor" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Teach on AI DOJO</Link></li>
+              <ul className="mt-6 flex items-center gap-3">
+                {socialLinks.map((social) => {
+                  const Icon = social.icon;
+                  return (
+                    <li key={social.label}>
+                      <a
+                        href={social.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={social.label}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-dojo-border text-dojo-text-muted transition-colors hover:border-dojo-accent/50 hover:text-dojo-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
+                      >
+                        <Icon className="h-4 w-4" />
+                      </a>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 
-            {/* Company */}
-            <div>
-              <h3 className="text-sm font-semibold text-dojo-text-primary">Company</h3>
-              <ul className="mt-4 space-y-3">
-                <li>
-                  <a
-                    href="https://www.akademia.co.jp/en"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent"
-                  >
-                    AKADEMIA LTD
-                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </a>
-                </li>
-                <li><a href="https://iuea.ac.ug" target="_blank" rel="noopener noreferrer" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">IUEA</a></li>
-                <li><a href="https://www.mak.ac.ug" target="_blank" rel="noopener noreferrer" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Makerere University</a></li>
-              </ul>
-            </div>
+            {footerColumns.map((column) => (
+              <div key={column.title}>
+                <h3 className="text-sm font-semibold text-dojo-text-primary">{column.title}</h3>
+                <ul className="mt-4 space-y-3">
+                  {column.links.map((link) => (
+                    <li key={link.label}>
+                      <Link
+                        href={link.href}
+                        className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent"
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
 
-            {/* Legal */}
-            <div>
-              <h3 className="text-sm font-semibold text-dojo-text-primary">Legal</h3>
-              <ul className="mt-4 space-y-3">
-                <li><a href="/privacy" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Privacy Policy</a></li>
-                <li><a href="/terms" className="text-sm text-dojo-text-muted transition-colors hover:text-dojo-accent">Terms of Service</a></li>
-              </ul>
-            </div>
+            <FooterNewsletter />
           </div>
 
-          <div className="mt-10 border-t border-dojo-border pt-6 text-center text-xs text-dojo-text-muted sm:text-sm">
-            &copy; {new Date().getFullYear()} AI DOJO &mdash; Immersive Language Role-Play Training. All rights reserved.
+          <div className="mt-10 flex flex-col items-center gap-3 border-t border-dojo-border pt-6 text-xs text-dojo-text-muted sm:flex-row sm:justify-between sm:text-sm">
+            <p>&copy; {new Date().getFullYear()} AI-Dojo. All rights reserved.</p>
+            <p className="inline-flex items-center gap-2">
+              Made with
+              <span className="flex h-5 w-5 items-center justify-center rounded bg-dojo-accent font-display text-[0.625rem] text-white">
+                道
+              </span>
+              in Tokyo
+            </p>
           </div>
         </div>
       </footer>

@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { RadialProgress } from '@/components/ui/RadialProgress';
 import { LiveBadge } from '@/components/ui/LiveBadge';
 import { HexBadge } from '@/components/ui/HexBadge';
 import { Button } from '@/components/ui/Button';
@@ -28,7 +29,7 @@ import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
 const WelcomeBanner = dynamic(() => import('@/components/roleplay/avatar-variants/WelcomeBanner').then(m => ({ default: m.WelcomeBanner })), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-xl">
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-full">
       <div className="h-12 w-12 rounded-full bg-dojo-border" />
     </div>
   ),
@@ -44,14 +45,11 @@ import {
   Globe,
   Sparkles,
   Zap,
-  ExternalLink,
   Share2,
   Trash2,
   Trophy,
-  History,
   Play,
   TrendingUp,
-  Award,
   UtensilsCrossed,
   Building2,
   Plane,
@@ -80,7 +78,23 @@ function formatDate(dateStr: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** "Aug 12, 2026" — the compact form the achievement grid captions with. */
+function formatBadgeDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 const computeTotalPct = sessionCompositePct;
+
+/**
+ * Sessions carry no duration, so practice minutes are an estimate at a flat
+ * rate per completed session. Named rather than inlined because the daily-goal
+ * ring and the activity chart must estimate it the same way or they disagree.
+ */
+const ESTIMATED_MINUTES_PER_SESSION = 5;
 
 // ── Icon map ──────────────────────────────────────────
 
@@ -114,6 +128,33 @@ interface JourneyItem {
   pct: number;
 }
 
+/**
+ * The roadmap strip under the domain cards. Stages are counted in completed
+ * sessions — the one figure every learner has from their first turn, and the
+ * same one the domain cards above are built from, so the strip never claims
+ * progress the cards contradict.
+ */
+const JOURNEY_STAGES = [
+  { title: 'Start',    caption: 'First Steps',        sessions: 1 },
+  { title: 'Build',    caption: 'Core Skills',        sessions: 5 },
+  { title: 'Practice', caption: 'Real Conversations', sessions: 15 },
+  { title: 'Master',   caption: 'All Domains',        sessions: 30 },
+] as const;
+
+const LEVEL_ORDER = ['beginner', 'intermediate', 'advanced'] as const;
+
+function levelLabel(level?: string): string {
+  const l = (level ?? 'beginner').toLowerCase();
+  return l.charAt(0).toUpperCase() + l.slice(1);
+}
+
+/** The level after this one, or null at the top of the ladder. */
+function nextLevelOf(level?: string): string | null {
+  const i = LEVEL_ORDER.indexOf((level ?? 'beginner').toLowerCase() as typeof LEVEL_ORDER[number]);
+  if (i < 0) return LEVEL_ORDER[1];
+  return i < LEVEL_ORDER.length - 1 ? LEVEL_ORDER[i + 1] : null;
+}
+
 const NATIVE_GREETINGS: Record<string, string> = {
   en: 'Welcome back',
   ja: 'Okaeri',
@@ -132,27 +173,61 @@ function greet(nativeLanguage?: string): string {
   return NATIVE_GREETINGS[nativeLanguage ?? 'en'] ?? 'Welcome back';
 }
 
-const DEFAULT_WEEKLY_ACTIVITY = dayNames.map(day => ({ day, minutes: 0 }));
+/** Rotates once a day rather than once a render, so the hero holds still. */
+const DAILY_LINES = [
+  'Small steps every day lead to big conversations.',
+  'Fluency is a habit before it is a skill.',
+  'The awkward sentence you say beats the perfect one you do not.',
+  'Five minutes today outruns an hour next week.',
+  'You learn the language you use, not the one you study.',
+];
 
-type WeeklyActivityItem = { day: string; minutes: number };
+function lineOfTheDay(): string {
+  const dayIndex = Math.floor(Date.now() / 86_400_000);
+  return DAILY_LINES[dayIndex % DAILY_LINES.length];
+}
 
-function computeWeeklyActivity(sessions: SessionRecord[]): WeeklyActivityItem[] {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  const counts: Record<string, number> = {};
+type ActivityItem = { label: string; minutes: number };
+
+const DEFAULT_WEEKLY_ACTIVITY: ActivityItem[] = dayNames.map(label => ({ label, minutes: 0 }));
+
+type ActivityRange = 7 | 30;
+
+function startOfDay(d: Date): Date {
+  const copy = new Date(d);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+/**
+ * Completed sessions bucketed into one column per day, oldest first.
+ *
+ * The 7-day view labels by weekday and the 30-day view by date, because a
+ * month of "Mon, Tue, Mon, Tue…" says nothing about when anything happened.
+ */
+function computeActivity(sessions: SessionRecord[], days: ActivityRange): ActivityItem[] {
+  const today = startOfDay(new Date());
+  const buckets = new Map<number, number>();
+
   for (const s of sessions) {
-    if (s.startedAt && s.status === 'completed') {
-      const d = new Date(s.startedAt);
-      const startOfDay = new Date(d);
-      startOfDay.setHours(0, 0, 0, 0);
-      if (startOfDay >= sevenDaysAgo && startOfDay <= now) {
-        counts[dayNames[d.getDay()]] = (counts[dayNames[d.getDay()]] ?? 0) + 1;
-      }
-    }
+    if (s.status !== 'completed' || !s.startedAt) continue;
+    const day = startOfDay(new Date(s.startedAt));
+    const offset = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+    if (offset < 0 || offset >= days) continue;
+    buckets.set(offset, (buckets.get(offset) ?? 0) + 1);
   }
-  return dayNames.map(day => ({ day, minutes: (counts[day] ?? 0) * 5 }));
+
+  return Array.from({ length: days }, (_, i) => {
+    const offset = days - 1 - i;
+    const d = new Date(today);
+    d.setDate(d.getDate() - offset);
+    return {
+      label: days === 7
+        ? dayNames[d.getDay()]
+        : `${d.getMonth() + 1}/${d.getDate()}`,
+      minutes: (buckets.get(offset) ?? 0) * ESTIMATED_MINUTES_PER_SESSION,
+    };
+  });
 }
 
 function hasSevenDayStreak(sessions: SessionRecord[]): boolean {
@@ -170,20 +245,46 @@ function hasSevenDayStreak(sessions: SessionRecord[]): boolean {
   return true;
 }
 
-function computeAchievements(sessions: SessionRecord[]) {
-  const completed = sessions.filter(s => s.status === 'completed');
-  const totalSessions = completed.length;
-  const uniqueDomains = new Set(completed.map(s => s.domainId).filter(Boolean)).size;
-  const hasStreak = hasSevenDayStreak(sessions);
-  const hasPerfectGrammar = completed.some(s => (s.grammarScore ?? 0) >= 90);
+interface Achievement {
+  id: string;
+  icon: string;
+  label: string;
+  unlocked: boolean;
+  /** When the qualifying session happened — captioned under the badge. */
+  unlockedAt: string | null;
+}
+
+function computeAchievements(sessions: SessionRecord[]): Achievement[] {
+  // Oldest first, so "the session that unlocked this" is the first one that
+  // satisfies the rule rather than whichever the API happened to return first.
+  const completed = sessions
+    .filter(s => s.status === 'completed' && s.startedAt)
+    .sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime());
+
+  /** The date of the nth completed session (1-based), or null if never reached. */
+  const dateOfNth = (n: number) => completed[n - 1]?.startedAt ?? null;
+
+  const firstGrammarPass = completed.find(s => (s.grammarScore ?? 0) >= 90)?.startedAt ?? null;
+
+  // The session at which the third distinct domain appeared.
+  const seen = new Set<number>();
+  let thirdDomainAt: string | null = null;
+  for (const s of completed) {
+    if (s.domainId == null) continue;
+    seen.add(s.domainId);
+    if (seen.size >= 3) { thirdDomainAt = s.startedAt; break; }
+  }
+
+  const streak = hasSevenDayStreak(sessions);
 
   return [
-    { id: '1', icon: 'Footprints', label: 'First Steps', unlocked: totalSessions >= 1 },
-    { id: '2', icon: 'MessageSquare', label: '10 Conversations', unlocked: totalSessions >= 10 },
-    { id: '3', icon: 'BookOpen', label: '50 Words', unlocked: totalSessions >= 3 },
-    { id: '4', icon: 'Flame', label: '7-Day Streak', unlocked: hasStreak },
-    { id: '5', icon: 'PenTool', label: 'Perfect Grammar', unlocked: hasPerfectGrammar },
-    { id: '6', icon: 'Globe', label: 'All Domains', unlocked: uniqueDomains >= 3 },
+    { id: '1', icon: 'Footprints',    label: 'First Steps',      unlocked: completed.length >= 1,  unlockedAt: dateOfNth(1) },
+    { id: '2', icon: 'MessageSquare', label: '10 Conversations', unlocked: completed.length >= 10, unlockedAt: dateOfNth(10) },
+    { id: '3', icon: 'BookOpen',      label: '50 Words',         unlocked: completed.length >= 3,  unlockedAt: dateOfNth(3) },
+    { id: '4', icon: 'PenTool',       label: 'Perfect Grammar',  unlocked: firstGrammarPass != null, unlockedAt: firstGrammarPass },
+    // A streak is true of today or not at all — it has no earlier unlock date.
+    { id: '5', icon: 'Flame',         label: '7-Day Streak',     unlocked: streak, unlockedAt: streak ? new Date().toISOString() : null },
+    { id: '6', icon: 'Globe',         label: 'All Domains',      unlocked: thirdDomainAt != null, unlockedAt: thirdDomainAt },
   ];
 }
 
@@ -200,7 +301,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
   const [deleting, setDeleting] = useState<number | null>(null);
-  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityItem[]>(DEFAULT_WEEKLY_ACTIVITY);
+  const [activityRange, setActivityRange] = useState<ActivityRange>(7);
   const [globalRank, setGlobalRank] = useState<number | null>(null);
   const [domains, setDomains] = useState<DomainFixture[]>([]);
   const [dueCount, setDueCount] = useState<number | null>(null);
@@ -225,7 +326,6 @@ export default function HomePage() {
         const data = await res.json();
         if (data.success && Array.isArray(data.sessions)) {
           setSessions(data.sessions);
-          setWeeklyActivity(computeWeeklyActivity(data.sessions));
         }
       } catch (e) {
         console.error('Failed to load sessions:', e);
@@ -273,11 +373,7 @@ export default function HomePage() {
       const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE', credentials: 'include' });
       const data = await res.json();
       if (data.success) {
-        setSessions(prev => {
-          const next = prev.filter(s => s.id !== sessionId);
-          setWeeklyActivity(computeWeeklyActivity(next));
-          return next;
-        });
+        setSessions(prev => prev.filter(s => s.id !== sessionId));
       }
     } catch (e) {
       console.error('Delete failed:', e);
@@ -287,14 +383,28 @@ export default function HomePage() {
   }
 
   const activeSession = sessions.find((s) => s.status === 'active' || s.status === 'paused');
-  const completedSessions = sessions.filter((s) => s.status === 'completed');
+  const completedSessions = useMemo(
+    () => sessions.filter((s) => s.status === 'completed'),
+    [sessions],
+  );
   const totalScore = completedSessions.reduce((sum, s) => {
     const pct = computeTotalPct(s);
     return sum + (pct ?? 0);
   }, 0);
   const avgScore = completedSessions.length > 0 ? Math.round(totalScore / completedSessions.length) : null;
-  const today = dayNames[new Date().getDay()];
-  const todayMinutes = weeklyActivity.find(d => d.day === today)?.minutes ?? 0;
+
+  const activity = useMemo(
+    () => (sessions.length === 0 && loading ? DEFAULT_WEEKLY_ACTIVITY : computeActivity(sessions, activityRange)),
+    [sessions, activityRange, loading],
+  );
+  // Always today's own bucket, whichever range the chart is showing.
+  const todayMinutes = useMemo(() => {
+    const last = computeActivity(sessions, 7).at(-1);
+    return last?.minutes ?? 0;
+  }, [sessions]);
+
+  const dailyGoal = user?.dailyGoalMinutes ?? 30;
+  const dailyGoalPct = Math.min(Math.round((todayMinutes * 100) / dailyGoal), 100);
 
   const journey = useMemo<JourneyItem[]>(() => {
     const counts = new Map<number, number>();
@@ -318,238 +428,331 @@ export default function HomePage() {
       .slice(0, 2);
   }, [completedSessions, domains]);
 
-  const xpRemaining = Math.max((user?.xpToNext ?? 100) - (user?.xp ?? 0), 0);
+  const achievements = useMemo(() => computeAchievements(sessions), [sessions]);
+  const unlockedCount = achievements.filter(a => a.unlocked).length;
+
+  const xp = user?.xp ?? 0;
+  const xpToNext = user?.xpToNext ?? 100;
+  const xpRemaining = Math.max(xpToNext - xp, 0);
+  const xpPct = Math.min(Math.round((xp / xpToNext) * 100), 100);
+  const nextLevel = nextLevelOf(user?.level);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-10">
-      {/* ── Top Section: Profile Hero ── */}
-      <div className="relative overflow-hidden rounded-3xl bg-dojo-surface-raised border border-dojo-border p-8 shadow-2xl">
-        {/* Background glow effects */}
+    <div className="mx-auto w-full max-w-7xl space-y-8 p-6 lg:p-10">
+      {/* ── Page heading (the mobile top bar already carries the title) ── */}
+      <div className="hidden md:block">
+        <h1 className="text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
+          {displayName ? `${greeting}, ${displayName}!` : `${greeting}!`} <span aria-hidden="true">👋</span>
+        </h1>
+        <p className="mt-2 text-base leading-relaxed text-dojo-text-muted">
+          Master real-world scenarios. Keep up the great work!
+        </p>
+      </div>
+
+      {/* ── Profile hero: level, progress, headline stats ── */}
+      <div className="relative overflow-hidden rounded-[--radius-lg] border border-dojo-border bg-dojo-surface-raised p-6 lg:p-8 shadow-lg">
         <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-dojo-accent/10 blur-[80px]" />
         <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
-        
-        <div className="relative z-10 flex flex-col md:flex-row items-center md:items-stretch justify-between gap-8">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-6 w-full md:w-auto">
-            <div className="relative shrink-0">
-              <div className="absolute -inset-1 rounded-xl bg-gradient-to-tr from-dojo-accent to-dojo-success blur opacity-30 animate-pulse" />
-              <div className="relative h-40 w-40 sm:h-48 sm:w-48 md:h-auto md:w-56 lg:w-64 md:self-stretch md:min-h-[160px] md:max-h-72 aspect-square md:aspect-auto overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface">
+
+        <div className="relative z-10 flex flex-col items-center gap-8 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex w-full flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:text-left xl:w-auto">
+            {/* Avatar inside a ring of progress toward the next level. */}
+            <RadialProgress
+              value={xpPct}
+              size={168}
+              thickness={10}
+              color="accent"
+              className="shrink-0"
+              label={`${xpPct}% of the way to ${nextLevel ?? 'the top level'}`}
+            >
+              <div className="relative h-32 w-32 overflow-hidden rounded-full border border-dojo-border bg-dojo-surface">
                 {currentAvatarModelUrl ? (
                   <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={displayName} />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <div className="h-40 w-40 sm:h-48 sm:w-48 md:h-56 md:w-56 aspect-square flex items-center justify-center rounded-xl bg-dojo-surface text-4xl md:text-5xl font-bold text-dojo-text-primary/40">
-                      {displayName[0]}
-                    </div>
+                  <div className="flex h-full w-full items-center justify-center text-5xl font-bold text-dojo-accent">
+                    {displayName ? displayName[0] : '?'}
                   </div>
                 )}
               </div>
-              <div className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-lg border-2 border-dojo-surface">
-                <Trophy className="h-5 w-5" />
+              <div className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-dojo-surface-raised bg-dojo-accent text-white shadow-lg">
+                <Trophy className="h-4 w-4" />
               </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight leading-none">{displayName ? `${greeting}, ${displayName}!` : `${greeting}!`}</h1>
+            </RadialProgress>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">Level</p>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                <span className="text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
+                  {levelLabel(user?.level)}
+                </span>
+                {nextLevel && (
+                  <Badge variant={nextLevel as 'intermediate' | 'advanced'} className="text-[10px]">
+                    Next: {levelLabel(nextLevel)}
+                  </Badge>
+                )}
               </div>
-              <p className="mt-1 text-dojo-text-muted">{completedSessions.length > 0 ? `Master of ${completedSessions.length} real-world scenarios. Keep up the great work!` : 'Start your first conversation to begin tracking your progress.'}</p>
-              
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-4">
-                <div className="flex flex-col">
-                  <span className="text-[10px] uppercase tracking-wider text-dojo-text-muted font-bold">Level</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-dojo-accent">{user?.level ?? 'Level 1'}</span>
-                    <Badge variant={!user?.level || parseInt(String(user.level).replace('Level ', '')) <= 3 ? 'beginner' : 'intermediate'}>
-                      {!user?.level || parseInt(String(user.level).replace('Level ', '')) <= 3 ? 'Beginner' : 'Intermediate'}
-                    </Badge>
-                  </div>
+              <p className="mt-2 text-sm italic leading-relaxed text-dojo-text-muted">
+                &ldquo;{lineOfTheDay()}&rdquo;
+              </p>
+
+              <div className="mt-4 w-full max-w-md">
+                <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted">
+                  <span>{nextLevel ? `Progress to ${levelLabel(nextLevel)}` : 'Top level reached'}</span>
+                  <span>{xp.toLocaleString()} / {xpToNext.toLocaleString()} XP</span>
                 </div>
-                <div className="hidden sm:block h-10 w-px bg-dojo-border mx-2" />
-                <div className="flex flex-col flex-1 min-w-[160px] sm:min-w-[120px] basis-full sm:basis-auto">
-                  <div className="flex justify-between text-[10px] uppercase tracking-wider text-dojo-text-muted font-bold mb-1">
-                    <span>Progress to Level 5</span>
-                    <span>{user?.xp ?? 0}/{user?.xpToNext ?? 100} XP</span>
-                  </div>
-                  <ProgressBar value={Math.round(((user?.xp ?? 0) / (user?.xpToNext ?? 100)) * 100)} color="accent" size="md" />
-                </div>
+                <ProgressBar value={xpPct} color="accent" size="md" />
               </div>
+
+              {globalRank != null && (
+                <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-dojo-accent sm:justify-start">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  {globalRank <= 3
+                    ? "You're in the global top 3 — keep it up!"
+                    : `Ranked #${globalRank} on the global leaderboard.`}
+                </p>
+              )}
             </div>
           </div>
-          
-          <div className="grid grid-cols-3 gap-3 sm:flex sm:flex-wrap sm:justify-center">
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
-              <Flame className="mx-auto h-5 w-5 text-dojo-streak mb-1" />
-              <p className="text-xl font-black text-dojo-text-primary">{user?.streak ?? 0}</p>
-              <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Day Streak</p>
+
+          <div className="grid w-full grid-cols-3 gap-4 xl:w-auto">
+            <Card className="!bg-dojo-surface/60 border-dojo-border/60 !p-4 text-center backdrop-blur-sm">
+              <Flame className="mx-auto mb-2 h-6 w-6 text-dojo-streak" />
+              <p className="text-2xl font-black text-dojo-text-primary">{user?.streak ?? 0}</p>
+              <p className="text-[10px] font-bold uppercase tracking-tight text-dojo-text-muted">Day Streak</p>
+              <p className="mt-1 text-[10px] text-dojo-text-muted">Keep it up!</p>
             </Card>
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
-              <Target className="mx-auto h-5 w-5 text-dojo-accent mb-1" />
-              <p className="text-xl font-black text-dojo-text-primary">{avgScore ?? 0}%</p>
-              <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Accuracy</p>
+            <Card className="!bg-dojo-surface/60 border-dojo-border/60 !p-4 text-center backdrop-blur-sm">
+              <Target className="mx-auto mb-2 h-6 w-6 text-dojo-accent" />
+              <p className="text-2xl font-black text-dojo-text-primary">{avgScore ?? 0}%</p>
+              <p className="text-[10px] font-bold uppercase tracking-tight text-dojo-text-muted">Accuracy</p>
+              <p className="mt-1 text-[10px] text-dojo-text-muted">
+                {completedSessions.length > 0 ? `Across ${completedSessions.length} sessions` : 'No sessions yet'}
+              </p>
             </Card>
-            <Card className="!p-3 !bg-dojo-surface/50 border-dojo-border/50 backdrop-blur-sm text-center">
-              <Zap className="mx-auto h-5 w-5 text-dojo-warning mb-1" />
-              <p className="text-xl font-black text-dojo-text-primary">{user?.xp ?? 0}</p>
-              <p className="text-[10px] uppercase tracking-tighter text-dojo-text-muted font-bold">Total XP</p>
+            <Card className="!bg-dojo-surface/60 border-dojo-border/60 !p-4 text-center backdrop-blur-sm">
+              <Zap className="mx-auto mb-2 h-6 w-6 text-dojo-warning" />
+              <p className="text-2xl font-black text-dojo-text-primary">{xp.toLocaleString()}</p>
+              <p className="text-[10px] font-bold uppercase tracking-tight text-dojo-text-muted">Total XP</p>
+              <p className="mt-1 text-[10px] text-dojo-text-muted">Keep learning!</p>
             </Card>
           </div>
         </div>
       </div>
 
-      {/* ── Row 1: Daily Goal + Live Session + Weekly Activity ── */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
-        {/* Left column: Goals & Quick Actions (4 cols) */}
-        <div className="lg:col-span-4 space-y-8">
-          {/* Daily Goal Card */}
-          <Card className="relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Award className="h-16 w-16" />
-            </div>
-            <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest mb-4">Daily Goal</h3>
-            <div className="flex items-end justify-between mb-2">
-              <p className="text-2xl font-black text-dojo-text-primary">{todayMinutes} / {user?.dailyGoalMinutes ?? 30} <span className="text-sm font-medium text-dojo-text-muted">mins</span></p>
-              <span className="text-xs font-bold text-dojo-success">{Math.min(todayMinutes * 100 / (user?.dailyGoalMinutes ?? 30), 100)}%</span>
-            </div>
-            <ProgressBar value={Math.min(todayMinutes * 100 / (user?.dailyGoalMinutes ?? 30), 100)} color="success" size="lg" className="mb-4" />
-            <p className="text-xs text-dojo-text-muted leading-relaxed">{completedSessions.length > 0 ? 'Great progress! Keep practicing to reach your daily goal.' : 'Start a roleplay session to build your daily practice streak.'}</p>
-            {/* Pick up the conversation already in progress rather than
-                dropping the learner back at the catalogue to find it. */}
-            <Button
-              variant="primary"
-              className="w-full mt-6 shadow-lg shadow-dojo-accent/20"
-              onClick={() => router.push(activeSession ? `/session/${activeSession.id}` : '/hub')}
+      {/* ── Row 1: Daily goal · Weekly activity · Live session + quick stats ── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Daily Goal */}
+        <Card className="!p-6 lg:col-span-3">
+          <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Daily Goal</h3>
+          <div className="flex items-center justify-between gap-4">
+            <RadialProgress
+              value={dailyGoalPct}
+              size={128}
+              thickness={12}
+              color="accent"
+              label={`${todayMinutes} of ${dailyGoal} minutes practised today`}
             >
-              <Play className="h-4 w-4 fill-current" />
-              {activeSession ? 'Resume Session' : 'Continue Practice'}
-            </Button>
-          </Card>
+              <span className="text-2xl font-black leading-none text-dojo-text-primary">
+                {todayMinutes}/{dailyGoal}
+              </span>
+              <span className="mt-1 text-[11px] font-medium text-dojo-text-muted">mins</span>
+            </RadialProgress>
+            <div className="text-right">
+              <p className="text-xl font-black text-dojo-accent">{dailyGoalPct}%</p>
+              <p className="text-[11px] font-medium text-dojo-text-muted">completed</p>
+            </div>
+          </div>
+          <p className="mt-4 text-xs leading-relaxed text-dojo-text-muted">
+            {completedSessions.length > 0
+              ? 'Great progress! Keep practicing to reach your daily goal.'
+              : 'Start a roleplay session to build your daily practice streak.'}
+          </p>
+          {/* Pick up the conversation already in progress rather than
+              dropping the learner back at the catalogue to find it. */}
+          <Button
+            variant="primary"
+            className="mt-6 w-full shadow-lg shadow-dojo-accent/20"
+            onClick={() => router.push(activeSession ? `/session/${activeSession.id}` : '/hub')}
+          >
+            <Play className="h-4 w-4 fill-current" />
+            {activeSession ? 'Resume Session' : 'Continue Practice'}
+          </Button>
+        </Card>
 
-          {/* Review queue — only worth surfacing when something is actually due. */}
-          {dueCount != null && dueCount > 0 && (
-            <Link href="/review" className="block">
-              <Card hoverable className="!p-4 cursor-pointer border-dojo-warning/30">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
-                    <Repeat2 className="h-5 w-5 text-dojo-warning" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-dojo-text-primary">
-                      {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
-                    </p>
-                    <p className="text-xs text-dojo-text-muted">Ready to see again</p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted" />
+        {/* Weekly Activity */}
+        <Card className="!p-6 lg:col-span-5">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
+                {activityRange === 7 ? 'Weekly Activity' : 'Monthly Activity'}
+              </h3>
+              <p className="mt-1 text-lg font-bold text-dojo-text-primary">
+                {activity.some(d => d.minutes > 0)
+                  ? `${activity.reduce((sum, d) => sum + d.minutes, 0)} Total Minutes`
+                  : 'No activity yet'}
+              </p>
+            </div>
+            <select
+              value={activityRange}
+              onChange={(e) => setActivityRange(Number(e.target.value) as ActivityRange)}
+              aria-label="Activity range"
+              className="rounded-[--radius-sm] border border-dojo-border bg-dojo-surface px-3 py-1.5 text-xs font-semibold text-dojo-text-primary"
+            >
+              <option value={7}>Last 7 Days</option>
+              <option value={30}>Last 30 Days</option>
+            </select>
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={activity} barCategoryGap={activityRange === 7 ? '30%' : '15%'}>
+                <defs>
+                  <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-accent)" stopOpacity={1} />
+                    <stop offset="100%" stopColor="var(--color-accent)" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: 'var(--color-text-muted)', fontSize: 11, fontWeight: 600 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={activityRange === 7 ? 0 : 'preserveStartEnd'}
+                />
+                <YAxis
+                  tick={{ fill: 'var(--color-text-muted)', fontSize: 11, fontWeight: 600 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={32}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  cursor={{ fill: 'var(--color-accent-soft)', fillOpacity: 0.4 }}
+                  contentStyle={{
+                    background: 'var(--color-surface-raised)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 12,
+                  }}
+                  labelStyle={{ color: 'var(--color-text-muted)', fontSize: 11 }}
+                  itemStyle={{ color: 'var(--color-text-primary)', fontSize: 12, fontWeight: 700 }}
+                />
+                <Bar dataKey="minutes" fill="url(#barGradient)" radius={[6, 6, 2, 2]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Live session + quick stats */}
+        <div className="space-y-4 lg:col-span-4">
+          {activeSession ? (
+            <Link href={`/session/${activeSession.id}`} className="block" suppressHydrationWarning>
+              <div className={`group relative cursor-pointer overflow-hidden rounded-[--radius-lg] p-5 transition-all hover:shadow-xl ${activeSession.status === 'paused' ? 'border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 to-dojo-success/10' : 'border border-dojo-danger/30 bg-gradient-to-r from-dojo-danger/20 to-dojo-accent/10'}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${activeSession.status === 'paused' ? 'text-dojo-accent' : 'text-dojo-danger'}`}>
+                    {activeSession.status === 'paused' ? 'Resume Training' : 'Live Session'}
+                  </span>
+                  {activeSession.status !== 'paused' && <LiveBadge />}
                 </div>
-              </Card>
+                <p className="mt-2 text-lg font-bold text-dojo-text-primary">
+                  {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
+                </p>
+                <p className="text-xs text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation</p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className={`mt-4 ${activeSession.status === 'paused' ? '' : 'bg-dojo-danger hover:bg-dojo-danger/90'}`}
+                >
+                  <Play className="h-3.5 w-3.5 fill-current" />
+                  {activeSession.status === 'paused' ? 'Resume Session' : 'Resume Now'}
+                </Button>
+              </div>
             </Link>
+          ) : (
+            <Card className="!p-5">
+              <p className="text-[10px] font-black uppercase tracking-widest text-dojo-text-muted">No live session</p>
+              <p className="mt-2 text-lg font-bold text-dojo-text-primary">Pick a scenario</p>
+              <p className="text-xs text-dojo-text-muted">Nothing is in progress — start one from the Hub.</p>
+              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
+                Browse Scenarios <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </Card>
           )}
 
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer" onClick={() => router.push('/leaderboard')}>
-              <TrendingUp className="mx-auto h-5 w-5 text-dojo-success mb-2" />
-              <p className="text-lg font-bold text-dojo-text-primary">{globalRank != null ? `#${globalRank}` : '--'}</p>
-              <p className="text-[10px] uppercase text-dojo-text-muted font-bold">Global Rank</p>
-            </Card>
-            <Card className="!p-4 text-center hover:border-dojo-accent/50 transition-colors cursor-pointer" onClick={() => router.push('/progress')}>
-              <Zap className="mx-auto h-5 w-5 text-dojo-accent mb-2" />
-              <p className="text-lg font-bold text-dojo-text-primary">{xpRemaining} <span className="text-xs font-semibold text-dojo-text-muted">XP</span></p>
-              <p className="text-[10px] uppercase text-dojo-text-muted font-bold">To Next Level</p>
-            </Card>
-          </div>
-        </div>
-
-        {/* Center/Right column: Activity & Sessions (8 cols) */}
-        <div className="lg:col-span-8 space-y-8">
-          {/* Weekly Activity & Live Session */}
-          <div className="space-y-6">
-            {/* Live session banner merged here */}
-            {activeSession && (
-              <Link href={`/session/${activeSession.id}`} suppressHydrationWarning>
-                <div className={`relative overflow-hidden rounded-2xl p-5 group cursor-pointer hover:shadow-xl transition-all ${activeSession.status === 'paused' ? 'bg-gradient-to-r from-dojo-accent/20 to-dojo-success/10 border border-dojo-accent/30' : 'bg-gradient-to-r from-dojo-danger/20 to-dojo-accent/10 border border-dojo-danger/30'}`}>
-                  {activeSession.status !== 'paused' && (
-                    <div className="absolute top-0 right-0 p-2">
-                      <div className="h-2 w-2 rounded-full bg-dojo-danger animate-ping" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* Review queue — only worth surfacing when something is actually due. */}
+            {dueCount != null && dueCount > 0 ? (
+              <Link href="/review" className="block sm:col-span-1">
+                <Card hoverable className="h-full !p-4 border-dojo-warning/30">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
+                      <Repeat2 className="h-4 w-4 text-dojo-warning-strong" />
                     </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${activeSession.status === 'paused' ? 'bg-dojo-accent/20 text-dojo-accent' : 'bg-dojo-danger/20 text-dojo-danger'}`}>
-                        <Play className="h-6 w-6 fill-current" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-black uppercase tracking-widest ${activeSession.status === 'paused' ? 'text-dojo-accent' : 'text-dojo-danger'}`}>
-                            {activeSession.status === 'paused' ? 'Resume Training' : 'Live Session'}
-                          </span>
-                          {activeSession.status !== 'paused' && <LiveBadge />}
-                        </div>
-                        <p className="text-lg font-bold text-dojo-text-primary">
-                          {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
-                        </p>
-                        <p className="text-xs text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation</p>
-                      </div>
-                    </div>
-                    <Button variant="primary" size="sm" className={activeSession.status === 'paused' ? '' : 'bg-dojo-danger hover:bg-dojo-danger/90'}>
-                      {activeSession.status === 'paused' ? 'Resume Session' : 'Resume Now'}
-                    </Button>
+                    <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-dojo-text-muted" />
                   </div>
-                </div>
+                  <p className="mt-3 text-sm font-semibold text-dojo-text-primary">
+                    {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
+                  </p>
+                  <p className="text-[10px] text-dojo-text-muted">Ready to see again</p>
+                </Card>
               </Link>
+            ) : (
+              <Card className="h-full !p-4">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-dojo-success/10">
+                  <Repeat2 className="h-4 w-4 text-dojo-success-strong" />
+                </div>
+                <p className="mt-3 text-sm font-semibold text-dojo-text-primary">Nothing due</p>
+                <p className="text-[10px] text-dojo-text-muted">Your review queue is clear</p>
+              </Card>
             )}
 
-            <Card className="!p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Weekly Activity</h3>
-                  <p className="text-lg font-bold text-dojo-text-primary mt-1">{completedSessions.length > 0 ? `${weeklyActivity.reduce((sum, d) => sum + d.minutes, 0)} Total Minutes` : 'No activity yet'}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant="outline" className="text-[10px]">Last 7 Days</Badge>
-                </div>
+            <Card
+              hoverable
+              className="h-full !p-4"
+              onClick={() => router.push('/leaderboard')}
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-dojo-success/10">
+                <TrendingUp className="h-4 w-4 text-dojo-success-strong" />
               </div>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyActivity} barCategoryGap="30%">
-                    <defs>
-                      <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2D3BC5" stopOpacity={1} />
-                        <stop offset="100%" stopColor="#2D3BC5" stopOpacity={0.6} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1C2A42" vertical={false} opacity={0.5} />
-                    <XAxis dataKey="day" tick={{ fill: '#8A93A8', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} />
-                    <YAxis hide />
-                    <Tooltip
-                      cursor={{ fill: 'rgba(45, 59, 197, 0.05)' }}
-                      contentStyle={{ background: '#080C18', border: '1px solid #1C2A42', borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
-                      itemStyle={{ color: '#F4F4F8', fontSize: 12, fontWeight: 700 }}
-                    />
-                    <Bar dataKey="minutes" fill="url(#barGradient)" radius={[6, 6, 2, 2]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <p className="mt-3 text-lg font-black text-dojo-text-primary">
+                {globalRank != null ? `#${globalRank}` : '--'}
+              </p>
+              <p className="text-[10px] font-bold uppercase text-dojo-text-muted">Global Rank</p>
+            </Card>
+
+            <Card
+              hoverable
+              className="h-full !p-4"
+              onClick={() => router.push('/progress')}
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent/10">
+                <Zap className="h-4 w-4 text-dojo-accent" />
               </div>
+              <p className="mt-3 text-lg font-black text-dojo-text-primary">
+                {xpRemaining.toLocaleString()} <span className="text-xs font-semibold text-dojo-text-muted">XP</span>
+              </p>
+              <p className="text-[10px] font-bold uppercase text-dojo-text-muted">To Next Level</p>
             </Card>
           </div>
         </div>
       </div>
 
       {/* ── Row 2: Learning Journey & Achievements ── */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Learning Journey */}
-        <Card className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Learning Journey</h3>
+        <Card className="!p-6 lg:col-span-2">
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Learning Journey</h3>
             <Button variant="ghost" size="sm" className="text-xs font-bold" onClick={() => router.push('/progress')}>
               View Roadmap <ArrowRight className="ml-1 h-3 w-3" />
             </Button>
           </div>
-          
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {journey.length === 0 ? (
-              <div className="md:col-span-2 rounded-xl border border-dashed border-dojo-border/60 bg-dojo-surface/40 p-6 text-center">
-                <Globe className="mx-auto h-8 w-8 text-dojo-border mb-2" />
-                <p className="text-sm font-bold text-dojo-text-primary mb-1">Your learning journey starts here</p>
-                <p className="text-xs text-dojo-text-muted max-w-sm mx-auto leading-relaxed">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
+              <div className="rounded-[--radius-md] border border-dashed border-dojo-border/60 bg-dojo-surface/40 p-6 text-center md:col-span-2">
+                <Globe className="mx-auto mb-2 h-8 w-8 text-dojo-border" />
+                <p className="mb-1 text-sm font-bold text-dojo-text-primary">Your learning journey starts here</p>
+                <p className="mx-auto max-w-sm text-xs leading-relaxed text-dojo-text-muted">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
                 <Button variant="primary" size="sm" className="mt-5" onClick={() => router.push('/hub')}>
                   Explore Scenarios <ArrowRight className="ml-1 h-3 w-3" />
                 </Button>
@@ -560,17 +763,17 @@ export default function HomePage() {
                 const isAccent = i === 0;
                 const completed = item.pct >= 100;
                 return (
-                  <Link key={item.slug} href={`/dojo/${item.slug}`} className="relative overflow-hidden rounded-xl border border-dojo-border bg-dojo-surface/40 p-4 group hover:border-dojo-accent transition-all cursor-pointer">
-                    <div className={`absolute top-0 left-0 h-1 w-full ${isAccent ? 'bg-dojo-accent' : 'bg-dojo-success/40'}`} />
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isAccent ? 'bg-dojo-accent/20 text-dojo-accent' : 'bg-dojo-success/20 text-dojo-success'}`}>
+                  <Link key={item.slug} href={`/dojo/${item.slug}`} className="group relative overflow-hidden rounded-[--radius-md] border border-dojo-border bg-dojo-surface/40 p-4 transition-all hover:border-dojo-accent">
+                    <div className={`absolute left-0 top-0 h-1 w-full ${isAccent ? 'bg-dojo-accent' : 'bg-dojo-success/40'}`} />
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isAccent ? 'bg-dojo-accent/20 text-dojo-accent' : 'bg-dojo-success/20 text-dojo-success-strong'}`}>
                         <Icon className="h-4 w-4" />
                       </div>
                       <p className="text-sm font-bold text-dojo-text-primary">{item.name}</p>
                       <Badge variant={completed ? 'success' : 'accent'} className="ml-auto text-[9px]">{completed ? 'Completed' : 'In Progress'}</Badge>
                     </div>
-                    <p className="text-[11px] text-dojo-text-muted mb-3 leading-relaxed">{item.completed} of {item.total} scenarios practiced in this domain.</p>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-dojo-text-muted mb-1">
+                    <p className="mb-3 text-[11px] leading-relaxed text-dojo-text-muted">{item.completed} of {item.total} scenarios practiced in this domain.</p>
+                    <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-dojo-text-muted">
                       <span>{item.completed} / {item.total} Situations</span>
                       <span>{item.pct}%</span>
                     </div>
@@ -580,146 +783,160 @@ export default function HomePage() {
               })
             )}
           </div>
+
+          {/* Roadmap strip — where this learner sits on the four-stage arc. */}
+          <ol className="mt-6 flex flex-col gap-4 border-t border-dojo-border/50 pt-6 sm:flex-row sm:items-center">
+            {JOURNEY_STAGES.map((stage, i) => {
+              const reached = completedSessions.length >= stage.sessions;
+              return (
+                <li key={stage.title} className="flex flex-1 items-center gap-3">
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                      reached
+                        ? 'bg-dojo-accent text-white'
+                        : 'border border-dojo-border bg-dojo-surface text-dojo-text-muted'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-xs font-bold ${reached ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}`}>
+                      {stage.title}
+                    </span>
+                    <span className="block text-[10px] text-dojo-text-muted">{stage.caption}</span>
+                  </span>
+                  {i < JOURNEY_STAGES.length - 1 && (
+                    <span
+                      aria-hidden="true"
+                      className={`mx-1 hidden h-px flex-1 border-t border-dashed sm:block ${reached ? 'border-dojo-accent' : 'border-dojo-border'}`}
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ol>
         </Card>
 
         {/* Recent Achievements */}
-        <Card>
-          {(() => {
-            const achievements = computeAchievements(sessions);
-            return (
-              <>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xs font-bold text-dojo-text-muted uppercase tracking-widest">Achievements</h3>
-                  <span className="text-xs font-bold text-dojo-text-muted">{achievements.filter(a => a.unlocked).length}/{achievements.length}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-y-6">
-                  {achievements.map((a) => {
-                    const Icon = iconMap[a.icon] ?? Sparkles;
-                    return (
-                      <div key={a.id} className="flex flex-col items-center group cursor-pointer">
-                        <HexBadge
-                          icon={Icon}
-                          label={a.label}
-                          unlocked={a.unlocked}
-                          size={48}
-                        />
-                        <span className={`mt-2 text-[9px] font-bold uppercase tracking-tight text-center px-1 transition-colors ${a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted group-hover:text-dojo-text-primary'}`}>
-                          {a.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            );
-          })()}
-          <Button variant="ghost" size="sm" className="w-full mt-6 text-[10px] font-bold border border-dojo-border/50">
-            View All Badges
-          </Button>
-        </Card>
-      </div>
-
-      {/* ── Row 3: History & Recent Sessions ── */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-dojo-accent" />
-            <h2 className="text-xl font-bold text-dojo-text-primary">Recent Sessions</h2>
+        <Card className="!p-6">
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Achievements</h3>
+            <Link href="/progress" className="text-xs font-bold text-dojo-accent hover:underline">
+              View All Badges
+            </Link>
           </div>
-          <div className="flex gap-2">
-            {!loading && sessions.length > 3 && (
-              <Link href="/sessions">
-                <Button variant="ghost" size="sm" className="text-xs font-bold h-8">
-                  View Full History
-                  <ArrowRight className="ml-1 h-3 w-3" />
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i} className="!p-5 animate-pulse">
-                <div className="h-4 w-16 bg-dojo-border rounded mb-4" />
-                <div className="h-5 w-3/4 bg-dojo-border rounded mb-2" />
-                <div className="h-3 w-1/2 bg-dojo-border rounded mb-6" />
-                <div className="border-t border-dojo-border/50 pt-4 flex justify-between">
-                  <div className="h-3 w-12 bg-dojo-border rounded" />
-                  <div className="h-6 w-20 bg-dojo-border rounded" />
-                </div>
-              </Card>
-            ))}
-          </div>
-        ) : sessions.length === 0 ? (
-          <Card className="text-center py-12 border-dashed border-dojo-border/60">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-dojo-surface-raised mx-auto mb-4">
-              <Play className="h-8 w-8 text-dojo-border fill-current" />
-            </div>
-            <p className="text-dojo-text-primary font-bold mb-1">No practice sessions found</p>
-            <p className="text-xs text-dojo-text-muted max-w-xs mx-auto mb-6">Start your first role-play in the Dojo to build your history and track your progress.</p>
-            <Button variant="primary" size="lg" onClick={() => router.push('/hub')}>
-              <Sparkles className="h-4 w-4" /> Start Your First Session
-            </Button>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sessions.slice(0, 3).map((session) => {
-              const pct = computeTotalPct(session);
-
+          <div className="grid grid-cols-3 gap-y-6">
+            {achievements.map((a) => {
+              const Icon = iconMap[a.icon] ?? Sparkles;
               return (
-                <Card key={session.id} hoverable className={`group !p-5 relative transition-all hover:translate-y-[-2px] ${deleting === session.id ? 'opacity-50' : ''}`}>
-                  <div className="absolute top-0 right-0 p-4 flex gap-1">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleShare(session.id); }}
-                      className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors"
-                    >
-                      <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
-                      className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg bg-dojo-surface-raised text-dojo-text-muted hover:text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    </button>
-                  </div>
-
-                  <div className="flex flex-col h-full">
-                    <div className="flex items-center gap-2 mb-4">
-                      {session.status === 'active' ? (
-                        <Badge variant="accent" className="text-[9px] uppercase tracking-tighter">Active</Badge>
-                      ) : (
-                        <Badge variant="success" className="text-[9px] uppercase tracking-tighter">Done</Badge>
-                      )}
-                      <span className="text-[10px] font-bold text-dojo-text-muted uppercase tracking-widest">#{session.sessionNumber}</span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-dojo-text-primary group-hover:text-dojo-accent transition-colors line-clamp-1">
-                      {session.scenarioTitle ?? `Session #${session.id}`}
-                    </h4>
-                    <p className="text-[11px] text-dojo-text-muted mt-1 font-medium">
-                      {formatDate(session.startedAt)} • {session.totalTurns} Turns
-                    </p>
-
-                    <div className="mt-auto pt-6 flex items-center justify-between border-t border-dojo-border/50">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold uppercase text-dojo-text-muted">Fluency:</span>
-                        <span className={`text-xs font-black ${pct && pct > 80 ? 'text-dojo-success' : 'text-dojo-warning'}`}>{pct ? `${pct}%` : '-'}</span>
-                      </div>
-                      <Link href={`/sessions/${session.id}/report`}>
-                        <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2 font-bold hover:bg-dojo-accent/10">
-                          Review Report <ExternalLink className="ml-1.5 h-3 w-3" />
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </Card>
+                <div key={a.id} className="flex flex-col items-center text-center">
+                  <HexBadge icon={Icon} label={a.label} unlocked={a.unlocked} size={48} />
+                  <span className={`mt-2 px-1 text-[9px] font-bold uppercase leading-tight tracking-tight ${a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}`}>
+                    {a.label}
+                  </span>
+                  <span className="mt-0.5 text-[9px] text-dojo-text-muted">
+                    {a.unlockedAt ? formatBadgeDate(a.unlockedAt) : 'Locked'}
+                  </span>
+                </div>
               );
             })}
           </div>
-        )}
+          <div className="mt-6 flex items-center gap-3 border-t border-dojo-border/50 pt-4">
+            <Trophy className="h-4 w-4 shrink-0 text-dojo-warning" />
+            <p className="shrink-0 text-[11px] font-semibold text-dojo-text-muted">
+              You have unlocked {unlockedCount} of {achievements.length} badges
+            </p>
+            <ProgressBar
+              value={Math.round((unlockedCount / achievements.length) * 100)}
+              color="warning"
+              size="sm"
+              showLabel
+              className="flex-1"
+            />
+          </div>
+        </Card>
       </div>
+
+      {/* ── Row 3: Recent Sessions ── */}
+      <Card className="!p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">Recent Sessions</h2>
+          {!loading && sessions.length > 3 && (
+            <Link href="/sessions">
+              <Button variant="ghost" size="sm" className="h-8 text-xs font-bold">
+                View Full History
+                <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </Link>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="animate-pulse rounded-[--radius-md] border border-dojo-border bg-dojo-surface/40 p-4">
+                <div className="mb-3 h-4 w-16 rounded bg-dojo-border" />
+                <div className="mb-2 h-4 w-3/4 rounded bg-dojo-border" />
+                <div className="h-3 w-1/2 rounded bg-dojo-border" />
+              </div>
+            ))}
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="rounded-[--radius-md] border border-dashed border-dojo-border/60 py-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-dojo-surface-raised">
+              <Play className="h-8 w-8 fill-current text-dojo-border" />
+            </div>
+            <p className="mb-1 font-bold text-dojo-text-primary">No practice sessions found</p>
+            <p className="mx-auto mb-6 max-w-xs text-xs text-dojo-text-muted">Start your first role-play in the Dojo to build your history and track your progress.</p>
+            <Button variant="primary" size="lg" onClick={() => router.push('/hub')}>
+              <Sparkles className="h-4 w-4" /> Start Your First Session
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {sessions.slice(0, 3).map((session) => (
+              <div
+                key={session.id}
+                className={`flex items-center gap-3 rounded-[--radius-md] border border-dojo-border bg-dojo-surface/40 p-3 transition-all hover:border-dojo-accent ${deleting === session.id ? 'opacity-50' : ''}`}
+              >
+                <Badge
+                  variant={session.status === 'completed' ? 'success' : 'accent'}
+                  className="shrink-0 text-[9px] uppercase tracking-tighter"
+                >
+                  {session.status === 'completed' ? 'Done' : 'Active'}
+                </Badge>
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
+                  #{session.sessionNumber}
+                </span>
+                <Link href={`/sessions/${session.id}/report`} className="min-w-0 flex-1 group">
+                  <p className="truncate text-sm font-bold text-dojo-text-primary group-hover:text-dojo-accent">
+                    {session.scenarioTitle ?? `Session #${session.id}`}
+                  </p>
+                  <p className="truncate text-[11px] font-medium text-dojo-text-muted">
+                    {formatDate(session.startedAt)} • {session.totalTurns} Turns
+                  </p>
+                </Link>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    onClick={() => handleShare(session.id)}
+                    aria-label="Copy share link"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-dojo-text-muted transition-colors hover:bg-dojo-accent/10 hover:text-dojo-accent"
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(session.id)}
+                    aria-label="Delete session"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-dojo-text-muted transition-colors hover:bg-dojo-danger/10 hover:text-dojo-danger"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
