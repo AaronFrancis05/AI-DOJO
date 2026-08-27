@@ -8,16 +8,24 @@ import {
   destroyRecognizer,
 } from '@/lib/roleplay/pronunciation';
 import { playMicPress, playMicRelease } from '@/lib/roleplay/mic-sfx';
+import { markMicRelease } from '@/lib/roleplay/voice-latency';
 
 // How long a release waits for Azure to flush a final result before falling
-// back to the last interim. It only ever pays out when the utterance hadn't
-// already finalized during the hold — the common case transmits with no wait —
-// and it ends the moment the final lands.
-const FINAL_FLUSH_GRACE_MS = 600;
+// back to the last interim. It only ever pays out when a phrase was still being
+// recognized at the moment of release — the common case transmits with no wait —
+// and it ends the moment that final lands.
+const FINAL_FLUSH_GRACE_MS = 250;
 
 export interface UseVoiceInputOptions {
   lang?: string;
   onFinal?: (text: string) => void;
+  /**
+   * Whether this hook prewarms and tears down the shared recognizer. Session
+   * views set it false: the recognizer is built once per session by
+   * `RoleplaySessionProvider` and must survive the voice ⇄ avatar tab switch,
+   * which unmounts this hook. Standalone surfaces (tryout) leave it true.
+   */
+  ownsRecognizer?: boolean;
 }
 
 export interface UseVoiceInputReturn {
@@ -31,7 +39,7 @@ export interface UseVoiceInputReturn {
 }
 
 export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInputReturn {
-  const { lang = 'ja-JP', onFinal } = options;
+  const { lang = 'ja-JP', onFinal, ownsRecognizer = true } = options;
   const [isListening, setIsListening] = useState(false);
   const [partialTranscript, setPartialTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
@@ -53,10 +61,11 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   // mounts, so the first mic press doesn't pay for a network round trip
   // before audio capture can begin.
   useEffect(() => {
+    if (!ownsRecognizer) return;
     prewarmRecognizer(lang).catch(() => {
       // Surfaced again (and retried) on the next explicit start() call.
     });
-  }, [lang]);
+  }, [lang, ownsRecognizer]);
 
   const start = useCallback(async () => {
     if (isListeningRef.current) return;
@@ -135,32 +144,44 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
 
     const stopping = stopContinuousRecognition();
 
-    // If the phrase already finalized during the hold, transmit immediately
-    // rather than waiting out the SDK's teardown. Otherwise give Azure a
-    // brief window to flush the final — ending it the moment one arrives —
-    // instead of shipping the rougher interim.
-    if (!finalRef.current.trim()) {
+    // Whether a phrase was still mid-recognition when the button came up.
+    // Azure ends a phrase after SEGMENTATION_SILENCE_MS of quiet, so a learner
+    // who pauses to think mid-sentence — the norm in a lesson — finalizes the
+    // first half and is still speaking the second when they let go. Keying the
+    // wait on "nothing has finalized yet" transmitted that first half alone and
+    // threw the rest away, which is what produced half-sentence turns.
+    const phraseInFlight = Boolean(partialRef.current.trim());
+
+    if (phraseInFlight || !finalRef.current.trim()) {
       let graceTimer: ReturnType<typeof setTimeout> | undefined;
-      await Promise.race([
-        stopping,
-        new Promise<void>((resolve) => {
-          finalWaiterRef.current = resolve;
-          graceTimer = setTimeout(resolve, FINAL_FLUSH_GRACE_MS);
-        }),
-      ]);
+      const flushed = new Promise<void>((resolve) => {
+        finalWaiterRef.current = resolve;
+        graceTimer = setTimeout(resolve, FINAL_FLUSH_GRACE_MS);
+      });
+      // A phrase known to be in flight waits for its own final. Racing the
+      // SDK's teardown here would resolve first whenever stopContinuousRecognitionAsync
+      // reports back before the service has returned that last Recognized event,
+      // reintroducing the same truncation this guards against.
+      await (phraseInFlight ? flushed : Promise.race([stopping, flushed]));
       if (graceTimer) clearTimeout(graceTimer);
       finalWaiterRef.current = null;
     }
 
-    // Release-to-transmit: flush buffered speech captured while held.
-    // Prefer finalized text; fall back to last interim if nothing finalized
-    // (short utterances that ended before a Recognized event).
-    const buffered = (finalRef.current || partialRef.current || '').trim();
+    // Release-to-transmit: flush every phrase captured while held. Finalized
+    // text and a still-unfinalized trailing interim are DIFFERENT segments of
+    // one utterance, so they are joined rather than chosen between — taking
+    // only the finalized half is exactly how the tail went missing.
+    const buffered = [finalRef.current, partialRef.current]
+      .map(s => s.trim())
+      .filter(Boolean)
+      .join(' ');
+
     if (buffered) {
       finalRef.current = '';
       partialRef.current = '';
       setPartialTranscript('');
       setFinalTranscript('');
+      markMicRelease();
       onFinal?.(buffered);
     }
   }, [onFinal]);
@@ -169,9 +190,13 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   // warm for the whole session so push-to-talk stays instant. Leaving the
   // session is the point at which they must actually be released — otherwise
   // the mic indicator stays lit and the stream leaks across navigations.
+  // Session views hand that release to RoleplaySessionProvider instead, so
+  // switching between the voice and avatar tabs doesn't tear down and rebuild
+  // the recognizer mid-session.
   useEffect(() => {
+    if (!ownsRecognizer) return;
     return () => { destroyRecognizer(); };
-  }, []);
+  }, [ownsRecognizer]);
 
   return {
     isListening,

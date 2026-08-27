@@ -1,20 +1,21 @@
-import { AccessToken } from 'livekit-server-sdk';
+import { createHash } from 'node:crypto';
+import { StreamClient } from '@stream-io/node-sdk';
 import {
-  getLiveKitConfig,
+  getStreamConfig,
   ROOM_TOKEN_TTL_SECONDS,
   JOIN_WINDOW_BEFORE_MS,
   JOIN_GRACE_AFTER_MS,
 } from './config';
 
 /**
- * A room name that is unguessable and stable for the life of a booking.
+ * A call id that is unguessable and stable for the life of a room.
  *
- * Generated at booking time and stored on the row so both participants
- * resolve the same room without negotiating one. Deliberately NOT derived
- * from the booking id alone: a sequential room name would let anyone with a
- * valid token for their own booking guess someone else's room.
+ * Generated when the booking/class/assessment is created and stored on the
+ * row, so every participant resolves the same call without negotiating one.
+ * Deliberately NOT derived from the row id: a sequential call id would let
+ * anyone holding a valid token for their own room guess someone else's.
  */
-export function generateRoomName(): string {
+export function generateCallId(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const suffix = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -35,8 +36,11 @@ export type JoinDecision =
  * Whether a booking may be joined right now.
  *
  * Time-gating happens on the SERVER, before a token is minted — a token is
- * the only thing standing between a participant and the room, so the check
+ * the only thing standing between a participant and the call, so the check
  * cannot live in the UI.
+ *
+ * Shared by all three room types. A class or an assessment has no
+ * 'requested' state, so that branch simply never fires for them.
  */
 export function canJoinBooking(booking: BookingWindow, now: Date = new Date()): JoinDecision {
   if (booking.status === 'cancelled') {
@@ -60,40 +64,58 @@ export function canJoinBooking(booking: BookingWindow, now: Date = new Date()): 
   return { allowed: true };
 }
 
-export interface RoomTokenInput {
-  roomName: string;
-  identity: string;
-  displayName: string;
-  /** Tutors may manage the room (e.g. mute a noisy participant). */
+/**
+ * The Stream user id for one of our users.
+ *
+ * Namespaced so a Stream identity can never collide with another app's, and
+ * sanitized because Stream only accepts `[a-zA-Z0-9@_-]` in a user id while
+ * `users.id` is free-form text from the auth provider.
+ *
+ * Sanitizing is lossy — `a.b` and `a-b` would collapse onto one identity, and
+ * a collision here is impersonation, not a cosmetic clash. Ids that need
+ * rewriting therefore carry a digest of the original, so distinct users stay
+ * distinct. Ids that are already safe (the UUIDs Neon Auth issues) pass
+ * through unchanged and stay readable in the Stream dashboard.
+ */
+export function streamUserId(userId: string): string {
+  const safe = userId.replace(/[^a-zA-Z0-9@_-]/g, '-');
+  if (safe === userId) return `user-${userId}`;
+  const digest = createHash('sha256').update(userId).digest('hex').slice(0, 12);
+  return `user-${safe}-${digest}`;
+}
+
+export interface CallTokenInput {
+  callType: string;
+  callId: string;
+  userId: string;
+  /** Tutors administer the room: mute-all, spotlight, end the call. */
   isTutor: boolean;
 }
 
 /**
- * Mints a LiveKit access token scoped to exactly one room.
+ * Mints a Stream token scoped to exactly one call.
  *
- * Callers MUST have already confirmed the requester is a participant in that
- * booking; this function does no authorization of its own.
+ * A *call* token, not a plain user token: a user token would let its holder
+ * join any call in the app whose id they could guess, which is the property
+ * the unguessable `callId` above exists to avoid relying on. Scoping the
+ * token to one `call_cid` makes the id's secrecy a second line of defence
+ * rather than the only one.
+ *
+ * Callers MUST have already confirmed the requester belongs in that room;
+ * this function does no authorization of its own.
  */
-export async function createRoomToken(input: RoomTokenInput): Promise<string | null> {
-  const config = getLiveKitConfig();
+export function createCallToken(input: CallTokenInput): string | null {
+  const config = getStreamConfig();
   if (!config) return null;
 
-  const token = new AccessToken(config.apiKey, config.apiSecret, {
-    identity: input.identity,
-    name: input.displayName,
-    ttl: ROOM_TOKEN_TTL_SECONDS,
-  });
+  const client = new StreamClient(config.apiKey, config.apiSecret);
 
-  token.addGrant({
-    room: input.roomName,
-    roomJoin: true,
-    canPublish: true,
-    canSubscribe: true,
-    canPublishData: true,
-    // Only the tutor can administer the room; a learner joining their own
-    // lesson has no reason to be able to remove the other participant.
-    roomAdmin: input.isTutor,
+  return client.generateCallToken({
+    user_id: streamUserId(input.userId),
+    // Only the tutor administers the room; a learner in their own lesson has
+    // no reason to be able to remove the other participant.
+    role: input.isTutor ? 'admin' : 'user',
+    call_cids: [`${input.callType}:${input.callId}`],
+    validity_in_seconds: ROOM_TOKEN_TTL_SECONDS,
   });
-
-  return token.toJwt();
 }

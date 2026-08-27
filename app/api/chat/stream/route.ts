@@ -1,11 +1,11 @@
 import { db } from '../../../../src/db';
 import { withSessionLock } from '../../../../src/db-pool';
-import { sessions, conversations, corrections, evaluations, goalCompletions, users, vocabularyEncounters, srsCards } from '../../../../src/schema';
+import { sessions, conversations, corrections, evaluations, goalCompletions, lessons, users, vocabularyEncounters, srsCards } from '../../../../src/schema';
 import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
 import {
-  nextPhase,
+  advancePhaseState,
   computeCompositeScore,
   PRONUNCIATION_PASS_THRESHOLD,
   PASSING_SCORE_THRESHOLD,
@@ -13,20 +13,22 @@ import {
   SAFETY_CAP_TURN,
   UNGUIDED_MISTAKE_PENALTY,
   UNGUIDED_ENGLISH_PENALTY,
+  type PhaseStep,
 } from '../../../../lib/roleplay/phase-engine';
+import { buildEvaluationSummary } from '../../../../lib/roleplay/evaluation-summary';
+import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { sanitizeStreamedChunk, createStreamTextSanitizer } from '../../../../lib/roleplay/stream-sanitizer';
 import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
+import { inferGesture } from '../../../../lib/roleplay/gesture';
 import {
   buildTurnSystemPrompt,
   buildTurnUserMessage,
-  generateLocalizedPhaseMessage,
   icebreakerPhrase,
   displayVocab,
   sameLangWordLine,
-  type PhaseMessageKind,
   type TurnPromptContext,
 } from '../../../../lib/roleplay/prompts';
 
@@ -117,6 +119,11 @@ export async function POST(req: Request) {
     const nativeLanguage = turnData.nativeLanguage;
     const isSameLanguage = turnData.isSameLanguage;
     const currentPhase = turnData.currentPhase;
+    // Which beat of the phase this turn is. A session created before the
+    // phase_step column existed reads as 'open', which is the safe default:
+    // the character re-introduces the stage it is already in rather than
+    // skipping straight to concluding one it never opened.
+    const currentPhaseStep = (session.phaseStep ?? 'open') as PhaseStep;
 
     if (!currentScenario) {
       return Response.json({ error: 'Scenario not found' }, { status: 404 });
@@ -186,10 +193,34 @@ export async function POST(req: Request) {
       ? currentScenario.title
       : (situationResult?.title ?? currentScenario.title);
 
+    // The debrief has to speak real numbers, so its opening beat — and only
+    // that beat — is handed the session's scorecard. Building it costs three
+    // extra reads, which is why it is gated rather than always loaded.
+    const evaluationSummary = (currentPhase === 'evaluation' && currentPhaseStep !== 'closing')
+      ? await buildEvaluationSummary({
+          sessionId: numericSessionId,
+          scores: {
+            vocabularyScore: session.vocabularyScore ?? 0,
+            grammarScore: session.grammarScore ?? 0,
+            fluencyScore: session.fluencyScore ?? 0,
+            culturalScore: session.culturalScore ?? 0,
+            taskScore: session.taskScore ?? 0,
+            expressionAppropriatenessScore: session.expressionAppropriatenessScore ?? 0,
+          },
+          goalsCovered: completedSequenceOrders.length,
+          goalsTotal: goals.length,
+        })
+      : undefined;
+
+    const lessonTitle = session.lessonId
+      ? (await db.select({ title: lessons.title }).from(lessons).where(eq(lessons.id, session.lessonId)))[0]?.title ?? null
+      : null;
+
     // Everything the phase prompts need, assembled once. See
     // lib/roleplay/prompts/ for the builders that consume it.
     const promptCtx: TurnPromptContext = {
       phase: currentPhase,
+      phaseStep: currentPhaseStep,
       isSameLanguage,
       isSessionStart,
       targetLangName,
@@ -209,6 +240,8 @@ export async function POST(req: Request) {
       completedSequenceOrders,
       currentVocabIndex,
       userProducedCurrentWord,
+      evaluation: evaluationSummary,
+      lessonTitle,
     };
 
     // Deterministically hands off to the next word when we bypass generation
@@ -280,7 +313,19 @@ export async function POST(req: Request) {
 
           // Let the client start TTS as soon as the reply text is ready,
           // without waiting for the analysis/phase-transition round-trips.
-          send(JSON.stringify({ type: 'text_done', fullText: sanitizeStreamedChunk(fullAiText) }));
+          const sanitizedReply = sanitizeStreamedChunk(fullAiText);
+          send(JSON.stringify({ type: 'text_done', fullText: sanitizedReply }));
+
+          // Immediately after, and deliberately not on `done`: the analysis
+          // that carries the model's own gestureHint takes seconds, by which
+          // time the character is already mid-greeting. A bow has to land with
+          // the word, so the obvious cases are read straight off the reply and
+          // sent now. The model's hint still arrives on `done` and refines the
+          // turns this can't call.
+          const earlyGesture = inferGesture(sanitizedReply, targetLanguage);
+          if (earlyGesture !== 'none') {
+            send(JSON.stringify({ type: 'gesture', gesture: earlyGesture }));
+          }
 
           // Keep icebreakerVocabIndex/Attempts authoritative instead of trusting
           // the model to self-track: advance state directly when we forced the
@@ -392,10 +437,14 @@ export async function POST(req: Request) {
               const icebreakerDoneInner = currentPhase === 'icebreaker'
                 ? (vocabRows.length > 0 ? newVocabIndex > vocabRows.length : true)
                 : false;
-              const newPhaseInner = nextPhase(currentPhase, { icebreakerDone: icebreakerDoneInner, allGoalsCovered: false });
+              const advanced = advancePhaseState(
+                { phase: currentPhase, step: currentPhaseStep },
+                { icebreakerDone: icebreakerDoneInner, allGoalsCovered: false },
+              );
 
               await tx.update(sessions).set({
-                phase: newPhaseInner,
+                phase: advanced.phase,
+                phaseStep: advanced.step,
                 totalTurns: currentTurnNo,
                 status: 'active',
                 lastActiveAt: new Date(),
@@ -404,7 +453,7 @@ export async function POST(req: Request) {
                 icebreakerVocabAttempts: newVocabAttempts,
               }).where(eq(sessions.id, numericSessionId));
 
-              return { newPhase: newPhaseInner, phaseChanged: newPhaseInner !== currentPhase };
+              return { newPhase: advanced.phase, phaseChanged: advanced.phase !== currentPhase };
             });
 
             if (phaseChanged) {
@@ -450,7 +499,15 @@ export async function POST(req: Request) {
           let pendingRetryCorrectionId: number | null = null;
           let retryEarlyExit = false;
 
-          if (hasCorrections && currentPhase !== 'orientation') {
+          // Orientation predates any target-language production, and the
+          // debrief and farewell come after the scene has ended — holding the
+          // learner back for a retry in any of them would stall the session on
+          // a turn that has nothing left to practise.
+          const retryablePhase = currentPhase !== 'orientation'
+            && currentPhase !== 'evaluation'
+            && currentPhase !== 'completed';
+
+          if (hasCorrections && retryablePhase) {
             const prevPendingId = session.pendingRetryCorrectionId;
 
             if (prevPendingId && isRetryOfPreviousMistake) {
@@ -699,14 +756,34 @@ export async function POST(req: Request) {
             const allGoalsCoveredInner = isStalled || isSafetyCapped || totalGoalsNow >= goals.length;
 
             const icebreakerDoneInner = currentPhase === 'icebreaker'
-              ? (vocabRows.length > 0 ? newVocabIndex > vocabRows.length : true)
+              // The safety cap has to release the icebreaker too, or a session
+              // that somehow stalls in the drill sits there past the cap with
+              // nothing else able to move it on.
+              ? (isSafetyCapped || (vocabRows.length > 0 ? newVocabIndex > vocabRows.length : true))
               : false;
-            const newPhaseInner = nextPhase(currentPhase, {
-              icebreakerDone: icebreakerDoneInner,
-              allGoalsCovered: allGoalsCoveredInner,
-            });
-            const shouldCompleteInner = currentPhase !== 'orientation' && currentPhase !== 'icebreaker'
-              && (analysis.scenarioComplete || (currentPhase === 'unguided' && (allGoalsCoveredInner || isSafetyCapped)));
+
+            // One pure function owns the whole lifecycle — which beat of the
+            // phase comes next, and whether the phase itself advances. See
+            // advancePhaseState in lib/roleplay/phase-engine.ts.
+            const advanced = advancePhaseState(
+              { phase: currentPhase, step: currentPhaseStep },
+              { icebreakerDone: icebreakerDoneInner, allGoalsCovered: allGoalsCoveredInner },
+            );
+            const newPhaseInner = advanced.phase;
+            const newPhaseStepInner = advanced.step;
+
+            // A session ends when — and only when — the debrief has been
+            // delivered AND its farewell has been spoken, i.e. when the phase
+            // machine walks out of `evaluation`.
+            //
+            // `analysis.scenarioComplete` used to end the session from any
+            // phase past the icebreaker, so the model calling the scene done
+            // on the very first unguided turn fired the celebration with no
+            // evaluation and no goodbye. It is deliberately NOT consulted here
+            // any more: goal coverage is counted deterministically from
+            // `goal_completions`, and the stall threshold and safety cap
+            // already guarantee every session reaches its debrief.
+            const shouldCompleteInner = newPhaseInner === 'completed';
 
             let newPhaseTurnCount = freshPhaseTurnCount;
             if (newPhaseInner !== currentPhase) {
@@ -715,7 +792,7 @@ export async function POST(req: Request) {
               newPhaseTurnCount++;
             }
 
-            const isCelebrationInner = shouldCompleteInner && allGoalsCoveredInner && (currentPhase === 'unguided' || newPhaseInner === 'evaluation');
+            const isCelebrationInner = shouldCompleteInner;
 
             const currentVocabScore = freshSession.vocabularyScore ?? 0;
             const currentGrammarScore = freshSession.grammarScore ?? 0;
@@ -739,7 +816,8 @@ export async function POST(req: Request) {
               stalledTurnCount: newStalledTurnCount,
               lastActiveAt: new Date(),
               runningScore: runningScoreInner,
-              phase: shouldCompleteInner ? 'completed' : newPhaseInner,
+              phase: newPhaseInner,
+              phaseStep: newPhaseStepInner,
               icebreakerVocabIndex: newVocabIndex,
               icebreakerVocabAttempts: newVocabAttempts,
               vocabularyScore: blendedVocab,
@@ -873,6 +951,7 @@ export async function POST(req: Request) {
                 newStreak,
                 aiConversationId: aiConversation?.id ?? null,
                 shouldComplete: shouldCompleteInner,
+                lessonId: freshSession.lessonId,
               };
             }
 
@@ -887,57 +966,52 @@ export async function POST(req: Request) {
               newStreak: null as number | null,
               aiConversationId: aiConversation?.id ?? null,
               shouldComplete: shouldCompleteInner,
+              lessonId: freshSession.lessonId,
             };
           });
 
-          // ── Phase transition announcement & SSE event broadcast ──
-          if (writeResult.newPhase !== currentPhase && !writeResult.shouldComplete) {
-            let transitionKind: PhaseMessageKind | null = null;
-            if (currentPhase === 'orientation' && writeResult.newPhase === 'icebreaker') {
-              transitionKind = 'to-icebreaker';
-            } else if (currentPhase === 'icebreaker' && writeResult.newPhase === 'guided') {
-              transitionKind = 'to-guided';
-            } else if (currentPhase === 'guided' && writeResult.newPhase === 'unguided') {
-              transitionKind = 'to-unguided';
-            } else if (currentPhase === 'unguided' && writeResult.newPhase === 'evaluation') {
-              transitionKind = 'to-evaluation';
-            }
-            let transitionMsg = '';
-            if (transitionKind) {
-              transitionMsg = await generateLocalizedPhaseMessage(
-                provider,
-                targetLanguage,
-                nativeLanguage,
-                currentScenario.aiCharacterName,
-                transitionKind,
-              );
-              if (transitionMsg) {
-                const appended = `\n\n${sanitizeStreamedChunk(transitionMsg)}`;
-                fullAiText += appended;
-                send(JSON.stringify({ type: 'token', text: appended }));
-              }
-            }
-
+          // ── Phase transition broadcast ──
+          //
+          // Announcement only — nothing is appended to the reply. This block
+          // used to make a second LLM call for a hand-off line and then do
+          // `fullAiText += appended`, which is why one message could conclude
+          // the vocabulary drill, open the scene AND announce the switch to
+          // full immersion. The stage that is starting now introduces itself
+          // on its own next turn (see phaseOpeningDirective), and the client
+          // renders the card from `toPhase` via PHASE_META.
+          if (writeResult.newPhase !== currentPhase) {
             send(JSON.stringify({
               type: 'phase_transition',
               fromPhase: currentPhase,
               toPhase: writeResult.newPhase,
-              message: sanitizeStreamedChunk(transitionMsg),
+              message: '',
             }));
           }
 
-          if (writeResult.isCelebration) {
-            const celebrationMsg = await generateLocalizedPhaseMessage(
-              provider,
-              targetLanguage,
-              nativeLanguage,
-              currentScenario.aiCharacterName,
-              'celebration',
-            );
-            if (celebrationMsg) {
-              const appended = `\n\n🎉 ${sanitizeStreamedChunk(celebrationMsg)}`;
-              fullAiText += appended;
-              send(JSON.stringify({ type: 'token', text: appended }));
+          // A curriculum lesson is only credited here, on a real finish. This
+          // used to run exclusively from PATCH /api/sessions/[id], which the
+          // client sends when the learner *leaves* a session — so playing a
+          // lesson all the way through never recorded it and never unlocked
+          // the next one. recordLessonActivity is idempotent (isFirstCompletion),
+          // so the PATCH path can stay for abandonment without double-counting.
+          if (writeResult.shouldComplete && writeResult.lessonId) {
+            try {
+              await recordLessonActivity({
+                userId: user.id,
+                lessonId: writeResult.lessonId,
+                phaseKey: 'review',
+                complete: true,
+                score: writeResult.compositeScore,
+                targetLanguage,
+                nativeLanguage,
+              });
+            } catch (err) {
+              // Never fail the learner's turn over progress bookkeeping.
+              console.error('[STREAM CHAT] failed to record lesson progress', {
+                sessionId: numericSessionId,
+                lessonId: writeResult.lessonId,
+                error: String(err),
+              });
             }
           }
 

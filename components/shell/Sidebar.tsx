@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { NotificationBell } from './NotificationBell';
 import { useUser } from '@/lib/auth/user-context';
 import { resolveDisplayName } from '@/lib/auth/display-name';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
@@ -29,6 +30,7 @@ import {
   History,
   Repeat2,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -51,6 +53,11 @@ const navItems: NavItem[] = [
   { label: 'Settings',  href: '/settings',    icon: Settings },
 ];
 
+/** Role-gated entries, appended for whoever holds the role. Hiding the link
+ *  is convenience only — /admin and /tutor re-check the role server-side. */
+const adminNavItem: NavItem = { label: 'Admin', href: '/admin', icon: ShieldCheck };
+const tutorNavItem: NavItem = { label: 'Teaching', href: '/tutor', icon: GraduationCap };
+
 interface SidebarProps {
   onNavigate?: () => void;
 }
@@ -63,6 +70,14 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   // Honest identity: stored name → email local-part → "You" (never a fake
   // placeholder name like 'Learner').
   const displayName = resolveDisplayName(user);
+  // Admin satisfies every role (see satisfiesRole in lib/auth/roles.ts), so an
+  // admin gets the teaching console too rather than having to change role to
+  // look at it.
+  const items = [
+    ...navItems,
+    ...(TUTORS_ENABLED && (user?.role === 'tutor' || user?.role === 'admin') ? [tutorNavItem] : []),
+    ...(user?.role === 'admin' ? [adminNavItem] : []),
+  ];
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
@@ -90,7 +105,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
           return (
@@ -111,6 +126,11 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           );
         })}
       </nav>
+
+      {/* Notifications — sits with the nav, opens upward over it */}
+      <div className="px-3 pb-2">
+        <NotificationBell onNavigate={onNavigate} />
+      </div>
 
       {/* User Card — bottom of sidebar */}
       <div className="border-t border-dojo-border p-4">

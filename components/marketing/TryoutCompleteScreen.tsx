@@ -32,12 +32,15 @@ export function TryoutCompleteScreen({ targetLanguage, nativeLanguage, turnCount
           Create a free account to keep learning with full lessons, corrections, and progress tracking.
         </p>
 
+        {/* Into onboarding, not straight to /auth — the wizard is what sets a
+            level, a goal and a course enrolment, and the old shortcut skipped
+            all of it. The tryout's language pair rides along as a prefill. */}
         <Link
-          href={`/auth?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`}
+          href={`/onboarding/level?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`}
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90"
         >
           <Sparkles className="h-4 w-4" />
-          Create your free account
+          Build my learning plan
         </Link>
         <Link
           href="/"

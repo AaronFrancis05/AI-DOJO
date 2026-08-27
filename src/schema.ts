@@ -7,6 +7,10 @@ export const users = pgTable('users', {
   email:                 varchar('email', { length: 150 }).notNull().unique(),
   passwordHash:          varchar('password_hash', { length: 255 }),
   level:                 varchar('level', { length: 20 }).default('beginner').notNull(),
+  // 'learner' | 'tutor' | 'admin'. A `tutors` row describes what a tutor
+  // teaches; this column is what authorises them — see requireRole() in
+  // lib/auth/server.ts. 'admin' satisfies every other role.
+  role:                  varchar('role', { length: 20 }).default('learner').notNull(),
   xp:                    integer('xp').default(0).notNull(),
   xpToNext:              integer('xp_to_next').default(1000).notNull(),
   tier:                  varchar('tier', { length: 20 }).default('premium').notNull(),
@@ -201,6 +205,11 @@ export const sessions = pgTable('sessions', {
   characterId:     integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
   behaviorMode:    varchar('behavior_mode', { length: 20 }).default('standard').notNull(),
   phase:           varchar('phase', { length: 20 }).default('orientation').notNull(),
+  // Where inside `phase` the session is: 'open' (the character still has to
+  // explain this stage), 'body' (running it), 'closing' (concluding it). A
+  // phase only advances out of 'closing', so the turn that wraps a stage up
+  // and the turn that opens the next one are never the same message.
+  phaseStep:       varchar('phase_step', { length: 10 }).default('open').notNull(),
   icebreakerIndex: integer('icebreaker_index').default(0).notNull(),
   icebreakerVocabIndex:    integer('icebreaker_vocab_index').default(1).notNull(),
   icebreakerVocabAttempts: integer('icebreaker_vocab_attempts').default(0).notNull(),
@@ -439,6 +448,12 @@ export const studentProgress = pgTable('student_progress', {
   lessonsCompleted: integer('lessons_completed').default(0).notNull(),
   xpEarned:         integer('xp_earned').default(0).notNull(),
   status:           varchar('status', { length: 20 }).default('not_started').notNull(),
+  // JSON array of unit ids the learner has explicitly marked finished, in the
+  // same text-column-holding-JSON shape as studentLessonProgress.completedPhases.
+  // Distinct from "every lesson in the unit is complete": that is derived, this
+  // is the learner's own acknowledgement, and only the acknowledgement opens
+  // the unit's live-lesson footer.
+  acknowledgedUnitIds: text('acknowledged_unit_ids'),
   lastActivityAt:   timestamp('last_activity_at'),
   updatedAt:        timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
@@ -717,15 +732,16 @@ export const chatMessageTranslationsRelations = relations(chatMessageTranslation
   message: one(chatMessages, { fields: [chatMessageTranslations.messageId], references: [chatMessages.id] }),
 }));
 
-// ── Live tutoring (human tutors over self-hosted LiveKit) ───────────────
+// ── Live tutoring (human tutors over GetStream Video) ──────────────────
 //
 // Learners book a real tutor for a lesson, or for a human read on whether
-// the AI actually taught them what it claims. Sessions run in a LiveKit
-// room; tutor↔learner text uses the existing chatRooms tables rather than a
-// second messaging system.
+// the AI actually taught them what it claims. Sessions run in a GetStream
+// call; tutor↔learner text uses the existing chatRooms tables rather than a
+// second messaging system — deliberately, since GetStream Chat is a separate
+// and far more expensive contract than GetStream Video.
 //
-// The UI is gated behind NEXT_PUBLIC_TUTORS_ENABLED until a LiveKit server
-// is deployed — see docker-compose.livekit.yml.
+// The UI is gated behind NEXT_PUBLIC_TUTORS_ENABLED until Stream credentials
+// are configured — see lib/tutors/config.ts.
 
 export const tutors = pgTable('tutors', {
   id:             serial('id').primaryKey(),
@@ -773,9 +789,14 @@ export const tutorBookings = pgTable('tutor_bookings', {
   // 'lesson' — ordinary practice; 'evaluation' — verify what the AI taught.
   purpose:     varchar('purpose', { length: 20 }).default('lesson').notNull(),
   learnerNote: text('learner_note'),
-  // The LiveKit room this booking meets in. Generated at booking time so both
-  // sides resolve the same room without a negotiation step.
-  livekitRoomName: varchar('livekit_room_name', { length: 80 }).notNull().unique(),
+  // The GetStream call this booking meets in. Generated at booking time so
+  // both sides resolve the same call without a negotiation step, and never
+  // returned except alongside a token — see lib/tutors/rooms.ts.
+  callId:      varchar('call_id', { length: 80 }).notNull().unique(),
+  // Stream call type, which is what carries the permission grants. Stored
+  // rather than assumed so a deployment can move rooms onto a custom type
+  // without a migration on every existing row.
+  callType:    varchar('call_type', { length: 30 }).default('default').notNull(),
   // Reuses the existing messaging tables for tutor↔learner chat.
   chatRoomId:  integer('chat_room_id').references(() => chatRooms.id, { onDelete: 'set null' }),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
@@ -787,15 +808,188 @@ export const tutorBookings = pgTable('tutor_bookings', {
   idxLearner:       index('idx_tutor_bookings_learner').on(t.learnerId),
 }));
 
+/* ── Group classrooms ──────────────────────────────────────────────────
+ *
+ * A scheduled lesson one tutor teaches to many learners, optionally pinned
+ * to a curriculum unit so the course page can offer "join the live lesson
+ * for this unit". Distinct from `tutor_bookings`, which is 1:1 and initiated
+ * by the learner: a class is created by the tutor and enrolled into.
+ */
+
+export const classSessions = pgTable('class_sessions', {
+  id:             serial('id').primaryKey(),
+  tutorId:        integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  // Both nullable: a class may be a standalone conversation hour rather than
+  // the live counterpart of one unit.
+  courseId:       integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
+  unitId:         integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
+  title:          varchar('title', { length: 150 }).notNull(),
+  description:    text('description'),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  scheduledAt:    timestamp('scheduled_at').notNull(),
+  durationMinutes: integer('duration_minutes').default(60).notNull(),
+  capacity:       integer('capacity').default(12).notNull(),
+  callId:         varchar('call_id', { length: 80 }).notNull().unique(),
+  callType:       varchar('call_type', { length: 30 }).default('default').notNull(),
+  // 'scheduled' | 'live' | 'completed' | 'cancelled'
+  status:         varchar('status', { length: 20 }).default('scheduled').notNull(),
+  // The classroom's text chat reuses the messaging tables — and therefore the
+  // per-member UgaJapa translation, which is the whole point in a room where
+  // the learners do not share a native language.
+  chatRoomId:     integer('chat_room_id').references(() => chatRooms.id, { onDelete: 'set null' }),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  updatedAt:      timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxTutorSchedule: index('idx_class_sessions_tutor_scheduled').on(t.tutorId, t.scheduledAt),
+  // "Is there a live lesson for this unit?" is the course page's query.
+  idxUnitSchedule:  index('idx_class_sessions_unit_scheduled').on(t.unitId, t.scheduledAt),
+}));
+
+export const classEnrollments = pgTable('class_enrollments', {
+  id:             serial('id').primaryKey(),
+  classSessionId: integer('class_session_id').references(() => classSessions.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:      text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'enrolled' | 'attended' | 'cancelled'
+  status:         varchar('status', { length: 20 }).default('enrolled').notNull(),
+  enrolledAt:     timestamp('enrolled_at').defaultNow().notNull(),
+  attendedAt:     timestamp('attended_at'),
+}, (t) => ({
+  uqEnrollment: uniqueIndex('uq_class_enrollment').on(t.classSessionId, t.learnerId),
+  idxLearner:   index('idx_class_enrollments_learner').on(t.learnerId),
+}));
+
+/* ── Assessment rooms ──────────────────────────────────────────────────
+ *
+ * The same call plumbing as a class, run as an examination: exactly one
+ * learner is in the room at a time and the rest wait in a queue the tutor
+ * admits from. The queue is OURS — a table, pushed over lib/realtime — not
+ * Stream's, because who is next is an academic decision, not a media one.
+ */
+
+export const assessmentSessions = pgTable('assessment_sessions', {
+  id:             serial('id').primaryKey(),
+  tutorId:        integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  courseId:       integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
+  unitId:         integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
+  title:          varchar('title', { length: 150 }).notNull(),
+  description:    text('description'),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  scheduledAt:    timestamp('scheduled_at').notNull(),
+  durationMinutes: integer('duration_minutes').default(60).notNull(),
+  // Shown to a waiting learner as "about N minutes until your turn", derived
+  // from their queue position. An estimate, never a scheduler.
+  minutesPerLearner: integer('minutes_per_learner').default(10).notNull(),
+  callId:         varchar('call_id', { length: 80 }).notNull().unique(),
+  callType:       varchar('call_type', { length: 30 }).default('default').notNull(),
+  // 'tutor' — the tutor examines each learner over the Stream call.
+  // 'ai'    — a Gemini Live examiner does, one private session per learner,
+  //           for when the tutor cannot be there. Switchable after creation:
+  //           "I can't make it" is exactly when this is decided.
+  examiner:       varchar('examiner', { length: 10 }).default('tutor').notNull(),
+  // Which face the AI examiner wears — an id from lib/avatar/catalog.ts, so
+  // the interviewer reuses the existing character art (a still image, not the
+  // 3D avatar) rather than introducing a second catalogue.
+  aiInterviewerAvatarId: varchar('ai_interviewer_avatar_id', { length: 40 }),
+  // The tutor's own brief for the examiner: what to probe, what to ignore.
+  // Folded into the system instruction that gets LOCKED into the learner's
+  // ephemeral token, so the browser cannot rewrite it.
+  aiInterviewerBrief:    text('ai_interviewer_brief'),
+  // 'scheduled' | 'live' | 'completed' | 'cancelled'
+  status:         varchar('status', { length: 20 }).default('scheduled').notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+  updatedAt:      timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxTutorSchedule: index('idx_assessment_sessions_tutor_scheduled').on(t.tutorId, t.scheduledAt),
+}));
+
+export const assessmentQueue = pgTable('assessment_queue', {
+  id:            serial('id').primaryKey(),
+  assessmentId:  integer('assessment_id').references(() => assessmentSessions.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:     text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 1-based, dense within an assessment. Rewritten on admit/withdraw rather
+  // than left sparse, so "you are 3rd" needs no counting query on read.
+  position:      integer('position').notNull(),
+  // 'waiting' | 'admitted' | 'done'
+  state:         varchar('state', { length: 20 }).default('waiting').notNull(),
+  joinedAt:      timestamp('joined_at').defaultNow().notNull(),
+  admittedAt:    timestamp('admitted_at'),
+  completedAt:   timestamp('completed_at'),
+}, (t) => ({
+  uqLearner:  uniqueIndex('uq_assessment_queue_learner').on(t.assessmentId, t.learnerId),
+  idxOrder:   index('idx_assessment_queue_order').on(t.assessmentId, t.position),
+}));
+
+/**
+ * One learner's spoken interview with the AI examiner.
+ *
+ * Anchored to the queue slot, not to `(assessmentId, learnerId)`: the slot
+ * already carries that pair under `uq_assessment_queue_learner`, so a unique
+ * `queue_slot_id` gives "one interview per learner per assessment" without a
+ * second constraint saying the same thing. The two ids beside it are
+ * denormalised for filtering, the same way `tutor_evaluations` carries both
+ * its anchor and the pair it implies.
+ *
+ * Scores land HERE, not in `tutor_evaluations`. That table exists to answer
+ * "did the AI's assessment hold up against a human's" — writing a machine
+ * verdict into it under the scheduling tutor's id would make `agreesWithAi`
+ * meaningless. Kept separate, the reverse becomes possible instead: a tutor
+ * who was absent can come back, read the transcript, and file a real
+ * `tutor_evaluations` row against the same queue slot — which is the first
+ * time that comparison has a concrete AI verdict to be measured against.
+ *
+ * `transcript` is JSON in a text column, matching
+ * `student_lesson_progress.completed_phases` rather than introducing jsonb.
+ * It is CLIENT-REPORTED: the Live socket runs browser↔Google, so the server
+ * never witnesses the audio. See lib/interview/transcript.ts.
+ */
+export const aiInterviews = pgTable('ai_interviews', {
+  id:            serial('id').primaryKey(),
+  queueSlotId:   integer('queue_slot_id').references(() => assessmentQueue.id, { onDelete: 'cascade' }).notNull().unique(),
+  assessmentId:  integer('assessment_id').references(() => assessmentSessions.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:     text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  /** The Live model the token was locked to — recorded so a score can be read in the light of what produced it. */
+  model:         varchar('model', { length: 80 }).notNull(),
+  /** 'pending' | 'live' | 'completed' | 'failed' */
+  status:        varchar('status', { length: 20 }).default('pending').notNull(),
+  startedAt:     timestamp('started_at'),
+  endedAt:       timestamp('ended_at'),
+  /** Learner turns only — the examiner's own lines are not evidence of anything. */
+  learnerTurns:  integer('learner_turns').default(0).notNull(),
+  transcript:    text('transcript'),
+  // The same six 0-100 dimensions everything else in this app grades on.
+  vocabularyScore: integer('vocabulary_score'),
+  grammarScore:    integer('grammar_score'),
+  fluencyScore:    integer('fluency_score'),
+  culturalScore:   integer('cultural_score'),
+  taskScore:       integer('task_score'),
+  expressionAppropriatenessScore: integer('expression_appropriateness_score'),
+  feedback:      text('feedback'),
+  gradedAt:      timestamp('graded_at'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+  updatedAt:     timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxAssessment: index('idx_ai_interviews_assessment').on(t.assessmentId, t.status),
+  idxLearner:    index('idx_ai_interviews_learner').on(t.learnerId),
+}));
+
 /**
  * A tutor's verdict on a learner, on the SAME 0-100 dimensions the AI grades
  * (see SCORE_DIMENSIONS in lib/ai-engine.ts) so the two can be shown
  * side by side. `agreesWithAi` is the point of the whole feature: did the AI's
  * assessment hold up against a human's?
+ *
+ * A verdict is anchored to exactly one of two things — a 1:1 booking, or one
+ * learner's slot in an assessment room — so both `bookingId` and
+ * `assessmentQueueId` are nullable and each is unique. (Postgres unique
+ * indexes admit many NULLs, so "one evaluation per booking" and "one per
+ * queue slot" both still hold.) The alternative, a synthetic booking row per
+ * examined learner, would put rows in `tutor_bookings` that nobody booked.
  */
 export const tutorEvaluations = pgTable('tutor_evaluations', {
   id:          serial('id').primaryKey(),
-  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).notNull().unique(),
+  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).unique(),
+  assessmentQueueId: integer('assessment_queue_id').references(() => assessmentQueue.id, { onDelete: 'cascade' }).unique(),
   tutorId:     integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
   learnerId:   text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   // Null when the booking wasn't tied to a specific AI session.
@@ -831,7 +1025,104 @@ export const tutorBookingsRelations = relations(tutorBookings, ({ one }) => ({
 
 export const tutorEvaluationsRelations = relations(tutorEvaluations, ({ one }) => ({
   booking: one(tutorBookings, { fields: [tutorEvaluations.bookingId], references: [tutorBookings.id] }),
+  queueSlot: one(assessmentQueue, { fields: [tutorEvaluations.assessmentQueueId], references: [assessmentQueue.id] }),
   tutor:   one(tutors,        { fields: [tutorEvaluations.tutorId],   references: [tutors.id] }),
   learner: one(users,         { fields: [tutorEvaluations.learnerId], references: [users.id] }),
   session: one(sessions,      { fields: [tutorEvaluations.sessionId], references: [sessions.id] }),
+}));
+
+export const classSessionsRelations = relations(classSessions, ({ one, many }) => ({
+  tutor:       one(tutors,    { fields: [classSessions.tutorId],    references: [tutors.id] }),
+  course:      one(courses,   { fields: [classSessions.courseId],   references: [courses.id] }),
+  unit:        one(units,     { fields: [classSessions.unitId],     references: [units.id] }),
+  chatRoom:    one(chatRooms, { fields: [classSessions.chatRoomId], references: [chatRooms.id] }),
+  enrollments: many(classEnrollments),
+}));
+
+export const classEnrollmentsRelations = relations(classEnrollments, ({ one }) => ({
+  classSession: one(classSessions, { fields: [classEnrollments.classSessionId], references: [classSessions.id] }),
+  learner:      one(users,         { fields: [classEnrollments.learnerId],      references: [users.id] }),
+}));
+
+export const assessmentSessionsRelations = relations(assessmentSessions, ({ one, many }) => ({
+  tutor:  one(tutors,  { fields: [assessmentSessions.tutorId],  references: [tutors.id] }),
+  course: one(courses, { fields: [assessmentSessions.courseId], references: [courses.id] }),
+  unit:   one(units,   { fields: [assessmentSessions.unitId],   references: [units.id] }),
+  queue:  many(assessmentQueue),
+}));
+
+export const assessmentQueueRelations = relations(assessmentQueue, ({ one }) => ({
+  assessment: one(assessmentSessions, { fields: [assessmentQueue.assessmentId], references: [assessmentSessions.id] }),
+  learner:    one(users,              { fields: [assessmentQueue.learnerId],    references: [users.id] }),
+}));
+
+export const aiInterviewsRelations = relations(aiInterviews, ({ one }) => ({
+  queueSlot:  one(assessmentQueue,    { fields: [aiInterviews.queueSlotId],  references: [assessmentQueue.id] }),
+  assessment: one(assessmentSessions, { fields: [aiInterviews.assessmentId], references: [assessmentSessions.id] }),
+  learner:    one(users,              { fields: [aiInterviews.learnerId],    references: [users.id] }),
+}));
+
+// ── Notifications ──────────────────────────────────────────────────────
+//
+// One row per thing a user should be told about, pushed to an open tab over
+// lib/realtime and read back through /api/notifications. Deliberately dumb:
+// a title, a body and a link. Anything richer belongs on the page the `href`
+// points at, not duplicated into a bell.
+
+export const notifications = pgTable('notifications', {
+  id:        serial('id').primaryKey(),
+  userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'evaluation' | 'class' | 'assessment' | 'booking' — what produced it.
+  type:      varchar('type', { length: 40 }).notNull(),
+  title:     varchar('title', { length: 160 }).notNull(),
+  body:      text('body'),
+  href:      text('href'),
+  readAt:    timestamp('read_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // Every read is "my notifications, newest first".
+  idxUserCreated: index('idx_notifications_user_created').on(t.userId, t.createdAt),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
+}));
+
+// ── Calendar ─────────────────────────────────────────────────────────
+//
+// The one genuinely new piece of scheduled data: a user's own to-dos, plus
+// the "do this lesson" reminders seeded onto a learner's calendar right
+// after onboarding (see lib/calendar/seed-lesson-plan.ts). Everything else
+// that shows up on /calendar — sessions, tutor bookings, classes,
+// assessments — already has its own row with a date; /api/calendar reads
+// those live rather than copying them in here.
+
+export const calendarTasks = pgTable('calendar_tasks', {
+  id:            serial('id').primaryKey(),
+  userId:        text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  title:         varchar('title', { length: 160 }).notNull(),
+  notes:         text('notes'),
+  dueAt:         timestamp('due_at').notNull(),
+  allDay:        boolean('all_day').default(true).notNull(),
+  // 'task' — user-authored to-do. 'lesson_reminder' — system-seeded from the
+  // post-onboarding plan, points back at sourceLessonId.
+  kind:          varchar('kind', { length: 20 }).default('task').notNull(),
+  sourceLessonId: integer('source_lesson_id').references(() => lessons.id, { onDelete: 'cascade' }),
+  status:        varchar('status', { length: 20 }).default('pending').notNull(), // 'pending' | 'done'
+  completedAt:   timestamp('completed_at'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // Every read is "my to-dos due around this date".
+  idxUserDue: index('idx_calendar_tasks_user_due').on(t.userId, t.dueAt),
+  // sourceLessonId is NULL for free-form tasks — a unique index over a
+  // nullable column treats every NULL as distinct, so many free-form tasks
+  // coexist fine while still capping the seeded plan at one reminder per
+  // (user, lesson), the same trick tutorEvaluations uses for its two
+  // nullable anchor columns.
+  uqUserLesson: uniqueIndex('uq_calendar_tasks_user_lesson').on(t.userId, t.sourceLessonId),
+}));
+
+export const calendarTasksRelations = relations(calendarTasks, ({ one }) => ({
+  user:         one(users,   { fields: [calendarTasks.userId],         references: [users.id] }),
+  sourceLesson: one(lessons, { fields: [calendarTasks.sourceLessonId], references: [lessons.id] }),
 }));

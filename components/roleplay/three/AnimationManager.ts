@@ -6,12 +6,26 @@ const CLIP_BASE = '/ai-avatars/animations/';
 const ANIMATION_ALIASES: Record<string, string> = {
   talking: 'talk',
   thinking: 'think',
-  bow: 'greeting',
   shake_hands: 'thankful',
   wave: 'greeting',
 };
 
-export { ANIMATION_ALIASES, CLIP_BASE };
+/**
+ * Where a clip goes when its own file isn't available. Unlike an alias — which
+ * says two names mean the same clip — this says "play this instead, because
+ * the real one is missing", and it stops applying the moment the real file
+ * lands.
+ *
+ * `bow` is here because Bow.glb does not exist in public/ai-avatars/animations
+ * yet. Until it is added, a bow plays Greeting.glb exactly as it did when
+ * `bow` was aliased to it; once the file is dropped in, every bow becomes a
+ * real bow with no code change.
+ */
+const CLIP_FALLBACKS: Record<string, string> = {
+  bow: 'greeting',
+};
+
+export { ANIMATION_ALIASES, CLIP_FALLBACKS, CLIP_BASE };
 
 /**
  * Clips are served as .glb (generated from the .fbx sources by
@@ -33,11 +47,14 @@ const ANIMATION_MANIFEST: Record<string, string> = {
   thankful: 'Thankful.glb',
   nod: 'Nod.glb',
   greeting: 'Greeting.glb',
+  // Not on disk yet. A missing file resolves to null and simply never
+  // registers, which is what CLIP_FALLBACKS above covers.
+  bow: 'Bow.glb',
   offline: 'Offline.glb',
 };
 
 /** Clips that play once and hand the body back, rather than looping. */
-export const ONE_SHOT_CLIPS = new Set(['greeting', 'thankful', 'nod']);
+export const ONE_SHOT_CLIPS = new Set(['greeting', 'thankful', 'nod', 'bow']);
 
 /**
  * The one clip the character cannot be shown without. init() waits for this
@@ -263,7 +280,17 @@ export class AnimationManager {
         if (this._generation !== generation || !this.mixer) return;
 
         this._loading.delete(name);
-        if (!clip) return;
+        if (!clip) {
+          // A clip that will never arrive must release anything queued behind
+          // it, or a gesture asked for during load waits forever on a file
+          // that isn't there instead of falling back — see CLIP_FALLBACKS.
+          const pending = this._pending;
+          if (pending?.key === name) {
+            this._pending = null;
+            this.play(name, { loop: pending.loop, fade: pending.fade });
+          }
+          return;
+        }
         if (!this._registerClip(name, clip.clone(), boneNames)) return;
 
         this.ready = true;
@@ -386,13 +413,23 @@ export class AnimationManager {
    * first second of a session isn't silently discarded.
    */
   canPlay(name: string): boolean {
-    const key = this._key(name);
-    return Boolean(this.actions[key]) || this._loading.has(key);
+    return this._resolve(this._key(name)) !== null;
   }
 
   private _key(name: string): string {
     const normalized = String(name).trim().toLowerCase();
     return ANIMATION_ALIASES[normalized] ?? normalized;
+  }
+
+  /**
+   * The clip that will actually play for this key: itself if it is loaded (or
+   * still on the wire), otherwise its documented stand-in, otherwise nothing.
+   */
+  private _resolve(key: string): string | null {
+    if (this.actions[key] || this._loading.has(key)) return key;
+    const fallback = CLIP_FALLBACKS[key];
+    if (fallback && (this.actions[fallback] || this._loading.has(fallback))) return fallback;
+    return null;
   }
 
   setTalkingState(talking: boolean): void {
@@ -417,7 +454,10 @@ export class AnimationManager {
   ): boolean {
     if (!this.ready || !this.mixer || !name) return false;
 
-    const key = this._key(name);
+    const requested = this._key(name);
+    if (!requested) return false;
+
+    const key = this._resolve(requested);
     if (!key) return false;
 
     if (!this.actions[key]) {

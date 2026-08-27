@@ -1,3 +1,6 @@
+/** Gesture the character greets, thanks and apologises with in this culture. */
+export type GreetingGesture = 'bow' | 'wave';
+
 export interface LanguageConfig {
   code: string;
   name: string;
@@ -7,6 +10,12 @@ export interface LanguageConfig {
   azureVoice: { female: string; male: string };
   hasPhonetic: boolean;
   ttsSupported: boolean;
+  /**
+   * Omitted means 'wave' — see getGreetingGesture(). Only set where the
+   * culture's default greeting is a bow, so the avatar doesn't wave at a
+   * Japanese learner on こんにちは.
+   */
+  greetingGesture?: GreetingGesture;
 }
 
 export const TARGET_LANGUAGES: LanguageConfig[] = [
@@ -19,6 +28,7 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     azureVoice: { female: 'ja-JP-NanamiNeural', male: 'ja-JP-KeitaNeural' },
     hasPhonetic: true,
     ttsSupported: true,
+    greetingGesture: 'bow',
   },
   {
     code: 'en',
@@ -242,6 +252,7 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     azureVoice: { female: 'ko-KR-SunHiNeural', male: 'ko-KR-InJoonNeural' },
     hasPhonetic: true,
     ttsSupported: true,
+    greetingGesture: 'bow',
   },
   {
     code: 'th',
@@ -252,6 +263,9 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     azureVoice: { female: 'th-TH-PremwadeeNeural', male: 'th-TH-NiwatNeural' },
     hasPhonetic: true,
     ttsSupported: true,
+    // The wai is a bow with pressed palms; of the two clips available it is
+    // far closer to a bow than to a wave.
+    greetingGesture: 'bow',
   },
   {
     code: 'vi',
@@ -388,6 +402,14 @@ export function getNativeLangBcp47(code: string): string {
 
 export function getBCP47(code: string, type: 'stt' | 'tts'): string {
   return getTargetLangConfig(code).bcp47[type];
+}
+
+/**
+ * The gesture the AI character uses to greet, thank or apologise in this
+ * target language's culture. Defaults to 'wave' — a bow is the marked case.
+ */
+export function getGreetingGesture(code: string): GreetingGesture {
+  return getTargetLangConfig(code).greetingGesture ?? 'wave';
 }
 
 export function getAzureVoice(code: string, gender: string = 'female'): string {

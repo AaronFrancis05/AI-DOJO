@@ -12,12 +12,16 @@ import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
+import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
+import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
+import { AvatarCaptionsOverlay } from '@/components/roleplay/AvatarCaptionsOverlay';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
 import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
 import { LessonCompleteScreen } from '@/components/roleplay/LessonCompleteScreen';
 import { LessonIncompleteScreen } from '@/components/roleplay/LessonIncompleteScreen';
 import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-metrics';
+import { continueHref } from '@/lib/curriculum/continue-href';
 import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
@@ -42,7 +46,7 @@ export default function VoiceOnlyPage() {
   const sessionId = Number(params.sessionId);
 
   const {
-    session, scenario, character, selectedAvatar, conversations, phase,
+    session, nextLesson, scenario, character, selectedAvatar, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     evaluation, avgPronunciationScore, newWordsCount,
@@ -75,8 +79,9 @@ export default function VoiceOnlyPage() {
   const [aiTurnActive, setAiTurnActive] = useState(false);
   const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(Date.now());
-  const { status: connectionStatus } = useLatencyMonitor();
+  const { status: connectionStatus, turnLatency } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const { caption, showCaption, showLiveCaption, hideCaption, clear: clearCaption } = useAvatarCaptions();
 
   const sendingRef = useRef(false);
   const mutedRef = useRef(false);
@@ -214,6 +219,17 @@ export default function VoiceOnlyPage() {
     setSuggestedReplies([]);
     const responseTimeMs = Date.now() - lastAiCompletedRef.current;
     stopTts();
+    clearCaption();
+    // Bridge the gap between the mic release and the first streamed token so
+    // the learner sees the reply is coming, not that their voice was dropped.
+    showCaption('Thinking…');
+
+    const speaker = createReplySpeaker({
+      targetBcp47: getBCP47(targetLangRef.current, 'tts'),
+      nativeBcp47: getNativeLangBcp47(nativeLangRef.current),
+      phase: phaseRef.current,
+      isMuted: () => mutedRef.current,
+    });
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -230,30 +246,22 @@ export default function VoiceOnlyPage() {
         responseTimeMs,
         onToken: (t) => {
           if (t) fullText = t;
-          setStreamingText(t ? cleanDisplay(t) : null);
+          const cleaned = t ? cleanDisplay(t) : null;
+          setStreamingText(cleaned);
+          if (cleaned) showLiveCaption(cleaned);
         },
-        // Speak the reply as one complete clip once the model has finished,
-        // same as the replay button — synthesizing per-sentence as the model
-        // streamed made every sentence boundary pay its own Azure connect
-        // round trip, which read as slow/choppy compared to a single clip.
+        // Each completed sentence is synthesized while the model is still
+        // writing the next one, so the character starts talking on the first
+        // sentence rather than after the whole reply. finish() resolves when
+        // the last one has actually finished playing.
+        onTokenDelta: (delta) => speaker.feed(delta),
         onTextDone: (t: string) => {
-          const cleaned = cleanDisplay(t);
-          if (!mutedRef.current && cleaned) {
-            speakMixedText(
-              cleaned,
-              getBCP47(targetLangRef.current, 'tts'),
-              getNativeLangBcp47(nativeLangRef.current),
-              phaseRef.current,
-            ).catch(() => {}).then(() => {
-              setAiTurnActive(false);
-              speechDoneRef.current = true;
-              tryShowCelebration();
-            });
-          } else {
+          speaker.finish(cleanDisplay(t)).catch(() => {}).then(() => {
+            hideCaption();
             setAiTurnActive(false);
             speechDoneRef.current = true;
             tryShowCelebration();
-          }
+          });
         },
         onRetry: (analysis) => {
           setLastCorrections(analysis.corrections ?? []);
@@ -284,12 +292,13 @@ export default function VoiceOnlyPage() {
       // Whatever was queued belongs to a turn that failed; leaving it to drain
       // talks over the learner's retry.
       stopTts();
+      clearCaption();
       setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [submitTurnStream, conversations]);
+  }, [submitTurnStream, conversations, clearCaption, showCaption, showLiveCaption, hideCaption]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -303,6 +312,9 @@ export default function VoiceOnlyPage() {
   const voice = useVoiceInput({
     lang: bcp47,
     onFinal: handleUserUtterance,
+    // RoleplaySessionProvider owns the recognizer for the whole session, so it
+    // survives the voice ⇄ avatar tab switch.
+    ownsRecognizer: false,
   });
 
   // Single source of truth for the stage's visual state: the AI talking
@@ -367,7 +379,7 @@ export default function VoiceOnlyPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="hidden sm:block">
-            <ConnectionLatencyIndicator status={connectionStatus} />
+            <ConnectionLatencyIndicator status={connectionStatus} turnLatency={turnLatency} />
           </div>
           <button
             type="button"
@@ -425,18 +437,27 @@ export default function VoiceOnlyPage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
+                    const speaker = createReplySpeaker({
+                      targetBcp47: getBCP47(targetLangRef.current, 'tts'),
+                      nativeBcp47: getNativeLangBcp47(nativeLangRef.current),
+                      phase: phaseRef.current,
+                      isMuted: () => mutedRef.current,
+                    });
                     sendGreeting({
-                      onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
+                      onToken: (t: string) => {
+                        const cleaned = t ? cleanDisplay(t) : null;
+                        setStreamingText(cleaned);
+                        if (cleaned) showLiveCaption(cleaned);
+                      },
+                      onTokenDelta: (delta: string) => speaker.feed(delta),
                       onTextDone: (t: string) => {
-                        const cleaned = cleanDisplay(t);
-                        if (mutedRef.current || !cleaned) return;
-                        speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
+                        speaker.finish(cleanDisplay(t)).catch(() => {}).then(() => hideCaption());
                       },
                     })
                       .then(() => {
                         setStreamingText(null);
                       })
-                      .catch(() => { stopTts(); setStreamingText(null); setGreetingSent(false); });
+                      .catch(() => { stopTts(); clearCaption(); setStreamingText(null); setGreetingSent(false); });
                   }}
                   className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >
@@ -484,6 +505,10 @@ export default function VoiceOnlyPage() {
             role={charRole}
             volumeLevel={voice.volumeLevel}
           />
+
+          {/* Live caption — the reply as it is spoken, and the "Thinking…"
+              bridge that covers the gap before the first sentence arrives */}
+          <AvatarCaptionsOverlay caption={caption} className="bottom-56" />
 
           {/* Partial transcript */}
           {voice.partialTranscript && (
@@ -893,7 +918,7 @@ export default function VoiceOnlyPage() {
             metrics={sessionMetrics}
             xpGained={completionResult.xpGained}
             newStreak={completionResult.newStreak}
-            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
             onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
           />
         ) : (
@@ -903,7 +928,7 @@ export default function VoiceOnlyPage() {
             metrics={sessionMetrics}
             whatWentWrong={whatWentWrong}
             onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
-            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
             onLeave={() => { setCompletionResult(null); acknowledgeCompletion(); leaveSession(); }}
           />
         )

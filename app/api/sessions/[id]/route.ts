@@ -4,7 +4,7 @@ import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray, and, isNotNull, sql } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { AVATAR_SOURCES, applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
-import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
+import { recordLessonActivity, resolveNextLesson } from '../../../../lib/curriculum/lesson-progress';
 import {
   getScenarioLocalization,
   getScenarioVocabLocalizations,
@@ -234,9 +234,17 @@ export async function GET(
     ? applySessionAvatarIdentity(localizedScenario, selectedAvatarId)
     : null;
 
+  // Where "Continue" should go when this session finishes. Only a curriculum
+  // lesson has an answer; a free-form session returns null and the completion
+  // screen keeps its /home exit.
+  const nextLesson = session.lessonId
+    ? await resolveNextLesson(user.id, session.lessonId, targetLang)
+    : null;
+
   return Response.json({
     success: true,
     session,
+    nextLesson,
     scenario: scenarioForClient,
     situation,
     domain: domainResult,

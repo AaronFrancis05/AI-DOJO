@@ -1,16 +1,17 @@
 import { getAuthUser } from '@/lib/auth/server';
 import { loadBookingForUser } from '@/lib/tutors/bookings';
-import { canJoinBooking, createRoomToken } from '@/lib/tutors/rooms';
-import { getLiveKitConfig, TUTORS_ENABLED } from '@/lib/tutors/config';
+import { canJoinBooking } from '@/lib/tutors/rooms';
+import { buildJoinPayload } from '@/lib/tutors/join';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
 
 export const runtime = 'nodejs';
 
 /**
- * Mints a LiveKit access token for one booking's room.
+ * Mints a Stream call token for one 1:1 booking.
  *
  * This is the security boundary for the whole feature: a token IS access to
- * the room, so membership and the join window are both verified here, on the
- * server, before one is issued. The room name is returned only alongside a
+ * the call, so membership and the join window are both verified here, on the
+ * server, before one is issued. The call id is returned only alongside a
  * valid token and is never listed anywhere else.
  */
 export async function POST(req: Request) {
@@ -21,14 +22,6 @@ export async function POST(req: Request) {
   const user = await getAuthUser();
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const config = getLiveKitConfig();
-  if (!config) {
-    return Response.json(
-      { error: 'Live tutoring is not configured on this server.' },
-      { status: 503 },
-    );
   }
 
   let body: { bookingId?: unknown };
@@ -53,26 +46,15 @@ export async function POST(req: Request) {
     return Response.json({ error: decision.reason }, { status: 403 });
   }
 
-  const token = await createRoomToken({
-    roomName: found.booking.livekitRoomName,
-    // Namespaced so a LiveKit identity can never collide with another user's.
-    identity: `user-${user.id}`,
-    displayName: user.name ?? 'Participant',
+  const payload = await buildJoinPayload({
+    callId: found.booking.callId,
+    callType: found.booking.callType,
+    user: { id: user.id, name: user.name },
+    ownerUserId: found.tutorUserId,
+    ownerName: found.tutorName,
     isTutor: found.isTutor,
   });
+  if (payload instanceof Response) return payload;
 
-  if (!token) {
-    return Response.json(
-      { error: 'Live tutoring is not configured on this server.' },
-      { status: 503 },
-    );
-  }
-
-  return Response.json({
-    success: true,
-    token,
-    url: config.url,
-    roomName: found.booking.livekitRoomName,
-    isTutor: found.isTutor,
-  });
+  return Response.json(payload);
 }

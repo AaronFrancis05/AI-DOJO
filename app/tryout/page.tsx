@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { Volume2, User, ArrowLeft } from 'lucide-react';
 import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '@/lib/language';
 import { saveTryoutParams, loadTryoutParams } from '@/lib/tryout/guest-params';
+import { useTryoutGate } from '@/lib/hooks/useTryoutGate';
+import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
 
 export default function TryoutChooserPage() {
   // useSearchParams needs a Suspense boundary in the app router
@@ -27,6 +29,10 @@ function TryoutChooserContent() {
     return loadTryoutParams();
   });
 
+  // Checked here rather than only on the mode pages so a guest who is out of
+  // previews is told so before they pick a mode.
+  const gate = useTryoutGate();
+
   useEffect(() => {
     if (queryTarget && queryNative) {
       saveTryoutParams({ targetLanguage: queryTarget, nativeLanguage: queryNative });
@@ -35,7 +41,7 @@ function TryoutChooserContent() {
     }
   }, [queryTarget, queryNative, params, router]);
 
-  if (!params) {
+  if (!params || gate.state === 'checking') {
     return (
       <div className="flex h-dvh items-center justify-center bg-dojo-canvas">
         <div className="animate-pulse text-dojo-text-muted text-sm">Loading…</div>
@@ -44,6 +50,16 @@ function TryoutChooserContent() {
   }
 
   const { targetLanguage, nativeLanguage } = params;
+
+  if (gate.state === 'blocked') {
+    return (
+      <TryoutBlockedScreen
+        targetLanguage={targetLanguage}
+        nativeLanguage={nativeLanguage}
+        retryAfterMs={gate.retryAfterMs}
+      />
+    );
+  }
 
   const targetLangName = TARGET_LANGUAGES.find((l) => l.code === targetLanguage)?.name ?? targetLanguage;
   const nativeLangName = NATIVE_LANGUAGES.find((l) => l.code === nativeLanguage)?.name ?? nativeLanguage;

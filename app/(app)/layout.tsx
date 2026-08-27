@@ -1,7 +1,9 @@
+import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { getAuthUserReadOnly } from '@/lib/auth/server';
 import { syncUser } from '@/lib/auth/sync-user';
 import { UserProvider } from '@/lib/auth/user-context';
+import { toUserRole } from '@/lib/auth/roles';
 import { db } from '@/src/db';
 import { users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
@@ -42,6 +44,8 @@ export default async function AppLayout({
           nativeLanguage: users.nativeLanguage,
           preferredTargetLanguage: users.preferredTargetLanguage,
           countryCode: users.countryCode,
+          role: users.role,
+          onboardingCompletedAt: users.onboardingCompletedAt,
         })
         .from(users)
         .where(eq(users.id, authId))
@@ -61,11 +65,22 @@ export default async function AppLayout({
       }
     }
 
+    // The onboarding gate. Preferences, level and course enrolment all come
+    // out of the wizard, so an account that never finished it has nothing to
+    // show on any of these routes. Only redirect when the row was actually
+    // read — a failed read above leaves `dbUser` undefined, and treating that
+    // as "not onboarded" would bounce established learners out of the app on
+    // a transient DB blip.
+    if (dbUser && dbUser.onboardingCompletedAt === null) {
+      redirect('/onboarding/level');
+    }
+
     user = {
       id: authId,
       name: dbUser?.name || providerName || '',
       email: dbUser?.email || u.email || '',
       level: dbUser?.level ?? 'beginner',
+      role: toUserRole(dbUser?.role),
       tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,
       xpToNext: dbUser?.xpToNext ?? 1000,

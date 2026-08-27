@@ -23,3 +23,19 @@ test('uses a neutral message for password length errors', () => {
     'There is a problem with the password length.',
   );
 });
+
+test('maps the OAuth proxy redirect codes off /auth?error=', () => {
+  // These reach the page as a bare query-string code, not a thrown error.
+  // Falling through to the generic fallback would hide which leg of the OAuth
+  // round trip actually broke.
+  const cases: Array<[string, string]> = [
+    ['init_failed', 'Could not reach the sign-in provider. Please try again.'],
+    ['no_oauth_url', 'Could not start Google sign-in. Please try again.'],
+    ['no_verifier', 'Sign-in did not complete. Please try again.'],
+    ['exchange_failed', 'Sign-in did not complete. Please try again.'],
+  ];
+
+  for (const [code, expected] of cases) {
+    assert.equal(getAuthErrorMessage({ code }, 'Fallback', 'sign-in'), expected, code);
+  }
+});

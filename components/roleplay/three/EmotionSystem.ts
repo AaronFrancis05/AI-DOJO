@@ -74,6 +74,21 @@ export class EmotionSystem {
     }
   }
 
+  /**
+   * Plays one gesture and nothing else.
+   *
+   * apply() is the full behaviour update — expression, body track, lip-sync —
+   * and running it just to bow would also reassert the talk/idle track. This
+   * is for the gesture that arrives on its own, ahead of the analysis, so the
+   * bow lands with the greeting instead of a beat after it.
+   */
+  playGesture(gesture: string): boolean {
+    const key = String(gesture ?? '').trim().toLowerCase();
+    if (!key || key === 'none') return false;
+    if (!this.animation.canPlay(key)) return false;
+    return this.animation.play(key, { loop: false, fade: 0.3 });
+  }
+
   startListening(): void {
     this.lipSync.stop();
     this.expression.setExpression('neutral');
