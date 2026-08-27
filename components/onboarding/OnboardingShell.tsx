@@ -74,7 +74,7 @@ export function OnboardingShell({
   currentStep,
   steps = ONBOARDING_STEPS,
   basePath = '/onboarding',
-  exitHref = '/auth',
+  exitHref = '/auth/signin',
 }: OnboardingShellProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);

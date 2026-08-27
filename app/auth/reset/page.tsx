@@ -47,7 +47,7 @@ function ResetPasswordForm() {
         return;
       }
       setDone(true);
-      setTimeout(() => router.push('/auth'), 2000);
+      setTimeout(() => router.push('/auth/signin'), 2000);
     } catch (err) {
       setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'reset'));
     } finally {
@@ -80,7 +80,7 @@ function ResetPasswordForm() {
               Request a new link
             </button>
             <Link
-              href="/auth"
+              href="/auth/signin"
               className="mt-3 text-sm font-medium text-dojo-accent hover:underline"
             >
               Back to log in

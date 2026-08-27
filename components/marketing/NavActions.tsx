@@ -32,13 +32,13 @@ export function NavActions() {
         )}
       </button>
       <Link
-        href="/auth"
+        href="/auth/signin"
         className="rounded-lg px-3 py-2 text-sm font-medium text-dojo-text-muted transition-colors hover:text-dojo-text-primary sm:px-4"
       >
         Sign in
       </Link>
       <Link
-        href="/auth"
+        href="/auth/signup"
         className="rounded-full bg-dojo-accent px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-dojo-accent/90 sm:px-5 sm:py-2.5"
       >
         Get Started

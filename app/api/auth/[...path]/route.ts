@@ -6,6 +6,8 @@ import {
 } from '@/lib/auth/app-origin';
 import { appendSetCookies } from '@/lib/auth/cookies';
 import { auth, getConfig } from '@/lib/auth/server';
+import { roleHome } from '@/lib/auth/destinations';
+import { toUserRole } from '@/lib/auth/roles';
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
@@ -43,13 +45,13 @@ async function proxyOAuthInitRedirect(request: NextRequest, path: string) {
     });
   } catch (err) {
     console.error('[oauth-init] fetch failed', { url: upstreamUrl, error: String(err) });
-    return NextResponse.redirect(appUrl('/auth?error=init_failed'));
+    return NextResponse.redirect(appUrl('/auth/signin?error=init_failed'));
   }
 
   if (upstream.status >= 400) {
     const text = await upstream.text().catch(() => '');
     console.error('[oauth-init] upstream error', { status: upstream.status, bodyPreview: text.slice(0, 100) });
-    return NextResponse.redirect(appUrl('/auth?error=init_failed'));
+    return NextResponse.redirect(appUrl('/auth/signin?error=init_failed'));
   }
 
   const responseHeaders = new Headers(upstream.headers);
@@ -151,13 +153,13 @@ async function proxyGoogleInitRedirect(request: NextRequest) {
     body = await proxyResponse.clone().json() as { url?: unknown };
   } catch {
     console.error('[google-init] failed to parse upstream response');
-    return NextResponse.redirect(appUrl('/auth?error=no_oauth_url'));
+    return NextResponse.redirect(appUrl('/auth/signin?error=no_oauth_url'));
   }
 
   const url = typeof body.url === 'string' ? body.url : null;
   if (!url) {
     console.error('[google-init] no url in upstream JSON', { body });
-    return NextResponse.redirect(appUrl('/auth?error=no_oauth_url'));
+    return NextResponse.redirect(appUrl('/auth/signin?error=no_oauth_url'));
   }
 
   const response = NextResponse.redirect(normalizeAuthRedirectUrl(url));
@@ -170,7 +172,7 @@ async function handleOAuthExchange(request: NextRequest) {
   const verifier = url.searchParams.get('neon_auth_session_verifier');
 
   if (!verifier) {
-    return NextResponse.redirect(appUrl('/auth?error=no_verifier'));
+    return NextResponse.redirect(appUrl('/auth/signin?error=no_verifier'));
   }
 
   // The SDK derives the OAuth exchange URL from request.url. This is the only
@@ -191,22 +193,25 @@ async function handleOAuthExchange(request: NextRequest) {
       status: builtinResponse.status,
       bodyPreview: body.slice(0, 100),
     });
-    return NextResponse.redirect(appUrl('/auth?error=exchange_failed'));
+    return NextResponse.redirect(appUrl('/auth/signin?error=exchange_failed'));
   }
 
 // Onboarding is only for brand-new signups. If this account already exists,
-  // the user is returning (just signing in) and should go straight to the app.
+  // the user is returning (just signing in) and should go straight to the app —
+  // to *their* part of it. A tutor who signs in with Google is still a tutor,
+  // and landing them on the learner dashboard is the same role confusion the
+  // split sign-in pages exist to end (see lib/auth/destinations.ts).
   let redirectTarget = '/onboarding';
   try {
     const sessionData = await builtinResponse.clone().json();
     const email = sessionData?.user?.email as string | undefined;
     if (email) {
       const [existing] = await db
-        .select({ id: users.id })
+        .select({ id: users.id, role: users.role })
         .from(users)
         .where(eq(users.email, email))
         .limit(1);
-      if (existing) redirectTarget = '/home';
+      if (existing) redirectTarget = roleHome(toUserRole(existing.role));
     }
   } catch (err) {
     console.error('[oauth] failed to resolve existing user', err instanceof Error ? err.message : String(err));

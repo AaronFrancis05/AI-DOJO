@@ -926,3 +926,20 @@ findings · `npm run db:generate` produced 0047.
   - KNOWN GAP: accounts deleted in the console before `auth_user_id` existed stay NULL and are indistinguishable from invitations. The sweep leaves them; clear them with the purge route.
 - `/home` rebuilt to the reference design: XP ring around the hero avatar, level + next-level ladder, donut daily goal, working 7/30-day activity range selector, roadmap stage strip under Learning Journey, achievement unlock dates + badge-completion bar, compact session rows. New `components/ui/RadialProgress.tsx` primitive.
 - The Home recharts colours were stale dark-blue tokens (`#2D3BC5`, `#1C2A42`, `#080C18`) from the pre-warm-palette design — wrong in BOTH themes. Now `var(--color-*)` reads, which work in SVG presentation attributes.
+
+## 2026-08-27 (Auth split into per-role doors)
+
+Signing in as a tutor kept resolving to a learner. Two causes, both structural:
+
+- **The sign-in destination was `/home`, always.** `app/auth/page.tsx` pushed `next ?? '/home'` regardless of `users.role`, and the Google callback did the same. A tutor's only route to their console was the `?next=/tutor` link on the application page — miss it and the app told them they were a learner.
+- **Sign-in vs. sign-up was `useState`, not a URL.** One `/auth` page with an `isLogin` toggle: no bookmark, no back button, and nothing for a link to point at. There was no tutor sign-in page at all — `/auth/tutor` was the *application form*, so a returning tutor had no door.
+
+Now: `/auth/signin` + `/auth/signup` (learner default, Tutor tab), `/auth/tutor/signin` + `/auth/tutor/signup`, and unlinked `/auth/admin/signin` + `/auth/admin/signup`. `/auth` and `/auth/tutor` redirect to their new homes carrying the query string, so every existing link, bookmark and OAuth error redirect still works.
+
+- **The door never decides the landing.** `GET /api/user/role` → `roleHome()` in `lib/auth/destinations.ts` (`admin` → `/admin`, `tutor` → `/tutor`, else `/home`). A tutor signing in on the learner form still lands on the console. The Google callback routes off the `users.role` it was already reading, so OAuth agrees with password sign-in for the first time.
+- **Admin sign-up is gated by `ADMIN_EMAILS`, not by the URL being unlisted.** `POST /api/auth/admin/claim` (`lib/auth/admin-allowlist.ts`) promotes only allowlisted addresses and **fails closed** — unset/empty allows nobody. Called on admin *sign-in* as well as sign-up, and idempotent, because the Neon project issues no session until the email is verified: a new admin's first session is usually their second visit. Anyone else who finds the URL ends up a learner and is told so. **Set `ADMIN_EMAILS` in the deployment env or admin sign-up cannot work at all.**
+- The claim stamps `onboardingCompletedAt` and the `(app)` gate now skips onboarding for `admin` — an admin pre-provisioned via `/api/admin/users/create` was previously held at the learner level-picker on the way to `/admin`.
+- Three near-identical 450-line pages collapsed into one `components/auth/AuthScreen`. `safeNext` had already been copied into `/auth/verify-email`; both copies now import the shared one.
+- Fixed in passing: the sign-up "Confirm password" field mirrored the first field's value and validated nothing, so a mistyped password went into the account silently.
+
+Verified: `npm run build` clean (both new API routes registered) · `npx tsc --noEmit` clean · `npx eslint` on every touched file clean · `npm test` 99 pass, plus 11 new in `lib/auth/destinations.test.ts` and `lib/auth/admin-allowlist.test.ts`.

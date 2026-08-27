@@ -258,7 +258,7 @@ export default async function LandingPage() {
 
               <div className="animate-arena-rise arena-delay-3 mt-8 flex flex-wrap items-center gap-3 sm:mt-9 sm:gap-5">
                 <Link
-                  href="/auth"
+                  href="/auth/signup"
                   className="rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent sm:px-7"
                 >
                   Start Free Now
@@ -464,7 +464,7 @@ export default async function LandingPage() {
               </h2>
             </div>
             <Link
-              href="/auth"
+              href="/auth/signup"
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-dojo-border px-5 py-2.5 text-sm font-semibold text-dojo-text-primary transition-colors hover:border-dojo-accent/50 hover:text-dojo-accent"
             >
               View all scenarios
@@ -620,7 +620,7 @@ export default async function LandingPage() {
             </div>
           </div>
           <Link
-            href="/auth"
+            href="/auth/signup"
             className="relative inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent sm:px-8"
           >
             Get Started Free

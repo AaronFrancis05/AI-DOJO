@@ -15,38 +15,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
+// One definition of "is this `next` safe to follow", shared with the sign-in
+// pages that hand the value here — a gap in a second copy is a gap in both.
+import { fetchUserRole, roleHome, safeNext } from '@/lib/auth/destinations';
 import { LoaderIcon, CheckCircleIcon, AlertCircleIcon } from '@/components/Icons';
 import { Button } from '@/components/ui/Button';
 
 const inputClass =
   'w-full rounded-lg border border-dojo-border bg-dojo-surface px-4 py-3 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20';
-
-/**
- * Where to send someone once they are verified.
- *
- * Only same-origin paths: `next` arrives in the query string, so anything
- * else is an open redirect wearing a sign-up flow as a disguise. `//host`
- * is protocol-relative and leaves the site, which is why a bare `/` prefix
- * is not enough on its own.
- *
- * Neither is rejecting `//`. The URL parser treats a backslash as a forward
- * slash in an http(s) URL and strips tab/newline/carriage-return outright
- * before parsing, so `/\host`, `/\/host` and `/<TAB>/host` all clear a
- * `startsWith('//')` test and then resolve to `https://host` — the same open
- * redirect through a different spelling. Any of those characters means the
- * string was written to be re-read as something other than what it looks
- * like, so the whole value is refused rather than normalized.
- *
- * Kept in step with the copy in `app/auth/page.tsx`: both pages hand the same
- * `next` on to each other, so a gap in either one is a gap in both.
- */
-const NEXT_SMUGGLING = /[\\\t\n\r]/;
-
-function safeNext(next: string | null): string | null {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
-  if (NEXT_SMUGGLING.test(next)) return null;
-  return next;
-}
 
 export default function VerifyEmailPage() {
   return (
@@ -125,9 +101,11 @@ function VerifyEmailContent() {
       // sign-up path broke in the first place — an unauthenticated landing
       // just bounces back to /auth with nothing explaining why.
       const { data } = await authClient.getSession();
+      // Role decides the landing when there is no explicit `next` — a tutor
+      // who verifies their email belongs on the console, not the learner home.
       const destination = data?.user
-        ? next ?? '/home'
-        : `/auth?verified=1${next ? `&next=${encodeURIComponent(next)}` : ''}`;
+        ? next ?? roleHome(await fetchUserRole())
+        : `/auth/signin?verified=1${next ? `&next=${encodeURIComponent(next)}` : ''}`;
 
       setTimeout(() => {
         router.push(destination);
@@ -225,7 +203,7 @@ function VerifyEmailContent() {
         </div>
 
         <p className="mt-6 text-center text-sm text-dojo-text-muted">
-          <Link href="/auth" className="font-semibold text-dojo-accent hover:underline">
+          <Link href="/auth/signin" className="font-semibold text-dojo-accent hover:underline">
             Back to sign in
           </Link>
         </p>
