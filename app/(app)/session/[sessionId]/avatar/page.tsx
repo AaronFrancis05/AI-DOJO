@@ -383,10 +383,14 @@ export default function AvatarModePage() {
   const avatarMode: 'idle' | 'listening' | 'talking' =
     isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
 
+  // Barge-in lives in useVoiceInput.start(): it silences the character on
+  // every press, not only when this derived mode says it is talking. That
+  // mode dips to false in the gap between utterances of one reply, and a
+  // press landing in the gap used to leave the rest of the reply playing
+  // into an open mic.
   const handleMicStart = useCallback(async () => {
-    if (avatarMode === 'talking') stopTts();
     await voice.start();
-  }, [avatarMode, voice]);
+  }, [voice]);
 
   const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
   const skillLevelLabel = situation?.skillLevel

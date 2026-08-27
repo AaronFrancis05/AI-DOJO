@@ -20,7 +20,7 @@ import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
-import { sanitizeStreamedChunk, createStreamTextSanitizer } from '../../../../lib/roleplay/stream-sanitizer';
+import { sanitizeStreamedChunk, createStreamTextSanitizer, parseVocabMarker } from '../../../../lib/roleplay/stream-sanitizer';
 import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
 import { inferGesture } from '../../../../lib/roleplay/gesture';
 import {
@@ -378,7 +378,7 @@ export async function POST(req: Request) {
               // model hallucinating "【VOCAB 999】" or skipping ahead) can't be used to
               // update the authoritative index, but must still count as a turn spent
               // on the current word so the retry ceiling above still gets hit.
-              const parsedIndex = Number(fullAiText.match(/【VOCAB (\d+)】/)?.[1]);
+              const parsedIndex = parseVocabMarker(fullAiText);
               if (parsedIndex === currentVocabIndex) {
                 newVocabAttempts = currentVocabAttempts + 1;
               } else if (parsedIndex === currentVocabIndex + 1 && parsedIndex <= vocabRows.length) {

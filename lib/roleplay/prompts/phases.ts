@@ -2,6 +2,7 @@ import type { SessionPhase } from '../phase-engine';
 import type { TurnPromptContext } from './types';
 import {
   CONVERSATION_CRAFT,
+  NO_META_LABELS,
   PACING,
   delimiterRules,
   displayVocab,
@@ -92,6 +93,8 @@ ${closingBeat}
 - Two or three sentences. Warm, specific, and finished.
 ${phoneticRule(ctx)}
 
+${NO_META_LABELS}
+
 ${languageRules}`;
 }
 
@@ -119,12 +122,33 @@ THIS TURN:
 - Introduce yourself by name and role, and set the scene in a sentence: where they are, who you are to them, what they are trying to accomplish.
 - Tell them plainly what happens next: you'll run through a few key words together first, then play the scene for real.
 - Sound like someone they'd want to practise with — encouraging and specific, not a syllabus.
-- Two or three sentences. Stop there.`;
+- Two or three sentences. Stop there.
+
+${NO_META_LABELS}`;
 }
 
 /* ── Icebreaker ─────────────────────────────────────────────────────────
    A vocabulary drill, but taught in context rather than recited as a list.
    ────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Spells the 【VOCAB N】 marker out with the real digits for this turn.
+ *
+ * The instruction used to read `"【VOCAB N】" ... N being its number`, and the
+ * model took the N literally: it wrote 【VOCAB N2】. That is stripped from the
+ * transcript now, but the route's parse still can't read an index out of a
+ * shape it wasn't taught, so the icebreaker never advanced on the model's own
+ * marker and every word had to be force-advanced by the retry ceiling. Giving
+ * the model the two literal strings it may emit removes the ambiguity at the
+ * source.
+ */
+function markerExample(ctx: TurnPromptContext): string {
+  const staying = `【VOCAB ${ctx.currentVocabIndex}】`;
+  const moving = `【VOCAB ${ctx.currentVocabIndex + 1}】`;
+  return ctx.currentVocabIndex >= ctx.vocab.length
+    ? `write exactly ${staying}`
+    : `write exactly ${staying} while you are still on the current word, or exactly ${moving} on the turn you move to the next one`;
+}
 
 export function buildIcebreakerPrompt(ctx: TurnPromptContext): string {
   const current = ctx.vocab[ctx.currentVocabIndex - 1];
@@ -155,7 +179,7 @@ HOW TO TEACH A WORD:
 - Don't just define it — say when they'd actually use it. "This is what you say when the waiter comes over" teaches more than "this means hello".
 - Give the word, give the meaning, then invite them to say it back. Invite, don't command.
 - When they attempt it: react to *their* attempt in a few words, then move to the next word. Brief and real ("That's it", "Close — the stress is on the second part") beats generic praise.
-- Mark the word you are teaching with "【VOCAB N】" at the start of your turn, N being its number in the list above. This is bookkeeping and is stripped before the learner sees it.
+- Start your turn with a bookkeeping marker naming the word you are teaching on it: ${markerExample(ctx)}. Write the digit itself — never the letter "N", never "N${ctx.currentVocabIndex}", never a word. This marker is stripped before the learner sees it; the engine reads it to track which word you are on, so a marker in any other shape leaves the lesson stuck.
 ${ctx.userProducedCurrentWord ? `- The learner has ALREADY said word ${ctx.currentVocabIndex} correctly in their last message. Acknowledge it in a handful of words and go straight to the next one — do not ask them to repeat it.` : ''}
 ${ctx.isSessionStart ? `- This is the very first thing you say this session: greet them briefly, then start on word 1.` : `- You are mid-lesson. Go straight to the word; you have already greeted them.`}
 
@@ -165,6 +189,8 @@ ${phoneticRule(ctx)}
 Keep each turn to two or three sentences.
 
 ${PACING}
+
+${NO_META_LABELS}
 
 ${formatRules}`;
 }
@@ -212,7 +238,8 @@ ${CONVERSATION_CRAFT}
 
 ${PACING}
 
-Never output JSON, markdown, ratings, or meta commentary — only the reply itself.
+${NO_META_LABELS}
+- In particular: the two parts above are told apart by the ⟦ ⟧ delimiters and nothing else. Do not announce the coaching, and do not announce the scene — just say the coaching sentence, then speak in character.
 
 ${ctx.isSameLanguage ? '' : delimiterRules(ctx, `Your coaching sentence goes outside ⟦ ⟧; your in-character line goes inside.\n\n${example}`)}`;
 }
@@ -255,7 +282,9 @@ ${CONVERSATION_CRAFT}
 
 ${PACING}
 
-Keep replies to one to three sentences. Never output JSON, markdown, ratings, or meta commentary.
+Keep replies to one to three sentences.
+
+${NO_META_LABELS}
 
 ${ctx.isSameLanguage
   ? `Speak naturally in ${ctx.targetLangName}. No delimiters.`
@@ -336,7 +365,8 @@ ${verdictRule}
 - Do not say goodbye yet — you will do that on your next turn. End here, on the verdict.
 - Five or six sentences at most.
 
-Never output JSON, markdown, a bulleted list, or meta commentary — speak it.
+${NO_META_LABELS}
+- No bulleted list either. You are speaking this debrief out loud, not writing it down.
 
 ${ctx.isSameLanguage ? '' : delimiterRules(ctx, `Your whole debrief is ${ctx.nativeLangName} and sits OUTSIDE ⟦ ⟧; only direct quotes of ${ctx.targetLangName} go inside.`)}`;
 }
@@ -368,6 +398,8 @@ THIS TURN:
 - Wish them well and leave the door open for next time. One or two sentences, no more.
 - No scores, no coaching, no meta commentary — that was the previous turn's job. Do not ask a question; nothing follows this.
 ${phoneticRule(ctx)}
+
+${NO_META_LABELS}
 
 ${ctx.isSameLanguage
   ? `Speak naturally in ${ctx.targetLangName}. No delimiters.`

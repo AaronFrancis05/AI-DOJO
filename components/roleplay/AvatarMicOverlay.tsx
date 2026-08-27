@@ -3,7 +3,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { Mic, Volume2, VolumeX } from 'lucide-react';
 import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
-import { stop as stopTts } from '@/lib/roleplay/tts';
 import { getBCP47 } from '@/lib/language';
 
 interface AvatarMicOverlayProps {
@@ -38,10 +37,10 @@ export function AvatarMicOverlay({
   }, [isAiResponding]);
 
   const handleStartListening = useCallback(async () => {
-    if (isAiRespondingRef.current) {
-      stopTts();
-      bargeInRef.current = true;
-    }
+    // useVoiceInput.start() silences the character on every press; this only
+    // has to record that the press was a deliberate barge-in, so the effect
+    // below doesn't immediately close the mic it just opened.
+    if (isAiRespondingRef.current) bargeInRef.current = true;
     await voice.start();
   }, [voice]);
 
