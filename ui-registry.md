@@ -339,8 +339,40 @@ in beside their learner rows, so the one page serves both.
 | `/settings` | Settings | Preferences + Notifications + Privacy |
 | `/settings/avatar` | Avatar & Character | Tabbed: avatar presets + voice prefs |
 | `/settings/billing` | Subscription | Plan cards |
-| `/auth` | Sign in / Register | Email+password and Google. "Forgot password?" opens `ForgotPasswordModal` with the typed email prefilled |
+| `/auth` | Sign in / Register | Email+password and Google. "Forgot password?" opens `ForgotPasswordModal` with the typed email prefilled. Honors `?next=` (same-origin only) and shows a confirmation banner on `?verified=1` |
 | `/auth/reset` | Set a new password | Landing page for the emailed reset link |
+| `/auth/verify-email` | Verify your email | The shared step between creating an account and being let in. `?email=` (required), `?sent=1` (a code was already mailed — do not auto-send), `?next=` (where to land) |
+| `/auth/tutor` | Teach on AI DOJO | Account + teaching profile in one form, with an inline verify step before `POST /api/tutors/apply` |
+
+### Email verification is not optional
+
+The Neon project **requires a verified email before it issues a session**. `authClient.signUp.email` answers `200` with `token: null` and **no `Set-Cookie` at all**; `signIn.email` on an unverified account answers `403 EMAIL_NOT_VERIFIED`.
+
+**Never treat a successful sign-up as a session.** Call `getSession()` and branch on the answer. Pushing into the app on the strength of the sign-up alone just bounces off the `(app)` gate with nothing on screen explaining why — which is how accounts got created-but-stranded on both sign-up paths.
+
+Two shapes, both live:
+
+- **`/auth` (learner)** hands off to `/auth/verify-email?email=…&sent=1&next=/onboarding`. `sent=1` matters: Neon mails a code as part of the sign-up, and a second one invalidates the code already in their inbox.
+- **`/auth/tutor`** keeps the applicant on the page (`step: 'verify'`) because it is holding a filled-in profile that a redirect would throw away.
+
+After `emailOtp.verifyEmail`, **check `getSession()` again** — verification signs anyone in only where the project enables auto-sign-in. `/auth/tutor` falls back to `signIn.email` with the password still in state; `/auth/verify-email` has no password, so it routes to `/auth?verified=1&next=…` and says so rather than failing silently.
+
+### Tutor application (`/auth/tutor`)
+
+1. `establishSession()` — sign up, then check `getSession()`. No session → `step: 'verify'`. A `user_already_exists` sign-up falls through to `signIn.email` (the account is usually theirs, from an attempt that died at the profile step); an `email_not_verified` sign-in also lands on `step: 'verify'`.
+2. `step: 'verify'` — verify the code, re-check the session, sign in if needed, and only then POST the held profile.
+
+The profile stays in component state the whole way, so verification never costs the applicant their form. Codes are branched on with `getAuthErrorCode` from `lib/auth/errors.ts` — never rendered; `getAuthErrorMessage` owns the copy.
+
+**Do not post the profile straight after sign-up.** That was the original shape and it 401'd every first-time applicant, leaving an account behind with no `tutors` row.
+
+### Where tutors sign in
+
+There is **one** sign-in page. `users.role` decides what an account opens — `/auth/tutor` is an application form, not a second front door, and no second one should be built.
+
+Returning tutors reach it as `/auth?next=/tutor`, linked from `/auth/tutor`'s header ("Already have an account? Sign in"). `next` is same-origin-only in both pages (`safeNext`); the destination guards itself regardless — `/tutor` redirects anyone without the role to `/home`, so a forged `next` grants nothing.
+
+`/auth/tutor` is linked from the marketing footer (Product → "Teach on AI DOJO") and from the bottom of `/auth`.
 
 ### Password reset (Neon Auth)
 
@@ -388,7 +420,7 @@ Last updated: 2026-07-25
 
 **Pattern notes:**
 - Mic button uses push-to-talk (onMouseDown/onMouseUp + touch equivalents), not toggle
-- Barge-in: pressing mic while AI speaking calls `stopTts()` before starting recognition
+- Barge-in lives in `useVoiceInput.start()` and fires on **every** press — buttons must not add their own `stopTts()` branch (see the echo-guard note below)
 - Caption bubble uses dashed border to distinguish from chat bubble
 - Live caption falls back from external partial to voice.partialTranscript
 - Note: this component is currently unreferenced — the live mic UI lives inline in `app/(app)/session/[sessionId]/voice/page.tsx` and `avatar/page.tsx`, both built on `useVoiceInput`/`lib/roleplay/pronunciation.ts`. Docs below describe that actual live implementation.
@@ -399,6 +431,7 @@ Last updated: 2026-07-25
 - `voice.volumeLevel` is driven by a real `AnalyserNode` RMS reading of the mic stream (independent of the Speech SDK's own audio input), not a proxy off transcript length — this is what the mic button's ring/scale and the voice-only orb's swell react to.
 - **Press captures on the press itself.** A PCM tap on the shared mic graph runs for the whole session and feeds the recognizer through a `PushAudioInputStream`, so a press opens a gate on audio that is already flowing rather than starting a capture. `beginCapture()` runs on `startContinuousRecognition`'s synchronous prefix (which is why `useVoiceInput` calls it directly rather than behind `await ensureRecognizer`), and prepends the last 300ms of pre-roll. Audio captured while a cold recognizer is still building is held and flushed once the push stream exists.
 - **Release transmits every phrase captured while held, not just the finalized ones (fixed 2026-08-26).** Azure ends a phrase after `SEGMENTATION_SILENCE_MS = 350` of quiet, so a learner who pauses mid-sentence — the norm in a lesson — finalizes the first half and is still speaking the second when they let go. Release used to wait for a final only when *nothing* had finalized yet, and then chose `final || interim`: the finalized first half was transmitted alone and the rest thrown away, producing half-sentence turns. Now it waits whenever a phrase is in flight (a non-empty interim), and **joins** the accumulated finals with any trailing interim rather than choosing between them. `FINAL_FLUSH_GRACE_MS` is 250; on expiry the trailing interim goes out as-is, so the tail is never lost — at worst it is the rougher text.
+- **Echo guard: the character's own voice must never become a learner turn (fixed 2026-08-27).** The mic hears the speakers; `echoCancellation: true` on the capture stream only attenuates, and with the volume up enough gets through for Azure to transcribe the character cleanly — a turn the learner never took, which is then analysed, scored, replied to, and written into the history the next prompt is built from. Two rules, both in `useVoiceInput` so the four voice surfaces can't hold four diverging copies: (1) **`start()` always calls `stopTts()`**, where each page used to guard it behind its derived `avatarMode === 'talking'` — that flag dips to false in the gap between utterances of one reply, so a press landing in a gap left the rest of the reply playing into an open mic; (2) **interim and final results that arrive while `isSpeechAudibleWithin(ECHO_GUARD_MS)` are dropped**, covering the mic that was already open (pressed during the "Thinking…" beat) when the reply started. `ECHO_GUARD_MS` is 600, a trailing window past the last audio because recognition reports a phrase a beat after it was heard; a barge-in clears it (`resetSpeakingState`) so the guard can't swallow the start of the utterance the barge-in made room for. Dropping happens **before** `partialRef` is cleared, so a phrase that finalizes mid-echo keeps the learner's clean prefix. Deliberately not done: matching the transcript against the character's last line — the icebreaker drill asks the learner to repeat the word the character just said, so text similarity cannot tell an echo from the exercise working.
 - Recognizer lifetime is owned by `RoleplaySessionProvider` for session views (`useVoiceInput({ownsRecognizer:false})`), so it survives the voice ⇄ avatar tab switch instead of being destroyed and rebuilt. Standalone surfaces (tryout) leave `ownsRecognizer` at its `true` default and keep prewarm + teardown in the hook.
 - Mic press/release earcons come from `lib/roleplay/mic-sfx.ts` — short synthesized blips (rising on press, falling on release) on the shared playback `AudioContext` (`getPlaybackContext()` in `tts.ts`), connected straight to `destination` so the lip-sync analyser never sees them. Played from `useVoiceInput`, so every mic surface gets them. Not gated by the AI-voice mute toggle: they are input feedback, not the character's voice.
 - Push-to-talk mic labels read "Hold to Speak" (all four session/tryout voice + avatar pages).

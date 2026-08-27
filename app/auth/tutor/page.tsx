@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, GraduationCap } from 'lucide-react';
 import { authClient } from '@/lib/auth/client';
-import { getAuthErrorMessage } from '@/lib/auth/errors';
+import { getAuthErrorCode, getAuthErrorMessage } from '@/lib/auth/errors';
 import { AlertCircleIcon, LoaderIcon } from '@/components/Icons';
 import PasswordInput from '@/components/PasswordInput';
 import { Button } from '@/components/ui/Button';
@@ -57,6 +57,13 @@ export default function TutorSignupPage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
+  // The profile is filled in first and posted last; between the two sits the
+  // email check the Neon project requires before it will hand out a session.
+  const [step, setStep] = useState<'form' | 'verify'>('form');
+  const [code, setCode] = useState('');
+  const [sendingCode, setSendingCode] = useState(false);
+  const [codeResent, setCodeResent] = useState(false);
+
   // An existing learner can become a tutor without a second account — the
   // profile attaches to whoever is signed in.
   useEffect(() => {
@@ -69,6 +76,99 @@ export default function TutorSignupPage() {
   const toggleLanguage = (code: string) => {
     setLanguages((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
   };
+
+  /** Mails a fresh verification code to the address on the form. */
+  async function sendVerificationCode() {
+    setSendingCode(true);
+    setError('');
+    setCodeResent(false);
+    try {
+      const { error: sendError } = await authClient.emailOtp.sendVerificationOtp({
+        email,
+        type: 'email-verification',
+      });
+      if (sendError) {
+        setError(getAuthErrorMessage(sendError, 'Could not send the code. Please try again.', 'verify'));
+        return;
+      }
+      setCodeResent(true);
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'verify'));
+    } finally {
+      setSendingCode(false);
+    }
+  }
+
+  /**
+   * Signs the applicant in, or parks them on the verification step.
+   *
+   * The Neon project requires a verified email before it will issue a session,
+   * so `signUp.email` creates the account and mails a code but signs nobody in.
+   * Posting the profile straight after it — which is what this page used to do
+   * — hit `/api/tutors/apply` with no cookie, so every first-time applicant got
+   * a bare "Unauthorized", lost the form, and was left with an account but no
+   * `tutors` row. Never assume a sign-up produced a session.
+   */
+  async function establishSession(): Promise<boolean> {
+    const { error: signUpError } = await authClient.signUp.email({ email, password, name });
+
+    if (signUpError) {
+      const code = getAuthErrorCode(signUpError);
+      if (code !== 'user_already_exists' && code !== 'email_exists') {
+        setError(getAuthErrorMessage(signUpError, 'Something went wrong. Please try again.', 'sign-up'));
+        return false;
+      }
+      // Most likely their own account from an attempt that died at the profile
+      // step, so sign in rather than dead-ending on "already exists".
+      const { error: signInError } = await authClient.signIn.email({ email, password });
+      if (!signInError) return true;
+
+      const signInCode = getAuthErrorCode(signInError);
+      if (signInCode === 'email_not_verified' || signInCode === 'email_not_confirmed') {
+        setStep('verify');
+        await sendVerificationCode();
+        return false;
+      }
+      setError(getAuthErrorMessage(signInError, 'Something went wrong. Please try again.', 'sign-in'));
+      return false;
+    }
+
+    // A session exists here only on a project that lets unverified accounts in.
+    const { data } = await authClient.getSession();
+    if (data?.user) return true;
+
+    // Neon mailed a code as part of the sign-up — a second one would invalidate
+    // the one already sitting in their inbox.
+    setStep('verify');
+    return false;
+  }
+
+  /** Posts the profile. The session must already exist. */
+  async function submitProfile(): Promise<void> {
+    const res = await fetch('/api/tutors/apply', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        headline: headline.trim(),
+        bio: bio.trim(),
+        languages,
+        timezone,
+        hourlyRateCents: Math.round(Number(hourlyRate) * 100),
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setError(
+        res.status === 401
+          ? 'Your sign-in did not carry through. Please sign in and apply again.'
+          : data?.error ?? 'Could not create your tutor profile. Please try again.',
+      );
+      return;
+    }
+
+    setSubmitted(true);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,35 +195,50 @@ export default function TutorSignupPage() {
 
     setSubmitting(true);
     try {
-      if (!alreadySignedIn) {
-        const { error: authError } = await authClient.signUp.email({ email, password, name });
-        if (authError) {
-          setError(getAuthErrorMessage(authError, 'Something went wrong. Please try again.', 'sign-up'));
+      if (!alreadySignedIn && !(await establishSession())) return;
+      await submitProfile();
+    } catch (err) {
+      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'sign-up'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** Verification step: confirm the code, then post the held profile. */
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setCodeResent(false);
+
+    setSubmitting(true);
+    try {
+      const { error: verifyError } = await authClient.emailOtp.verifyEmail({ email, otp: code });
+      if (verifyError) {
+        setError(getAuthErrorMessage(verifyError, 'That code did not work. Please try again.', 'verify'));
+        return;
+      }
+
+      // Verifying signs the account in only where the project enables
+      // auto-sign-in, so confirm instead of trusting it — this is the same
+      // assumption that broke the sign-up path.
+      const { data } = await authClient.getSession();
+      if (!data?.user) {
+        const { error: signInError } = await authClient.signIn.email({ email, password });
+        if (signInError) {
+          setError(
+            getAuthErrorMessage(
+              signInError,
+              'Your email is verified — please sign in to finish your application.',
+              'sign-in',
+            ),
+          );
           return;
         }
       }
 
-      const res = await fetch('/api/tutors/apply', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          headline: headline.trim(),
-          bio: bio.trim(),
-          languages,
-          timezone,
-          hourlyRateCents: Math.round(rate * 100),
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error ?? 'Could not create your tutor profile. Please try again.');
-        return;
-      }
-
-      setSubmitted(true);
+      await submitProfile();
     } catch (err) {
-      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'sign-up'));
+      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'verify'));
     } finally {
       setSubmitting(false);
     }
@@ -143,8 +258,18 @@ export default function TutorSignupPage() {
             Your profile is pending review. A human verifies every tutor before they appear to
             learners — we&apos;ll let you know as soon as that&apos;s done.
           </p>
-          <Button className="mt-6 w-full" size="lg" onClick={() => router.push('/home')}>
-            Go to the app
+          <p className="mt-4 rounded-lg border border-dojo-border bg-dojo-surface px-4 py-3 text-sm leading-relaxed text-dojo-text-muted">
+            Your teaching console is under <span className="font-medium text-dojo-text-primary">Teaching</span> in
+            the sidebar. Next time, sign in at{' '}
+            <Link href="/auth" className="font-medium text-dojo-accent hover:underline">
+              /auth
+            </Link>{' '}
+            with this email and password.
+          </p>
+          {/* The console, not /home — they just became a tutor, and the role is
+              already written by the time this screen renders. */}
+          <Button className="mt-6 w-full" size="lg" onClick={() => router.push('/tutor')}>
+            Go to your teaching console
           </Button>
         </div>
       </div>
@@ -156,9 +281,16 @@ export default function TutorSignupPage() {
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-8 flex items-center justify-between">
           <Link href="/" className="text-lg font-bold text-dojo-text-primary">🥋 AI DOJO</Link>
-          <Link href="/auth" className="text-sm text-dojo-text-muted hover:text-dojo-text-primary">
-            Learner sign in
-          </Link>
+          {/* Tutors sign in through the same page everyone else does — there is
+              one account system and `users.role` decides what it opens. The old
+              label here read "Learner sign in", which told a returning tutor
+              this was not their door and left them with no door at all. */}
+          <span className="text-sm text-dojo-text-muted">
+            Already have an account?{' '}
+            <Link href="/auth?next=/tutor" className="font-semibold text-dojo-accent hover:underline">
+              Sign in
+            </Link>
+          </span>
         </div>
 
         <div className="mb-8 flex items-start gap-4">
@@ -167,15 +299,72 @@ export default function TutorSignupPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
-              Teach on AI DOJO
+              {step === 'verify' ? 'Confirm your email' : 'Teach on AI DOJO'}
             </h1>
             <p className="mt-2 text-base leading-relaxed text-dojo-text-muted">
-              Run live lessons and assessments alongside the AI. Every profile is reviewed by a
-              human before it goes live.
+              {step === 'verify'
+                ? 'We sent a 6-digit code to your inbox. Your profile is filled in and waiting — entering the code files the application.'
+                : 'Run live lessons and assessments alongside the AI. Every profile is reviewed by a human before it goes live.'}
             </p>
           </div>
         </div>
 
+        {step === 'verify' ? (
+          <form onSubmit={handleVerify} className="flex flex-col gap-6">
+            <section className="rounded-2xl border border-dojo-border bg-dojo-surface p-6">
+              <h2 className="text-base font-bold text-dojo-text-primary">Verification code</h2>
+              <p className="mt-1 text-sm leading-relaxed text-dojo-text-muted">
+                Sent to <span className="font-medium text-dojo-text-primary">{email}</span>
+              </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="000000"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                required
+                className={`${inputClass} mt-4 text-center text-2xl tracking-[0.5em]`}
+              />
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <p className="text-xs text-dojo-text-muted">
+                  {codeResent ? 'A new code is on its way.' : 'The code expires in 10 minutes.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={sendVerificationCode}
+                  disabled={sendingCode}
+                  className="shrink-0 text-xs font-semibold text-dojo-accent hover:underline disabled:opacity-50"
+                >
+                  {sendingCode ? 'Sending…' : 'Resend code'}
+                </button>
+              </div>
+            </section>
+
+            {error && (
+              <div className="flex items-center gap-2 rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-sm text-dojo-danger">
+                <AlertCircleIcon className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <Button type="submit" size="lg" loading={submitting} disabled={code.length < 6}>
+              Verify and apply
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStep('form');
+                setError('');
+                setCodeResent(false);
+              }}
+              className="text-sm text-dojo-text-muted hover:text-dojo-text-primary"
+            >
+              Back to your profile
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           {!checkingAuth && !alreadySignedIn && (
             <section className="rounded-2xl border border-dojo-border bg-dojo-surface p-6">
@@ -306,6 +495,7 @@ export default function TutorSignupPage() {
             Apply to teach
           </Button>
         </form>
+        )}
       </div>
     </div>
   );

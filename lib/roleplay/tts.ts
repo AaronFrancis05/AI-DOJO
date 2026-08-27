@@ -12,10 +12,11 @@ import { findSentenceEnd } from './sentence-split';
 /* ── Overview ───────────────────────────────────────────────────────────
    Speech output for the roleplay session.
 
-   The AI's reply is spoken sentence-by-sentence AS THE MODEL STREAMS IT
-   (see feedStreamTts), synthesized by an Azure synthesizer running in the
-   browser whose audio plays while it is still arriving. Three things used to
-   sit between the learner and a naturally-paced reply, and all are gone:
+   The AI's reply is spoken AS THE MODEL STREAMS IT (see feedStreamTts) —
+   an opening sentence as soon as one is complete, then the remainder as one
+   continuous run — synthesized by an Azure synthesizer running in the browser
+   whose audio plays while it is still arriving. Four things used to sit
+   between the learner and a naturally-paced reply, and all are gone:
 
    1. Callers only started speaking in the stream's `text_done` event, i.e.
       after the ENTIRE model response had finished generating. The streaming
@@ -30,6 +31,12 @@ import { findSentenceEnd } from './sentence-split';
       four-sentence reply spent seconds of its length silent. Synthesis and
       playback are now split (prepareSsmlDirect / PreparedUtterance) so the
       next sentences buffer while the current one is being spoken.
+   4. Even so, EVERY sentence became its own clip: the streaming buffer was
+      flushed at the end of each drain pass, so the grouping that was supposed
+      to gather a run of sentences into one utterance never happened (a token
+      chunk rarely carries more than one terminator). A reply was heard as a
+      list of read-out lines with a seam at every full stop. See the grouping
+      note above drainStreamBuffer.
 
    Lip-sync is driven off the PLAYBACK clock, not off event arrival: viseme
    events stream in as fast as the service can synthesize, which is far ahead
@@ -126,6 +133,9 @@ const SPEAKING_SETTLE_MS = 350;
 let activeUtterances = 0;
 let speakingSettleTimer: ReturnType<typeof setTimeout> | null = null;
 let reportedSpeaking = false;
+// When the character last stopped being audible, or 0 when it was silenced by
+// a barge-in rather than by finishing. See isSpeechAudibleWithin.
+let lastSpeechEndedAt = 0;
 
 function emitSpeaking(speaking: boolean): void {
   if (reportedSpeaking === speaking) return;
@@ -135,6 +145,7 @@ function emitSpeaking(speaking: boolean): void {
   // mic-release → first-audio measurement. Later sentences of the same reply
   // don't re-report: the count only crosses zero once per reply.
   if (speaking) markFirstAudio();
+  else lastSpeechEndedAt = Date.now();
   if (onSpeakingChange) onSpeakingChange(speaking);
 }
 
@@ -169,6 +180,12 @@ function resetSpeakingState(): void {
   }
   currentVisemeId = -1;
   emitSpeaking(false);
+  // A barge-in is the learner cutting the character off to speak, so the echo
+  // guard must NOT keep running afterwards — it would swallow the first
+  // fraction of a second of the very utterance the barge-in was making room
+  // for. Nothing more is coming out of the speakers, so there is nothing left
+  // to guard against.
+  lastSpeechEndedAt = 0;
 }
 
 function notifySpeaking(speaking: boolean): void {
@@ -245,6 +262,21 @@ export function getCurrentViseme(): number {
 
 export function isSpeaking(): boolean {
   return isAzureSpeaking || window.speechSynthesis.speaking;
+}
+
+/**
+ * Whether the character's voice is coming out of the speakers, or was until
+ * `graceMs` ago.
+ *
+ * The trailing window is the whole point. Speech recognition reports a phrase
+ * a beat AFTER the audio that produced it, so a guard that ends the instant
+ * the speaker goes quiet still lets the tail of an echoed line through — which
+ * is how the character's own words ended up in the transcript as the learner's
+ * turn. Reset to "not recently" by a barge-in (see resetSpeakingState).
+ */
+export function isSpeechAudibleWithin(graceMs: number): boolean {
+  if (isSpeaking()) return true;
+  return lastSpeechEndedAt !== 0 && Date.now() - lastSpeechEndedAt < graceMs;
 }
 
 /* ── Browser-side Azure synthesizer ─────────────────────────────────────
@@ -851,18 +883,48 @@ export async function speakMixedText(
    ────────────────────────────────────────────────────────────────────── */
 
 let streamTtsBuffer = '';
+// Complete sentences that are deliberately NOT queued yet — see the grouping
+// note on MAX_GROUPED_CHARS. Survives across feed calls; a group is only
+// closed off when speaking it is the right thing to do.
+let streamTtsPending = '';
 let streamTtsStopped = false;
 
 // Don't synthesize a fragment so short it costs more in setup than it returns;
 // wait for it to join the next sentence instead.
 const MIN_SENTENCE_CHARS = 2;
 
-// When the model has already produced several sentences by the time we look at
-// the buffer, speak them as ONE utterance rather than a string of separate
-// clips. Azure carries prosody across a whole utterance, so a paragraph spoken
-// in one go sounds like continuous speech instead of a list of read-out lines.
-// Capped so a long burst still starts playing promptly.
-const MAX_GROUPED_CHARS = 240;
+/* ── Grouping ───────────────────────────────────────────────────────────
+   Every utterance costs a connect + synthesize round trip and lands as its
+   own clip, and Azure only carries prosody WITHIN an utterance — so a reply
+   cut into one clip per sentence is heard as a list of read-out lines with a
+   gap at every full stop, which is exactly the "lagging" delivery this
+   replaces.
+
+   The buffer used to be flushed at the end of every drain pass, so grouping
+   never actually happened: a token chunk almost always carries at most one
+   sentence terminator, meaning each sentence closed a group of one and every
+   full stop in a reply became a clip boundary. MAX_GROUPED_CHARS only ever
+   applied to the rare chunk that arrived carrying several sentences at once.
+
+   Now a group is closed off in exactly two situations:
+
+   1. Nothing is currently audible. Holding text back while the character is
+      silent is pure added latency, so whatever has accumulated is spoken at
+      once. This is what keeps time-to-first-audio at one sentence.
+   2. The group has grown past MAX_GROUPED_CHARS. Otherwise a long reply would
+      be held to the end of generation before a second word was heard.
+
+   Everything else waits for the flush at the end of the reply, so the usual
+   shape of a reply is: a fast opening sentence, then the remainder as ONE
+   continuous utterance that was synthesized while the opening was still
+   being spoken.
+   ────────────────────────────────────────────────────────────────────── */
+const MAX_GROUPED_CHARS = 400;
+
+/** Nothing queued and nothing playing: the character is silent right now. */
+function isQueueIdle(): boolean {
+  return utteranceQueue.length === 0 && !queuePump;
+}
 
 function hasSpeakableContent(text: string): boolean {
   return text.replace(/[^\p{L}\p{N}]/gu, '').length >= MIN_SENTENCE_CHARS;
@@ -882,10 +944,11 @@ function enqueueMixedText(
 }
 
 /**
- * Pulls every complete sentence currently sitting in the buffer and queues it
- * for speech. Synchronous by design: queueing starts synthesis without waiting
- * for playback, so the token handler returns immediately and sentences keep
- * stacking up ahead of the voice.
+ * Pulls every complete sentence currently sitting in the buffer into the
+ * pending group, and queues that group for speech when it should be spoken
+ * (see the grouping note above). Synchronous by design: queueing starts
+ * synthesis without waiting for playback, so the token handler returns
+ * immediately and sentences keep stacking up ahead of the voice.
  */
 function drainStreamBuffer(
   targetBcp47: string,
@@ -895,13 +958,15 @@ function drainStreamBuffer(
 ): void {
   if (streamTtsStopped) return;
 
-  let group = '';
-
   const emit = () => {
-    if (group && hasSpeakableContent(group)) {
-      enqueueMixedText(group, targetBcp47, nativeBcp47, phase);
+    if (streamTtsPending && hasSpeakableContent(streamTtsPending)) {
+      enqueueMixedText(streamTtsPending, targetBcp47, nativeBcp47, phase);
     }
-    group = '';
+    streamTtsPending = '';
+  };
+
+  const append = (text: string) => {
+    streamTtsPending = streamTtsPending ? `${streamTtsPending} ${text}` : text;
   };
 
   while (!streamTtsStopped) {
@@ -912,20 +977,28 @@ function drainStreamBuffer(
     streamTtsBuffer = streamTtsBuffer.slice(idx).trimStart();
 
     if (!hasSpeakableContent(sentence)) continue;
+    append(sentence);
 
-    // Never make the FIRST sentence wait on a second one — time to first
-    // sound is what the learner actually perceives as responsiveness.
-    if (!group && utteranceQueue.length === 0 && !queuePump) {
-      group = sentence;
-      emit();
-      continue;
-    }
-
-    group = group ? `${group} ${sentence}` : sentence;
-    if (group.length >= MAX_GROUPED_CHARS) emit();
+    if (streamTtsPending.length >= MAX_GROUPED_CHARS) emit();
   }
 
-  emit();
+  if (streamTtsStopped) return;
+
+  if (isFinal) {
+    // Generation is over, so the unterminated remainder is the last sentence
+    // rather than a chunk boundary. Folding it into the pending group is what
+    // keeps the tail from becoming a clip of its own.
+    const tail = streamTtsBuffer.trim();
+    streamTtsBuffer = '';
+    if (tail) append(tail);
+    emit();
+    return;
+  }
+
+  // The character has fallen silent with text in hand — speak it rather than
+  // hold the group open. This is the opening sentence of a reply on the first
+  // pass, and the recovery path if generation ever stalls mid-reply.
+  if (isQueueIdle()) emit();
 }
 
 /**
@@ -948,15 +1021,9 @@ export async function flushStreamTts(targetBcp47: string, nativeBcp47: string, p
   if (streamTtsStopped) return;
 
   // Generation is over, so a terminator at the end of the buffer is now a real
-  // sentence end rather than a chunk boundary — drain those first.
+  // sentence end rather than a chunk boundary, and the final pass speaks
+  // everything still held back as one continuous utterance.
   drainStreamBuffer(targetBcp47, nativeBcp47, phase, true);
-  if (streamTtsStopped) return;
-
-  const tail = streamTtsBuffer.trim();
-  streamTtsBuffer = '';
-  if (tail && hasSpeakableContent(tail)) {
-    enqueueMixedText(tail, targetBcp47, nativeBcp47, phase);
-  }
 
   await drainQueue();
 }
@@ -1017,9 +1084,11 @@ export function speakWhenAudioUnlocked(speak: () => void): () => void {
 export function stopStreamingTts(): void {
   streamTtsStopped = true;
   streamTtsBuffer = '';
+  streamTtsPending = '';
 }
 
 export function resetStreamingTts(): void {
   streamTtsStopped = false;
   streamTtsBuffer = '';
+  streamTtsPending = '';
 }

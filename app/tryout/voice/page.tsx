@@ -121,10 +121,14 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
   const bcp47 = getBCP47(targetLanguage, 'stt');
   const voice = useVoiceInput({ lang: bcp47, onFinal: handleUserUtterance });
 
+  // Barge-in lives in useVoiceInput.start(): it silences the character on
+  // every press, not only when this derived mode says it is talking. That
+  // mode dips to false in the gap between utterances of one reply, and a
+  // press landing in the gap used to leave the rest of the reply playing
+  // into an open mic.
   const handleMicStart = useCallback(async () => {
-    if (avatarMode === 'talking') stopTts();
     await voice.start();
-  }, [avatarMode, voice]);
+  }, [voice]);
 
   if (gate.state === 'blocked' || blocked) {
     return (

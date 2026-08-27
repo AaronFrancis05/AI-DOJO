@@ -1,17 +1,66 @@
 /**
  * Strips internal scaffolding from streamed AI text before it reaches the
- * learner: the 【VOCAB N】 bookkeeping marker, any leaked meta labels like
- * "TEACHER:" or "[Turn 3]", and stray markdown bold markers. Only the exact
- * 【VOCAB N】 marker is stripped — any other 【...】 text is legitimate content
- * (e.g. Japanese quotation marks). The reply-contract prompt tells the model
- * to never output markdown, but it occasionally leaks `**word**` anyway,
- * which renders as literal asterisks in captions/chat — strip it like the
- * rest of the scaffolding. The raw fullAiText (with markers) is still kept
- * for engine-side state parsing.
+ * learner: the 【VOCAB N】 bookkeeping marker, bracketed stage labels the model
+ * echoes back out of the phase prompts ("[COACHING]", "[SCENE START]"), any
+ * leaked meta labels like "TEACHER:" or "[Turn 3]", and stray markdown bold
+ * markers. The reply-contract prompt tells the model to never output markdown,
+ * but it occasionally leaks `**word**` anyway, which renders as literal
+ * asterisks in captions/chat — strip it like the rest of the scaffolding. The
+ * raw fullAiText (with markers) is still kept for engine-side state parsing.
+ *
+ * This is also what `cleanDisplay` runs, so a marker only has to be taught to
+ * one regex to disappear from the live stream, the stored transcript, and the
+ * text handed to TTS alike.
  */
+
+/**
+ * The icebreaker bookkeeping marker, in every shape the model actually emits.
+ *
+ * `buildIcebreakerPrompt` spells it "【VOCAB N】" with N standing for the word's
+ * number, and models routinely write the letter through — 【VOCAB N2】 — or
+ * reach for square brackets or a "#". That single miss is expensive twice
+ * over: the learner reads the marker on screen, AND
+ * `app/api/chat/stream/route.ts` cannot parse an index out of it, so the
+ * icebreaker never advances on the model's own say-so and every word has to be
+ * force-advanced by the retry ceiling instead. Matching all the shapes is what
+ * keeps the phase machine tracking what the character is actually teaching.
+ */
+const VOCAB_MARKER_SOURCE = String.raw`[【\[]\s*VOCAB\s*(?:NO\.?|N|#)?\s*(\d+)?\s*[】\]]`;
+const VOCAB_MARKER = new RegExp(VOCAB_MARKER_SOURCE, 'i');
+const VOCAB_MARKER_GLOBAL = new RegExp(VOCAB_MARKER_SOURCE, 'gi');
+
+/**
+ * Bracketed ALL-CAPS stage labels — "[COACHING]", "[SCENE START]",
+ * "[SCENE CONTINUES]", "[SCENE END]".
+ *
+ * The phase prompts describe a reply's parts under headings of exactly that
+ * shape ("1. COACHING", "2. THE SCENE"), and the model echoes them into the
+ * reply itself, where they are rendered in the transcript AND read aloud by
+ * TTS. Nothing the learner is meant to hear is ever a bracketed all-caps
+ * token: the placeholder guard already forbids "[Name]"-style artifacts, and
+ * the ⟦ ⟧ delimiters carry the only markup a reply legitimately has. The
+ * prompts now forbid these labels outright (see NO_META_LABELS in
+ * ./prompts/shared.ts) — this is the net under that.
+ */
+const STAGE_LABEL = /[【\[]\s*[A-Z]{3,}(?:[ /&'’-]+[A-Z]+)*\s*[】\]]\s*/g;
+
+/**
+ * The word number carried by an icebreaker marker, or null when the reply has
+ * no parseable marker. Exported so the route reads the marker through the same
+ * pattern that strips it — a shape one of them understands and the other
+ * doesn't is exactly the bug this consolidates.
+ */
+export function parseVocabMarker(text: string): number | null {
+  const digits = text.match(VOCAB_MARKER)?.[1];
+  if (!digits) return null;
+  const index = Number(digits);
+  return Number.isFinite(index) ? index : null;
+}
+
 export function sanitizeStreamedChunk(text: string): string {
   return text
-    .replace(/【VOCAB\s+\d+】/g, '')
+    .replace(VOCAB_MARKER_GLOBAL, '')
+    .replace(STAGE_LABEL, '')
     .replace(/^(?:TEACHER|STUDENT|COACH|ASSISTANT|AI|SYSTEM)\s*:\s*/gim, '')
     .replace(/\[Turn\s*\d+\]\s*/g, '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')

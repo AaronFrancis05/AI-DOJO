@@ -500,3 +500,165 @@ Neon Auth path (`proxy.ts` middleware → `lib/auth/*` → `app/api/auth/[...pat
   and `eslint` clean on every touched file.
 - Migration **0042** applied by hand, per the standing `db:migrate` watermark bug (nothing after
   0020 is ever selected; it exits 0 and reports success).
+
+## 2026-08-27 — Tutor sign-up 401'd every first-time applicant; trusted-by strip reverted
+
+- **Root cause, proven against the live Neon project, not inferred.** The project **requires a
+  verified email before it will issue a session**. `POST /api/auth/sign-up/email` answers `200`
+  with `"token": null` and **no `Set-Cookie` at all**; `get-session` right after it is empty and
+  `sign-in/email` answers `403 EMAIL_NOT_VERIFIED`. `/auth/tutor` posted the profile immediately
+  after `signUp.email`, so `POST /api/tutors/apply` arrived cookie-less and `getAuthUser()`
+  returned null → the bare `Unauthorized` in the form. The account and the verification email
+  were real; the `tutors` row never existed. The state it left behind is visible in the data: 7
+  of 27 auth users sit at `emailVerified: false` and `tutors` was empty.
+- **Fix — `/auth/tutor` gained a verification step; the profile is held in state across it.**
+  `establishSession()` signs up and then *checks* `getSession()` instead of assuming it;
+  no session → `step: 'verify'` (no resend — Neon already mailed a code as part of the sign-up).
+  `handleVerify()` runs `emailOtp.verifyEmail`, checks `getSession()` again (verification only
+  signs anyone in where the project enables auto-sign-in), falls back to `signIn.email` with the
+  password still in state, and only then posts. A `user_already_exists` sign-up now falls through
+  to `signIn.email` rather than dead-ending, which un-sticks the accounts the old bug stranded.
+  `apply`'s 401 no longer renders the raw `Unauthorized`.
+- **`getAuthErrorCode(err)` added to `lib/auth/errors.ts`** — the same normalization
+  `getAuthErrorMessage` uses, exported for the rare caller that has to *branch* on a failure
+  (`user_already_exists`, `email_not_verified`) rather than only show copy for it. Never render it.
+- **The learner path at `/auth` has the same bug and was left alone** (not in scope): sign-up
+  pushes to `/onboarding` with no session. Worth a follow-up — it is where the 7 stranded
+  accounts came from.
+- **Landing page:** the trusted-by strip in the hero is back to plain text names, reverting
+  `3326051` (`feat(marketing): show partner brand logos in trusted-by strip`). `PartnerBadge` and
+  the logo assets stay where they were designed to live — the "Our Partners" marquee lower down.
+- Verified: `npx tsc --noEmit` clean · `npm test` 60/60 (54 pre-existing + 6 new assertions on
+  `getAuthErrorCode`) · `eslint` clean on every touched file (the 4 `no-img-element` warnings on
+  the marketing page are pre-existing, on untouched lines) · `/` and `/auth/tutor` serve 200 ·
+  a throwaway account driven end to end through the dev server: sign-up → `no session` → old path
+  `401` → resend-OTP `200` → verified + sign-in → cookies set → `apply` `200` with the right
+  `tutors` row and `role='tutor'` → re-apply `409`. Probe rows deleted afterwards (27 auth users,
+  0 tutors, as before). **The OTP itself was never typed** — `neon_auth.verification` stores it
+  hashed, so the one link only a real inbox can exercise is the six digits going into the field.
+
+## 2026-08-27 (cont.) — Learner sign-up had the same bug; tutors had nowhere to sign in
+
+- **`/auth` was stranding accounts exactly like `/auth/tutor` did.** Same root cause: sign-up
+  leaves no session on this project, and the page pushed to `/onboarding` regardless, so a brand
+  new learner bounced off the `(app)` gate with nothing on screen. It now checks `getSession()`
+  and, when there is none, hands off to `/auth/verify-email?email=…&sent=1&next=/onboarding`.
+- **`/auth/verify-email` existed but was unreachable** — nothing in the app linked to it, which is
+  why nobody noticed it auto-sent a *second* code on mount (invalidating the one the sign-up had
+  just mailed) and pushed to `/home` on success whether or not a session existed. It is now the
+  shared verification step: `?sent=1` suppresses the duplicate send, `?next=` carries the
+  destination, and after verifying it re-checks `getSession()` — no session means the project has
+  auto-sign-in off, so it routes to `/auth?verified=1&next=…` with a banner instead of failing
+  silently. Also moved off hardcoded `neutral-*`/`white` onto `dojo-*` tokens (it was a white card
+  in dark mode; the same wart fixed on `/auth/reset` back on 08-25 — this page was missed because
+  no route reached it).
+- **Tutors had no way in.** `/auth/tutor` was linked from exactly one place in the product (a line
+  at the bottom of `/auth`) and its own header read "Learner sign in" — telling a returning tutor
+  the sign-in was not for them, leaving them with no door at all. There is one sign-in page and
+  `users.role` decides what it opens; **do not build a second one.** What changed: the header now
+  reads "Already have an account? Sign in" → `/auth?next=/tutor`; `/auth` honors a same-origin
+  `next` (`safeNext` in both pages — `//host` is protocol-relative and has to be rejected too);
+  the "Application received" screen points at `/tutor` and names the sidebar's Teaching entry; and
+  the marketing footer finally links the application (Product → "Teach on AI DOJO"). `/tutor`
+  still re-checks the role server-side, so a forged `next` grants nothing.
+- **Known, deliberately untouched:** `/auth`'s "Confirm password" field is a no-op — it renders
+  `PasswordInput` bound to the same `password` state with `onChange={() => {}}`, so it mirrors
+  whatever is typed above and can never disagree. It validates nothing today.
+- Verified: `npx tsc --noEmit` clean · `npm test` 60/60 · `eslint` clean on the three auth pages
+  (the 3 unused-import warnings on `/auth` and the 4 `no-img-element` on the marketing page are
+  pre-existing) · a throwaway learner account driven through the dev server: sign-up `200`
+  `token:null` → no cookies → no session → `/auth/verify-email` renders with the address →
+  **exactly 1 OTP row for the address**, confirming `sent=1` does not resend → `/auth/tutor` shows
+  the sign-in link with the stale label gone → landing footer carries the teach link → `/tutor`
+  anonymous still `307`s to `/auth`. Probe rows deleted (27 auth users, 20 app users, 0 tutors, as
+  before). **The six digits still have not been typed by a human** — the OTP is stored hashed, so
+  that one link needs a real inbox on both paths.
+
+## 2026-08-27 (cont.) — The character read its own stage directions aloud, and the icebreaker never advanced
+
+Three faults out of one live Japanese session transcript, all visible in it.
+
+- **`【VOCAB N2】` was reaching the learner, and the engine could not read it.** The icebreaker
+  prompt spelled the marker as `"【VOCAB N】" ... N being its number`, and the model wrote the
+  letter through alongside the digit. Both the strip (`/【VOCAB\s+\d+】/`) and the route's parse
+  (`fullAiText.match(/【VOCAB (\d+)】/)`) demand digits only, so the marker rendered on screen AND
+  `parsedIndex` came back `NaN` on every turn — the else branch, which only ever increments
+  `icebreakerVocabAttempts`. The model could therefore *never* advance the word itself; every word
+  had to hit the 2-attempt ceiling and be handed off by the deterministic `forcedAdvanceMessage`,
+  which is why the transcript alternates between the character teaching word 4 and the engine
+  robotically re-introducing word 2. **Marker handling now lives in one place**
+  (`lib/roleplay/stream-sanitizer.ts`): one pattern matches `【VOCAB N2】` / `【VOCAB 2】` /
+  `[VOCAB #2]` / `【VOCAB No. 2】`, `parseVocabMarker()` is exported for the route, and
+  `buildIcebreakerPrompt` now prints the two literal strings the model may emit for *this* turn
+  (`markerExample`) instead of a placeholder it can take literally.
+- **`[COACHING]`, `[SCENE START]`, `[SCENE CONTINUES]`, `[SCENE END]` were being spoken.** The
+  guided prompt describes a reply's two parts under the headings "1. COACHING" / "2. THE SCENE";
+  the model echoed them back as bracketed labels, which nothing stripped, so Azure read them out.
+  Fixed on both sides: `NO_META_LABELS` (`lib/roleplay/prompts/shared.ts`, now in every phase
+  prompt — it also absorbs the three near-identical "never output JSON, markdown…" lines that were
+  drifting apart) forbids them, and the sanitizer strips any bracketed ALL-CAPS token as a net.
+  Bracketed tokens carrying digits (`[JLPT N5]`) or lowercase (`[nod]`) are deliberately left alone.
+- **The voice arrived one clip per sentence.** `drainStreamBuffer` called `emit()` at the end of
+  *every* drain pass, so the grouping that was meant to gather several sentences into one utterance
+  never happened: a token chunk rarely carries more than one terminator, so each sentence closed a
+  group of one. Every full stop in a reply became an Azure connect + synthesize + play boundary —
+  audibly a list of read-out lines. The pending group now survives across feed calls and is closed
+  only when the character has actually fallen silent (`isQueueIdle`, which is what keeps
+  time-to-first-audio at one sentence) or when it passes `MAX_GROUPED_CHARS` (240 → 400); the flush
+  folds the unterminated tail in rather than speaking it separately. Measured against the real
+  splitter on transcript lines: **2 utterances per reply instead of 6–8**, no text dropped.
+- **Not fixed, and worth its own pass: the mic is transcribing the character's own TTS.** In the
+  transcript the learner "says" `It's okay not to know everything on your first day, Aaron. That's
+  what I'm here for! …` — verbatim the AI's previous line, coming back through the speakers. Every
+  echoed turn is a real turn the engine analyses, scores, and replies to, which is a large part of
+  why the phase sequence reads as chaotic. That is an input-side problem (mic gating / AEC during
+  playback), untouched here.
+- `cleanDisplay` now delegates to `sanitizeStreamedChunk` instead of keeping a second copy of the
+  same replace chain — the two had already diverged once by the time anyone noticed.
+- Verified: `npx tsc --noEmit` clean · `npm test` 65/65 (60 pre-existing + 5 new in
+  `lib/roleplay/stream-sanitizer.test.ts`) · `eslint` clean on every touched file (the 1 error and
+  3 warnings in `app/api/chat/stream/route.ts` are pre-existing, on lines 500/528/625, untouched).
+  **Not verified against live audio** — the grouping change was exercised by replaying transcript
+  replies through the real `findSentenceEnd`, not through Azure.
+
+## 2026-08-27 (cont.) — The mic was transcribing the character's own voice as the learner's turn
+
+The same transcript has the learner "saying" `It's okay not to know everything on your first day,
+Aaron. That's what I'm here for! …` — verbatim the character's previous line, back through the
+speakers. Every echoed turn is a real turn: analysed, scored, replied to, and written into the
+conversation history the next prompt is built from, which is most of why the phase sequence reads
+as chaotic.
+
+- **`echoCancellation: true` was already on the capture stream and is not enough.** Browser AEC
+  attenuates; with the volume up or on external speakers, enough gets through for Azure to
+  transcribe cleanly. Software gating is the actual fix.
+- **The barge-in was conditional on a flag that lies.** All four voice surfaces held the same
+  `if (avatarMode === 'talking') stopTts()`, and `avatarMode` derives from TTS speaking state —
+  which **dips to false in the gap between utterances of one reply** (`SPEAKING_SETTLE_MS` is 350ms;
+  the per-sentence clip gaps fixed in the entry above regularly exceeded it). A press landing in
+  one of those gaps did not barge in, and the remainder of the reply played straight into an open
+  mic. `useVoiceInput.start()` now calls `stopTts()` **unconditionally**, and the four pages' copies
+  of the branch are gone — stopping speech that isn't playing costs nothing.
+- **Results heard over the character's voice are now dropped, not buffered.** That covers what the
+  barge-in cannot: a mic already open (pressed during the "Thinking…" beat) when the reply starts
+  speaking. `isSpeechAudibleWithin(graceMs)` is new in `tts.ts`; the 600ms trailing window past the
+  last audio exists because recognition reports a phrase a beat *after* it was heard, so a guard
+  ending the instant the speaker goes quiet still lets the tail of an echoed line through. A
+  barge-in zeroes `lastSpeechEndedAt` (`resetSpeakingState`) — otherwise the guard would swallow
+  the start of the very utterance the barge-in made room for. The drop happens **before**
+  `partialRef` is cleared, so a phrase that finalizes mid-echo keeps the learner's clean prefix
+  rather than being replaced by the echoed version of itself.
+- **Deliberately NOT done: comparing the transcript against the character's last line.** The
+  icebreaker drill asks the learner to repeat the word the character has this second pronounced, so
+  text similarity cannot tell an echo from the exercise working. Anyone reaching for that heuristic
+  later: it breaks the core exercise.
+- Known residual, accepted: a barge-in cuts the audio at the speaker but the few tens of ms already
+  in the output buffer can still be captured. That is a partial syllable at the head of a phrase,
+  not a whole turn, and guarding it would cost the learner the first 600ms after every press.
+- `components/roleplay/AvatarMicOverlay.tsx` is still unreferenced dead code (the live mic UI is
+  inline in the four pages); its barge-in branch was updated for consistency, not because it runs.
+- Verified: `npx tsc --noEmit` clean · `npm test` 65/65 · `eslint` clean on the touched lines (the
+  findings in the two session pages, `useVoiceInput.ts:174`, `tryout/avatar/page.tsx:111` and
+  `AvatarMicOverlay.tsx:32` are pre-existing, all on untouched lines). **Not verified against live
+  audio** — this path has no DOM-free seam to unit-test, so the gate needs a real session with the
+  speakers up to confirm.
