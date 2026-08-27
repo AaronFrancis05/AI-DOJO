@@ -8,6 +8,7 @@ import {
   DEFAULT_INTERVIEWER_AVATAR_ID,
   isKnownInterviewerAvatarId,
 } from '@/lib/interview/persona';
+import { tutorLanguageError } from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';
 
@@ -95,6 +96,7 @@ export async function GET(req: Request) {
       unitId: r.assessment.unitId,
       unitTitle: r.unitTitle,
       targetLanguage: r.assessment.targetLanguage,
+      instructionLanguage: r.assessment.instructionLanguage,
       scheduledAt: r.assessment.scheduledAt,
       durationMinutes: r.assessment.durationMinutes,
       minutesPerLearner: r.assessment.minutesPerLearner,
@@ -144,6 +146,9 @@ export async function POST(req: Request) {
   const title = String(body.title ?? '').trim().slice(0, 150);
   const description = body.description ? String(body.description).slice(0, 2000) : null;
   const targetLanguage = String(body.targetLanguage ?? '').trim();
+  const instructionLanguage = body.instructionLanguage
+    ? String(body.instructionLanguage).trim()
+    : null;
   const durationMinutes = Number(body.durationMinutes ?? 60);
   const minutesPerLearner = Number(body.minutesPerLearner ?? 10);
   const courseId = body.courseId != null ? Number(body.courseId) : null;
@@ -157,6 +162,12 @@ export async function POST(req: Request) {
 
   if (!title || !targetLanguage) {
     return Response.json({ error: 'title and targetLanguage are required' }, { status: 400 });
+  }
+  // Same rule as /api/classes, from the same helper — a tutor may only examine
+  // in a pair they hold. It also reaches the AI examiner's locked brief.
+  const languageError = tutorLanguageError(tutorProfile, targetLanguage, instructionLanguage);
+  if (languageError) {
+    return Response.json({ error: languageError }, { status: 400 });
   }
   if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
     return Response.json({ error: 'scheduledAt must be a future date' }, { status: 400 });
@@ -180,6 +191,7 @@ export async function POST(req: Request) {
       title,
       description,
       targetLanguage,
+      instructionLanguage,
       scheduledAt,
       durationMinutes,
       minutesPerLearner,

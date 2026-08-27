@@ -78,6 +78,13 @@ export async function loadAssessmentForUser(assessmentId: number, userId: string
       assessment: assessmentSessions,
       tutorUserId: tutors.userId,
       tutorName: users.name,
+      // The tutor's two language sets, so a caller changing the instruction
+      // language can check it against what this tutor actually holds without a
+      // second round trip. Shaped for tutorLanguageSets()/tutorLanguageError().
+      tutor: {
+        languages: tutors.languages,
+        instructionLanguages: tutors.instructionLanguages,
+      },
     })
     .from(assessmentSessions)
     .innerJoin(tutors, eq(assessmentSessions.tutorId, tutors.id))

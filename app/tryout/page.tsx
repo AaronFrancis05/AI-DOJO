@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Volume2, User, ArrowLeft } from 'lucide-react';
-import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
 import { saveTryoutParams, loadTryoutParams } from '@/lib/tryout/guest-params';
 import { useTryoutGate } from '@/lib/hooks/useTryoutGate';
 import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
@@ -19,6 +19,7 @@ export default function TryoutChooserPage() {
 }
 
 function TryoutChooserContent() {
+  const catalog = useLanguageCatalog();
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryTarget = searchParams.get('targetLanguage');
@@ -61,8 +62,8 @@ function TryoutChooserContent() {
     );
   }
 
-  const targetLangName = TARGET_LANGUAGES.find((l) => l.code === targetLanguage)?.name ?? targetLanguage;
-  const nativeLangName = NATIVE_LANGUAGES.find((l) => l.code === nativeLanguage)?.name ?? nativeLanguage;
+  const targetLangName = catalog.target.find((l) => l.code === targetLanguage)?.name ?? targetLanguage;
+  const nativeLangName = catalog.native.find((l) => l.code === nativeLanguage)?.name ?? nativeLanguage;
 
   const qs = `targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`;
   const modes = [

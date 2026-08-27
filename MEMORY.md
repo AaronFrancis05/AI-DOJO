@@ -662,3 +662,117 @@ as chaotic.
   `AvatarMicOverlay.tsx:32` are pre-existing, all on untouched lines). **Not verified against live
   audio** — this path has no DOM-free seam to unit-test, so the gate needs a real session with the
   speakers up to confirm.
+
+## 2026-08-27 (cont.) — Tutors were being onboarded, and navigated, as learners
+
+A tutor who signed up at `/auth/tutor` landed in the **learner** wizard and then in the
+**learner** app shell. Both halves are fixed; neither needed a schema change.
+
+- **The `(app)` gate had one destination.** `app/(app)/layout.tsx` redirected every account with
+  `onboardingCompletedAt === null` to `/onboarding/level`, so a brand-new tutor was asked for a
+  level, a learning goal, a domain to practise in, a practice mode and a daily practice target —
+  five answers no teaching surface reads. It now branches on the role: `tutor` →
+  `/onboarding/tutor/welcome`.
+- **New wizard: `/onboarding/tutor/[step]`** (welcome → native-language → availability → ready),
+  a server component gated on the role the way `/tutor` is; a learner who finds the URL is sent to
+  `/onboarding/level` rather than allowed to finish onboarding without answering a learner
+  question. Steps live beside the learner's in `lib/onboarding/steps.ts`; answers ride the same
+  persisted `OnboardingContext`.
+- **It deliberately does not re-ask for the teaching profile.** Headline, bio, languages taught,
+  timezone and rate are written once by `POST /api/tutors/apply`. The wizard covers only the gap:
+  the tutor's own language, and their bookable hours.
+- **`ready` must not navigate on failure** — the gate reads `onboardingCompletedAt`, so a push to
+  `/tutor` without it bounces straight back into the wizard. It shows the error with a retry.
+- **`POST /api/user/onboarding` now skips `enrollInCourse` + `seedLessonPlan` for a tutor.** They
+  have no course to be enrolled in, and seeding one wrote 14 days of lesson reminders for a
+  curriculum they never chose onto their calendar. `admin` keeps the learner path.
+- **The sidebar is two navs, not one with an extra row.** A tutor gets Teaching, Messages,
+  Calendar, Settings; Hub/Courses/Review/Sessions/Progress/Leaderboard/Tutors are all views of
+  someone's own practice. The footer's level/XP bar — which read `0 / 1000 XP` forever for a
+  tutor — is replaced by their verification standing (`user.tutorStatus`, fetched in the layout
+  only when the role is `tutor`). `admin` keeps the learner nav plus both consoles.
+- **`/home` redirects a tutor to `/tutor`** (`app/(app)/home/layout.tsx`). It is the default
+  destination of `/auth` and the fallback of every failed role check, so the nav alone would not
+  have kept a tutor off the learner dashboard.
+- `AvailabilityEditor` was lifted out of `TutorConsole` into `components/tutors/` — the wizard and
+  the console now edit hours through one component and one endpoint. `OnboardingShell` takes its
+  wizard (`steps`/`basePath`/`exitHref`, defaulting to the learner one) instead of hardcoding two
+  copies of the step list.
+- Verified: `npx tsc --noEmit` clean · `npm run build` clean (both `/onboarding/tutor` and
+  `/onboarding/tutor/[step]` register alongside `/onboarding/[step]`) · `eslint` clean on the
+  touched files. **Not verified against a live sign-up** — needs a fresh `/auth/tutor` account to
+  walk the gate end to end.
+
+## 2026-08-27 (cont.) — The admin console became the way the product is run
+
+Stage 3 gave `users.role` an admin who could verify tutors, flip roles and publish courses.
+Everything else an operator needs — who may sign in, what languages exist, what the hub lists,
+what a course contains — was reachable only from `psql`. Seven tabs now: Overview, Users, Tutors,
+Courses, Curriculum, Catalogue, Languages.
+
+- **Access revocation lives in `getAuthUser()`, not in the UI.** Every API route funnels through
+  it, so a suspended or soft-deleted account stops being able to *do* anything the moment the
+  column flips, rather than at the next full reload. Hiding the nav would have left every endpoint
+  open to a saved URL or a stale tab. It **fails open on a DB error** deliberately: suspension is
+  an administrative action on a handful of accounts, not a boundary against a compromised
+  database, and an outage must not sign the whole product out. `/auth/suspended` is the page-side
+  half — redirecting to `/auth` would be a loop, because the credentials still work and it is
+  `getAuthUser()` that refuses them. That page reads the row through `getAuthUserReadOnly`, since
+  `getAuthUser()` returns null for exactly the accounts it exists to serve.
+- **Removal is three decisions, not one.** Suspend is reversible and carries a reason the person
+  is shown; Close anonymises but keeps sessions, grades and class enrolments so *other people's*
+  records survive; Purge is permanent, typed-email-confirmed, and reports the counts it took —
+  it rewrites other people's rosters and grade history, which is why it is guarded rather than a
+  second Delete button.
+- **"Add account" pre-provisions the `users` row and nothing else.** Neon Auth owns credentials:
+  no mail is sent, no password is set, and the person claims the row by signing up with that
+  address. The form says so in as many words. The failure mode of the polite phrasing is an admin
+  waiting on a delivery that was never attempted.
+- **`POST /api/domains/create-custom` is now admin-only, which narrows a shipped learner
+  feature.** It writes `domains` + `situations` + `scenarios` — the **shared** catalogue every
+  learner's hub lists — so a learner inventing a scenario for themselves was publishing it to
+  everyone, with an LLM-generated vocab list and no review. `displayOrder = 999` only kept it
+  last, not out of sight. The hub card is hidden for non-admins so the button does not 404, but
+  the route is the gate. Anyone restoring per-learner custom practice: it needs an owned-and-
+  private shape (an `ownerUserId` on the domain, or a scenario built for one session and never
+  listed), not this endpoint reopened.
+- **One `EntityTree` drives both content tabs.** `courses → levels → units → lessons → phases`
+  and `domains → situations → scenarios` are the same interaction, and the two routes behind them
+  are already one implementation each over a validated path segment. Its `TreeLevel.fields` are
+  **presentation only** — labels and widgets; what may be written is the routes' column
+  whitelists, and no config can widen that.
+- **A blank optional value is omitted rather than sent.** Both routes coerce numbers through
+  `Number()`, so an empty string arrives as `0` — which for `sequenceOrder` is a silent reorder
+  and, being half of a unique index, a collision on the next sibling. `nullable: true` is the
+  opt-in for "blank clears the column".
+- **The three FK graphs differ and the difference is invisible from the button**, so every delete
+  counts first: curriculum cascades (a course takes its levels, units, lessons *and every
+  learner's progress through them*), `situations → scenarios` is `set null` so scenarios survive
+  **orphaned**, and `scenarios → sessions` has no action at all — Postgres refuses outright. A 409
+  carrying `archivable` means a `force` retry exists and the console asks with the count; a 409
+  without it is a hard refusal and is reported, never retried. `AdminApiError` exists only so the
+  409 body survives the throw.
+- **Languages are not foreign keys.** `users.preferred_target_language`, `sessions.target_language`
+  and friends are plain `varchar`, so Postgres would happily let a language in use be deleted —
+  and `getTargetLangConfig` would then fall back to the first row in the catalogue, quietly
+  changing every affected learner's target language. Hence: built-in rows refuse outright (seeding
+  would restore them), in-use rows refuse with the count, and two independent enable flags make
+  disabling the reversible move.
+- **Catalogue writes invalidate the cache.** Those rows sit on a 3600s TTL taken out under the
+  assumption that "scenarios never change"; now that an admin can change them, an un-invalidated
+  edit would appear to do nothing for an hour. `domains.situationCount` is denormalised and read
+  by the hub listing, so it is recomputed on every situation create/delete — nothing else does.
+- **Loading and edit-state resets belong to the event handler, not the loader effect.** A
+  synchronous `setState` in an effect body cascades a render and is a `react-hooks/
+  set-state-in-effect` error under this repo's config; both new list panels reset through the
+  action that refetches instead.
+- Deliberately **not** resolved: `/api/admin/courses` and the Curriculum tab's `courses` entity
+  both write `courses.isActive`. Settled by convention — the publish toggle lives only on the
+  Courses tab, and `EntityTree`'s archive toggle is left off the course level — rather than by
+  deleting a shipped endpoint. Worth collapsing if a third writer ever appears.
+- Verified: `npx tsc --noEmit` clean · `npm test` **84/84** · `npm run build` compiles with
+  `/admin` and all ten `/api/admin/*` routes registered · `npx eslint` zero errors on every
+  touched file (the `<img>` warning in `app/(app)/hub/page.tsx:90` is pre-existing, on an
+  untouched line). **Not verified against a live admin account** — the suite has no database, so
+  every guard above is argued from the schema and the route code, not exercised. The Stage 5
+  block in `PLAN.md` lists the seven things to drive by hand.

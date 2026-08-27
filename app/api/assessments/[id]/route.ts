@@ -4,6 +4,7 @@ import { assessmentSessions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
 import { loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
+import { tutorLanguageError } from '@/lib/tutors/languages';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
@@ -106,6 +107,7 @@ export async function PATCH(
   let body: {
     status?: unknown;
     examiner?: unknown;
+    instructionLanguage?: unknown;
     aiInterviewerAvatarId?: unknown;
     aiInterviewerBrief?: unknown;
   };
@@ -134,6 +136,20 @@ export async function PATCH(
     if (examiner === 'ai' && !found.assessment.aiInterviewerAvatarId) {
       patch.aiInterviewerAvatarId = DEFAULT_INTERVIEWER_AVATAR_ID;
     }
+  }
+
+  // Editable after creation for the same reason `examiner` is: a tutor handing
+  // the room to the AI examiner may also be handing it to a different cohort,
+  // and the brief is built from this at token time.
+  if (body.instructionLanguage !== undefined) {
+    const code = body.instructionLanguage ? String(body.instructionLanguage).trim() : null;
+    const languageError = tutorLanguageError(
+      found.tutor,
+      found.assessment.targetLanguage,
+      code,
+    );
+    if (languageError) return Response.json({ error: languageError }, { status: 400 });
+    patch.instructionLanguage = code;
   }
 
   if (body.aiInterviewerAvatarId !== undefined) {

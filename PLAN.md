@@ -8,6 +8,7 @@ Approved 2026-08-26. Binding conventions: `AGENTS.md`, `ui-registry.md`, `PRODUC
 | 2 | Voice latency + the Japanese bow | ✅ **Complete** (2026-08-26) — pending live-audio check |
 | 3 | Tryout gate, onboarding, user roles | ✅ **Complete** (2026-08-26) |
 | 4 | Live classroom, assessment room, tutor console, grades | ✅ **Complete** (2026-08-26) — pending a two-browser call check |
+| 5 | Admin console: accounts, access, and the whole content tree | ✅ **Complete** (2026-08-27) — pending a live pass with a real admin account |
 
 ---
 
@@ -524,7 +525,109 @@ Separately, **`npm run db:migrate` cannot select any migration after 0020** — 
 watermark. `0041` was applied through the script's own logic against that one file; the journal
 itself still needs correcting.
 
+---
+
+## ✅ Stage 5 — Admin console: accounts, access, and the whole content tree (COMPLETE)
+
+Stage 3 added `users.role` and an admin who could verify tutors, flip roles, and publish
+courses. That is a role, not an operator: everything else — who may sign in, what languages
+exist, what the hub lists, what a course contains — was reachable only from `psql` or a seed
+script. Stage 5 makes the console the way the product is actually run.
+
+**Seven tabs behind one shell.** `components/admin/AdminConsole.tsx` owns the tab set and the
+single error banner every panel reports into. One panel per file, each talking to its own
+`/api/admin/*` route, and **every one of those re-checks `requireRole('admin')`** — what the
+console renders is convenience, never the gate.
+
+| Tab | What it is for |
+|---|---|
+| Overview | Ten counts in one round trip; figures that want acting on name the tab that acts on them |
+| Users | Search/filter, role change, suspend, soft-delete, guarded purge, pre-provision an account |
+| Tutors | Verify/reject, accepting-bookings, and full profile editing including both language sets |
+| Courses | The publish board — the only place `courses.isActive` is written |
+| Curriculum | `courses → levels → units → lessons → phases` |
+| Catalogue | `domains → situations → scenarios` |
+| Languages | The speech catalogue: BCP47 tags, Azure voices, and the two enable flags |
+
+- [x] **Access revocation is enforced in `getAuthUser()`, with authorisation — not in the UI.**
+      Every API route funnels through it, so a suspended or soft-deleted account stops being able
+      to do anything the moment an admin flips the column, rather than at the next full reload.
+      Hiding the nav would have left every endpoint open to a saved URL or a stale tab. It
+      **fails open on a DB error** on purpose: suspension is an administrative action on a handful
+      of accounts, not a security boundary against a compromised database, and an outage must not
+      sign the whole product out. The page-side half is `/auth/suspended` — bouncing someone to a
+      sign-in page they *can* sign into is a loop with no explanation in it.
+- [x] **Three grades of removal, because they are three different decisions.** Suspend is
+      reversible and carries a reason the person is shown. Close (soft-delete) anonymises the
+      account and keeps its sessions, grades and class enrolments, so *other people's* records
+      stay intact. Purge is permanent, typed-email-confirmed, and reports what went with it —
+      it changes other people's rosters and grade history, which is exactly why it is guarded
+      rather than a second Delete button.
+- [x] **"Add account" pre-provisions the `users` row only.** Neon Auth owns credentials, so
+      nothing is emailed and no password is set; the person claims the row by signing up with
+      that email and lands straight in the role chosen for them. **The form says this in so many
+      words** rather than implying an invitation was sent — the failure mode of the alternative
+      is an admin waiting for a delivery that was never attempted.
+- [x] **One drill-down editor, two content tabs.** `EntityTree` is configured by a `TreeLevel[]`;
+      `CurriculumPanel` and `CataloguePanel` are the two configurations. Its field descriptors are
+      *presentation only* — what may be written is decided server-side by the routes' column
+      whitelists, and nothing in a config can widen that.
+- [x] **Every destructive call counts first and says the number.** The FK graphs differ and the
+      difference is invisible from the button: curriculum cascades (deleting a course takes its
+      levels, units, lessons *and every learner's progress through them*), `situations → scenarios`
+      is `set null` (scenarios survive **orphaned**), and `scenarios → sessions` has no action at
+      all, so Postgres refuses outright. A 409 carrying `archivable` means a `force` retry exists
+      and the console asks; a 409 without it is a hard refusal and is reported, not retried.
+- [x] **A language cannot be deleted while anything points at it.** Those columns are plain
+      `varchar`, not foreign keys — Postgres would allow it, and `getTargetLangConfig` would then
+      silently fall back to the first row in the catalogue, quietly changing every affected
+      learner's target language. Built-in rows refuse outright, since seeding would restore them;
+      disabling is the reversible move, which is why there are two independent enable flags.
+- [x] **`POST /api/domains/create-custom` is now `requireRole('admin')`.** It writes `domains` +
+      `situations` + `scenarios` — the **shared** catalogue every learner's hub lists — so a
+      learner inventing a scenario for themselves was publishing it to everyone, with an
+      LLM-generated vocabulary list and no review; `displayOrder = 999` only kept it last, not out
+      of sight. The hub's "Create Custom" card is hidden for non-admins so the button does not
+      404, but the route is the gate. **This is a narrowing of an existing learner feature**: if
+      per-learner custom practice returns it needs an owned-and-private shape (an `ownerUserId` on
+      the domain, or a scenario built for one session and never listed), not this endpoint
+      reopened.
+- [x] **Catalogue writes invalidate the cache.** These rows are cached for an hour on
+      `lib/cache.ts`'s assumption that "scenarios never change". Now that an admin can change
+      them, an edit that did not invalidate would appear to do nothing for an hour.
+      `domains.situationCount` is denormalised and read by the hub listing, so it is recomputed on
+      every situation create/delete — nothing else maintains it.
+- [x] Verified: `npx tsc --noEmit` clean · `npm test` **84/84** (was 57) · `npm run build`
+      compiles, `/admin` and all ten `/api/admin/*` routes register · `npx eslint` leaves zero
+      errors on every file this stage touched.
+
+**Known, still open:** the console has **not** been driven against a live admin account — see
+the Stage 5 block under Verification. And `/api/admin/courses` overlaps the Curriculum tab's
+`courses` entity by one column; the console resolves that by convention (the archive toggle is
+left off the course level) rather than by deleting one of the two write paths.
+
 ## Verification
+
+**Stage 5** — needs a signed-in account with `users.role = 'admin'`; none of the below is
+covered by the suite, which has no DB.
+
+1. `/admin` renders seven tabs; the same URL as a learner lands on `/home`.
+2. Suspend a second account from Users. That tab, already open, must stop being able to act —
+   its next request 401s — and a reload lands on `/auth/suspended` **showing the reason typed
+   into the prompt**. Restore, and it works again without signing out.
+3. Add an account for an address that has never signed up, then sign up with it: the wizard
+   must land in the role chosen, and **no email is sent** — that is the intended behaviour, not
+   a mail failure.
+4. Curriculum: create a course, walk to Levels, add two, move one up (confirm `sequence_order`
+   actually swapped rather than colliding), then delete the course and confirm the console asks
+   with the child count before it goes.
+5. Catalogue: try to delete a scenario that has a session against it — it must refuse with the
+   count, not 500. Edit a domain's name and confirm `/hub` shows it **immediately**, not an hour
+   later.
+6. Languages: add one with real Azure voices, enable it as a target, and start a session in it.
+   Then try to delete it — it must refuse, naming the account now using it.
+7. `/hub` as a learner: no "Create Custom" card. `curl -X POST /api/domains/create-custom` with
+   that learner's cookies must 404.
 
 **Stage 1** — `npm run dev`, then play one Japanese lesson end to end from
 `/courses/survival-uganda`:

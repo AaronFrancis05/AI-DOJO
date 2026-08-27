@@ -2,6 +2,7 @@ import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { desc, eq } from 'drizzle-orm';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
+import { tutorLanguageSets } from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';
 
@@ -25,6 +26,7 @@ export async function GET() {
       headline: tutors.headline,
       bio: tutors.bio,
       languages: tutors.languages,
+      instructionLanguages: tutors.instructionLanguages,
       hourlyRateCents: tutors.hourlyRateCents,
       currency: tutors.currency,
       timezone: tutors.timezone,
@@ -34,6 +36,7 @@ export async function GET() {
       name: users.name,
       email: users.email,
       role: users.role,
+      accountStatus: users.status,
     })
     .from(tutors)
     .innerJoin(users, eq(tutors.userId, users.id))
@@ -41,9 +44,9 @@ export async function GET() {
 
   return Response.json({
     success: true,
-    tutors: rows.map((t) => ({
-      ...t,
-      languages: t.languages.split(',').map((s) => s.trim()).filter(Boolean),
-    })),
+    tutors: rows.map((t) => {
+      const { teaches, explainsIn } = tutorLanguageSets(t);
+      return { ...t, languages: teaches, instructionLanguages: explainsIn };
+    }),
   });
 }

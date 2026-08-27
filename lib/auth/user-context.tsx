@@ -12,6 +12,10 @@ export interface UserContextValue {
    *  Never the authority for access: every tutor/admin route re-checks it
    *  server-side through requireRole(). */
   role: UserRole;
+  /** `tutors.verification_status` for a tutor account, null for anyone else.
+   *  Display only — what a pending tutor is allowed to do is decided by the
+   *  routes that read the column themselves. */
+  tutorStatus?: string | null;
   tier: 'free' | 'premium';
   xp: number;
   xpToNext: number;

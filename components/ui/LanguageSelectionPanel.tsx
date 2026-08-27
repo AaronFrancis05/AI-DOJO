@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { TARGET_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
 import { Search, CheckCircle2 } from 'lucide-react';
 
 export interface LanguageOption {
@@ -25,14 +25,19 @@ interface LanguageSelectionPanelProps {
 export function LanguageSelectionPanel({
   value,
   onSelect,
-  options = TARGET_LANGUAGES,
+  options,
   searchPlaceholder = 'Search languages...',
   maxHeightClass = 'max-h-96',
   showBadges = true,
 }: LanguageSelectionPanelProps) {
+  const catalog = useLanguageCatalog();
   const [query, setQuery] = useState('');
 
-  const filtered = options.filter((l) => {
+  // Resolved here rather than as a default parameter — the catalogue comes
+  // from a hook, and a default parameter cannot call one.
+  const resolved = options ?? catalog.target;
+
+  const filtered = resolved.filter((l) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (

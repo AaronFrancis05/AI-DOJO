@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { TARGET_LANGUAGES, NATIVE_LANGUAGES, getNativeLangName } from '@/lib/language';
+import { getNativeLangName } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
 import { ChevronDown, Check } from 'lucide-react';
 
 interface LanguagePickerProps {
@@ -79,6 +80,8 @@ function Selector({
 }
 
 export function LanguagePicker({ targetLanguage, nativeLanguage, onTargetChange, onNativeChange }: LanguagePickerProps) {
+  const catalog = useLanguageCatalog();
+
   return (
     <div className="space-y-4">
       <div>
@@ -89,13 +92,13 @@ export function LanguagePicker({ targetLanguage, nativeLanguage, onTargetChange,
         <Selector
           label="Target Language"
           value={targetLanguage}
-          options={TARGET_LANGUAGES}
+          options={catalog.target}
           onChange={onTargetChange}
         />
         <Selector
           label="Native Language"
           value={nativeLanguage}
-          options={NATIVE_LANGUAGES}
+          options={catalog.native}
           onChange={onNativeChange}
         />
       </div>

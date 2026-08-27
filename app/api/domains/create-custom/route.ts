@@ -1,6 +1,6 @@
 import { db } from '../../../../src/db';
-import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters, userPreferences } from '../../../../src/schema';
-import { getAuthUser } from '../../../../lib/auth/server';
+import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters } from '../../../../src/schema';
+import { requireRole, roleErrorResponse } from '../../../../lib/auth/server';
 import { getAIProvider } from '../../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../../lib/language';
 import { eq, and, count } from 'drizzle-orm';
@@ -15,10 +15,27 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'custom';
 }
 
+/**
+ * Builds a one-off domain + situation + scenario and starts a session in it.
+ *
+ * Admin-only, which is a narrowing: it used to accept any signed-in learner.
+ * The rows it writes are not private to the caller — `domains`, `situations`
+ * and `scenarios` are the *shared* catalogue every learner's hub lists and the
+ * Catalogue tab curates. A learner inventing a scenario for themselves was
+ * therefore publishing it to everyone, with an LLM-generated vocabulary list
+ * and no review, and `domains.displayOrder = 999` only kept it last rather than
+ * out of sight.
+ *
+ * If per-learner custom practice comes back, it needs its own owned-and-private
+ * shape (an `ownerUserId` on the domain, or a scenario built for one session and
+ * never listed) rather than this endpoint reopened.
+ */
 export async function POST(req: Request) {
-  const user = await getAuthUser();
-  if (!user) {
-    return Response.json({ error: 'Not authenticated' }, { status: 401 });
+  let user;
+  try {
+    ({ user } = await requireRole('admin'));
+  } catch (err) {
+    return roleErrorResponse(err);
   }
 
   const body = await req.json();

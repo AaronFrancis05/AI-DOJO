@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
 import type { CharacterFixture } from '@/lib/mock-data/characters';
 
 interface VocabItem {
@@ -15,6 +15,7 @@ interface VocabItem {
 
 export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
+  const catalog = useLanguageCatalog();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterFixture[]>([]);
@@ -161,13 +162,13 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
             <div>
               <label className={labelCls}>Target Language</label>
               <select value={targetLanguage} onChange={e => setTargetLanguage(e.target.value)} className={inputCls}>
-                {TARGET_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
+                {catalog.target.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
               </select>
             </div>
             <div>
               <label className={labelCls}>Native Language</label>
               <select value={nativeLanguage} onChange={e => setNativeLanguage(e.target.value)} className={inputCls}>
-                {NATIVE_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
+                {catalog.native.map(l => <option key={l.code} value={l.code}>{l.nativeName} ({l.name})</option>)}
               </select>
             </div>
           </div>

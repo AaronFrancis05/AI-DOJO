@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth/server';
+import { toUserRole } from '@/lib/auth/roles';
 import { db } from '@/src/db';
 import { users, countries, studentProgress } from '@/src/schema';
 import { and, eq } from 'drizzle-orm';
@@ -55,13 +56,20 @@ export async function POST(req: NextRequest) {
       level: users.level,
       preferredTargetLanguage: users.preferredTargetLanguage,
       nativeLanguage: users.nativeLanguage,
+      role: users.role,
     })
     .from(users)
     .where(eq(users.id, authUser.id))
     .limit(1);
 
+  // A tutor finishes onboarding through the tutor wizard, which asks for a
+  // language to be taught *in*, not one to learn. Enrolling them in a course
+  // and seeding a lesson plan off it would put a curriculum they never chose
+  // on their calendar. Admins keep the learner path — they are learners too.
+  const isTutor = toUserRole(saved?.role) === 'tutor';
+
   let enrollment: Awaited<ReturnType<typeof enrollInCourse>> = null;
-  if (saved) {
+  if (saved && !isTutor) {
     try {
       enrollment = await enrollInCourse({
         userId: authUser.id,

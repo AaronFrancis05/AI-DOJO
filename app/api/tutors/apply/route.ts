@@ -2,7 +2,11 @@ import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
-import { TARGET_LANGUAGES } from '@/lib/language';
+import {
+  parseLanguageCodes,
+  serializeLanguageCodes,
+  unknownLanguageCodes,
+} from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';
 
@@ -39,10 +43,19 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid body' }, { status: 400 });
   }
 
-  const { headline, bio, languages, timezone, hourlyRateCents, currency } = body as {
+  const {
+    headline,
+    bio,
+    languages,
+    instructionLanguages,
+    timezone,
+    hourlyRateCents,
+    currency,
+  } = body as {
     headline?: unknown;
     bio?: unknown;
     languages?: unknown;
+    instructionLanguages?: unknown;
     timezone?: unknown;
     hourlyRateCents?: unknown;
     currency?: unknown;
@@ -55,16 +68,33 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Headline must be 160 characters or fewer' }, { status: 400 });
   }
 
-  const known = new Set(TARGET_LANGUAGES.map((l) => l.code));
-  const codes = Array.isArray(languages)
-    ? [...new Set(languages.filter((l): l is string => typeof l === 'string').map((l) => l.trim()))]
-    : [];
-  const unknown = codes.filter((c) => !known.has(c));
+  // The two sets are validated against opposite sides of the catalogue: a
+  // language can be teachable, explainable, or both, and an admin decides which.
+  const codes = parseLanguageCodes(languages);
   if (codes.length === 0) {
     return Response.json({ error: 'Select at least one language you teach' }, { status: 400 });
   }
-  if (unknown.length > 0) {
-    return Response.json({ error: `Unsupported language: ${unknown.join(', ')}` }, { status: 400 });
+  const unknownTaught = await unknownLanguageCodes(codes, 'target');
+  if (unknownTaught.length > 0) {
+    return Response.json(
+      { error: `Unsupported language: ${unknownTaught.join(', ')}` },
+      { status: 400 },
+    );
+  }
+
+  const instructionCodes = parseLanguageCodes(instructionLanguages);
+  if (instructionCodes.length === 0) {
+    return Response.json(
+      { error: 'Select at least one language you can explain in' },
+      { status: 400 },
+    );
+  }
+  const unknownInstruction = await unknownLanguageCodes(instructionCodes, 'native');
+  if (unknownInstruction.length > 0) {
+    return Response.json(
+      { error: `Unsupported explanation language: ${unknownInstruction.join(', ')}` },
+      { status: 400 },
+    );
   }
 
   if (typeof timezone !== 'string' || !isValidTimeZone(timezone)) {
@@ -88,7 +118,8 @@ export async function POST(req: Request) {
       headline: headline.trim(),
       bio: typeof bio === 'string' && bio.trim() ? bio.trim() : null,
       // Stored comma-separated, matching the existing denormalized shape.
-      languages: codes.join(','),
+      languages: serializeLanguageCodes(codes),
+      instructionLanguages: serializeLanguageCodes(instructionCodes),
       hourlyRateCents: rate,
       currency: typeof currency === 'string' && currency.length === 3 ? currency.toUpperCase() : 'USD',
       timezone,

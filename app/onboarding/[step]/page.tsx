@@ -14,7 +14,7 @@ import {
 } from '@/lib/onboarding/steps';
 import { SingleSelectStep, InterstitialStep, OnboardingShell } from '@/components/onboarding';
 import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
-import { NATIVE_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
 import { Sparkles, MessageSquare, Mic, User, BookOpen, Clock, CheckCircle2, LoaderIcon } from 'lucide-react';
 import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
@@ -26,6 +26,7 @@ export default function OnboardingStepPage() {
   const router = useRouter();
   const step = params.step as string;
   const { state, dispatch } = useOnboarding();
+  const catalog = useLanguageCatalog();
   const [modeValue, setModeValue] = useState(state.preferredMode);
   const [saving, setSaving] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
@@ -318,7 +319,7 @@ export default function OnboardingStepPage() {
         </div>
         <LanguageSelectionPanel
           value={state.nativeLanguage}
-          options={NATIVE_LANGUAGES}
+          options={catalog.native}
           searchPlaceholder="Search your native language..."
           onSelect={(code) => {
             dispatch({ type: 'SET_NATIVE_LANGUAGE', payload: code });

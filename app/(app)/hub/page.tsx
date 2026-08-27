@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { DomainFixture } from '@/lib/data/domains';
 import { CreateDomainDialog } from '@/components/CreateDomainDialog';
+import { useUser } from '@/lib/auth/user-context';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   UtensilsCrossed,
@@ -41,6 +42,10 @@ export default function HubPage() {
   const [domains, setDomains] = useState<DomainFixture[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  // A custom scenario writes into the *shared* catalogue, so the endpoint
+  // behind this card is admin-only. Hiding it is only to avoid offering a
+  // button that 404s — `POST /api/domains/create-custom` is the real gate.
+  const canCreate = useUser()?.role === 'admin';
 
   useEffect(() => {
     getDomains().then(({ data }) => {
@@ -118,25 +123,27 @@ export default function HubPage() {
           })}
 
           {/* ── Create Custom Card ── */}
-          <button onClick={() => setShowCreate(true)} className="block text-left w-full">
-            <Card className="group h-full !p-0 overflow-hidden border-2 border-dashed border-dojo-border hover:border-dojo-accent transition-all duration-300 cursor-pointer bg-dojo-surface/50 hover:bg-dojo-surface">
-              <div className="flex h-full min-h-[17rem] flex-col items-center justify-center gap-3 p-6">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-dojo-text-muted/40 transition-colors duration-300 group-hover:border-dojo-accent group-hover:bg-dojo-accent/10">
-                  <Plus className="h-8 w-8 text-dojo-text-muted/50 group-hover:text-dojo-accent transition-colors duration-300" />
+          {canCreate && (
+            <button onClick={() => setShowCreate(true)} className="block text-left w-full">
+              <Card className="group h-full !p-0 overflow-hidden border-2 border-dashed border-dojo-border hover:border-dojo-accent transition-all duration-300 cursor-pointer bg-dojo-surface/50 hover:bg-dojo-surface">
+                <div className="flex h-full min-h-[17rem] flex-col items-center justify-center gap-3 p-6">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-dojo-text-muted/40 transition-colors duration-300 group-hover:border-dojo-accent group-hover:bg-dojo-accent/10">
+                    <Plus className="h-8 w-8 text-dojo-text-muted/50 group-hover:text-dojo-accent transition-colors duration-300" />
+                  </div>
+                  <h3 className="text-base font-semibold text-dojo-text-muted group-hover:text-dojo-text-primary transition-colors duration-300">
+                    Create Custom
+                  </h3>
+                  <p className="text-xs text-dojo-text-muted/60 text-center leading-relaxed">
+                    Adds a domain to the shared catalogue
+                  </p>
                 </div>
-                <h3 className="text-base font-semibold text-dojo-text-muted group-hover:text-dojo-text-primary transition-colors duration-300">
-                  Create Custom
-                </h3>
-                <p className="text-xs text-dojo-text-muted/60 text-center leading-relaxed">
-                  Design your own scenario from scratch
-                </p>
-              </div>
-            </Card>
-          </button>
+              </Card>
+            </button>
+          )}
         </div>
       )}
 
-      <CreateDomainDialog open={showCreate} onClose={() => setShowCreate(false)} />
+      {canCreate && <CreateDomainDialog open={showCreate} onClose={() => setShowCreate(false)} />}
     </div>
   );
 }

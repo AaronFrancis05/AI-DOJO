@@ -12,14 +12,18 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
-import { Toggle } from '@/components/ui/Toggle';
+import { AvailabilityEditor } from '@/components/tutors/AvailabilityEditor';
+import { AnnouncementsPanel } from '@/components/tutors/AnnouncementsPanel';
+import { LearnersPanel } from '@/components/tutors/LearnersPanel';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
-import { TARGET_LANGUAGES, getTargetLangConfig } from '@/lib/language';
+import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
+import { useTutorProfile, type TutorProfile } from '@/lib/hooks/useTutorProfile';
 import { CLASS_DURATIONS_MINUTES, MAX_CLASS_CAPACITY } from '@/lib/tutors/config';
 import { interviewerChoices } from '@/lib/interview/persona';
 import { cn } from '@/lib/design-tokens';
-import { Bot, Calendar, Check, ClipboardCheck, Plus, Users, Video, Trash2 } from 'lucide-react';
+import { Bot, Calendar, Check, ClipboardCheck, Plus, Users, Video } from 'lucide-react';
 
 const INTERVIEWER_CHOICES = interviewerChoices();
 
@@ -37,6 +41,7 @@ interface ClassRow {
   id: number;
   title: string;
   targetLanguage: string;
+  instructionLanguage: string | null;
   scheduledAt: string;
   durationMinutes: number;
   capacity: number;
@@ -49,6 +54,7 @@ interface AssessmentRow {
   id: number;
   title: string;
   targetLanguage: string;
+  instructionLanguage: string | null;
   scheduledAt: string;
   durationMinutes: number;
   minutesPerLearner: number;
@@ -59,28 +65,23 @@ interface AssessmentRow {
   isTutor: boolean;
 }
 
-interface AvailabilitySlot {
-  id?: number;
-  dayOfWeek: number;
-  startMinute: number;
-  endMinute: number;
+/**
+ * "Japanese, explained in Luganda" — the pair a room is actually run in.
+ *
+ * The instruction language is omitted when there is none, which is the
+ * pre-existing behaviour: each learner reads in their own native language.
+ */
+function describeLanguagePair(targetLanguage: string, instructionLanguage: string | null): string {
+  const target = getTargetLangConfig(targetLanguage).name;
+  return instructionLanguage
+    ? `${target}, explained in ${getNativeLangName(instructionLanguage)}`
+    : target;
 }
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
-}
-
-function minutesToTime(minutes: number): string {
-  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-}
-
-function timeToMinutes(value: string): number {
-  const [h, m] = value.split(':').map(Number);
-  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
 
 /**
@@ -98,11 +99,39 @@ function localInputToIso(value: string): string | null {
 
 type RoomKind = 'class' | 'assessment';
 
-function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => void }) {
+function CreateRoomForm({
+  kind,
+  onCreated,
+  profile,
+}: {
+  kind: RoomKind;
+  onCreated: () => void;
+  profile: TutorProfile;
+}) {
   const user = useUser();
+  const catalog = useLanguageCatalog();
+  // Only what this tutor holds, intersected with what the admin still offers:
+  // a language they were approved for years ago may since have been disabled,
+  // and offering it here would just produce a 400 on submit.
+  const teachOptions = catalog.target.filter((l) => profile.languages.includes(l.code));
+  const explainOptions = catalog.native.filter((l) => profile.instructionLanguages.includes(l.code));
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [targetLanguage, setTargetLanguage] = useState(user?.preferredTargetLanguage ?? 'ja');
+  // Their own preferred language when they actually teach it, otherwise the
+  // first one they do — never a language they cannot teach.
+  const [targetLanguage, setTargetLanguage] = useState(
+    () =>
+      (user?.preferredTargetLanguage && profile.languages.includes(user.preferredTargetLanguage)
+        ? user.preferredTargetLanguage
+        : teachOptions[0]?.code) ?? '',
+  );
+  const [instructionLanguage, setInstructionLanguage] = useState(
+    () =>
+      (user?.nativeLanguage && profile.instructionLanguages.includes(user.nativeLanguage)
+        ? user.nativeLanguage
+        : explainOptions[0]?.code) ?? '',
+  );
   const [scheduledAt, setScheduledAt] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [capacity, setCapacity] = useState(12);
@@ -118,6 +147,8 @@ function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => 
     const iso = localInputToIso(scheduledAt);
     if (!title.trim()) return setError('Give it a title.');
     if (!iso) return setError('Pick a date and time.');
+    if (!targetLanguage) return setError('Pick the language you are teaching.');
+    if (!instructionLanguage) return setError('Pick the language you will explain in.');
 
     setSaving(true);
     try {
@@ -129,6 +160,7 @@ function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => 
           title: title.trim(),
           description: description.trim() || null,
           targetLanguage,
+          instructionLanguage,
           scheduledAt: iso,
           durationMinutes,
           ...(kind === 'class'
@@ -153,7 +185,7 @@ function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => 
     } finally {
       setSaving(false);
     }
-  }, [kind, title, description, targetLanguage, scheduledAt, durationMinutes, capacity, minutesPerLearner, examiner, interviewerAvatarId, interviewerBrief, onCreated]);
+  }, [kind, title, description, targetLanguage, instructionLanguage, scheduledAt, durationMinutes, capacity, minutesPerLearner, examiner, interviewerAvatarId, interviewerBrief, onCreated]);
 
   const inputClass =
     'w-full rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none';
@@ -201,7 +233,7 @@ function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor={`${kind}-lang`} className="mb-2 block text-sm text-dojo-text-primary">
-              Language
+              Language taught
             </label>
             <select
               id={`${kind}-lang`}
@@ -209,10 +241,30 @@ function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => 
               onChange={(e) => setTargetLanguage(e.target.value)}
               className={inputClass}
             >
-              {TARGET_LANGUAGES.map((l) => (
+              {teachOptions.map((l) => (
                 <option key={l.code} value={l.code}>{l.flag} {l.name}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label htmlFor={`${kind}-instr`} className="mb-2 block text-sm text-dojo-text-primary">
+              Explained in
+            </label>
+            <select
+              id={`${kind}-instr`}
+              value={instructionLanguage}
+              onChange={(e) => setInstructionLanguage(e.target.value)}
+              className={inputClass}
+            >
+              {explainOptions.map((l) => (
+                <option key={l.code} value={l.code}>{l.name}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs leading-relaxed text-dojo-text-muted">
+              How you coach and give feedback. The room chat translates to this
+              by default{kind === 'assessment' ? ', and the AI examiner debriefs in it' : ''}.
+            </p>
           </div>
 
           <div>
@@ -377,154 +429,6 @@ function CreateRoomForm({ kind, onCreated }: { kind: RoomKind; onCreated: () => 
   );
 }
 
-/* ── Availability editor ─────────────────────────────────────────────── */
-
-function AvailabilityEditor() {
-  const [slots, setSlots] = useState<AvailabilitySlot[] | null>(null);
-  const [timezone, setTimezone] = useState('UTC');
-  const [accepting, setAccepting] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
-
-  const load = useCallback(
-    () =>
-      fetch('/api/tutor/availability', { credentials: 'include' })
-        .then((res) => res.json())
-        .then((data) => {
-          if (!data.success) {
-            setSlots([]);
-            return;
-          }
-          setSlots(data.slots as AvailabilitySlot[]);
-          setTimezone(data.timezone ?? 'UTC');
-          setAccepting(Boolean(data.isAcceptingBookings));
-        })
-        .catch(() => setSlots([])),
-    [],
-  );
-
-  useEffect(() => { void load(); }, [load]);
-
-  const save = useCallback(async () => {
-    if (!slots) return;
-    setSaving(true);
-    setError('');
-    try {
-      const res = await fetch('/api/tutor/availability', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slots, isAcceptingBookings: accepting }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? 'Could not save.');
-      setSaved(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save.');
-    } finally {
-      setSaving(false);
-    }
-  }, [slots, accepting]);
-
-  if (!slots) {
-    return (
-      <Card className="animate-pulse !p-5">
-        <div className="h-32 rounded bg-dojo-surface-raised" />
-      </Card>
-    );
-  }
-
-  const update = (index: number, patch: Partial<AvailabilitySlot>) => {
-    setSlots((prev) => (prev ?? []).map((s, i) => (i === index ? { ...s, ...patch } : s)));
-    setSaved(false);
-  };
-
-  return (
-    <Card className="!p-5">
-      <h3 className="text-sm font-bold text-dojo-text-primary">Weekly availability</h3>
-      <p className="mt-1 text-xs leading-relaxed text-dojo-text-muted">
-        Times are in <span className="font-medium text-dojo-text-primary">{timezone}</span>, your
-        profile timezone. Learners see them converted to their own.
-      </p>
-
-      <div className="mt-4">
-        <Toggle
-          enabled={accepting}
-          onChange={(v) => { setAccepting(v); setSaved(false); }}
-          label="Accepting bookings"
-          description="Off hides you from the tutor list without deleting your schedule."
-        />
-      </div>
-
-      <div className="mt-4 space-y-2">
-        {slots.length === 0 && (
-          <p className="text-sm text-dojo-text-muted">
-            No hours set. Learners can&apos;t book you until there are some.
-          </p>
-        )}
-        {slots.map((slot, index) => (
-          <div key={index} className="flex flex-wrap items-center gap-2">
-            <select
-              value={slot.dayOfWeek}
-              onChange={(e) => update(index, { dayOfWeek: Number(e.target.value) })}
-              aria-label="Day"
-              className="rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary focus:border-dojo-accent focus:outline-none"
-            >
-              {DAY_NAMES.map((d, i) => (
-                <option key={d} value={i}>{d}</option>
-              ))}
-            </select>
-            <input
-              type="time"
-              value={minutesToTime(slot.startMinute)}
-              onChange={(e) => update(index, { startMinute: timeToMinutes(e.target.value) })}
-              aria-label="Start time"
-              className="rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary focus:border-dojo-accent focus:outline-none"
-            />
-            <span className="text-sm text-dojo-text-muted">to</span>
-            <input
-              type="time"
-              value={minutesToTime(slot.endMinute)}
-              onChange={(e) => update(index, { endMinute: timeToMinutes(e.target.value) })}
-              aria-label="End time"
-              className="rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary focus:border-dojo-accent focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setSlots((prev) => (prev ?? []).filter((_, i) => i !== index));
-                setSaved(false);
-              }}
-              aria-label="Remove slot"
-              className="rounded-(--radius-md) p-2 text-dojo-text-muted transition-colors hover:text-dojo-danger"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {error && <p className="mt-4 text-sm text-dojo-danger">{error}</p>}
-
-      <div className="mt-6 flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          onClick={() => {
-            setSlots((prev) => [...(prev ?? []), { dayOfWeek: 1, startMinute: 9 * 60, endMinute: 10 * 60 }]);
-            setSaved(false);
-          }}
-        >
-          <Plus className="h-4 w-4" /> Add hours
-        </Button>
-        <Button variant="primary" loading={saving} disabled={saving} onClick={save}>
-          {saved ? 'Saved — update' : 'Save availability'}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
 /* ── Console ─────────────────────────────────────────────────────────── */
 
 export function TutorConsole() {
@@ -534,6 +438,9 @@ export function TutorConsole() {
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // The scheduling forms are constrained by it, so they only render once it is
+  // known — an unconstrained picker would offer languages the API refuses.
+  const { profile } = useTutorProfile();
 
   const load = useCallback(
     () =>
@@ -570,8 +477,14 @@ export function TutorConsole() {
     { id: 'schedule', label: 'Schedule' },
     { id: 'classes', label: 'Classes' },
     { id: 'assessments', label: 'Assessments' },
+    { id: 'learners', label: 'Learners' },
+    { id: 'announcements', label: 'Announcements' },
     { id: 'availability', label: 'Availability' },
   ];
+
+  // Both panels offer "one of my classes" as a scope, from the list already
+  // loaded above rather than a second fetch.
+  const classOptions = classes.map((c) => ({ id: c.id, title: c.title }));
 
   const emptyClass = 'rounded-(--radius-md) border border-dashed border-dojo-border px-4 py-8 text-center text-sm text-dojo-text-muted';
 
@@ -647,7 +560,7 @@ export function TutorConsole() {
                               <p className="truncate text-sm font-semibold text-dojo-text-primary">{c.title}</p>
                               <p className="text-xs text-dojo-text-muted">
                                 {formatWhen(c.scheduledAt)} · {c.enrolledCount}/{c.capacity} enrolled ·{' '}
-                                {getTargetLangConfig(c.targetLanguage).name}
+                                {describeLanguagePair(c.targetLanguage, c.instructionLanguage)}
                               </p>
                             </div>
                             <Badge variant={c.status === 'live' ? 'accent' : 'outline'} className="capitalize">
@@ -659,7 +572,7 @@ export function TutorConsole() {
                     ))
                   )}
                 </div>
-                <CreateRoomForm kind="class" onCreated={load} />
+                {profile && <CreateRoomForm kind="class" onCreated={load} profile={profile} />}
               </div>
             );
           }
@@ -689,7 +602,7 @@ export function TutorConsole() {
                                 {a.examiner === 'ai'
                                   ? 'AI examiner'
                                   : `${a.waitingCount} waiting`}{' '}
-                                · {getTargetLangConfig(a.targetLanguage).name}
+                                · {describeLanguagePair(a.targetLanguage, a.instructionLanguage)}
                               </p>
                             </div>
                             <Badge variant={a.status === 'live' ? 'accent' : 'outline'} className="capitalize">
@@ -701,13 +614,23 @@ export function TutorConsole() {
                     ))
                   )}
                 </div>
-                <CreateRoomForm kind="assessment" onCreated={load} />
+                {profile && <CreateRoomForm kind="assessment" onCreated={load} profile={profile} />}
               </div>
             );
           }
 
+          if (tabId === 'learners') {
+            return <LearnersPanel classes={classOptions} />;
+          }
+
+          if (tabId === 'announcements') {
+            return profile ? (
+              <AnnouncementsPanel profile={profile} classes={classOptions} />
+            ) : null;
+          }
+
           return (
-            <div className={cn('mt-6')}>
+            <div className="mt-6">
               <AvailabilityEditor />
             </div>
           );

@@ -80,10 +80,20 @@ export async function POST(
 
     // The classroom's chat sidebar is a normal chat room, so enrolling has to
     // add the learner to it — otherwise the sidebar 403s inside the room.
+    //
+    // `preferredLanguage` is seeded from the class's instruction language, so
+    // the sidebar arrives translated into the language the class is actually
+    // taught in rather than each learner's own. Null leaves the column null,
+    // which is the pre-existing behaviour: fall back to users.nativeLanguage.
+    // The learner can still override it per room.
     if (found.classSession.chatRoomId) {
       await tx
         .insert(chatRoomMembers)
-        .values({ roomId: found.classSession.chatRoomId, userId: user.id })
+        .values({
+          roomId: found.classSession.chatRoomId,
+          userId: user.id,
+          preferredLanguage: found.classSession.instructionLanguage,
+        })
         .onConflictDoNothing();
     }
 

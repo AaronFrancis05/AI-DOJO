@@ -15,7 +15,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
-import { getTargetLangConfig } from '@/lib/language';
+import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import { Video, Calendar, ArrowRight, GraduationCap, Users, ClipboardCheck, Bot } from 'lucide-react';
 
 interface TutorRow {
@@ -24,6 +24,7 @@ interface TutorRow {
   headline: string;
   bio: string | null;
   languages: string[];
+  instructionLanguages: string[];
   hourlyRateCents: number;
   currency: string;
   timezone: string;
@@ -299,6 +300,10 @@ export default function TutorsPage() {
                   </div>
                 </div>
 
+                {/* Two capabilities, shown separately: what they teach, and
+                    what they can teach it in. A learner picking a tutor cares
+                    about both — a Japanese tutor who cannot explain in Luganda
+                    is the wrong tutor for a Luganda speaker. */}
                 <div className="mt-4 flex flex-wrap gap-2">
                   {t.languages.map((code) => (
                     <Badge key={code} variant="outline">
@@ -306,6 +311,13 @@ export default function TutorsPage() {
                     </Badge>
                   ))}
                 </div>
+
+                {t.instructionLanguages.length > 0 && (
+                  <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">
+                    Explains in{' '}
+                    {t.instructionLanguages.map((code) => getNativeLangName(code)).join(', ')}
+                  </p>
+                )}
 
                 {t.bio && (
                   <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-dojo-text-muted">{t.bio}</p>

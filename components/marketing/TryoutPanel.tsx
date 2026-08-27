@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { TARGET_LANGUAGES, NATIVE_LANGUAGES } from '@/lib/language';
+import { useLanguageCatalog } from '@/lib/language-context';
 import { ChevronRightIcon } from '@/components/Icons';
 
 export function TryoutPanel() {
-  const [targetLanguage, setTargetLanguage] = useState(TARGET_LANGUAGES[0]?.code ?? '');
-  const [nativeLanguage, setNativeLanguage] = useState(NATIVE_LANGUAGES[0]?.code ?? '');
+  const catalog = useLanguageCatalog();
+  const [targetLanguage, setTargetLanguage] = useState(catalog.target[0]?.code ?? '');
+  const [nativeLanguage, setNativeLanguage] = useState(catalog.native[0]?.code ?? '');
 
   return (
     <div className="rounded-2xl border border-dojo-border bg-dojo-surface-raised p-6 shadow-sm sm:p-8">
@@ -27,7 +28,7 @@ export function TryoutPanel() {
             onChange={(e) => setTargetLanguage(e.target.value)}
             className="mt-2 w-full rounded-xl border border-dojo-border bg-dojo-surface px-4 py-3 text-sm font-medium text-dojo-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
           >
-            {TARGET_LANGUAGES.map((lang) => (
+            {catalog.target.map((lang) => (
               <option key={lang.code} value={lang.code}>
                 {lang.name}
               </option>
@@ -42,7 +43,7 @@ export function TryoutPanel() {
             onChange={(e) => setNativeLanguage(e.target.value)}
             className="mt-2 w-full rounded-xl border border-dojo-border bg-dojo-surface px-4 py-3 text-sm font-medium text-dojo-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
           >
-            {NATIVE_LANGUAGES.map((lang) => (
+            {catalog.native.map((lang) => (
               <option key={lang.code} value={lang.code}>
                 {lang.name}
               </option>
