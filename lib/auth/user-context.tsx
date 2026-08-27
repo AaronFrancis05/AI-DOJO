@@ -1,12 +1,17 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import type { UserRole } from '@/lib/auth/roles';
 
 export interface UserContextValue {
   id: string;
   name: string;
   email: string;
   level: string;
+  /** `users.role` — drives which nav entries and consoles are offered.
+   *  Never the authority for access: every tutor/admin route re-checks it
+   *  server-side through requireRole(). */
+  role: UserRole;
   tier: 'free' | 'premium';
   xp: number;
   xpToNext: number;

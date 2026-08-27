@@ -2,7 +2,12 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useOnboarding } from '@/lib/onboarding/context';
+import {
+  useOnboarding,
+  clearPersistedOnboarding,
+  markOnboardingResume,
+  takeOnboardingResume,
+} from '@/lib/onboarding/context';
 import {
   ONBOARDING_STEPS, LEVEL_OPTIONS, GOAL_OPTIONS,
   MODE_OPTIONS, AGE_OPTIONS, FREQUENCY_OPTIONS,
@@ -60,36 +65,59 @@ export default function OnboardingStepPage() {
     }
   }, [step, dbDomains.length, loadingDomains]);
 
+  /**
+   * Saves the wizard's answers and hands the learner off.
+   *
+   * The route enrols them into a course as part of finishing onboarding, so
+   * the destination is that course rather than /home — landing on a dashboard
+   * with no path to follow was the whole gap. It falls back to /home when no
+   * course could be resolved (an install with no active courses).
+   */
+  const submitOnboarding = useCallback(async () => {
+    const onboardingPayload: Record<string, unknown> = {};
+    if (state.level) onboardingPayload.level = state.level;
+    if (state.learningGoal) onboardingPayload.learningGoal = state.learningGoal;
+    if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
+    if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
+    if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
+    if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
+    if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
+    if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
+
+    let destination = '/home';
+    try {
+      const res = await fetch('/api/user/onboarding', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(onboardingPayload),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.courseSlug) {
+        destination = `/courses/${data.courseSlug}?target=${data.targetLanguage ?? state.targetLanguage}&native=${data.nativeLanguage ?? state.nativeLanguage}`;
+      }
+    } catch {
+      // The account exists either way — send them into the app rather than
+      // stranding them on the last step of a wizard they have finished.
+    }
+
+    clearPersistedOnboarding();
+    router.push(destination);
+  }, [state, router]);
+
   useEffect(() => {
     if (step === 'account') {
       authClient.getSession().then(({ data }) => {
         if (data?.user) {
-          const onboardingPayload: Record<string, unknown> = {};
-          if (state.level) onboardingPayload.level = state.level;
-          if (state.learningGoal) onboardingPayload.learningGoal = state.learningGoal;
-          if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
-          if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
-          if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
-          if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
-          if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
-          if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
-
           setSaving(true);
-          fetch('/api/user/onboarding', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(onboardingPayload),
-          }).then(() => {
-            setAccountCreated(true);
-            router.push('/home');
-          });
+          setAccountCreated(true);
+          submitOnboarding();
         } else {
           setCheckingAuth(false);
         }
       });
     }
-  }, [step, state, router]);
+  }, [step, submitOnboarding]);
 
   useEffect(() => {
     if (step === 'personalizing') {
@@ -129,23 +157,7 @@ export default function OnboardingStepPage() {
         return;
       }
       setAccountCreated(true);
-      const onboardingPayload: Record<string, unknown> = {};
-      if (state.level) onboardingPayload.level = state.level;
-      if (state.learningGoal) onboardingPayload.learningGoal = state.learningGoal;
-      if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
-      if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
-      if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
-      if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
-      if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
-      if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
-
-      await fetch('/api/user/onboarding', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(onboardingPayload),
-      });
-      router.push('/home');
+      await submitOnboarding();
     } catch (err) {
       setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'sign-up'));
     } finally {
@@ -154,8 +166,17 @@ export default function OnboardingStepPage() {
   };
 
   const handleGoogleAuth = async () => {
+    markOnboardingResume();
     window.location.href = '/api/auth/google/init';
   };
+
+  // The OAuth callback can only send a new signup to the first step. If the
+  // learner left from the account step, put them back on it — their answers
+  // are still in sessionStorage and are about to be submitted.
+  useEffect(() => {
+    if (step !== 'level') return;
+    if (takeOnboardingResume()) router.replace('/onboarding/account');
+  }, [step, router]);
 
   const stepContent: Record<string, StepComponent> = {
     'level': (

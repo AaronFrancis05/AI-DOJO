@@ -72,8 +72,24 @@ export interface RecapEvent {
   text: string;
 }
 
+/**
+ * Where the learner goes after a curriculum lesson. Null for free practice,
+ * which keeps its /home exit — resolved server-side so the completion screen
+ * and the course page can't disagree about which lesson is unlocked next.
+ */
+export interface NextLessonTarget {
+  courseSlug: string;
+  unitId: number;
+  unitTitle: string;
+  nextLessonId: number | null;
+  nextLessonTitle: string | null;
+  unitCompleted: boolean;
+  levelCompleted: boolean;
+}
+
 export interface SessionState {
   session: any;
+  nextLesson: NextLessonTarget | null;
   scenario: any;
   situation: any;
   domain: any;
@@ -110,6 +126,12 @@ export interface UseRoleplaySessionReturn extends SessionState {
      */
     onTokenDelta?: (delta: string) => void;
     onTextDone?: (text: string) => void;
+    /**
+     * A gesture read off the reply text server-side and sent right after
+     * `text_done`, so it can play as speech starts rather than after it. The
+     * model's own hint still follows on `onComplete`.
+     */
+    onGesture?: (gesture: string) => void;
     onRetry?: (analysis: any) => void;
     onPhaseChange?: (phase: string) => void;
     onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
@@ -120,6 +142,7 @@ export interface UseRoleplaySessionReturn extends SessionState {
     onToken?: (t: string) => void;
     onTokenDelta?: (delta: string) => void;
     onTextDone?: (t: string) => void;
+    onGesture?: (gesture: string) => void;
   }) => Promise<string>;
   pendingRetry: PendingRetry | null;
   retryCorrection: () => Promise<void>;
@@ -131,6 +154,7 @@ export interface UseRoleplaySessionReturn extends SessionState {
 
 export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn {
   const [session, setSession] = useState<any>(null);
+  const [nextLesson, setNextLesson] = useState<NextLessonTarget | null>(null);
   const [scenario, setScenario] = useState<any>(null);
   const [situation, setSituation] = useState<any>(null);
   const [domain, setDomain] = useState<any>(null);
@@ -165,6 +189,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         const data = await res.json();
         setVoiceGender(data.session?.voiceGender || data.character?.gender || 'Female');
         setSession(data.session);
+        setNextLesson(data.nextLesson ?? null);
         sessionStatusRef.current = data.session?.status ?? null;
         setScenario(data.scenario);
         setSituation(data.situation);
@@ -264,6 +289,10 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       setEvaluation(data.evaluation ?? null);
       setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
       setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
+      // Re-read rather than trusting the copy from page load: the lesson only
+      // flips to 'completed' as part of this completion, so the target loaded
+      // at mount still points at the lesson the learner just finished.
+      setNextLesson(data.nextLesson ?? null);
       if (announce && data.session && !data.session.completionAcknowledged) {
         setUnacknowledgedCompletion(true);
       }
@@ -294,6 +323,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
       onToken?: (text: string) => void;
       onTokenDelta?: (delta: string) => void;
       onTextDone?: (text: string) => void;
+      onGesture?: (gesture: string) => void;
       onRetry?: (analysis: any) => void;
       onPhaseChange?: (phase: string) => void;
       onPhaseTransition?: (transition: PhaseTransitionEvent) => void;
@@ -392,6 +422,9 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
           case 'text_done':
             if (payload.fullText) collectedAiText = payload.fullText;
             options?.onTextDone?.(payload.fullText ?? '');
+            break;
+          case 'gesture':
+            if (payload.gesture) options?.onGesture?.(payload.gesture);
             break;
           case 'phase_transition':
             setPhase(payload.toPhase);
@@ -512,12 +545,14 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     onToken?: (t: string) => void;
     onTokenDelta?: (delta: string) => void;
     onTextDone?: (t: string) => void;
+    onGesture?: (gesture: string) => void;
   }) => {
     let fullText = '';
     await submitTurnStream('__session_start__', {
       onToken: (t) => { if (t) fullText = t; opts?.onToken?.(t); },
       onTokenDelta: (delta) => opts?.onTokenDelta?.(delta),
       onTextDone: (t) => { if (t) fullText = t; opts?.onTextDone?.(t); },
+      onGesture: (g) => opts?.onGesture?.(g),
     });
     return fullText;
   }, [submitTurnStream]);
@@ -546,7 +581,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   }, [sessionId]);
 
   return {
-    session, scenario, situation, domain, character, selectedAvatar,
+    session, nextLesson, scenario, situation, domain, character, selectedAvatar,
     goals, conversations, completedGoals, phase,
     loading, error, isActive, isCompleted,
     phaseTransition, recap, unacknowledgedCompletion,

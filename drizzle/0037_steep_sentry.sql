@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "phase_step" varchar(10) DEFAULT 'open' NOT NULL;

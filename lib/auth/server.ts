@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { syncUser } from './sync-user';
+import { SESSION_DATA_COOKIE, SESSION_TOKEN_COOKIE } from './cookies';
+import { satisfiesRole, toUserRole, type UserRole } from './roles';
 import { db } from '@/src/db';
 import { users } from '@/src/schema';
 
@@ -62,7 +64,7 @@ export async function getAuthUserReadOnly() {
   const cookieStore = await cookies();
 
   // Fast path: try the cached session_data JWT (HTTPS only)
-  const sessionDataValue = cookieStore.get('__Secure-neon-auth.local.session_data')?.value;
+  const sessionDataValue = cookieStore.get(SESSION_DATA_COOKIE)?.value;
   if (sessionDataValue) {
     try {
       const config = getConfig();
@@ -81,7 +83,7 @@ export async function getAuthUserReadOnly() {
   }
 
   // Fallback: call auth handler directly with session_token cookie
-  const sessionToken = cookieStore.get('neon-auth.session_token')?.value;
+  const sessionToken = cookieStore.get(SESSION_TOKEN_COOKIE)?.value;
   if (!sessionToken) return null;
 
   try {
@@ -106,4 +108,63 @@ export async function requireAuthUser() {
   const user = await getAuthUser();
   if (!user) throw new Error('Unauthorized');
   return user;
+}
+
+/**
+ * The signed-in user's role, or null when nobody is signed in.
+ *
+ * `users.role` is the authority — a `tutors` row says what someone teaches,
+ * not that they are allowed to teach.
+ */
+export async function getUserRole(): Promise<UserRole | null> {
+  const user = await getAuthUser();
+  if (!user) return null;
+  const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, user.id)).limit(1);
+  return toUserRole(row?.role);
+}
+
+/**
+ * Thrown by `requireRole`. Carries the status a route handler should answer
+ * with: 401 when nobody is signed in, 404 when someone is but lacks the role.
+ *
+ * 404 rather than 403 for the same reason `loadBookingForUser` collapses
+ * "not found" and "not yours" — a learner probing /admin should not be able
+ * to tell an admin console exists from the status code.
+ */
+export class RoleError extends Error {
+  constructor(readonly status: 401 | 404, message: string) {
+    super(message);
+    this.name = 'RoleError';
+  }
+}
+
+export interface RoleCheckResult {
+  user: NonNullable<Awaited<ReturnType<typeof getAuthUser>>>;
+  role: UserRole;
+}
+
+/**
+ * Gate for every tutor and admin surface. `admin` satisfies any role — see
+ * `satisfiesRole` in lib/auth/roles.ts.
+ *
+ * Throws rather than returning null so a handler cannot forget to check the
+ * result; `roleErrorResponse` turns the throw into the right HTTP answer.
+ */
+export async function requireRole(required: UserRole | UserRole[]): Promise<RoleCheckResult> {
+  const user = await getAuthUser();
+  if (!user) throw new RoleError(401, 'Unauthorized');
+
+  const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, user.id)).limit(1);
+  const role = toUserRole(row?.role);
+  if (!satisfiesRole(role, required)) throw new RoleError(404, 'Not found');
+
+  return { user, role };
+}
+
+/** Maps a `requireRole` throw onto a response; rethrows anything else. */
+export function roleErrorResponse(err: unknown): Response {
+  if (err instanceof RoleError) {
+    return Response.json({ error: err.message }, { status: err.status });
+  }
+  throw err;
 }

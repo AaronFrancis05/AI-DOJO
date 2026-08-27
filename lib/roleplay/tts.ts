@@ -1,10 +1,13 @@
 import {
   containsTargetScript,
+  hasDetectableScript,
   splitIntoLangSpans,
   detectSpeechLang as detectLang,
 } from './lang-detect';
 import { resolveAzureVoice } from '../language';
 import { getToken } from './pronunciation';
+import { markFirstAudio } from './voice-latency';
+import { findSentenceEnd } from './sentence-split';
 
 /* ── Overview ───────────────────────────────────────────────────────────
    Speech output for the roleplay session.
@@ -128,6 +131,10 @@ function emitSpeaking(speaking: boolean): void {
   if (reportedSpeaking === speaking) return;
   reportedSpeaking = speaking;
   isAzureSpeaking = speaking;
+  // The first utterance of a reply going audible is the far end of the
+  // mic-release → first-audio measurement. Later sentences of the same reply
+  // don't re-report: the count only crosses zero once per reply.
+  if (speaking) markFirstAudio();
   if (onSpeakingChange) onSpeakingChange(speaking);
 }
 
@@ -619,7 +626,15 @@ function resolveTTSVoice(bcp47: string): string {
 }
 
 function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string, text?: string): string {
-  if (phase === 'unguided') {
+  // Unguided is full immersion: everything the character says is target
+  // language, so a span is only read in the native voice when it demonstrably
+  // isn't target text. That test is script-based, and script detection only
+  // works for the CJK targets — for French, Spanish, Swahili and every other
+  // Latin-script target it answered "not target" for target-language text and
+  // read the entire immersion phase aloud in the learner's native voice.
+  // Where the script can't decide, the ⟦ ⟧ markers do, exactly as in every
+  // other phase.
+  if (phase === 'unguided' && hasDetectableScript(targetBcp47)) {
     if (text && !containsTargetScript(text, targetBcp47)) return nativeBcp47;
     return targetBcp47;
   }
@@ -838,17 +853,6 @@ export async function speakMixedText(
 let streamTtsBuffer = '';
 let streamTtsStopped = false;
 
-// A sentence terminator only ends a sentence if it is followed by whitespace
-// or a closing delimiter. While the model is still generating, the end of the
-// buffer is NOT a boundary: the "." of "1.5" or "Mr." sits at the end of the
-// buffer for exactly as long as it takes the next chunk to arrive, and that
-// window is enough to speak half a word as a sentence.
-const SENTENCE_BOUNDARY = /[。！？.!?](?=\s|⟧)|\n/;
-
-// The flush pattern runs only after generation has finished, so there is no
-// next chunk and end-of-buffer really does terminate the last sentence.
-const SENTENCE_BOUNDARY_FINAL = /[。！？.!?](?=\s|⟧|$)|\n/;
-
 // Don't synthesize a fragment so short it costs more in setup than it returns;
 // wait for it to join the next sentence instead.
 const MIN_SENTENCE_CHARS = 2;
@@ -891,7 +895,6 @@ function drainStreamBuffer(
 ): void {
   if (streamTtsStopped) return;
 
-  const boundary = isFinal ? SENTENCE_BOUNDARY_FINAL : SENTENCE_BOUNDARY;
   let group = '';
 
   const emit = () => {
@@ -902,10 +905,9 @@ function drainStreamBuffer(
   };
 
   while (!streamTtsStopped) {
-    const match = streamTtsBuffer.match(boundary);
-    if (!match) break;
+    const idx = findSentenceEnd(streamTtsBuffer, isFinal);
+    if (idx === -1) break;
 
-    const idx = match.index! + match[0].length;
     const sentence = streamTtsBuffer.slice(0, idx).trim();
     streamTtsBuffer = streamTtsBuffer.slice(idx).trimStart();
 

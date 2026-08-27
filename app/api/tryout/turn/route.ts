@@ -1,11 +1,22 @@
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { getAIProvider } from '@/lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
-import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
+import { cacheKeys, isCacheConfigured, rateLimitIncrement, TTL } from '@/lib/cache';
+import {
+  MAX_GUEST_TURNS,
+  MAX_TRYOUT_REQUESTS_PER_IP_PER_HOUR,
+  TRYOUT_COOKIE,
+  TRYOUT_SESSION_COOKIE,
+  checkTryoutGate,
+  clientIp,
+  consumeTurn,
+  markTryoutCompleted,
+  readSessionCookieValue,
+} from '@/lib/tryout/gate';
 import type { ChatTurn } from '@/lib/ai-providers';
 
-const MAX_GUEST_TURNS = 8;
-// 9 requests per session (greeting + 8 turns) × 4 sessions/hour ≈ 36, cap at 36 to allow a bit of headroom
-const MAX_TRYOUTS_PER_IP_PER_HOUR = 36;
+export const runtime = 'nodejs';
 
 // Hardcoded 5 icebreaker words for the first-time introduction — the same set
 // for every target language; the LLM translates them per language in its reply.
@@ -72,13 +83,20 @@ function toChatHistory(history: GuestTurn[]): ChatTurn[] {
 }
 
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const rateLimitKey = cacheKeys.tryoutRateLimit(ip);
-  const currentCount = (await cacheGet<number>(rateLimitKey)) ?? 0;
-  if (currentCount >= MAX_TRYOUTS_PER_IP_PER_HOUR) {
-    return Response.json({ error: 'Too many tryout requests. Please try again later.' }, { status: 429 });
+  const ip = clientIp(req);
+
+  // Atomic — the previous cacheGet→cacheSet pair read the same count on every
+  // concurrent request and so let a burst straight through. lib/cache.ts
+  // documents that pattern as explicitly not being a rate limit.
+  const requests = await rateLimitIncrement(cacheKeys.tryoutRateLimit(ip), TTL.TRYOUT_RATE_LIMIT);
+  if (requests === null && isCacheConfigured()) {
+    // A configured cache that is down is an outage, not a licence to hand out
+    // an unmetered LLM relay to anonymous callers.
+    return NextResponse.json({ error: 'Tryout is briefly unavailable. Please try again.' }, { status: 503 });
   }
-  await cacheSet(rateLimitKey, currentCount + 1, TTL.TRYOUT_RATE_LIMIT);
+  if (requests !== null && requests > MAX_TRYOUT_REQUESTS_PER_IP_PER_HOUR) {
+    return NextResponse.json({ error: 'Too many tryout requests. Please try again later.' }, { status: 429 });
+  }
 
   const body = await req.json();
   const { targetLanguage, nativeLanguage, history, userMessage } = body as {
@@ -89,17 +107,48 @@ export async function POST(req: Request) {
   };
 
   if (typeof targetLanguage !== 'string' || typeof nativeLanguage !== 'string') {
-    return Response.json({ error: 'targetLanguage and nativeLanguage are required' }, { status: 400 });
+    return NextResponse.json({ error: 'targetLanguage and nativeLanguage are required' }, { status: 400 });
+  }
+
+  const cookieStore = await cookies();
+
+  // Read from the signed httpOnly cookie, never the body: the id *is* the
+  // budget, so a caller who can name it can hand itself a fresh allowance.
+  // `restart: true` sends the client back through /api/tryout/start, which is
+  // gated — it is not a free reset.
+  const tryoutId = readSessionCookieValue(cookieStore.get(TRYOUT_SESSION_COOKIE)?.value);
+  if (!tryoutId) {
+    return NextResponse.json({ error: 'This preview has expired.', restart: true }, { status: 400 });
+  }
+
+  const gate = await checkTryoutGate(cookieStore.get(TRYOUT_COOKIE)?.value, ip);
+  if (gate.blocked) {
+    return NextResponse.json(
+      { blocked: true, reason: gate.reason, retryAfterMs: gate.retryAfterMs },
+      { status: 200 },
+    );
   }
 
   const safeHistory = Array.isArray(history) ? history : [];
-  const priorUserTurns = safeHistory.filter((t) => t.speaker === 'user').length;
-  const isGreeting = !userMessage?.trim() && priorUserTurns === 0;
-  const nextUserTurnCount = priorUserTurns + (userMessage?.trim() ? 1 : 0);
+  const isGreeting = !userMessage?.trim();
 
-  // Allow the greeting plus MAX_GUEST_TURNS user turns
-  if (!isGreeting && nextUserTurnCount > MAX_GUEST_TURNS) {
-    return Response.json({ limitReached: true, completed: true, error: 'Tryout preview limit reached' }, { status: 200 });
+  // The turn budget is counted server-side against the issued id. `history`
+  // still shapes the prompt, but it no longer decides how many turns a guest
+  // gets — an empty array used to reset the budget.
+  const budget = await consumeTurn(tryoutId, !isGreeting);
+  if (budget.expired) {
+    return NextResponse.json({ error: 'This preview has expired.', restart: true }, { status: 400 });
+  }
+  const { priorUserTurns } = budget;
+  const nextUserTurnCount = priorUserTurns + (isGreeting ? 0 : 1);
+
+  if (budget.exhausted) {
+    // No `error` key: the budget running out is the preview ending, and the
+    // client renders the completion screen off `limitReached`. Sending an
+    // error alongside made the hook throw before it ever read the flag.
+    const res = NextResponse.json({ limitReached: true, completed: true });
+    await markTryoutCompleted(res, ip);
+    return res;
   }
 
   // Determine phase: 0-4 = icebreaker words, 5-6 = simple roleplay, 7+ = closing
@@ -134,19 +183,29 @@ export async function POST(req: Request) {
     const replyNative = typeof parsed.replyNative === 'string' ? parsed.replyNative : '';
 
     if (!replyTarget) {
-      return Response.json({ error: 'AI reply was empty' }, { status: 502 });
+      return NextResponse.json({ error: 'AI reply was empty' }, { status: 502 });
     }
 
-    return Response.json({
+    const limitReached = nextUserTurnCount >= MAX_GUEST_TURNS;
+    const completed = phase === 'closing';
+
+    const res = NextResponse.json({
       replyTarget,
       replyNative,
-      limitReached: nextUserTurnCount >= MAX_GUEST_TURNS,
-      completed: phase === 'closing',
+      limitReached,
+      completed,
       phase,
       wordIndex,
     });
+
+    // The gate consumes on *completion*, not on entry — a guest whose network
+    // dropped two turns in has not had their preview.
+    if (completed || limitReached) {
+      await markTryoutCompleted(res, ip);
+    }
+    return res;
   } catch (err) {
     console.error('[tryout/turn] AI generation failed', err);
-    return Response.json({ error: 'Failed to generate a reply. Please try again.' }, { status: 502 });
+    return NextResponse.json({ error: 'Failed to generate a reply. Please try again.' }, { status: 502 });
   }
 }

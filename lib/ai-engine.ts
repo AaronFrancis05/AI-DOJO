@@ -1,4 +1,4 @@
-import { getTargetLangConfig, getNativeLangName, TARGET_LANGUAGES } from './language';
+import { getTargetLangConfig, getNativeLangName, getGreetingGesture, TARGET_LANGUAGES } from './language';
 // Imported from the leaf modules rather than the prompts barrel: the barrel
 // pulls in the phase builders, and nothing here needs them.
 import { describeReplyContract } from './roleplay/prompts/reply-contract';
@@ -104,8 +104,14 @@ export const SCORE_DIMENSIONS = [
 export type ScoreDimension = typeof SCORE_DIMENSIONS[number];
 export type TurnScores = Record<ScoreDimension, number>;
 
-/** Shared prompt text so the two prompts below cannot drift apart on scale. */
-const SCORING_INSTRUCTION = `Grade the learner on each of these six dimensions INDEPENDENTLY, as an integer from 0 to 100, where 0 means "no evidence at all" and 100 means "indistinguishable from a competent speaker in this situation". These are six separate percentages — they are NOT parts of a shared budget and they do NOT need to sum to anything:
+/**
+ * Shared prompt text so the two prompts below cannot drift apart on scale.
+ *
+ * Exported because the AI examiner grades a whole interview on the same six
+ * dimensions (see lib/interview/grade.ts). A second copy of this wording is
+ * exactly how the 0-25/0-100 conflation documented above got in.
+ */
+export const SCORING_INSTRUCTION = `Grade the learner on each of these six dimensions INDEPENDENTLY, as an integer from 0 to 100, where 0 means "no evidence at all" and 100 means "indistinguishable from a competent speaker in this situation". These are six separate percentages — they are NOT parts of a shared budget and they do NOT need to sum to anything:
   - vocabulary: range and accuracy of the words/phrases they reached for
   - grammar: structural correctness of what they produced
   - fluency: flow, hesitation, and naturalness of delivery
@@ -114,7 +120,7 @@ const SCORING_INSTRUCTION = `Grade the learner on each of these six dimensions I
   - expressionAppropriateness: whether the expression chosen fits this specific context
 Judge against what is reasonable for this learner's stated difficulty level, not against a native speaker.`;
 
-const SCORES_SCHEMA_LINE = `  "scores": { "vocabulary": 0-100, "grammar": 0-100, "fluency": 0-100, "cultural": 0-100, "task": 0-100, "expressionAppropriateness": 0-100 },`;
+export const SCORES_SCHEMA_LINE = `  "scores": { "vocabulary": 0-100, "grammar": 0-100, "fluency": 0-100, "cultural": 0-100, "task": 0-100, "expressionAppropriateness": 0-100 },`;
 
 /**
  * Coerces a model-supplied score object into six integers in [0, 100].
@@ -178,6 +184,9 @@ export async function analyzeAndGenerateTurn(
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
   const hasPhonetic = targetCfg.hasPhonetic;
+  const gestureGuidance = getGreetingGesture(targetLanguage) === 'bow'
+    ? `In ${targetLangName} culture the greeting, the thank-you and the apology are all a bow, so prefer "bow" over "wave" and over "shake_hands" for those. `
+    : '';
 
   const goalsBlock = goals.map(g => {
     const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
@@ -266,7 +275,7 @@ Set isEnglishWhenExpected to true only if the user explicitly refuses to engage 
 ===== EMOTION TONE & GESTURE HINT =====
 For each AI reply, optionally provide:
 - emotionTone: the emotional tone of the AI's reply (e.g. "friendly", "concerned", "formal-polite", "surprised", "grateful", "apologetic")
-- gestureHint: one of these exact values describing a physical gesture — "bow" | "wave" | "shake_hands" | "nod" | "none" (must match exactly, no free text). Choose "none" unless a clear gesture is implied by the dialogue context.
+- gestureHint: one of these exact values describing a physical gesture — "bow" | "wave" | "shake_hands" | "nod" | "none" (must match exactly, no free text). ${gestureGuidance}Choose "none" unless a clear gesture is implied by the dialogue context.
 
 For the user's turn, optionally detect:
 - emotionTone: the apparent tone of the user's input
@@ -411,6 +420,9 @@ export async function analyzeUserTurn(input: AnalyzeUserTurnInput): Promise<User
   const nativeLangName = getNativeLangName(nativeLanguage);
   const targetCfg = getTargetLangConfig(targetLanguage);
   const hasPhonetic = targetCfg.hasPhonetic;
+  const gestureGuidance = getGreetingGesture(targetLanguage) === 'bow'
+    ? `In ${targetLangName} culture the greeting, the thank-you and the apology are all a bow, so prefer "bow" over "wave" and over "shake_hands" for those. `
+    : '';
 
   const goalsBlock = goals.map(g => {
     const done = completedGoalSequenceOrders.includes(g.sequenceOrder);
@@ -485,9 +497,8 @@ ${phase === 'unguided'
   : `Set isEnglishWhenExpected to true ONLY if the learner explicitly refuses to engage or writes unrelated content. In this phase mixing languages is expected and answering only in ${nativeLangName} is perfectly acceptable — neither warrants true.`}
 
 ===== EMOTION TONE & GESTURE HINT =====
-For the user's turn, optionally detect:
-- emotionTone: the apparent tone of the user's input
-- gestureHint: one of these exact values — "bow" | "wave" | "shake_hands" | "nod" | "none"
+- emotionTone: the apparent tone of the user's input.
+- gestureHint: the gesture ${scenario.aiCharacterName} should make on their NEXT line — not the learner's. It drives the 3D character's body, so it must describe what the character does, and it is applied to the reply that follows this turn. One of these exact values — "bow" | "wave" | "shake_hands" | "nod" | "none". ${gestureGuidance}Choose "none" unless the dialogue clearly implies a gesture.
 
 YOUR JOBS:
 1. EVALUATE: Analyze the user's input, translate it, and provide custom feedback. ${SCORING_INSTRUCTION} Set isValidInContext. Set isEnglishWhenExpected appropriately. Determine which scenario goals this turn addresses.

@@ -56,6 +56,22 @@ export function describeReplyContract(
 - The learner is expected to reply in ${targetLangName}. Falling back to ${nativeLangName} IS meaningful here: set isEnglishWhenExpected true only if they abandoned the target language wholesale or refused to participate.
 - messageTarget should contain the ${targetLangName} they produced; messageNative a ${nativeLangName} translation of their utterance for the transcript.`;
 
+    case 'evaluation':
+      // The debrief steps out of the scene entirely: it is native-language
+      // prose about the learner's performance, not dialogue. Grading it as
+      // roleplay produced corrections against a scene that had already ended.
+      return `${spanRule}
+- The scene is OVER. The AI character stepped out of it to debrief the learner on how the whole session went, writing in ${nativeLangName} outside the delimiters; any ${targetLangName} inside ⟦ ⟧ is a quote of something the learner said or should have said, not a new prompt to respond to.
+- The learner is reacting to feedback, not performing a task. Do NOT raise corrections on this turn and do NOT mark goals as addressed — nothing they say here is part of the scene.
+- Set scenarioComplete false; the phase engine, not this analysis, decides when the session ends.
+- messageNative should contain the learner's full utterance; messageTarget any ${targetLangName} they produced, or an empty string.`;
+
+    case 'completed':
+      return `${spanRule}
+- This was the character's closing farewell, entirely in ${targetLangName}, and the session is finished.
+- Do NOT raise corrections and do NOT mark goals as addressed.
+- messageNative should contain the learner's full utterance; messageTarget any ${targetLangName} they produced, or an empty string.`;
+
     default:
       return `${spanRule}
 - messageNative should contain the learner's full utterance. messageTarget should contain only the ${targetLangName} phrase(s) they produced, or an empty string if none.`;

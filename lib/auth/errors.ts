@@ -90,6 +90,22 @@ function messageForCode(code: string, context: AuthErrorContext): string | null 
     return 'Network error. Please try again.';
   }
 
+  // Redirect codes from the OAuth proxy in app/api/auth/[...path]/route.ts.
+  // These arrive as `/auth?error=<code>` rather than as a thrown error, and
+  // every one of them is an infrastructure failure — never something the
+  // person typed — so the copy points at retrying, not at their input.
+  if (code === 'init_failed') {
+    return 'Could not reach the sign-in provider. Please try again.';
+  }
+
+  if (code === 'no_oauth_url') {
+    return 'Could not start Google sign-in. Please try again.';
+  }
+
+  if (code === 'no_verifier' || code === 'exchange_failed') {
+    return 'Sign-in did not complete. Please try again.';
+  }
+
   return null;
 }
 

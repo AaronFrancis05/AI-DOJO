@@ -12,7 +12,8 @@ import { Mic2, Star, BarChart3, Zap } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AuthPage() {
-  // useSearchParams needs a Suspense boundary in the app router
+  // Client-side auth state resolves after mount; the boundary keeps the
+  // first paint from being blocked on it.
   return (
     <Suspense fallback={null}>
       <AuthPageContent />
@@ -23,15 +24,6 @@ export default function AuthPage() {
 function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tryoutTargetLanguage = searchParams.get('targetLanguage');
-  const tryoutNativeLanguage = searchParams.get('nativeLanguage');
-
-  useEffect(() => {
-    if (window.location.search.includes('signed_out')) return;
-    authClient.getSession().then(({ data }) => {
-      if (data?.user) router.push('/home');
-    });
-  }, [router]);
 
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
@@ -42,9 +34,40 @@ function AuthPageContent() {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
+  // A failed OAuth round trip comes back as `/auth?error=<code>` (see the
+  // redirects in app/api/auth/[...path]/route.ts). Without this the page just
+  // looks like it reloaded, which makes the failure impossible to report or
+  // diagnose — the query string was the only trace it left.
+  //
+  // Derived from the URL rather than copied into state: the param *is* the
+  // message, and clearing it (below, on the next attempt) is what dismisses it.
+  const errorCode = searchParams.get('error');
+  const redirectError = errorCode
+    ? getAuthErrorMessage(
+        { code: errorCode },
+        'Sign-in did not complete. Please try again.',
+        'sign-in',
+      )
+    : '';
+  const displayedError = error || redirectError;
+
+  /** Drops `?error=` so the previous attempt's message doesn't outlive it. */
+  function clearRedirectError() {
+    if (errorCode) router.replace('/auth', { scroll: false });
+  }
+
+  const signedOut = searchParams.has('signed_out');
+  useEffect(() => {
+    if (signedOut) return;
+    authClient.getSession().then(({ data }) => {
+      if (data?.user) router.push('/home');
+    });
+  }, [router, signedOut]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    clearRedirectError();
 
     // The HTML `required` on the name field allows whitespace-only input —
     // an account must never be created without a usable display name.
@@ -77,19 +100,12 @@ function AuthPageContent() {
 
       void consent;
 
-      if (isLogin) {
-        router.push('/home');
-      } else if (tryoutTargetLanguage && tryoutNativeLanguage) {
-        await fetch('/api/user/onboarding', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ targetLanguage: tryoutTargetLanguage, nativeLanguage: tryoutNativeLanguage }),
-        }).catch(() => {});
-        router.push('/home');
-      } else {
-        router.push('/onboarding');
-      }
+      // Every new account goes through onboarding. The old
+      // `?targetLanguage=..&nativeLanguage=..` shortcut wrote those two
+      // preferences and jumped to /home, which stamped
+      // `onboardingCompletedAt` on an account that had never chosen a level,
+      // a goal or a course — and the (app) gate would then wave it through.
+      router.push(isLogin ? '/home' : '/onboarding');
       router.refresh();
     } catch (err) {
       setError(
@@ -105,6 +121,7 @@ function AuthPageContent() {
   }
 
   function handleGoogleAuth() {
+    // Full page navigation, so the stale `?error=` leaves with it.
     window.location.href = '/api/auth/google/init';
   }
 
@@ -230,10 +247,10 @@ function AuthPageContent() {
               </label>
             )}
 
-            {error && (
+            {displayedError && (
               <div className="flex items-center gap-2 rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-sm text-dojo-danger">
                 <AlertCircleIcon className="h-4 w-4 shrink-0" />
-                {error}
+                {displayedError}
               </div>
             )}
 
@@ -265,6 +282,13 @@ function AuthPageContent() {
           </div>
 
           <p className="mt-6 text-center text-xs text-dojo-text-muted">
+            Want to teach?{' '}
+            <Link href="/auth/tutor" className="font-semibold text-dojo-accent hover:underline">
+              Apply as a tutor
+            </Link>
+          </p>
+
+          <p className="mt-3 text-center text-xs text-dojo-text-muted">
             By continuing, you agree to our{' '}
             <span className="cursor-pointer text-dojo-accent underline">Terms of Service</span> and{' '}
             <span className="cursor-pointer text-dojo-accent underline">Privacy Policy</span>.

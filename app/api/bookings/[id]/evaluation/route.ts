@@ -1,9 +1,10 @@
 import { db } from '@/src/db';
 import { tutorEvaluations, evaluations } from '@/src/schema';
 import { eq } from 'drizzle-orm';
-import { getAuthUser } from '@/lib/auth/server';
+import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { loadBookingForUser } from '@/lib/tutors/bookings';
 import { normalizeScores } from '@/lib/ai-engine';
+import { createNotification } from '@/lib/notifications';
 
 export const runtime = 'nodejs';
 
@@ -70,6 +71,14 @@ export async function POST(
   if (!found.isTutor) {
     return Response.json({ error: 'Only the tutor can submit an evaluation' }, { status: 403 });
   }
+  // Being the booking's tutor is not the same as still being authorised to
+  // teach: a rejected application leaves the `tutors` row in place and only
+  // drops `users.role`. Both checks, not either.
+  try {
+    await requireRole('tutor');
+  } catch (err) {
+    return roleErrorResponse(err);
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -108,6 +117,16 @@ export async function POST(
     .values(values)
     .onConflictDoUpdate({ target: tutorEvaluations.bookingId, set: values })
     .returning();
+
+  // A grade nobody is told about is a grade nobody reads. Fires on revisions
+  // too: a changed verdict is exactly the kind of thing worth re-announcing.
+  await createNotification({
+    userId: found.booking.learnerId,
+    type: 'evaluation',
+    title: `${found.tutorName ?? 'Your tutor'} graded your session`,
+    body: values.notes ? String(values.notes).slice(0, 200) : null,
+    href: '/progress',
+  });
 
   return Response.json({ success: true, evaluation: saved }, { status: 201 });
 }
