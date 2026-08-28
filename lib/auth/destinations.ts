@@ -79,6 +79,39 @@ export function safeNext(next: string | null | undefined): string | null {
   return next;
 }
 
+/** Whether a landing was asked for on behalf of an admin. */
+export function isAdminDestination(next: string | null | undefined): boolean {
+  return next === roleHome('admin');
+}
+
+/**
+ * Promotes an allowlisted address to admin, best effort.
+ *
+ * Lives here rather than on the sign-in form because three moments now owe
+ * the same call and none of them can be the only one: the admin sign-up has
+ * no session yet (the project will not issue one before the address is
+ * verified), the verification page may be where the first session appears,
+ * and a returning admin arrives already signed in. A copy that any of them
+ * skipped is an allowlisted operator left sitting in the learner wizard.
+ *
+ * Returns the message to show when the address is not on the list, or null
+ * when there is nothing to say. `/api/auth/admin/claim` is the gate and is
+ * idempotent, so calling it more than once costs nothing.
+ */
+export async function claimAdmin(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/admin/claim', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (res.ok) return null;
+    const data = (await res.json().catch(() => null)) as { error?: string } | null;
+    return data?.error ?? 'This address is not authorised for admin access.';
+  } catch {
+    return 'Could not reach the server to confirm admin access.';
+  }
+}
+
 /**
  * The signed-in account's role, read from the server.
  *

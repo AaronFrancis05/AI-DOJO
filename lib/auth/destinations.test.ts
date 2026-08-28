@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { roleHome, roleSignInPath, roleSignUpPath, safeNext } from './destinations';
+import {
+  isAdminDestination,
+  roleHome,
+  roleSignInPath,
+  roleSignUpPath,
+  safeNext,
+} from './destinations';
 
 test('each role lands on its own surface', () => {
   assert.equal(roleHome('learner'), '/home');
@@ -11,6 +17,20 @@ test('each role lands on its own surface', () => {
 test('an unknown or absent role lands on the learner home', () => {
   // Signed out, or a role read that failed — never a console.
   assert.equal(roleHome(null), '/home');
+});
+
+test('an admin landing is recognised as one', () => {
+  // What tells the verification page it still owes a claim. Tracks roleHome
+  // rather than a second literal, so moving the console moves both.
+  assert.equal(isAdminDestination(roleHome('admin')), true);
+  assert.equal(isAdminDestination('/admin'), true);
+});
+
+test('any other landing owes no admin claim', () => {
+  assert.equal(isAdminDestination('/home'), false);
+  assert.equal(isAdminDestination('/tutor'), false);
+  assert.equal(isAdminDestination(null), false);
+  assert.equal(isAdminDestination(undefined), false);
 });
 
 test('each role has its own door', () => {
