@@ -401,16 +401,11 @@ function AnimationSystemHost({
     }
 
     if (normalizedGesture !== 'none' && normalizedGesture !== prevGestureRef.current) {
-      let targetClip = '';
-      switch (normalizedGesture) {
-        case 'bow':         targetClip = 'greeting'; break;
-        case 'shake_hands': targetClip = 'thankful'; break;
-        case 'wave':        targetClip = 'greeting'; break;
-        case 'nod':         targetClip = 'nod'; break;
-      }
-      if (targetClip && emo.animation.canPlay(targetClip)) {
-        emo.animation.play(targetClip, { loop: false, fade: 0.3 });
-      }
+      // The gesture names ARE clip keys (via ANIMATION_ALIASES and, for a
+      // clip whose file isn't on disk yet, CLIP_FALLBACKS) — the switch that
+      // used to repeat that mapping here disagreed with AnimationManager the
+      // moment either side changed.
+      emo.playGesture(normalizedGesture);
     }
 
     prevModeRef.current = mode;

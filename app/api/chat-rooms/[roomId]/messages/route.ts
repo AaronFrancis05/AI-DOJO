@@ -8,6 +8,8 @@ import {
 } from '../../../../../src/schema';
 import { getAuthUser } from '../../../../../lib/auth/server';
 import { translateText, detectLanguageSafe, transcribeAudio } from '../../../../../lib/ugajapa';
+import { publish } from '../../../../../lib/realtime/bus';
+import { topics } from '../../../../../lib/realtime/topics';
 import { eq, and, gt, inArray } from 'drizzle-orm';
 
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
@@ -332,6 +334,20 @@ export async function POST(
       console.warn('[chat] bulk translate failed:', err instanceof Error ? err.message : String(err));
     }
   }
+
+  // Announced only after the translations are cached, so the recipients'
+  // catch-up fetch returns translated text on its first try rather than
+  // showing the original and correcting itself a moment later.
+  //
+  // The event carries the message id, never the body: every member reads the
+  // message in their own language, so there is no single text to broadcast —
+  // see lib/realtime/topics.ts.
+  await publish(topics.chatRoom(id), {
+    type: 'chat.message',
+    roomId: id,
+    messageId: created.id,
+    senderId: user.id,
+  });
 
   return Response.json({ success: true, message: created }, { status: 201 });
 }

@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { cn } from '@/lib/design-tokens';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { useUser } from '@/lib/auth/user-context';
+import { useRealtimeTopics } from '@/lib/realtime/context';
+import { topics } from '@/lib/realtime/topics';
 import {
   timeAgo,
   langFlag,
@@ -22,9 +24,9 @@ interface RoomListPaneProps {
 }
 
 /**
- * The conversations list: polling room rows (8s), an unread badge per row,
- * and a "New chat" dialog backed by /api/users/search. Used as the
- * persistent left pane at md+ and as the full-height mobile list.
+ * The conversations list: live room rows, an unread badge per row, and a
+ * "New chat" dialog backed by /api/users/search. Used as the persistent left
+ * pane at md+ and as the full-height mobile list.
  */
 export function RoomListPane({ className, compact = false }: RoomListPaneProps) {
   const router = useRouter();
@@ -38,24 +40,41 @@ export function RoomListPane({ className, compact = false }: RoomListPaneProps) 
   const [searching, setSearching] = useState(false);
   const [creating, setCreating] = useState<string | null>(null);
 
-  // Poll the room list every 8s (same pattern as the sessions list page).
+  const loadRooms = useCallback(
+    () =>
+      fetch('/api/chat-rooms', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && Array.isArray(data.rooms)) {
+            setRooms(data.rooms as ChatRoomLite[]);
+          }
+        })
+        .catch(() => {
+          // transient — the next event or reconciliation retries
+        }),
+    [],
+  );
+
+  // One fetch on mount; after that the list is event-driven. The 8-second
+  // poll this replaced ran forever on every open tab, whether or not anyone
+  // was talking.
   useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch('/api/chat-rooms', { credentials: 'include' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.success && Array.isArray(data.rooms)) {
-          setRooms(data.rooms as ChatRoomLite[]);
-        }
-      } catch {
-        // transient — next poll retries
-      }
-    }
-    load();
-    const id = setInterval(load, 8000);
-    return () => clearInterval(id);
-  }, []);
+    void loadRooms();
+  }, [loadRooms]);
+
+  // Subscribed per room rather than through a single per-user topic, so a
+  // message costs ONE publish however many members the room has. The cap
+  // matches the connection's own topic budget; a user with more rooms than
+  // that still gets the rest through the provider's reconciliation.
+  const roomTopics = useMemo(
+    () => (rooms ?? []).slice(0, 16).map((r) => topics.chatRoom(r.id)),
+    [rooms],
+  );
+
+  useRealtimeTopics(roomTopics.length > 0 ? roomTopics : null, {
+    onEvent: () => { void loadRooms(); },
+    onSync: () => { void loadRooms(); },
+  });
 
   // Debounced user search (min 2 chars, mirrors the API guard).
   useEffect(() => {

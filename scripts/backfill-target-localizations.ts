@@ -41,6 +41,7 @@ import {
 } from '../src/schema';
 import { eq, and, inArray, asc } from 'drizzle-orm';
 import { TARGET_LANGUAGES } from '../lib/language';
+import { loadLanguageCatalog } from '../lib/language-registry';
 import { getAIProvider, type AIProvider } from '../lib/ai-providers';
 import { cacheDel, cacheKeys } from '../lib/cache';
 
@@ -378,6 +379,11 @@ async function backfillGoals(
 }
 
 async function main(): Promise<void> {
+  // Hydrates lib/language.ts from the `languages` table, so this script covers
+  // languages an admin added as well as the compiled-in ones. Without it the
+  // module-level constants are all a CLI process ever sees.
+  await loadLanguageCatalog();
+
   const langFilter = parseArg('lang');
   const only = parseArg('only'); // 'scenarios' | 'situations' | 'goals' | null (all)
   const limitRaw = parseArg('limit');

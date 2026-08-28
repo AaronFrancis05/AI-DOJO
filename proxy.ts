@@ -1,4 +1,5 @@
 import { appUrl, getAppOrigin } from '@/lib/auth/app-origin';
+import { SESSION_TOKEN_COOKIE } from '@/lib/auth/cookies';
 import { auth } from '@/lib/auth/server';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -38,7 +39,7 @@ function withPublicOrigin(request: NextRequest): NextRequest {
 async function checkSessionAndRedirect(request: NextRequest) {
   const cookieHeader = request.headers.get('cookie') || '';
 
-  if (!cookieHeader.includes('neon-auth.session_token')) {
+  if (!cookieHeader.includes(SESSION_TOKEN_COOKIE)) {
     return NextResponse.next();
   }
 

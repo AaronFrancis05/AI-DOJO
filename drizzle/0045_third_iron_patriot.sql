@@ -1,0 +1,2 @@
+ALTER TABLE "chat_rooms" ADD COLUMN "audience_key" varchar(200);--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_chat_rooms_cohort_audience" ON "chat_rooms" USING btree ("owner_tutor_id","audience_key") WHERE "chat_rooms"."kind" = 'cohort';

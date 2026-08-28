@@ -10,8 +10,8 @@ import {
 } from '@/src/schema';
 import { and, desc, eq, gte, ne, or } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
-import { generateRoomName } from '@/lib/tutors/rooms';
-import { BOOKING_DURATIONS_MINUTES } from '@/lib/tutors/config';
+import { generateCallId } from '@/lib/tutors/rooms';
+import { BOOKING_DURATIONS_MINUTES, DEFAULT_CALL_TYPE } from '@/lib/tutors/config';
 
 /** Rolls the booking transaction back and maps to the 409 response. */
 class SlotTakenError extends Error {}
@@ -60,7 +60,7 @@ export async function GET() {
       purpose: booking.purpose,
       learnerNote: booking.learnerNote,
       chatRoomId: booking.chatRoomId,
-      // The room NAME is intentionally not exposed here. It is only ever
+      // The call id is intentionally not exposed here. It is only ever
       // handed out alongside a token from /api/live/token, after the
       // join-window and membership checks have passed.
       isTutor: tutorProfile ? booking.tutorId === tutorProfile.id : false,
@@ -179,7 +179,8 @@ export async function POST(req: Request) {
         status: 'requested',
         purpose,
         learnerNote,
-        livekitRoomName: generateRoomName(),
+        callId: generateCallId(),
+        callType: DEFAULT_CALL_TYPE,
         chatRoomId: room?.id ?? null,
       }).returning({ id: tutorBookings.id });
 

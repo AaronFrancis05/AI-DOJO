@@ -1,7 +1,7 @@
 import { db } from '@/src/db';
 import { tutorBookings } from '@/src/schema';
 import { eq } from 'drizzle-orm';
-import { getAuthUser } from '@/lib/auth/server';
+import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { loadBookingForUser } from '@/lib/tutors/bookings';
 
 export async function GET(
@@ -70,8 +70,18 @@ export async function PATCH(
   const found = await loadBookingForUser(bookingId, user.id);
   if (!found) return Response.json({ error: 'Booking not found' }, { status: 404 });
 
-  if ((status === 'confirmed' || status === 'completed') && !found.isTutor) {
-    return Response.json({ error: 'Only the tutor can do that' }, { status: 403 });
+  if (status === 'confirmed' || status === 'completed') {
+    if (!found.isTutor) {
+      return Response.json({ error: 'Only the tutor can do that' }, { status: 403 });
+    }
+    // Being the booking's tutor is not the same as still being authorised to
+    // teach — a rejected application keeps the `tutors` row and only drops
+    // `users.role`.
+    try {
+      await requireRole('tutor');
+    } catch (err) {
+      return roleErrorResponse(err);
+    }
   }
   if (found.booking.status === 'cancelled') {
     return Response.json({ error: 'This booking was already cancelled' }, { status: 409 });

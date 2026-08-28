@@ -1,12 +1,21 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import type { UserRole } from '@/lib/auth/roles';
 
 export interface UserContextValue {
   id: string;
   name: string;
   email: string;
   level: string;
+  /** `users.role` — drives which nav entries and consoles are offered.
+   *  Never the authority for access: every tutor/admin route re-checks it
+   *  server-side through requireRole(). */
+  role: UserRole;
+  /** `tutors.verification_status` for a tutor account, null for anyone else.
+   *  Display only — what a pending tutor is allowed to do is decided by the
+   *  routes that read the column themselves. */
+  tutorStatus?: string | null;
   tier: 'free' | 'premium';
   xp: number;
   xpToNext: number;

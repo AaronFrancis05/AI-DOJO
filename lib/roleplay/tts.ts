@@ -1,18 +1,23 @@
 import {
   containsTargetScript,
+  hasDetectableScript,
   splitIntoLangSpans,
   detectSpeechLang as detectLang,
 } from './lang-detect';
 import { resolveAzureVoice } from '../language';
 import { getToken } from './pronunciation';
+import { markFirstAudio } from './voice-latency';
+import { findSentenceEnd } from './sentence-split';
+import { createPcmSink, resetCursor, whenDrained, type PcmSink } from './pcm-player';
 
 /* ── Overview ───────────────────────────────────────────────────────────
    Speech output for the roleplay session.
 
-   The AI's reply is spoken sentence-by-sentence AS THE MODEL STREAMS IT
-   (see feedStreamTts), synthesized by an Azure synthesizer running in the
-   browser whose audio plays while it is still arriving. Three things used to
-   sit between the learner and a naturally-paced reply, and all are gone:
+   The AI's reply is spoken AS THE MODEL STREAMS IT (see feedStreamTts) —
+   an opening sentence as soon as one is complete, then the remainder as one
+   continuous run — synthesized by an Azure synthesizer running in the browser
+   whose audio plays while it is still arriving. Four things used to sit
+   between the learner and a naturally-paced reply, and all are gone:
 
    1. Callers only started speaking in the stream's `text_done` event, i.e.
       after the ENTIRE model response had finished generating. The streaming
@@ -27,6 +32,12 @@ import { getToken } from './pronunciation';
       four-sentence reply spent seconds of its length silent. Synthesis and
       playback are now split (prepareSsmlDirect / PreparedUtterance) so the
       next sentences buffer while the current one is being spoken.
+   4. Even so, EVERY sentence became its own clip: the streaming buffer was
+      flushed at the end of each drain pass, so the grouping that was supposed
+      to gather a run of sentences into one utterance never happened (a token
+      chunk rarely carries more than one terminator). A reply was heard as a
+      list of read-out lines with a seam at every full stop. See the grouping
+      note above drainStreamBuffer.
 
    Lip-sync is driven off the PLAYBACK clock, not off event arrival: viseme
    events stream in as fast as the service can synthesize, which is far ahead
@@ -123,11 +134,19 @@ const SPEAKING_SETTLE_MS = 350;
 let activeUtterances = 0;
 let speakingSettleTimer: ReturnType<typeof setTimeout> | null = null;
 let reportedSpeaking = false;
+// When the character last stopped being audible, or 0 when it was silenced by
+// a barge-in rather than by finishing. See isSpeechAudibleWithin.
+let lastSpeechEndedAt = 0;
 
 function emitSpeaking(speaking: boolean): void {
   if (reportedSpeaking === speaking) return;
   reportedSpeaking = speaking;
   isAzureSpeaking = speaking;
+  // The first utterance of a reply going audible is the far end of the
+  // mic-release → first-audio measurement. Later sentences of the same reply
+  // don't re-report: the count only crosses zero once per reply.
+  if (speaking) markFirstAudio();
+  else lastSpeechEndedAt = Date.now();
   if (onSpeakingChange) onSpeakingChange(speaking);
 }
 
@@ -162,6 +181,12 @@ function resetSpeakingState(): void {
   }
   currentVisemeId = -1;
   emitSpeaking(false);
+  // A barge-in is the learner cutting the character off to speak, so the echo
+  // guard must NOT keep running afterwards — it would swallow the first
+  // fraction of a second of the very utterance the barge-in was making room
+  // for. Nothing more is coming out of the speakers, so there is nothing left
+  // to guard against.
+  lastSpeechEndedAt = 0;
 }
 
 function notifySpeaking(speaking: boolean): void {
@@ -206,38 +231,27 @@ function connectToOutput(source: AudioNode, audioCtx: AudioContext): void {
   }
 }
 
-/**
- * Routes a SpeakerAudioDestination's audio element through the shared graph so
- * the lip-sync can read its real amplitude. Without this the SDK plays the
- * element straight to the speaker, the analyser stays silent, and the mouth
- * falls back to a synthetic pattern that has nothing to do with the voice.
- *
- * Returns false (leaving the element playing directly) whenever routing would
- * be unsafe — a suspended context would silence the utterance outright.
- */
-const routedAudioElements = new WeakSet<HTMLAudioElement>();
-
-function attachToAnalyser(element: HTMLAudioElement | undefined): boolean {
-  try {
-    if (!element || routedAudioElements.has(element)) return false;
-    const audioCtx = getAudioContext();
-    if (audioCtx.state === 'suspended') void audioCtx.resume();
-    if (audioCtx.state !== 'running') return false;
-    const source = audioCtx.createMediaElementSource(element);
-    routedAudioElements.add(element);
-    connectToOutput(source, audioCtx);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function getCurrentViseme(): number {
   return currentVisemeId;
 }
 
 export function isSpeaking(): boolean {
   return isAzureSpeaking || window.speechSynthesis.speaking;
+}
+
+/**
+ * Whether the character's voice is coming out of the speakers, or was until
+ * `graceMs` ago.
+ *
+ * The trailing window is the whole point. Speech recognition reports a phrase
+ * a beat AFTER the audio that produced it, so a guard that ends the instant
+ * the speaker goes quiet still lets the tail of an echoed line through — which
+ * is how the character's own words ended up in the transcript as the learner's
+ * turn. Reset to "not recently" by a barge-in (see resetSpeakingState).
+ */
+export function isSpeechAudibleWithin(graceMs: number): boolean {
+  if (isSpeaking()) return true;
+  return lastSpeechEndedAt !== 0 && Date.now() - lastSpeechEndedAt < graceMs;
 }
 
 /* ── Browser-side Azure synthesizer ─────────────────────────────────────
@@ -271,9 +285,18 @@ async function getSpeechConfig(): Promise<AzureSpeechConfig> {
       const sdk = await loadSdk();
       const { token, region } = await getToken();
       const config = sdk.SpeechConfig.fromAuthorizationToken(token, region);
-      // Matches the server route's format so both paths sound identical.
+      // Raw PCM, not MP3. Two reasons, both about the seam between utterances:
+      // MP3 carries encoder delay and padding as silence at the head and tail
+      // of every clip, and a container has to be parsed before a sample can be
+      // played. Raw samples go straight onto the Web Audio timeline, which is
+      // what lets lib/roleplay/pcm-player.ts schedule one utterance to start on
+      // the exact sample the previous one ended.
+      //
+      // The server fallback (/api/tts) stays MP3 on purpose: it returns one
+      // complete clip that speakViaServer hands to decodeAudioData, which wants
+      // a container, and it is off the hot path anyway.
       config.speechSynthesisOutputFormat =
-        sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3;
+        sdk.SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm;
       cachedConfig = { config, expiresAt: Date.now() + CONFIG_TTL_MS };
       return config;
     })().finally(() => { configPromise = null; });
@@ -302,15 +325,18 @@ export function prewarmTts(): void {
 
 type VisemeFrame = { id: number; offsetMs: number };
 
-// Watchdog cadence for an utterance whose player never fires onAudioEnd.
-const DRAIN_TICK_MS = 500;
-/** Playback clock frozen this many ticks (3s) after synthesis finished. */
-const STALLED_TICKS = 6;
-/** Playback clock never left zero this many ticks (20s) after synthesis finished. */
-const NEVER_STARTED_TICKS = 40;
-
 interface PreparedUtterance {
-  /** Starts playback of audio that is already being synthesized. Resolves at end of audio. */
+  /**
+   * Hands this utterance's audio to the shared playback cursor.
+   *
+   * Resolves when the audio has been fully SCHEDULED, which is when synthesis
+   * finished — deliberately not when it has finished being heard. Synthesis
+   * runs far faster than real time, so resolving here is what lets the queue
+   * schedule the next utterance onto the tail of this one while this one is
+   * still audible. Waiting for playback to end would put the cursor behind the
+   * clock at every boundary and reintroduce the gap the cursor exists to
+   * remove. `whenDrained()` is what answers "has the character stopped?".
+   */
   play(): Promise<void>;
   /** Discards the utterance without ever playing it. */
   cancel(): void;
@@ -327,56 +353,48 @@ async function prepareSsmlDirect(ssml: string, generation: number): Promise<Prep
   const sdk = await loadSdk();
   const speechConfig = await getSpeechConfig();
 
-  const player = new sdk.SpeakerAudioDestination();
-  const audioConfig = sdk.AudioConfig.fromSpeakerOutput(player);
-  const synthesizer = new sdk.SpeechSynthesizer(speechConfig, audioConfig);
+  // `null` audio config, explicitly: the SDK must NOT open a speaker of its
+  // own. Audio is taken off the `synthesizing` event and scheduled by the
+  // shared cursor, which is the only way one utterance can be made to start on
+  // the sample the previous one ended.
+  const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
 
   // Visemes are collected, not applied. They arrive from the service as fast
-  // as it can synthesize — far ahead of the audio the speaker is playing — so
-  // applying each one on arrival ran the mouth ahead of the voice and left it
-  // still while the tail of the sentence was still being spoken. audioOffset
-  // is in 100ns ticks from the start of THIS utterance's audio, which is
-  // exactly what player.currentTime measures.
+  // as it can synthesize — far ahead of the audio being played — so applying
+  // each one on arrival ran the mouth ahead of the voice and left it still
+  // while the tail of the sentence was still being spoken. audioOffset is in
+  // 100ns ticks from the start of THIS utterance's audio, which is exactly
+  // what the sink's elapsedMs() measures.
   const visemes: VisemeFrame[] = [];
   synthesizer.visemeReceived = (_s, e) => {
     visemes.push({ id: e.visemeId, offsetMs: e.audioOffset / 10_000 });
   };
 
-  let wantPlay = false;
-  let audioStarted = false;
-  let routed = false;
+  // Audio that arrived before this utterance's turn came up. Preparing means
+  // synthesizing NOW and holding the samples; playing is a separate, later act,
+  // and that split is what keeps the next sentences buffering while the current
+  // one is spoken.
+  const buffered: ArrayBuffer[] = [];
+  let sink: PcmSink | null = null;
+  let receivedAudio = false;
   let closed = false;
-  let onAudioEnded: (() => void) | null = null;
   let onSynthSettled: (() => void) | null = null;
   let synthSettled = false;
   let synthError: Error | null = null;
+
+  synthesizer.synthesizing = (_s, e) => {
+    const data = e.result?.audioData;
+    if (!data || data.byteLength === 0 || closed) return;
+    receivedAudio = true;
+    if (sink) sink.push(data);
+    else buffered.push(data);
+  };
 
   const closeAll = () => {
     if (closed) return;
     closed = true;
     try { synthesizer.close(); } catch { /* already closed */ }
-    if (routed) { routed = false; releaseAnalyser(); }
   };
-
-  // onAudioStart runs immediately before the SDK would call play() on its
-  // audio element, and pausing from inside it is the only hook that keeps a
-  // pre-synthesized utterance silent until its turn comes up. Buffering
-  // continues either way — that is the whole point.
-  player.onAudioStart = () => {
-    // closeAll() does not stop a pending notifyPlayback() from firing this —
-    // a late callback must not re-attach the analyser after its route was
-    // released (or resurrect audioStarted for an utterance that never plays).
-    if (closed) return;
-    audioStarted = true;
-    if (!wantPlay) {
-      try { player.pause(); } catch { /* ignore */ }
-    }
-    if (attachToAnalyser(player.internalAudio)) {
-      routed = true;
-      holdAnalyser();
-    }
-  };
-  player.onAudioEnd = () => { onAudioEnded?.(); };
 
   const settleSynth = (err: Error | null) => {
     synthSettled = true;
@@ -395,89 +413,89 @@ async function prepareSsmlDirect(ssml: string, generation: number): Promise<Prep
   );
 
   const cancel = () => {
-    wantPlay = false;
-    try { player.pause(); } catch { /* ignore */ }
-    try { player.close(); } catch { /* ignore */ }
+    buffered.length = 0;
+    sink?.stop();
     closeAll();
   };
 
   const play = (): Promise<void> => new Promise<void>((resolve, reject) => {
     if (generation !== currentGeneration) { cancel(); resolve(); return; }
-    // Synthesis already failed and nothing ever reached the speaker: report it
-    // now so the caller falls back before the learner hears the gap.
-    if (synthSettled && synthError && !audioStarted) { cancel(); reject(synthError); return; }
+    // Synthesis already failed and produced nothing: report it now so the
+    // caller falls back before the learner hears the gap.
+    if (synthSettled && synthError && !receivedAudio) { cancel(); reject(synthError); return; }
 
     let settled = false;
-    let drainTimer: ReturnType<typeof setInterval> | null = null;
 
-    // Shared teardown. `settled` makes every completion path idempotent —
-    // onAudioEnd, the synthesis callback, an error, and a barge-in can all
-    // race, and only the first may take effect.
+    const audioCtx = getAudioContext();
+    const activeSink = createPcmSink(audioCtx, (source) => connectToOutput(source, audioCtx));
+    holdAnalyser();
+
+    currentVisemeId = -1;
+    notifySpeaking(true);
+
+    // The speaking flag drops when this utterance's audio has actually played
+    // out, which is well after play() resolves. SPEAKING_SETTLE_MS then covers
+    // the handover to the next utterance so the avatar doesn't flicker.
+    void activeSink.finished.then(() => {
+      releaseAnalyser();
+      notifySpeaking(false);
+    });
+
+    // Everything synthesized while this was waiting its turn goes out first,
+    // in order — and `sink` is only published to the `synthesizing` handler
+    // afterwards, so a chunk arriving mid-flush cannot overtake the backlog and
+    // land out of order. Samples scheduled out of order are not a glitch that
+    // gets smoothed over; they are the utterance played wrong.
+    for (const chunk of buffered) activeSink.push(chunk);
+    buffered.length = 0;
+    sink = activeSink;
+
+    // Shared teardown. `settled` makes every completion path idempotent — the
+    // synthesis callback, an error and a barge-in can all race, and only the
+    // first may take effect.
     const settle = (outcome: () => void) => {
       if (settled) return;
       settled = true;
-      if (drainTimer) { clearInterval(drainTimer); drainTimer = null; }
       if (azureStopCallback === stopThis) azureStopCallback = null;
-      onAudioEnded = null;
       onSynthSettled = null;
       closeAll();
-      // Always balance the beginUtterance() below, even for a superseded
-      // generation — an unbalanced count would leave the avatar stuck in its
-      // talking animation for the rest of the session.
-      notifySpeaking(false);
       outcome();
     };
 
     const stopThis = () => {
-      // Barge-in: kill playback immediately rather than letting the buffered
-      // tail keep talking over the learner.
-      try { player.pause(); } catch { /* ignore */ }
-      try { player.close(); } catch { /* ignore */ }
+      // Barge-in: drop the scheduled audio immediately rather than letting the
+      // buffered tail keep talking over the learner.
+      activeSink.stop();
       settle(resolve);
     };
     azureStopCallback = stopThis;
 
-    // Fires once the last buffered sample has actually been played, which is
-    // later than the synthesis callback — this is the real end of speech.
-    onAudioEnded = () => settle(resolve);
-
     onSynthSettled = () => {
-      if (synthError && !audioStarted) { settle(() => reject(synthError!)); return; }
-      // Synthesis finished, but audio may still be draining through the
-      // speaker. onAudioEnd is what normally resolves us; this only covers a
-      // player that never reports back. It watches for the playback clock to
-      // STOP ADVANCING rather than counting down a fixed timeout, so a long
-      // utterance is never cut off while it is still being spoken.
-      let lastTime = -1;
-      let stalledTicks = 0;
-      let silentTicks = 0;
-      drainTimer = setInterval(() => {
-        const now = player.currentTime;
-        if (now > lastTime) { lastTime = now; stalledTicks = 0; return; }
-        // Still queued behind the speaker's own buffering: the clock hasn't
-        // started yet, so there is nothing to call stalled.
-        if (now <= 0) {
-          if (++silentTicks >= NEVER_STARTED_TICKS) settle(resolve);
-          return;
-        }
-        if (++stalledTicks >= STALLED_TICKS) settle(resolve);
-      }, DRAIN_TICK_MS);
+      if (synthError && !receivedAudio) {
+        activeSink.stop();
+        settle(() => reject(synthError!));
+        return;
+      }
+      // Every sample is scheduled. The utterance is not over — it is very much
+      // still being heard — but the queue may now move on and schedule the next
+      // one onto the tail of this one. `activeSink.finished` above is what
+      // tracks the audio itself.
+      activeSink.end();
+      settle(resolve);
     };
     if (synthSettled) onSynthSettled();
 
-    currentVisemeId = -1;
-    notifySpeaking(true);
-    wantPlay = true;
-    // No-op if onAudioStart hasn't run yet; that handler then sees wantPlay
-    // and lets the SDK start playback itself.
-    try { player.resume(); } catch { /* ignore */ }
-
     // Walk the collected timeline against the PLAYBACK clock, so each mouth
-    // shape lands on the syllable it belongs to.
+    // shape lands on the syllable it belongs to. This outlives play()'s own
+    // resolution, because the mouth has to keep moving after the queue has
+    // moved on; it stops when the audio does.
     let visemeIndex = 0;
+    let visemesDone = false;
+    void activeSink.finished.then(() => { visemesDone = true; });
+
     const tick = () => {
-      if (settled || generation !== currentGeneration) return;
-      const elapsedMs = player.currentTime * 1000;
+      if (visemesDone || generation !== currentGeneration) return;
+      const elapsedMs = activeSink.elapsedMs();
       while (visemeIndex < visemes.length && visemes[visemeIndex].offsetMs <= elapsedMs) {
         currentVisemeId = visemes[visemeIndex].id;
         visemeIndex++;
@@ -608,6 +626,10 @@ export function stop(): void {
     azureStopCallback = null;
   }
   window.speechSynthesis.cancel();
+  // Every sink has now been stopped, so nothing is scheduled ahead any more.
+  // Leaving the cursor out in the future would make the next reply wait out the
+  // silence of the reply that was just cut off.
+  resetCursor();
   // Barge-in must silence the character immediately — no settle grace period.
   resetSpeakingState();
 }
@@ -619,7 +641,15 @@ function resolveTTSVoice(bcp47: string): string {
 }
 
 function spanVoiceFor(lang: 'target' | 'native', targetBcp47: string, nativeBcp47: string, phase: string, text?: string): string {
-  if (phase === 'unguided') {
+  // Unguided is full immersion: everything the character says is target
+  // language, so a span is only read in the native voice when it demonstrably
+  // isn't target text. That test is script-based, and script detection only
+  // works for the CJK targets — for French, Spanish, Swahili and every other
+  // Latin-script target it answered "not target" for target-language text and
+  // read the entire immersion phase aloud in the learner's native voice.
+  // Where the script can't decide, the ⟦ ⟧ markers do, exactly as in every
+  // other phase.
+  if (phase === 'unguided' && hasDetectableScript(targetBcp47)) {
     if (text && !containsTargetScript(text, targetBcp47)) return nativeBcp47;
     return targetBcp47;
   }
@@ -731,6 +761,13 @@ function runQueue(): Promise<void> {
           prepareAhead();
           await playQueuedUtterance(item);
         }
+        // Playing an utterance now only SCHEDULES it (see PreparedUtterance),
+        // so the loop above finishes while the last sentences are still being
+        // spoken. Callers await this to know the character has stopped talking
+        // — flushStreamTts resolves the turn on it, and the session pages hide
+        // the caption and raise the results screen when it does — so it has to
+        // wait for the audio, not just for the queue.
+        await whenDrained();
       } finally {
         queuePump = null;
       }
@@ -836,29 +873,56 @@ export async function speakMixedText(
    ────────────────────────────────────────────────────────────────────── */
 
 let streamTtsBuffer = '';
+// Complete sentences that are deliberately NOT queued yet — see the grouping
+// note on MAX_GROUPED_CHARS. Survives across feed calls; a group is only
+// closed off when speaking it is the right thing to do.
+let streamTtsPending = '';
 let streamTtsStopped = false;
-
-// A sentence terminator only ends a sentence if it is followed by whitespace
-// or a closing delimiter. While the model is still generating, the end of the
-// buffer is NOT a boundary: the "." of "1.5" or "Mr." sits at the end of the
-// buffer for exactly as long as it takes the next chunk to arrive, and that
-// window is enough to speak half a word as a sentence.
-const SENTENCE_BOUNDARY = /[。！？.!?](?=\s|⟧)|\n/;
-
-// The flush pattern runs only after generation has finished, so there is no
-// next chunk and end-of-buffer really does terminate the last sentence.
-const SENTENCE_BOUNDARY_FINAL = /[。！？.!?](?=\s|⟧|$)|\n/;
 
 // Don't synthesize a fragment so short it costs more in setup than it returns;
 // wait for it to join the next sentence instead.
 const MIN_SENTENCE_CHARS = 2;
 
-// When the model has already produced several sentences by the time we look at
-// the buffer, speak them as ONE utterance rather than a string of separate
-// clips. Azure carries prosody across a whole utterance, so a paragraph spoken
-// in one go sounds like continuous speech instead of a list of read-out lines.
-// Capped so a long burst still starts playing promptly.
-const MAX_GROUPED_CHARS = 240;
+/* ── Grouping ───────────────────────────────────────────────────────────
+   Every utterance costs a connect + synthesize round trip and lands as its
+   own clip, and Azure only carries prosody WITHIN an utterance — so a reply
+   cut into one clip per sentence is heard as a list of read-out lines with a
+   gap at every full stop, which is exactly the "lagging" delivery this
+   replaces.
+
+   The buffer used to be flushed at the end of every drain pass, so grouping
+   never actually happened: a token chunk almost always carries at most one
+   sentence terminator, meaning each sentence closed a group of one and every
+   full stop in a reply became a clip boundary. MAX_GROUPED_CHARS only ever
+   applied to the rare chunk that arrived carrying several sentences at once.
+
+   The condition for closing a group used to be "nothing is currently
+   audible" (utteranceQueue empty AND no pump running). That reads as if it
+   keeps the pipeline fed, but `queuePump` stays non-null for the WHOLE reply,
+   so it was only ever true for the opening sentence. Every later sentence was
+   held back until MAX_GROUPED_CHARS — which most replies never reach — or
+   until the final flush, i.e. until generation had finished. prepareAhead()
+   had nothing to prepare, because the queue it prepares from was deliberately
+   kept empty. What the learner heard was the opening sentence, then a silence
+   of a second or more while the model finished and the remainder was
+   synthesized from cold, then the rest: the stall this whole file is about.
+
+   So the condition is pipeline DEPTH instead. A group is closed off when:
+
+   1. Fewer than PREPARE_AHEAD utterances are queued ahead of the voice. An
+      empty-ish queue means the character is about to run out of audio, and
+      holding text back at that moment is precisely the stall. Synthesis
+      therefore always runs one to two utterances in front of playback.
+   2. The group has grown past MAX_GROUPED_CHARS, so a long reply can't be
+      held to the end of generation.
+
+   This does cut a reply into more utterances than the old design intended,
+   and Azure only carries prosody WITHIN an utterance. That cost is real but
+   small, and it is paid against gapless playback (lib/roleplay/pcm-player.ts)
+   which makes the joins themselves inaudible — a seam you cannot hear is a
+   better trade than a pause you can.
+   ────────────────────────────────────────────────────────────────────── */
+const MAX_GROUPED_CHARS = 400;
 
 function hasSpeakableContent(text: string): boolean {
   return text.replace(/[^\p{L}\p{N}]/gu, '').length >= MIN_SENTENCE_CHARS;
@@ -878,10 +942,11 @@ function enqueueMixedText(
 }
 
 /**
- * Pulls every complete sentence currently sitting in the buffer and queues it
- * for speech. Synchronous by design: queueing starts synthesis without waiting
- * for playback, so the token handler returns immediately and sentences keep
- * stacking up ahead of the voice.
+ * Pulls every complete sentence currently sitting in the buffer into the
+ * pending group, and queues that group for speech when it should be spoken
+ * (see the grouping note above). Synchronous by design: queueing starts
+ * synthesis without waiting for playback, so the token handler returns
+ * immediately and sentences keep stacking up ahead of the voice.
  */
 function drainStreamBuffer(
   targetBcp47: string,
@@ -891,39 +956,48 @@ function drainStreamBuffer(
 ): void {
   if (streamTtsStopped) return;
 
-  const boundary = isFinal ? SENTENCE_BOUNDARY_FINAL : SENTENCE_BOUNDARY;
-  let group = '';
-
   const emit = () => {
-    if (group && hasSpeakableContent(group)) {
-      enqueueMixedText(group, targetBcp47, nativeBcp47, phase);
+    if (streamTtsPending && hasSpeakableContent(streamTtsPending)) {
+      enqueueMixedText(streamTtsPending, targetBcp47, nativeBcp47, phase);
     }
-    group = '';
+    streamTtsPending = '';
+  };
+
+  const append = (text: string) => {
+    streamTtsPending = streamTtsPending ? `${streamTtsPending} ${text}` : text;
   };
 
   while (!streamTtsStopped) {
-    const match = streamTtsBuffer.match(boundary);
-    if (!match) break;
+    const idx = findSentenceEnd(streamTtsBuffer, isFinal);
+    if (idx === -1) break;
 
-    const idx = match.index! + match[0].length;
     const sentence = streamTtsBuffer.slice(0, idx).trim();
     streamTtsBuffer = streamTtsBuffer.slice(idx).trimStart();
 
     if (!hasSpeakableContent(sentence)) continue;
+    append(sentence);
 
-    // Never make the FIRST sentence wait on a second one — time to first
-    // sound is what the learner actually perceives as responsiveness.
-    if (!group && utteranceQueue.length === 0 && !queuePump) {
-      group = sentence;
-      emit();
-      continue;
-    }
-
-    group = group ? `${group} ${sentence}` : sentence;
-    if (group.length >= MAX_GROUPED_CHARS) emit();
+    if (streamTtsPending.length >= MAX_GROUPED_CHARS) emit();
   }
 
-  emit();
+  if (streamTtsStopped) return;
+
+  if (isFinal) {
+    // Generation is over, so the unterminated remainder is the last sentence
+    // rather than a chunk boundary. Folding it into the pending group is what
+    // keeps the tail from becoming a clip of its own.
+    const tail = streamTtsBuffer.trim();
+    streamTtsBuffer = '';
+    if (tail) append(tail);
+    emit();
+    return;
+  }
+
+  // The voice is running short of buffered audio with text in hand — speak it
+  // rather than hold the group open. This is the opening sentence of a reply on
+  // the first pass, and from then on it is what keeps synthesis running ahead
+  // of playback for the rest of the reply.
+  if (utteranceQueue.length < PREPARE_AHEAD) emit();
 }
 
 /**
@@ -946,15 +1020,9 @@ export async function flushStreamTts(targetBcp47: string, nativeBcp47: string, p
   if (streamTtsStopped) return;
 
   // Generation is over, so a terminator at the end of the buffer is now a real
-  // sentence end rather than a chunk boundary — drain those first.
+  // sentence end rather than a chunk boundary, and the final pass speaks
+  // everything still held back as one continuous utterance.
   drainStreamBuffer(targetBcp47, nativeBcp47, phase, true);
-  if (streamTtsStopped) return;
-
-  const tail = streamTtsBuffer.trim();
-  streamTtsBuffer = '';
-  if (tail && hasSpeakableContent(tail)) {
-    enqueueMixedText(tail, targetBcp47, nativeBcp47, phase);
-  }
 
   await drainQueue();
 }
@@ -1015,9 +1083,11 @@ export function speakWhenAudioUnlocked(speak: () => void): () => void {
 export function stopStreamingTts(): void {
   streamTtsStopped = true;
   streamTtsBuffer = '';
+  streamTtsPending = '';
 }
 
 export function resetStreamingTts(): void {
   streamTtsStopped = false;
   streamTtsBuffer = '';
+  streamTtsPending = '';
 }

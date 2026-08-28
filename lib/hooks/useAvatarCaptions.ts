@@ -59,6 +59,7 @@ export interface UseAvatarCaptionsReturn {
   caption: string | null;
   captionId: number | null;
   showCaption: (text: string) => number;
+  showLiveCaption: (text: string) => void;
   hideCaption: (id?: number | null) => void;
   playCaption: (text: string, totalDurationMs: number) => Promise<number | null>;
   clear: () => void;
@@ -89,6 +90,22 @@ export function useAvatarCaptions(): UseAvatarCaptionsReturn {
     setCaptionId(id);
     return id;
   }, []);
+
+  /**
+   * Caption for a reply that is still arriving: shows the newest chunk of the
+   * accumulated text so far.
+   *
+   * playCaption can't be used while the reply is streaming — it needs to know
+   * the total duration up front, which is only knowable once generation has
+   * finished. Now that speech starts on the first complete sentence rather
+   * than on the last token, a caption scheduled at the end of generation would
+   * begin a whole generation behind the voice.
+   */
+  const showLiveCaption = useCallback((text: string) => {
+    const chunks = splitIntoCaptionChunks(text);
+    if (!chunks.length) return;
+    showCaption(chunks[chunks.length - 1]);
+  }, [showCaption]);
 
   const clear = useCallback(() => {
     if (activeTimerRef.current != null) {
@@ -126,5 +143,5 @@ export function useAvatarCaptions(): UseAvatarCaptionsReturn {
     return lastId;
   }, [showCaption, hideCaption]);
 
-  return { caption, captionId, showCaption, hideCaption, playCaption, clear };
+  return { caption, captionId, showCaption, showLiveCaption, hideCaption, playCaption, clear };
 }

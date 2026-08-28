@@ -90,7 +90,40 @@ function messageForCode(code: string, context: AuthErrorContext): string | null 
     return 'Network error. Please try again.';
   }
 
+  // Redirect codes from the OAuth proxy in app/api/auth/[...path]/route.ts.
+  // These arrive as `/auth?error=<code>` rather than as a thrown error, and
+  // every one of them is an infrastructure failure — never something the
+  // person typed — so the copy points at retrying, not at their input.
+  if (code === 'init_failed') {
+    return 'Could not reach the sign-in provider. Please try again.';
+  }
+
+  if (code === 'no_oauth_url') {
+    return 'Could not start Google sign-in. Please try again.';
+  }
+
+  if (code === 'no_verifier' || code === 'exchange_failed') {
+    return 'Sign-in did not complete. Please try again.';
+  }
+
   return null;
+}
+
+/**
+ * The normalized code behind an auth error, or '' when there isn't one.
+ *
+ * For the rare caller that has to *branch* on the failure rather than only
+ * show copy for it — `/auth/tutor` recovers from `user_already_exists` and
+ * `email_not_verified` instead of dead-ending on them. Same normalization
+ * `getAuthErrorMessage` uses (lowercased, hyphens to underscores), so a
+ * comparison here matches the codes listed in `messageForCode`.
+ *
+ * Never render this to a user: `getAuthErrorMessage` exists precisely because
+ * raw provider codes and text leak account state.
+ */
+export function getAuthErrorCode(err: unknown): string {
+  const { message, code } = asAuthError(err);
+  return normalizeCode(code, typeof message === 'string' ? message.trim() : '');
 }
 
 /**

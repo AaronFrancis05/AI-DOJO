@@ -36,7 +36,7 @@ export default function ProfilePage() {
     (async () => {
       const { data } = await authClient.getSession();
       if (!data?.user) {
-        router.push('/auth?redirect=/profile');
+        router.push('/auth/signin?redirect=/profile');
         return;
       }
       setUser(data.user as SessionUser);
@@ -98,7 +98,7 @@ export default function ProfilePage() {
   async function handleLogout() {
     setLoggingOut(true);
     await authClient.signOut();
-    router.push('/auth');
+    router.push('/auth/signin');
     router.refresh();
   }
 

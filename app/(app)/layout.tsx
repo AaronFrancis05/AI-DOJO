@@ -1,9 +1,13 @@
+import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { getAuthUserReadOnly } from '@/lib/auth/server';
 import { syncUser } from '@/lib/auth/sync-user';
 import { UserProvider } from '@/lib/auth/user-context';
+import { LanguageCatalogProvider } from '@/lib/language-context';
+import { loadLanguageCatalog } from '@/lib/language-registry';
+import { toUserRole } from '@/lib/auth/roles';
 import { db } from '@/src/db';
-import { users } from '@/src/schema';
+import { tutors, users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
 
 export default async function AppLayout({
@@ -11,6 +15,10 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Resolved here rather than per-page: it is cached, it never throws, and
+  // every authenticated surface either lists languages or looks one up.
+  const languageCatalog = await loadLanguageCatalog();
+
   const authUser = await getAuthUserReadOnly();
   const u = authUser as { id?: string; name?: string; email?: string } | null;
 
@@ -42,6 +50,9 @@ export default async function AppLayout({
           nativeLanguage: users.nativeLanguage,
           preferredTargetLanguage: users.preferredTargetLanguage,
           countryCode: users.countryCode,
+          role: users.role,
+          status: users.status,
+          onboardingCompletedAt: users.onboardingCompletedAt,
         })
         .from(users)
         .where(eq(users.id, authId))
@@ -61,11 +72,62 @@ export default async function AppLayout({
       }
     }
 
+    const role = toUserRole(dbUser?.role);
+
+    // Access revocation. getAuthUser() already refuses a suspended account for
+    // every API route; this is the page-side half, so a signed-in tab that is
+    // suspended mid-session lands somewhere that explains it rather than on a
+    // dashboard whose every request 401s. Only acted on when the row was
+    // actually read — a failed read above leaves `dbUser` undefined, and
+    // treating that as suspended would lock everyone out on a DB blip.
+    if (dbUser && dbUser.status !== 'active') {
+      redirect('/auth/suspended');
+    }
+
+    // The onboarding gate. Preferences, level and course enrolment all come
+    // out of the wizard, so an account that never finished it has nothing to
+    // show on any of these routes. Only redirect when the row was actually
+    // read — a failed read above leaves `dbUser` undefined, and treating that
+    // as "not onboarded" would bounce established learners out of the app on
+    // a transient DB blip.
+    //
+    // Which wizard depends on the role. A tutor sent through the learner one
+    // is asked for a level, a practice goal and a daily practice target —
+    // none of which anything reads for them, and none of which is the setup
+    // their console actually needs.
+    //
+    // An admin skips it entirely. Neither wizard collects anything the console
+    // reads, and an operator pre-provisioned by another admin (which leaves
+    // `onboardingCompletedAt` null — see /api/admin/users/create) would
+    // otherwise be held at a learner level-picker on the way to /admin.
+    if (dbUser && dbUser.onboardingCompletedAt === null && role !== 'admin') {
+      redirect(role === 'tutor' ? '/onboarding/tutor/welcome' : '/onboarding/level');
+    }
+
+    // What the sidebar tells a tutor about their own standing. Only fetched
+    // for a tutor: a learner has no row, and an extra round-trip on every
+    // authenticated page render is not free.
+    let tutorStatus: string | null = null;
+    if (role === 'tutor') {
+      try {
+        const [profile] = await db
+          .select({ verificationStatus: tutors.verificationStatus })
+          .from(tutors)
+          .where(eq(tutors.userId, authId))
+          .limit(1);
+        tutorStatus = profile?.verificationStatus ?? null;
+      } catch (err) {
+        console.error('[app-layout] tutor profile read failed', err);
+      }
+    }
+
     user = {
       id: authId,
       name: dbUser?.name || providerName || '',
       email: dbUser?.email || u.email || '',
       level: dbUser?.level ?? 'beginner',
+      role,
+      tutorStatus,
       tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,
       xpToNext: dbUser?.xpToNext ?? 1000,
@@ -81,7 +143,9 @@ export default async function AppLayout({
 
   return (
     <UserProvider value={user}>
-      <AppShell>{children}</AppShell>
+      <LanguageCatalogProvider value={languageCatalog}>
+        <AppShell>{children}</AppShell>
+      </LanguageCatalogProvider>
     </UserProvider>
   );
 }

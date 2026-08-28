@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import {
   ArrowLeft,
@@ -25,6 +26,8 @@ import {
   Layers,
   BookOpen,
   RotateCcw,
+  Users,
+  ClipboardList,
 } from 'lucide-react';
 
 interface LessonRow {
@@ -84,6 +87,18 @@ interface CourseProgressRow {
   currentLessonId: number | null;
   targetLanguage?: string;
   nativeLanguage?: string;
+  /** JSON array of unit ids the learner has signed off on. */
+  acknowledgedUnitIds?: string | null;
+}
+
+/** The live class scheduled for a unit, when one is. */
+interface UnitClassRow {
+  id: number;
+  title: string;
+  unitId: number | null;
+  scheduledAt: string;
+  enrolledCount: number;
+  capacity: number;
 }
 
 type LessonStatus = 'completed' | 'in-progress' | 'available' | 'locked';
@@ -93,6 +108,22 @@ interface FlatLesson {
   levelIdx: number;
   unitIdx: number;
   status: LessonStatus;
+}
+
+/**
+ * Reads `student_progress.acknowledged_unit_ids` — a JSON array in a text
+ * column, the same shape `student_lesson_progress.completed_phases` uses.
+ * Tolerant of anything malformed: an unreadable column must not break the
+ * course page.
+ */
+function parseAcknowledgedUnits(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isInteger) : [];
+  } catch {
+    return [];
+  }
 }
 
 const DIFFICULTY_LABEL: Record<string, string> = {
@@ -115,6 +146,9 @@ export default function CourseDetailPage() {
   const [courseProgress, setCourseProgress] = useState<CourseProgressRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingLesson, setStartingLesson] = useState<number | null>(null);
+  const [unitClasses, setUnitClasses] = useState<UnitClassRow[]>([]);
+  const [acknowledgedUnits, setAcknowledgedUnits] = useState<number[]>([]);
+  const [acknowledging, setAcknowledging] = useState<number | null>(null);
 
   usePageTitle(course?.title ?? 'Course');
 
@@ -148,7 +182,10 @@ export default function CourseDetailPage() {
             const row = progressData.progress.find(
               (p) => p.courseId === courseData.course?.id && p.targetLanguage === targetLanguage,
             );
-            if (row) setCourseProgress(row);
+            if (row) {
+              setCourseProgress(row);
+              setAcknowledgedUnits(parseAcknowledgedUnits(row.acknowledgedUnitIds));
+            }
           }
         }
       } catch (e) {
@@ -162,6 +199,54 @@ export default function CourseDetailPage() {
       cancelled = true;
     };
   }, [slug, targetLanguage]);
+
+  // Scheduled live classes, indexed by the unit they belong to. One request
+  // for the whole course rather than one per unit — the API already answers
+  // "what is coming up" in a single query.
+  useEffect(() => {
+    if (!TUTORS_ENABLED) return;
+    let cancelled = false;
+    fetch('/api/classes', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success || !Array.isArray(data.classes)) return;
+        setUnitClasses(data.classes as UnitClassRow[]);
+      })
+      .catch(() => {
+        /* the footer falls back to the tutor list */
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const classByUnit = useMemo(() => {
+    const map = new Map<number, UnitClassRow>();
+    // The list arrives soonest-first, so the first hit for a unit is the next
+    // class for it.
+    for (const c of unitClasses) {
+      if (c.unitId != null && !map.has(c.unitId)) map.set(c.unitId, c);
+    }
+    return map;
+  }, [unitClasses]);
+
+  async function acknowledgeUnit(unitId: number) {
+    setAcknowledging(unitId);
+    try {
+      const res = await fetch(`/api/progress/units/${unitId}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetLanguage }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.success && Array.isArray(data.acknowledgedUnitIds)) {
+        setAcknowledgedUnits(data.acknowledgedUnitIds as number[]);
+      }
+    } catch {
+      /* leave the button as it was; the learner can try again */
+    } finally {
+      setAcknowledging(null);
+    }
+  }
 
   const { flatLessons, totalLessons, completedCount } = useMemo(() => {
     if (!course) return { flatLessons: [] as FlatLesson[], totalLessons: 0, completedCount: 0 };
@@ -274,13 +359,22 @@ export default function CourseDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6 lg:p-10">
-      <Link
-        href="/courses"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Learning Paths
-      </Link>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href="/courses"
+          className="inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Learning Paths
+        </Link>
+        <Link
+          href={`/courses/${slug}/grades?target=${encodeURIComponent(targetLanguage)}`}
+          className="inline-flex items-center gap-2 rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+        >
+          <ClipboardList className="h-4 w-4" />
+          Grades
+        </Link>
+      </div>
 
       {/* ── Hero ── */}
       <div className="relative overflow-hidden rounded-3xl border border-dojo-border bg-dojo-surface-raised p-8 shadow-2xl mb-10">
@@ -373,7 +467,10 @@ export default function CourseDetailPage() {
 
               <div className="space-y-4">
                 {level.units.map((unit, unitIdx) => (
-                  <Card key={unit.id} className="!p-5">
+                  // `id` is the anchor a finished session lands on — see
+                  // continueHref in lib/curriculum/continue-href.ts. scroll-mt
+                  // keeps the heading clear of the sticky app header.
+                  <Card key={unit.id} id={`unit-${unit.id}`} className="!p-5 scroll-mt-24">
                     <div className="mb-3">
                       <h3 className="text-sm font-bold text-dojo-text-primary">
                         Unit {unit.sequenceOrder} — {unit.title}
@@ -389,7 +486,8 @@ export default function CourseDetailPage() {
                         .map((f) => (
                           <div
                             key={f.lesson.id}
-                            className="flex items-center gap-3 rounded-xl border border-dojo-border bg-dojo-surface/60 px-4 py-3"
+                            id={`lesson-${f.lesson.id}`}
+                            className="flex items-center gap-3 rounded-xl border border-dojo-border bg-dojo-surface/60 px-4 py-3 scroll-mt-24 target:border-dojo-accent target:ring-2 target:ring-dojo-accent/30"
                           >
                             <div
                               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
@@ -461,6 +559,62 @@ export default function CourseDetailPage() {
                           </div>
                         ))}
                     </div>
+
+                    {/* Appears only once every lesson in the unit is done. A
+                        unit still in progress has nothing to sign off and no
+                        reason to be sent to a live lesson for it yet. */}
+                    {(() => {
+                      const unitLessons = flatLessons.filter(
+                        (f) => f.levelIdx === levelIdx && f.unitIdx === unitIdx,
+                      );
+                      const unitComplete =
+                        unitLessons.length > 0 &&
+                        unitLessons.every((f) => f.status === 'completed');
+                      if (!unitComplete) return null;
+
+                      const acknowledged = acknowledgedUnits.includes(unit.id);
+                      const liveClass = classByUnit.get(unit.id) ?? null;
+
+                      return (
+                        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-dojo-border pt-4">
+                          {acknowledged ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-dojo-success-strong">
+                              <Check className="h-3.5 w-3.5" /> Unit finished
+                            </span>
+                          ) : (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              loading={acknowledging === unit.id}
+                              onClick={() => acknowledgeUnit(unit.id)}
+                            >
+                              <ClipboardList className="h-3.5 w-3.5" />
+                              Mark unit as finished
+                            </Button>
+                          )}
+
+                          {TUTORS_ENABLED && (
+                            liveClass ? (
+                              <Link
+                                href={`/live/class/${liveClass.id}`}
+                                className="inline-flex items-center gap-2 rounded-(--radius-md) bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
+                              >
+                                <Users className="h-3.5 w-3.5" />
+                                Join live lesson · {new Date(liveClass.scheduledAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </Link>
+                            ) : (
+                              <Link
+                                href="/tutors"
+                                className="inline-flex items-center gap-2 rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+                              >
+                                <Users className="h-3.5 w-3.5" />
+                                No live lesson scheduled — find a tutor
+                              </Link>
+                            )
+                          )}
+                        </div>
+                      );
+                    })()}
                   </Card>
                 ))}
               </div>

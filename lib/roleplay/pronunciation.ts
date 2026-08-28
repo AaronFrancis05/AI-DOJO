@@ -91,12 +91,29 @@ export async function getToken(): Promise<{ token: string; region: string }> {
 let micStream: MediaStream | null = null;
 let micStreamPromise: Promise<MediaStream> | null = null;
 
+/**
+ * Whether a track is actually delivering audio.
+ *
+ * `muted` matters as much as `readyState` here, and is the more insidious of
+ * the two: a muted track is still "live", so it passes every liveness check
+ * while feeding the tap nothing but digital silence. It goes muted when
+ * another application takes exclusive hold of the device, when the OS reclaims
+ * it, or when a Bluetooth headset switches profile — none of which raise an
+ * error anywhere. The press then produces no transcript and no explanation,
+ * which is one of the ways the microphone appears to "sometimes not work".
+ */
+function isTrackDelivering(track: MediaStreamTrack): boolean {
+  return track.readyState === 'live' && !track.muted;
+}
+
 async function acquireMicStream(): Promise<MediaStream> {
   // A stream whose track has ended (device unplugged, permission revoked,
-  // OS reclaimed it) must be re-acquired rather than handed back dead.
-  if (micStream && micStream.getAudioTracks().some(t => t.readyState === 'live')) {
+  // OS reclaimed it) or gone muted must be re-acquired rather than handed
+  // back dead. Re-acquiring is cheap once permission has been granted.
+  if (micStream && micStream.getAudioTracks().some(isTrackDelivering)) {
     return micStream;
   }
+  if (micStream) releaseMicStream();
 
   if (!micStreamPromise) {
     micStreamPromise = navigator.mediaDevices
@@ -109,6 +126,17 @@ async function acquireMicStream(): Promise<MediaStream> {
       })
       .then((stream) => {
         micStream = stream;
+        // Drop the reference as soon as the device stops delivering, so the
+        // next press re-acquires instead of reusing a stream that has gone
+        // silent underneath us. Deliberately NOT surfaced as an error: some
+        // browsers report a track muted for a moment right after granting it,
+        // and failing a working microphone would be worse than the silence
+        // this guards against. The "no speech detected" message on release is
+        // what tells the learner something went wrong.
+        for (const track of stream.getAudioTracks()) {
+          track.addEventListener('ended', () => { if (micStream === stream) micStream = null; });
+          track.addEventListener('mute', () => { if (micStream === stream) micStream = null; });
+        }
         return stream;
       })
       .finally(() => { micStreamPromise = null; });
@@ -144,6 +172,20 @@ function releaseMicStream(): void {
 const TARGET_SAMPLE_RATE = 16000;
 /** Audio retained from just before the press, so a word begun on it survives. */
 const PRE_ROLL_MS = 300;
+/**
+ * Audio still admitted just AFTER the release, for the mirror-image reason.
+ *
+ * A learner lets go of the button on the last syllable, not a beat after it,
+ * so slamming the gate shut on the release itself cut the tail off the final
+ * word — and left Azure with no trailing audio to segment the phrase on, which
+ * made it slower to commit the final result too. There was 300ms of pre-roll at
+ * the front and nothing at all at the back.
+ *
+ * This costs nothing on the critical path: the release-to-transmit wait in
+ * lib/hooks/useVoiceInput.ts is already sitting on the recognizer's final
+ * result, which could not have arrived any sooner.
+ */
+const POST_ROLL_MS = 250;
 /** Cap on audio held while a cold recognizer is still being built. */
 const MAX_PENDING_MS = 5000;
 /** ScriptProcessor fallback block size (~43ms at 48 kHz). */
@@ -271,10 +313,41 @@ function flushPending(): void {
   pendingSamples = 0;
 }
 
+/**
+ * Bumped on every press. A post-roll that is still counting down when the next
+ * press lands must not close the gate that press just opened.
+ */
+let captureEpoch = 0;
+let postRollTimer: ReturnType<typeof setTimeout> | null = null;
+let postRollDone: (() => void) | null = null;
+
+/** Ends the post-roll early, without closing the gate. */
+function cancelPostRoll(): void {
+  if (postRollTimer) { clearTimeout(postRollTimer); postRollTimer = null; }
+  const done = postRollDone;
+  postRollDone = null;
+  done?.();
+}
+
+function awaitPostRoll(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    postRollDone = resolve;
+    postRollTimer = setTimeout(() => {
+      postRollTimer = null;
+      postRollDone = null;
+      resolve();
+    }, POST_ROLL_MS);
+  });
+}
+
 /** Opens the gate from the tap to the recognizer. Synchronous by design. */
 function beginCapture(): void {
+  // A press landing inside the previous release's post-roll ends it now, so
+  // the teardown behind it doesn't sit on a timer this press is waiting out.
+  cancelPostRoll();
   if (capturing) return;
   capturing = true;
+  captureEpoch++;
 
   // The rolling window is the moment immediately before the press — send it
   // ahead of the live audio so the utterance starts where the learner did.
@@ -507,9 +580,20 @@ function attachHandlers(reco: SpeechSDK.SpeechRecognizer): void {
     if (e.reason === SpeechSDK.CancellationReason.Error) {
       const detail = e.errorDetails ?? 'Recognition canceled';
       cachedToken = null;
-      void rebuildRecognizer().catch(() => {
-        activeCallbacks?.onError(detail);
-      });
+      void rebuildRecognizer()
+        .then(() => {
+          // The learner may well still be holding the button. The rebuild
+          // hands back a recognizer and a fresh push stream that the tap is
+          // already feeding — but nothing was CONSUMING it, because a rebuild
+          // does not start a recognition session. The rest of that press was
+          // captured, transmitted, and never transcribed: no result, no error,
+          // and the next press works, which is exactly what "the mic sometimes
+          // doesn't pick anything up" looked like from the outside.
+          if (capturing) return startRecognitionSession();
+        })
+        .catch(() => {
+          activeCallbacks?.onError(detail);
+        });
     }
   };
 
@@ -565,11 +649,37 @@ async function buildRecognizer(lang: string): Promise<void> {
   startTokenRefresh();
 }
 
+/**
+ * Starts a recognition session on the current recognizer, if one isn't already
+ * running. Shared by the press path and the post-reconnect recovery above, so
+ * "audio is flowing" and "something is transcribing it" can't drift apart.
+ */
+function startRecognitionSession(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (!recognizer || isRecognizing) { resolve(); return; }
+    recognizer.startContinuousRecognitionAsync(
+      () => { isRecognizing = true; resolve(); },
+      (err) => {
+        isRecognizing = false;
+        activeCallbacks?.onError(String(err));
+        resolve();
+      },
+    );
+  });
+}
+
 async function rebuildRecognizer(): Promise<void> {
   const lang = currentLang;
   if (!lang) return;
+  // Join a build already in flight rather than racing it. closeRecognizer()
+  // leaves `recognizer` null, so a concurrent ensureRecognizer would see "no
+  // recognizer" and start a SECOND build — two recognizers, each with its own
+  // websocket, both assigning the module-level `pushStream`. The loser is
+  // orphaned still holding an open connection, and the tap's audio goes to
+  // whichever one happened to be assigned last.
+  if (recognizerPromise && pendingLang === lang) return recognizerPromise;
   closeRecognizer();
-  await buildRecognizer(lang);
+  await startBuild(lang);
 }
 
 function closeRecognizer(): void {
@@ -581,6 +691,9 @@ function closeRecognizer(): void {
   recognizer = null;
   try { pushStream?.close(); } catch { /* ignore */ }
   pushStream = null;
+  // Cleared with the recognizer it describes: leaving it set means a later
+  // ensureRecognizer can believe a torn-down recognizer is still current.
+  currentLang = null;
 }
 
 function startTokenRefresh(): void {
@@ -604,21 +717,30 @@ function stopTokenRefresh(): void {
   }
 }
 
-export async function ensureRecognizer(lang: string): Promise<void> {
-  if (recognizer && currentLang === lang) return;
-
-  // Concurrent callers (a prewarm racing the first press) must share one
-  // build rather than each constructing a recognizer and leaking the loser.
-  if (recognizerPromise && pendingLang === lang) return recognizerPromise;
-
-  if (recognizer) closeRecognizer();
-
+/**
+ * The single latched build. Every path that constructs a recognizer goes
+ * through this, so concurrent callers share one build instead of each
+ * constructing their own and leaking the loser.
+ */
+function startBuild(lang: string): Promise<void> {
   pendingLang = lang;
   recognizerPromise = buildRecognizer(lang).finally(() => {
     recognizerPromise = null;
     pendingLang = null;
   });
   return recognizerPromise;
+}
+
+export async function ensureRecognizer(lang: string): Promise<void> {
+  if (recognizer && currentLang === lang) return;
+
+  // Concurrent callers (a prewarm racing the first press, or a press racing a
+  // reconnect) must share one build.
+  if (recognizerPromise && pendingLang === lang) return recognizerPromise;
+
+  if (recognizer) closeRecognizer();
+
+  return startBuild(lang);
 }
 
 /**
@@ -659,44 +781,45 @@ export async function startContinuousRecognition(
   // adopting the new callbacks is enough, and skips a needless restart.
   if (isRecognizing) return;
 
-  return new Promise((resolve) => {
-    recognizer!.startContinuousRecognitionAsync(
-      () => { isRecognizing = true; resolve(); },
-      (err) => {
-        isRecognizing = false;
-        activeCallbacks?.onError(String(err));
-        resolve();
-      },
-    );
-  });
+  return startRecognitionSession();
 }
 
 export function stopContinuousRecognition(): Promise<void> {
-  // Closing the gate is the part that must happen on the release itself:
-  // from here on nothing the microphone hears reaches the recognizer.
-  endCapture();
   stopVolumeMeter();
 
   if (!recognizer || !isRecognizing) {
+    endCapture();
     activeCallbacks = null;
     return Promise.resolve();
   }
   if (stopPromise) return stopPromise;
 
   const owner = activeCallbacks;
-  const stopping = new Promise<void>((resolve) => {
-    // activeCallbacks stays live until the SDK has flushed its final
-    // Recognized events — otherwise an utterance that finalizes right on
-    // pointer-up would be dropped.
-    const done = () => {
-      isRecognizing = false;
-      // A press arriving while this teardown is in flight installs its own
-      // callbacks; clearing those here would deafen the new press.
-      if (activeCallbacks === owner) activeCallbacks = null;
-      resolve();
-    };
-    recognizer!.stopContinuousRecognitionAsync(done, done);
-  });
+  const epoch = captureEpoch;
+
+  const stopping = (async () => {
+    // The gate stays open for the post-roll so the tail of the last word, and
+    // the trailing audio Azure segments the phrase on, still reach the
+    // recognizer. Only then is it told to finalize.
+    await awaitPostRoll();
+    // Unless a new press has since opened the gate for itself — closing it now
+    // would deafen that press instead of ending this one.
+    if (captureEpoch === epoch) endCapture();
+
+    await new Promise<void>((resolve) => {
+      // activeCallbacks stays live until the SDK has flushed its final
+      // Recognized events — otherwise an utterance that finalizes right on
+      // pointer-up would be dropped.
+      const done = () => {
+        isRecognizing = false;
+        // A press arriving while this teardown is in flight installs its own
+        // callbacks; clearing those here would deafen the new press.
+        if (activeCallbacks === owner) activeCallbacks = null;
+        resolve();
+      };
+      recognizer!.stopContinuousRecognitionAsync(done, done);
+    });
+  })();
 
   stopPromise = stopping;
   void stopping.finally(() => { if (stopPromise === stopping) stopPromise = null; });
@@ -708,6 +831,7 @@ export function stopContinuousRecognition(): Promise<void> {
  * releases the microphone, and disposes the level meter's audio graph.
  */
 export function destroyRecognizer(): void {
+  cancelPostRoll();
   endCapture();
   teardownAudioGraph();
   stopTokenRefresh();

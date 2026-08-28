@@ -11,8 +11,11 @@ SESSION: 60,         // 1 min (session state changes often)
   CHARACTER: 3600,     // 1 hr
   DOMAIN: 3600,        // 1 hr
   TRYOUT_RATE_LIMIT: 3600, // 1 hr window for guest tryout throttling
+  TRYOUT_DAILY: 86400, // 24 hr window for the one-completed-tryout-per-guest gate
+  TRYOUT_SESSION: 3600, // 1 hr — a preview is 2-3 min; this only has to outlive one sitting
   SPEECH_TOKEN: 540,   // 9 min (Azure issueToken lifetime is 10 min)
   PROFICIENCY: 300,    // 5 min (only changes when a session completes)
+  LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
 } as const;
 
 let redis: Redis | null = null;
@@ -24,6 +27,19 @@ function getRedis(): Redis | null {
   if (!url || !token) return null;
   redis = new Redis({ url, token });
   return redis;
+}
+
+/**
+ * Whether Redis is configured at all.
+ *
+ * `rateLimitIncrement` returns `null` both when Redis is absent (local dev
+ * without Upstash credentials) and when a configured Redis errors. A gate on
+ * a billed resource has to tell those apart: an outage of a configured cache
+ * must deny, but a developer who never set the credentials should not find
+ * the whole feature bricked.
+ */
+export function isCacheConfigured(): boolean {
+  return Boolean(process.env.UPSTASH_REDIS_URL && process.env.UPSTASH_REDIS_TOKEN);
 }
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
@@ -100,7 +116,13 @@ export const cacheKeys = {
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
   tryoutRateLimit: (ip: string) => key('tryout-rate-limit', ip),
+  /** Completed tryouts from one IP inside the rolling 24h window. */
+  tryoutDailyGate: (ip: string) => key('tryout-daily', ip),
+  /** Server-side turn budget for one issued tryout id. */
+  tryoutTurns: (tryoutId: string) => key('tryout-turns', tryoutId),
   speechToken: (region: string) => key('speech-token', region),
+  /** The whole `languages` table — one key, because it is always read whole. */
+  languageCatalog: () => key('language-catalog', 'v1'),
 };
 
 export { TTL };

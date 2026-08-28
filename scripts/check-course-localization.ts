@@ -24,11 +24,15 @@ import {
 import { eq, and, inArray } from 'drizzle-orm';
 import { applyTargetLanguageVocab } from '../lib/localization';
 import { TARGET_LANGUAGES } from '../lib/language';
+import { loadLanguageCatalog } from '../lib/language-registry';
 
 const JAPANESE_SCRIPT = /[\u3040-\u309F\u30A0-\u30FF\uFF66-\uFF9D]/;
 
 // Everything except the Japanese base vocabulary script needs localization.
-const TARGET_CODES = TARGET_LANGUAGES.map((l) => l.code).filter((c) => c !== 'ja');
+// A function, not a module-level constant: the catalogue is hydrated from the
+// `languages` table inside main(), which runs after this module is evaluated,
+// so a constant here would only ever list the compiled-in languages.
+const targetCodes = () => TARGET_LANGUAGES.map((l) => l.code).filter((c) => c !== 'ja');
 
 // Loads target-language localizations straight from the DB (bypassing the
 // Upstash cache) so the check asserts ground truth, not cached state.
@@ -138,6 +142,11 @@ async function checkTemplateLang(course: typeof courses.$inferSelect, lang: stri
 }
 
 async function main(): Promise<void> {
+  // Hydrates lib/language.ts from the `languages` table, so this script covers
+  // languages an admin added as well as the compiled-in ones. Without it the
+  // module-level constants are all a CLI process ever sees.
+  await loadLanguageCatalog();
+
   console.log('=== Course Localization Check ===\n');
 
   const courseRows = await db.select().from(courses).where(eq(courses.isActive, true));
@@ -148,7 +157,7 @@ async function main(): Promise<void> {
   for (const course of courseRows) {
     const scenarioIds = await getCourseScenarioIds(course.id);
 
-    for (const lang of TARGET_CODES) {
+    for (const lang of targetCodes()) {
       checked++;
       const result = await checkTemplateLang(course, lang, scenarioIds);
       if (result.ok) {

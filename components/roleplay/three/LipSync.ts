@@ -10,25 +10,25 @@ import { asMorphMesh, type MorphMesh } from './ExpressionEngine';
    as chattering rather than talking.
 
    Each constant is an exponential rate: the weight covers ~63% of the
-   remaining distance in 1/speed seconds. 16 ≈ 60 ms, 9 ≈ 110 ms — the range
+   remaining distance in 1/speed seconds. 13 ≈ 77 ms, 7 ≈ 140 ms — the range
    human articulators actually move in.
    ────────────────────────────────────────────────────────────────────── */
 
 /** How fast the mouth opens as a sound starts (jaw drop). */
-const MOUTH_OPEN_SPEED = 16;
+const MOUTH_OPEN_SPEED = 13;
 
 /** How fast it closes again. Deliberately slower — jaws fall shut, they don't snap. */
-const MOUTH_CLOSE_SPEED = 9;
+const MOUTH_CLOSE_SPEED = 7;
 
 /** How fast one mouth shape gives way to the next. */
-const VISEME_BLEND_SPEED = 12;
+const VISEME_BLEND_SPEED = 10;
 
 /**
  * Smoothing on the loudness reading itself. The analyser reports per-frame RMS,
  * which jitters well above syllable rate; without this the jaw traced the
  * waveform instead of the speech.
  */
-const LOUDNESS_SPEED = 15;
+const LOUDNESS_SPEED = 11;
 
 /* ── Mouth shapes ────────────────────────────────────────────────────────
    Every avatar in public/ai-avatars/models ships the Oculus viseme set
@@ -90,32 +90,32 @@ interface VisemeShape {
  */
 const AZURE_VISEMES: Record<number, VisemeShape> = {
   0: { shapes: {}, jaw: 0, vowel: true },
-  1: { shapes: { aa: 0.70 }, jaw: 0.55, vowel: true },
-  2: { shapes: { aa: 1.00 }, jaw: 0.80, vowel: true },
-  3: { shapes: { o: 0.90, funnel: 0.30 }, jaw: 0.60, vowel: true },
-  4: { shapes: { e: 0.90 }, jaw: 0.45, vowel: true },
-  5: { shapes: { rr: 0.80, e: 0.30 }, jaw: 0.35, vowel: true },
-  6: { shapes: { i: 0.90 }, jaw: 0.25, vowel: true },
-  7: { shapes: { u: 0.90, pucker: 0.40 }, jaw: 0.20, vowel: true },
-  8: { shapes: { o: 1.00, pucker: 0.30 }, jaw: 0.45, vowel: true },
-  9: { shapes: { aa: 0.80, o: 0.50 }, jaw: 0.70, vowel: true },
-  10: { shapes: { o: 0.70, i: 0.40 }, jaw: 0.50, vowel: true },
-  11: { shapes: { aa: 0.90, i: 0.30 }, jaw: 0.70, vowel: true },
-  12: { shapes: { aa: 0.40 }, jaw: 0.40, vowel: true },
-  13: { shapes: { rr: 0.90 }, jaw: 0.25, vowel: false },
-  14: { shapes: { nn: 0.80 }, jaw: 0.30, vowel: false },
-  15: { shapes: { ss: 0.90 }, jaw: 0.12, vowel: false },
-  16: { shapes: { ch: 0.90, pucker: 0.25 }, jaw: 0.18, vowel: false },
-  17: { shapes: { th: 0.90 }, jaw: 0.20, vowel: false },
-  18: { shapes: { ff: 0.90 }, jaw: 0.12, vowel: false },
-  19: { shapes: { dd: 0.90 }, jaw: 0.25, vowel: false },
-  20: { shapes: { kk: 0.90 }, jaw: 0.30, vowel: false },
+  1: { shapes: { aa: 0.50 }, jaw: 0.34, vowel: true },
+  2: { shapes: { aa: 0.72 }, jaw: 0.50, vowel: true },
+  3: { shapes: { o: 0.65, funnel: 0.22 }, jaw: 0.38, vowel: true },
+  4: { shapes: { e: 0.65 }, jaw: 0.28, vowel: true },
+  5: { shapes: { rr: 0.58, e: 0.22 }, jaw: 0.22, vowel: true },
+  6: { shapes: { i: 0.65 }, jaw: 0.16, vowel: true },
+  7: { shapes: { u: 0.65, pucker: 0.30 }, jaw: 0.13, vowel: true },
+  8: { shapes: { o: 0.72, pucker: 0.22 }, jaw: 0.28, vowel: true },
+  9: { shapes: { aa: 0.58, o: 0.36 }, jaw: 0.44, vowel: true },
+  10: { shapes: { o: 0.50, i: 0.29 }, jaw: 0.31, vowel: true },
+  11: { shapes: { aa: 0.65, i: 0.22 }, jaw: 0.44, vowel: true },
+  12: { shapes: { aa: 0.29 }, jaw: 0.25, vowel: true },
+  13: { shapes: { rr: 0.65 }, jaw: 0.16, vowel: false },
+  14: { shapes: { nn: 0.58 }, jaw: 0.19, vowel: false },
+  15: { shapes: { ss: 0.65 }, jaw: 0.08, vowel: false },
+  16: { shapes: { ch: 0.65, pucker: 0.18 }, jaw: 0.11, vowel: false },
+  17: { shapes: { th: 0.65 }, jaw: 0.13, vowel: false },
+  18: { shapes: { ff: 0.65 }, jaw: 0.08, vowel: false },
+  19: { shapes: { dd: 0.65 }, jaw: 0.16, vowel: false },
+  20: { shapes: { kk: 0.65 }, jaw: 0.19, vowel: false },
   // Bilabial: the lips must actually meet, so no jaw at all.
-  21: { shapes: { pp: 1.00 }, jaw: 0, vowel: false },
+  21: { shapes: { pp: 0.85 }, jaw: 0, vowel: false },
 };
 
 /** Amplitude-only fallback shape when no viseme stream is available. */
-const NEUTRAL_OPEN: VisemeShape = { shapes: { aa: 0.85, o: 0.15 }, jaw: 0.55, vowel: true };
+const NEUTRAL_OPEN: VisemeShape = { shapes: { aa: 0.60, o: 0.12 }, jaw: 0.34, vowel: true };
 
 export interface VisemeFrame {
   id: number;
@@ -372,10 +372,10 @@ export class LipSync {
       this.targetMouthOpen = visemeId === 0
         ? 0
         : loudness === null
-          ? 0.70
-          : Math.min(0.95, 0.35 + loudness * 0.65);
+          ? 0.48
+          : Math.min(0.70, 0.24 + loudness * 0.46);
     } else if (speakingActive && loudness !== null) {
-      this.targetMouthOpen = loudness > 0.04 ? loudness : 0;
+      this.targetMouthOpen = loudness > 0.04 ? loudness * 0.70 : 0;
     } else if (speakingActive) {
       // Audio is playing but never reaches the Web Audio graph (the browser
       // speechSynthesis fallback). Drive a synthetic talking pattern so the
@@ -384,7 +384,7 @@ export class LipSync {
       const t = performance.now() * 0.001;
       const wave =
         Math.abs(Math.sin(t * 7.4)) * 0.7 + Math.abs(Math.sin(t * 4.1 + 1.3)) * 0.3;
-      this.targetMouthOpen = 0.12 + wave * 0.75;
+      this.targetMouthOpen = 0.08 + wave * 0.46;
     } else {
       this.targetMouthOpen = 0;
     }
@@ -430,7 +430,7 @@ export class LipSync {
       // Consonants are short and often quiet — scaling them by loudness alone
       // made whole clusters vanish, so they keep most of their shape at any
       // volume while vowels track the envelope.
-      const gain = viseme.vowel ? open : 0.55 + 0.45 * open;
+      const gain = viseme.vowel ? open : 0.45 + 0.40 * open;
       for (const [key, weight] of Object.entries(viseme.shapes) as [ShapeKey, number][]) {
         want(key, weight * gain);
       }

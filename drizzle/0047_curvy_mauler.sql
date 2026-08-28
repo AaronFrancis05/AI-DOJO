@@ -1,0 +1,1 @@
+ALTER TABLE "user_avatars" ALTER COLUMN "source" SET DEFAULT 'catalog';

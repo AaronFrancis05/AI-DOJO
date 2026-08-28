@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { subscribeTurnLatency } from '@/lib/roleplay/voice-latency';
 
 type ConnectionStatus = 'good' | 'degraded' | 'offline';
 
 interface ConnectionLatencyIndicatorProps {
   status?: ConnectionStatus;
   estimatedLatency?: number;
+  /** Last measured mic-release → first-audio round trip, in ms. */
+  turnLatency?: number;
   className?: string;
 }
 
@@ -37,6 +40,7 @@ const STATUS_CONFIG: Record<ConnectionStatus, { label: string; bg: string; borde
 export function ConnectionLatencyIndicator({
   status = 'good',
   estimatedLatency,
+  turnLatency,
   className = '',
 }: ConnectionLatencyIndicatorProps) {
   const config = STATUS_CONFIG[status];
@@ -50,6 +54,16 @@ export function ConnectionLatencyIndicator({
       {estimatedLatency !== undefined && (
         <span className="text-[10px] text-dojo-text-muted font-mono">{estimatedLatency}ms</span>
       )}
+      {turnLatency !== undefined && (
+        // The number the learner actually feels: their release to the
+        // character's first sound. The ping above only measures the network.
+        <span
+          className="text-[10px] text-dojo-text-muted font-mono"
+          title="Mic release to first audio"
+        >
+          🎙{(turnLatency / 1000).toFixed(1)}s
+        </span>
+      )}
     </div>
   );
 }
@@ -57,9 +71,15 @@ export function ConnectionLatencyIndicator({
 export function useLatencyMonitor(pingUrl: string = '/api/chat/stream'): {
   status: ConnectionStatus;
   estimatedLatency: number | undefined;
+  turnLatency: number | undefined;
 } {
   const [status, setStatus] = useState<ConnectionStatus>('good');
   const [estimatedLatency, setEstimatedLatency] = useState<number | undefined>(undefined);
+  const [turnLatency, setTurnLatency] = useState<number | undefined>(undefined);
+
+  // The voice path's own end-to-end number, reported by lib/roleplay/voice-latency
+  // when the character's first audio of a reply starts playing.
+  useEffect(() => subscribeTurnLatency(setTurnLatency), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,5 +122,5 @@ export function useLatencyMonitor(pingUrl: string = '/api/chat/stream'): {
     };
   }, [pingUrl]);
 
-  return { status, estimatedLatency };
+  return { status, estimatedLatency, turnLatency };
 }

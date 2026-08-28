@@ -6,7 +6,11 @@ import {
   normalizeAuthRedirectUrl,
   withVerifiedRequestOrigin,
 } from './app-origin';
-import { appendSetCookies } from './cookies';
+import {
+  appendSetCookies,
+  SESSION_DATA_COOKIE,
+  SESSION_TOKEN_COOKIE,
+} from './cookies';
 
 function withEnvironment(
   values: Record<string, string | undefined>,
@@ -135,4 +139,13 @@ test('forwards SDK cookies once without changing security attributes', () => {
   appendSetCookies(target, source);
 
   assert.deepEqual(target.getSetCookie(), source.getSetCookie());
+});
+
+test('session cookie names carry the SDK __Secure- prefix', () => {
+  // The SDK mints every cookie with `secure: true` behind NEON_AUTH_COOKIE_PREFIX,
+  // and `cookies().get()` matches names exactly. An unprefixed spelling reads as
+  // undefined forever, which is how the session_token fallback in
+  // getAuthUserReadOnly went dead without a single error being logged.
+  assert.equal(SESSION_TOKEN_COOKIE, '__Secure-neon-auth.session_token');
+  assert.equal(SESSION_DATA_COOKIE, '__Secure-neon-auth.local.session_data');
 });

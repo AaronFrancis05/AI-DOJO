@@ -11,7 +11,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { NotificationBell } from './NotificationBell';
 import { useUser } from '@/lib/auth/user-context';
 import { resolveDisplayName } from '@/lib/auth/display-name';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
@@ -29,6 +31,7 @@ import {
   History,
   Repeat2,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -51,6 +54,27 @@ const navItems: NavItem[] = [
   { label: 'Settings',  href: '/settings',    icon: Settings },
 ];
 
+/**
+ * What a tutor sees instead.
+ *
+ * Not the learner nav with Teaching bolted on: Hub, Courses, Review,
+ * Sessions, Progress and Leaderboard are all surfaces of someone's own
+ * practice, and a tutor has none — the XP and streak they were being offered
+ * were permanently zero. Teaching is their home, and Calendar carries the
+ * classes, assessments and bookings they run (see `GET /api/calendar`).
+ */
+const tutorNavItems: NavItem[] = [
+  { label: 'Teaching',  href: '/tutor',    icon: GraduationCap },
+  { label: 'Messages',  href: '/messages', icon: MessageSquare },
+  { label: 'Calendar',  href: '/calendar', icon: Calendar },
+  { label: 'Settings',  href: '/settings', icon: Settings },
+];
+
+/** Role-gated entries, appended for whoever holds the role. Hiding the link
+ *  is convenience only — /admin and /tutor re-check the role server-side. */
+const adminNavItem: NavItem = { label: 'Admin', href: '/admin', icon: ShieldCheck };
+const tutorNavItem: NavItem = { label: 'Teaching', href: '/tutor', icon: GraduationCap };
+
 interface SidebarProps {
   onNavigate?: () => void;
 }
@@ -63,6 +87,17 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   // Honest identity: stored name → email local-part → "You" (never a fake
   // placeholder name like 'Learner').
   const displayName = resolveDisplayName(user);
+  // A tutor gets the teaching nav; an admin keeps the learner one with both
+  // consoles appended, because admin satisfies every role (see satisfiesRole
+  // in lib/auth/roles.ts) and moderating learner surfaces means reaching them.
+  const isTutor = TUTORS_ENABLED && user?.role === 'tutor';
+  const items = isTutor
+    ? tutorNavItems
+    : [
+        ...navItems,
+        ...(TUTORS_ENABLED && user?.role === 'admin' ? [tutorNavItem] : []),
+        ...(user?.role === 'admin' ? [adminNavItem] : []),
+      ];
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
@@ -71,7 +106,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 
   async function handleSignOut() {
     await authClient.signOut();
-    window.location.href = '/auth?signed_out=1';
+    window.location.href = '/auth/signin?signed_out=1';
   }
 
   const handleClick = (href: string) => {
@@ -90,7 +125,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);
           return (
@@ -112,6 +147,11 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         })}
       </nav>
 
+      {/* Notifications — sits with the nav, opens upward over it */}
+      <div className="px-3 pb-2">
+        <NotificationBell onNavigate={onNavigate} />
+      </div>
+
       {/* User Card — bottom of sidebar */}
       <div className="border-t border-dojo-border p-4">
         <div className="flex items-center gap-3">
@@ -127,22 +167,47 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             </p>
           </div>
         </div>
-        <div className="mt-3 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-dojo-text-muted">
-              Level {user?.level ?? '-'}
-            </span>
-            <span className="text-xs text-dojo-text-muted">
-              {user?.xp ?? 0} / {user?.xpToNext ?? 1000} XP
-            </span>
+        {/* A tutor earns no XP, so the learner's level bar read "0 / 1000"
+            forever. Their standing is whether learners can see them yet. */}
+        {isTutor ? (
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-dojo-text-muted">Tutor</span>
+            {/* Rejected is its own answer: it used to read "Pending review",
+                which told a tutor to keep waiting for a decision already made. */}
+            <Badge
+              variant={
+                user?.tutorStatus === 'verified'
+                  ? 'success'
+                  : user?.tutorStatus === 'rejected'
+                    ? 'default'
+                    : 'outline'
+              }
+            >
+              {user?.tutorStatus === 'verified'
+                ? 'Verified'
+                : user?.tutorStatus === 'rejected'
+                  ? 'Not approved'
+                  : 'Pending review'}
+            </Badge>
           </div>
-          <ProgressBar
-            value={user?.xp ?? 0}
-            max={user?.xpToNext ?? 1000}
-            color="accent"
-            size="sm"
-          />
-        </div>
+        ) : (
+          <div className="mt-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-dojo-text-muted">
+                Level {user?.level ?? '-'}
+              </span>
+              <span className="text-xs text-dojo-text-muted">
+                {user?.xp ?? 0} / {user?.xpToNext ?? 1000} XP
+              </span>
+            </div>
+            <ProgressBar
+              value={user?.xp ?? 0}
+              max={user?.xpToNext ?? 1000}
+              color="accent"
+              size="sm"
+            />
+          </div>
+        )}
       </div>
 
       {/* Sign Out */}

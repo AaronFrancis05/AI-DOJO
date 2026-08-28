@@ -14,6 +14,7 @@ import { NamePromptDialog } from './NamePromptDialog';
 import { useUser } from '@/lib/auth/user-context';
 import { resolveDisplayName } from '@/lib/auth/display-name';
 import { AvatarProvider } from '@/lib/auth/avatar-context';
+import { RealtimeProvider } from '@/lib/realtime/context';
 import { PageTitleProvider, usePageTitleValue } from '@/lib/hooks/PageTitleContext';
 import { Menu, X } from 'lucide-react';
 
@@ -62,6 +63,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <PageTitleProvider>
+      <RealtimeProvider>
       <div className="flex h-dvh w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">
         {/* One-time display-name gate */}
         {needsDisplayName && <NamePromptDialog />}
@@ -87,6 +89,7 @@ export function AppShell({ children }: AppShellProps) {
           <AvatarProvider>{children}</AvatarProvider>
         </main>
       </div>
+      </RealtimeProvider>
     </PageTitleProvider>
   );
 }

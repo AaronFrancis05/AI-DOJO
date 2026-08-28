@@ -1,5 +1,3 @@
-import { TARGET_LANGUAGES } from '@/lib/language';
-
 export interface StepConfig {
   key: string;
   title: string;
@@ -24,6 +22,29 @@ export const ONBOARDING_STEPS: StepConfig[] = [
   { key: 'plan-ready', title: 'Your personalized plan is ready!', subtitle: '', transition: true },
   { key: 'account', title: 'Almost there!', subtitle: 'Create your account to save your progress.' },
 ];
+
+/**
+ * The tutor wizard.
+ *
+ * A tutor is not a learner: level, practice goal, domain and daily minutes
+ * describe someone who practises, and asking a tutor for them (which is what
+ * the `(app)` gate used to do) collects nothing anyone reads. What the
+ * teaching surfaces actually need that the application form at `/auth/tutor`
+ * does not already collect is the tutor's own language — rooms and the UI are
+ * translated into it — and their bookable hours.
+ *
+ * Deliberately short. The teaching profile itself (headline, bio, languages
+ * taught, timezone, rate) is collected once, at application time; re-asking
+ * for it here would be a second way to write the same row.
+ */
+export const TUTOR_ONBOARDING_STEPS: StepConfig[] = [
+  { key: 'welcome', title: 'Your application is in', subtitle: '', transition: true },
+  { key: 'native-language', title: 'What language do you speak day to day?', subtitle: 'The app and your in-room translations appear in this language.' },
+  { key: 'availability', title: 'When can learners book you?', subtitle: 'Set your weekly hours — you can change them any time from your console.', skippable: true },
+  { key: 'ready', title: 'You\'re set up to teach', subtitle: '', transition: true },
+];
+
+export const TUTOR_STEP_KEYS = TUTOR_ONBOARDING_STEPS.map((s) => s.key);
 
 export const LEVEL_OPTIONS = [
   { value: 'beginner', label: 'Beginner', description: 'I know a few basic words and phrases.' },
@@ -59,11 +80,3 @@ export const FREQUENCY_OPTIONS = [
   { value: 30, label: '30 min/day', description: 'Balanced daily habit.' },
   { value: 60, label: '60 min/day', description: 'Deep immersion for fast results.' },
 ];
-
-export const TARGET_LANGUAGE_OPTIONS = TARGET_LANGUAGES.map((l) => ({
-  value: l.code,
-  label: l.name,
-  nativeName: l.nativeName,
-  hasPhonetic: l.hasPhonetic,
-  ttsSupported: l.ttsSupported,
-}));

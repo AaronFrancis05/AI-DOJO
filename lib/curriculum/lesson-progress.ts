@@ -1,8 +1,110 @@
 import { db } from '@/src/db';
-import { lessons, units, courseLevels, lessonPhases, vocabulary, studentLessonProgress, studentProgress, srsCards } from '@/src/schema';
-import { eq, sql } from 'drizzle-orm';
+import { courses, lessons, units, courseLevels, lessonPhases, vocabulary, studentLessonProgress, studentProgress, srsCards } from '@/src/schema';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 export const LESSON_COMPLETION_XP = 50;
+
+/**
+ * Where a learner goes after finishing a curriculum lesson.
+ *
+ * The course page walks levels → units → lessons into one linear list and
+ * locks everything after the first lesson that isn't `completed`. Session
+ * completion needs the same answer, so the walk lives here rather than being
+ * re-implemented — two definitions of "unlocked" is exactly how a learner
+ * ends up being sent to a lesson the page then shows as locked.
+ */
+export interface NextLessonTarget {
+  courseSlug: string;
+  unitId: number;
+  unitTitle: string;
+  /** Null when this was the last lesson of the course. */
+  nextLessonId: number | null;
+  nextLessonTitle: string | null;
+  /** Every lesson in the just-finished lesson's unit is now complete. */
+  unitCompleted: boolean;
+  /** …and so is every unit in its level. */
+  levelCompleted: boolean;
+}
+
+export async function resolveNextLesson(
+  userId: string,
+  lessonId: number,
+  targetLanguage: string,
+): Promise<NextLessonTarget | null> {
+  const [lesson] = await db.select().from(lessons).where(eq(lessons.id, lessonId));
+  if (!lesson) return null;
+
+  const [unit] = await db.select().from(units).where(eq(units.id, lesson.unitId));
+  if (!unit) return null;
+
+  const [level] = await db.select().from(courseLevels).where(eq(courseLevels.id, unit.levelId));
+  if (!level) return null;
+
+  const [course] = await db.select().from(courses).where(eq(courses.id, level.courseId));
+  if (!course) return null;
+
+  // The whole course, flattened in the same order the course page renders it.
+  const levelRows = await db
+    .select()
+    .from(courseLevels)
+    .where(eq(courseLevels.courseId, course.id))
+    .orderBy(asc(courseLevels.sequenceOrder));
+
+  const unitRows = await db
+    .select()
+    .from(units)
+    .where(inArray(units.levelId, levelRows.map((l) => l.id)))
+    .orderBy(asc(units.sequenceOrder));
+
+  const lessonRows = await db
+    .select()
+    .from(lessons)
+    .where(and(
+      inArray(lessons.unitId, unitRows.map((u) => u.id)),
+      eq(lessons.isActive, true),
+    ))
+    .orderBy(asc(lessons.sequenceOrder));
+
+  const flat = levelRows.flatMap((lvl) =>
+    unitRows
+      .filter((u) => u.levelId === lvl.id)
+      .flatMap((u) => lessonRows.filter((l) => l.unitId === u.id)),
+  );
+
+  const progressRows = await db
+    .select({ lessonId: studentLessonProgress.lessonId, status: studentLessonProgress.status })
+    .from(studentLessonProgress)
+    .where(and(
+      eq(studentLessonProgress.userId, userId),
+      eq(studentLessonProgress.targetLanguage, targetLanguage),
+    ));
+  const completedIds = new Set(
+    progressRows.filter((p) => p.status === 'completed').map((p) => p.lessonId),
+  );
+
+  // The next lesson is the first one still not completed — not simply the one
+  // after this in sequence, so replaying an old lesson doesn't send the
+  // learner backwards through the course.
+  const next = flat.find((l) => !completedIds.has(l.id)) ?? null;
+
+  const unitLessonIds = flat.filter((l) => l.unitId === unit.id).map((l) => l.id);
+  const unitCompleted = unitLessonIds.every((id) => completedIds.has(id));
+
+  const levelUnitIds = unitRows.filter((u) => u.levelId === level.id).map((u) => u.id);
+  const levelCompleted = flat
+    .filter((l) => levelUnitIds.includes(l.unitId))
+    .every((l) => completedIds.has(l.id));
+
+  return {
+    courseSlug: course.slug,
+    unitId: unit.id,
+    unitTitle: unit.title,
+    nextLessonId: next?.id ?? null,
+    nextLessonTitle: next?.title ?? null,
+    unitCompleted,
+    levelCompleted,
+  };
+}
 
 interface RecordLessonActivityInput {
   userId: string;

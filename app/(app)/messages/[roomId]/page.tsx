@@ -8,6 +8,8 @@ import { MessageComposer, type VoiceClip } from '@/components/messages/MessageCo
 import { RoomDetailsPanel } from '@/components/messages/RoomDetailsPanel';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
+import { useRealtimeTopics } from '@/lib/realtime/context';
+import { topics } from '@/lib/realtime/topics';
 import { langFlag, type ChatRoomDetail, type ChatMessage } from '@/lib/chat-types';
 import { MessageSquare } from 'lucide-react';
 
@@ -81,42 +83,60 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
     return () => { cancelled = true; };
   }, [roomId, markRead, router]);
 
-  // Poll for new messages every 3s.
-  useEffect(() => {
+  /**
+   * Pulls everything after the newest message already on screen.
+   *
+   * The one path new messages arrive by. A realtime event says only that the
+   * room changed (see lib/realtime/topics.ts) — the text still has to be
+   * fetched through this route, which is what translates it into *this*
+   * reader's language.
+   */
+  const syncMessages = useCallback(async () => {
     if (roomId === null || Number.isNaN(roomId)) return;
+    try {
+      const res = await fetch(
+        `/api/chat-rooms/${roomId}/messages?after=${lastSeenIdRef.current}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.messages)) return;
 
-    async function poll() {
-      try {
-        const res = await fetch(
-          `/api/chat-rooms/${roomId}/messages?after=${lastSeenIdRef.current}`,
-          { credentials: 'include' },
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data.success || !Array.isArray(data.messages)) return;
+      const fresh = data.messages as ChatMessage[];
+      if (fresh.length === 0) return;
 
-        const fresh = data.messages as ChatMessage[];
-        if (fresh.length === 0) return;
-
-        setMessages((prev) => {
-          const seen = new Set(prev.map((m) => m.id));
-          const merged = [...prev];
-          for (const m of fresh) {
-            if (!seen.has(m.id)) merged.push(m);
-          }
-          const sorted = merged.sort((a, b) => a.id - b.id);
-          lastSeenIdRef.current = sorted.length ? sorted[sorted.length - 1].id : 0;
-          return sorted;
-        });
-        markRead();
-      } catch {
-        // transient — next poll retries
-      }
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        const merged = [...prev];
+        for (const m of fresh) {
+          if (!seen.has(m.id)) merged.push(m);
+        }
+        const sorted = merged.sort((a, b) => a.id - b.id);
+        lastSeenIdRef.current = sorted.length ? sorted[sorted.length - 1].id : 0;
+        return sorted;
+      });
+      markRead();
+    } catch {
+      // transient — the next event or the provider's reconciliation retries
     }
-
-    const interval = setInterval(poll, 3000);
-    return () => clearInterval(interval);
   }, [roomId, markRead]);
+
+  // Live updates, in place of the 3-second poll this used to run. `onSync`
+  // covers the gap the pub/sub transport cannot: it keeps no backlog, so
+  // anything published while the socket was down is caught up here on
+  // reconnect.
+  useRealtimeTopics(
+    roomId !== null && !Number.isNaN(roomId) ? [topics.chatRoom(roomId)] : null,
+    {
+      onEvent: (event) => {
+        if (event.type !== 'chat.message') return;
+        // The sender already appended it optimistically.
+        if (event.messageId <= lastSeenIdRef.current) return;
+        void syncMessages();
+      },
+      onSync: syncMessages,
+    },
+  );
 
   // Auto-scroll to the newest message when pinned at the bottom.
   useEffect(() => {
@@ -168,7 +188,7 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
       pinnedAtBottomRef.current = true;
       markRead();
     } catch {
-      // keep the optimistic message; the next poll reconciles ids
+      // keep the optimistic message; the next sync reconciles ids
     }
   }
 
@@ -241,7 +261,7 @@ export default function RoomPage({ params }: { params: Promise<{ roomId: string 
         if (serverAudioUrl) URL.revokeObjectURL(optimisticUrl);
       }
     } catch {
-      // leave the optimistic bubble; the next poll reconciles/dedupes ids
+      // leave the optimistic bubble; the next sync reconciles/dedupes ids
     } finally {
       setVoiceSending(false);
     }

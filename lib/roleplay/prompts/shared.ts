@@ -143,6 +143,21 @@ export const CONVERSATION_CRAFT = `HOW YOU TALK:
 - You are steering. The learner should never have to guess what is expected of them, but you steer through the scene, not by narrating the lesson plan.`;
 
 /**
+ * What must never appear in a reply.
+ *
+ * The phase prompts describe a reply's parts under headings — "1. COACHING",
+ * "2. THE SCENE" — and the model echoed those headings straight back into the
+ * reply as literal "[COACHING]" / "[SCENE START]" / "[SCENE CONTINUES]" /
+ * "[SCENE END]" labels. Every reply is spoken aloud, so a stage label is not a
+ * cosmetic leak: the learner hears the character announce it. The sanitizer in
+ * lib/roleplay/stream-sanitizer.ts strips them; this stops them being written.
+ */
+export const NO_META_LABELS = `NEVER LABEL YOUR OWN REPLY:
+- Never output JSON, markdown, ratings, or meta commentary — only the reply itself.
+- Never write a bracketed stage label: no "[COACHING]", "[SCENE]", "[SCENE START]", "[SCENE CONTINUES]", "[SCENE END]", "[NARRATION]", or anything of that shape. The headings above describe how to build the reply; they are not text to reproduce in it.
+- Every word you write is read aloud to the learner by a speech synthesizer. Anything that isn't speech gets spoken.`;
+
+/**
  * Pacing rules. Deliberately short: the code-side vocabulary index and retry
  * gate in app/api/chat/stream/route.ts are authoritative, so the prompt does
  * not need to police looping. The long list of NEVER-RE-TEACH / NO-LOOP /

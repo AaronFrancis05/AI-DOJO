@@ -1,6 +1,8 @@
 import { db } from '../../../../../src/db';
 import { chatRoomMembers, chatRooms } from '../../../../../src/schema';
 import { getAuthUser } from '../../../../../lib/auth/server';
+import { publish } from '../../../../../lib/realtime/bus';
+import { topics } from '../../../../../lib/realtime/topics';
 import { eq, and } from 'drizzle-orm';
 
 export async function POST(
@@ -35,6 +37,10 @@ export async function POST(
     .update(chatRoomMembers)
     .set({ lastReadAt: new Date() })
     .where(and(eq(chatRoomMembers.roomId, id), eq(chatRoomMembers.userId, user.id)));
+
+  // Lets the reader's OTHER open tabs clear the unread badge without waiting
+  // for their next reconciliation.
+  await publish(topics.chatRoom(id), { type: 'chat.read', roomId: id, userId: user.id });
 
   return Response.json({ success: true });
 }

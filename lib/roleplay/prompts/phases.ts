@@ -1,6 +1,8 @@
+import type { SessionPhase } from '../phase-engine';
 import type { TurnPromptContext } from './types';
 import {
   CONVERSATION_CRAFT,
+  NO_META_LABELS,
   PACING,
   delimiterRules,
   displayVocab,
@@ -13,6 +15,88 @@ import {
   tutorPersona,
   vocabBlock,
 } from './shared';
+
+/* ── Phase beats ────────────────────────────────────────────────────────
+   Every phase runs three beats — open, body, closing — and each one is its
+   own turn. The two directives below are what make the opening and closing
+   turns different from an ordinary turn of the same phase.
+
+   This replaces a scheme where the next phase's hand-off line was generated
+   separately and string-appended to the turn that ended the previous phase,
+   so one message could conclude the vocabulary drill, open the scene, AND
+   announce the switch to full immersion.
+   ────────────────────────────────────────────────────────────────────── */
+
+/** What each stage is, said the way a teacher would say it out loud. */
+const PHASE_INTENT: Record<SessionPhase, string> = {
+  orientation: `getting them oriented before anything starts`,
+  icebreaker: `learning the handful of words this scene actually needs, before playing it`,
+  guided: `playing the scene for real, with you still stepping in to help when it matters`,
+  unguided: `playing the scene with no help at all — this is the real thing`,
+  evaluation: `stepping out of the scene to tell them how they did`,
+  completed: `saying goodbye`,
+};
+
+/**
+ * The extra instruction on the turn that OPENS a phase. Layered on top of the
+ * phase's ordinary prompt so the character explains the stage and then
+ * actually starts it, in one turn.
+ */
+export function phaseOpeningDirective(ctx: TurnPromptContext): string {
+  const languageRule = ctx.isSameLanguage
+    ? `Say it naturally in ${ctx.targetLangName}, in the same voice as the rest of the scene.`
+    : `Say it in ${ctx.nativeLangName}, outside the ⟦ ⟧ delimiters — this part is you talking to them as their teacher, so it must not be in ${ctx.targetLangName}.`;
+
+  return `===== THIS TURN OPENS A NEW STAGE =====
+This is the first turn of a new stage of the session: ${PHASE_INTENT[ctx.phase]}.
+
+Before you do anything else, tell the learner in one or two sentences what this stage is and what they are going to be doing in it. ${languageRule}
+
+Then begin the stage in the same turn, exactly as described above.
+
+Do not recap the stage that just ended — they were there for it. Do not describe any stage that comes after this one.`;
+}
+
+/**
+ * The turn that CLOSES a phase. Deliberately built from the shared blocks
+ * rather than from the phase's own prompt: the body prompts all push toward
+ * the next pending goal or the next vocabulary word, which is the opposite of
+ * what a wrap-up turn should do.
+ */
+export function buildPhaseClosingPrompt(ctx: TurnPromptContext): string {
+  // Unguided is full immersion: its wrap-up is the scene ending, not a
+  // teacher summing up. Breaking character to praise the learner here would
+  // undo the whole point of the phase one turn before it ends.
+  const inCharacterOnly = ctx.phase === 'unguided';
+
+  const languageRules = ctx.isSameLanguage
+    ? `Write naturally in ${ctx.targetLangName}. No delimiters, no transliteration.`
+    : inCharacterOnly
+      ? delimiterRules(ctx, `You are still fully in character and entirely in ${ctx.targetLangName}, so your whole reply sits inside ⟦ ⟧.`)
+      : delimiterRules(ctx, `Anything you say as their teacher goes outside ⟦ ⟧; anything you say in character goes inside.`);
+
+  const closingBeat = inCharacterOnly
+    ? `- Bring the scene itself to a close, in character and entirely in ${ctx.targetLangName}. Answer whatever the learner just said, settle the interaction the way it would really settle — the transaction done, the request granted, the conversation rounded off — and stop.
+- Stay ${ctx.aiCharacterName} throughout. No praise, no coaching, no stepping outside the scene: they get all of that on the next turn.`
+    : `- Bring this stage to a close. Answer or acknowledge whatever the learner just said, then round the stage off — name, specifically, something they can now do that they could not do at the start of it.`;
+
+  return `${tutorPersona(ctx)}
+
+PHASE: ${ctx.phase.toUpperCase()} — CLOSING. This stage is over and this turn is the last word on it.
+
+${scenarioContextBlock(ctx)}
+
+THIS TURN:
+${closingBeat}
+- Leave nothing hanging. Do not ask a new question, do not start a new thread, do not introduce a new word or a new task.
+- **Say nothing about what comes next.** Do not preview the next stage, do not announce that you are about to stop helping, do not say the scene is about to start, do not mention scores or feedback. The next stage will introduce itself on the next turn; if you introduce it here, the learner hears the same thing twice.
+- Two or three sentences. Warm, specific, and finished.
+${phoneticRule(ctx)}
+
+${NO_META_LABELS}
+
+${languageRules}`;
+}
 
 /* ── Orientation ────────────────────────────────────────────────────────
    The learner has just arrived. Set the scene in a language they already
@@ -38,12 +122,33 @@ THIS TURN:
 - Introduce yourself by name and role, and set the scene in a sentence: where they are, who you are to them, what they are trying to accomplish.
 - Tell them plainly what happens next: you'll run through a few key words together first, then play the scene for real.
 - Sound like someone they'd want to practise with — encouraging and specific, not a syllabus.
-- Two or three sentences. Stop there.`;
+- Two or three sentences. Stop there.
+
+${NO_META_LABELS}`;
 }
 
 /* ── Icebreaker ─────────────────────────────────────────────────────────
    A vocabulary drill, but taught in context rather than recited as a list.
    ────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Spells the 【VOCAB N】 marker out with the real digits for this turn.
+ *
+ * The instruction used to read `"【VOCAB N】" ... N being its number`, and the
+ * model took the N literally: it wrote 【VOCAB N2】. That is stripped from the
+ * transcript now, but the route's parse still can't read an index out of a
+ * shape it wasn't taught, so the icebreaker never advanced on the model's own
+ * marker and every word had to be force-advanced by the retry ceiling. Giving
+ * the model the two literal strings it may emit removes the ambiguity at the
+ * source.
+ */
+function markerExample(ctx: TurnPromptContext): string {
+  const staying = `【VOCAB ${ctx.currentVocabIndex}】`;
+  const moving = `【VOCAB ${ctx.currentVocabIndex + 1}】`;
+  return ctx.currentVocabIndex >= ctx.vocab.length
+    ? `write exactly ${staying}`
+    : `write exactly ${staying} while you are still on the current word, or exactly ${moving} on the turn you move to the next one`;
+}
 
 export function buildIcebreakerPrompt(ctx: TurnPromptContext): string {
   const current = ctx.vocab[ctx.currentVocabIndex - 1];
@@ -74,7 +179,7 @@ HOW TO TEACH A WORD:
 - Don't just define it — say when they'd actually use it. "This is what you say when the waiter comes over" teaches more than "this means hello".
 - Give the word, give the meaning, then invite them to say it back. Invite, don't command.
 - When they attempt it: react to *their* attempt in a few words, then move to the next word. Brief and real ("That's it", "Close — the stress is on the second part") beats generic praise.
-- Mark the word you are teaching with "【VOCAB N】" at the start of your turn, N being its number in the list above. This is bookkeeping and is stripped before the learner sees it.
+- Start your turn with a bookkeeping marker naming the word you are teaching on it: ${markerExample(ctx)}. Write the digit itself — never the letter "N", never "N${ctx.currentVocabIndex}", never a word. This marker is stripped before the learner sees it; the engine reads it to track which word you are on, so a marker in any other shape leaves the lesson stuck.
 ${ctx.userProducedCurrentWord ? `- The learner has ALREADY said word ${ctx.currentVocabIndex} correctly in their last message. Acknowledge it in a handful of words and go straight to the next one — do not ask them to repeat it.` : ''}
 ${ctx.isSessionStart ? `- This is the very first thing you say this session: greet them briefly, then start on word 1.` : `- You are mid-lesson. Go straight to the word; you have already greeted them.`}
 
@@ -84,6 +189,8 @@ ${phoneticRule(ctx)}
 Keep each turn to two or three sentences.
 
 ${PACING}
+
+${NO_META_LABELS}
 
 ${formatRules}`;
 }
@@ -131,7 +238,8 @@ ${CONVERSATION_CRAFT}
 
 ${PACING}
 
-Never output JSON, markdown, ratings, or meta commentary — only the reply itself.
+${NO_META_LABELS}
+- In particular: the two parts above are told apart by the ⟦ ⟧ delimiters and nothing else. Do not announce the coaching, and do not announce the scene — just say the coaching sentence, then speak in character.
 
 ${ctx.isSameLanguage ? '' : delimiterRules(ctx, `Your coaching sentence goes outside ⟦ ⟧; your in-character line goes inside.\n\n${example}`)}`;
 }
@@ -160,7 +268,8 @@ Goals still to reach:
 ${goalsBlock(ctx)}
 
 THE RULE THAT DEFINES THIS PHASE:
-- Everything you say is in ${ctx.targetLangName}. Not one word of ${ctx.nativeLangName}, for any reason.
+- Everything you say is in ${ctx.targetLangName}. Not one word of ${ctx.nativeLangName}, for any reason.${ctx.phaseStep === 'open' ? `
+  THE ONE EXCEPTION, and it applies only to this turn: the short sentence introducing this stage (see the block at the end) is in ${ctx.nativeLangName}, because the learner has to understand that the help has stopped. Say that sentence, then the rule above takes over for the rest of this turn and the whole phase.` : ''}
 - No explanations, no corrections, no vocabulary notes, no encouragement-as-teacher. You are not their tutor right now; you are the person behind the counter.
 
 WHEN THEY GET SOMETHING WRONG — repair it the way a real person would:
@@ -173,9 +282,126 @@ ${CONVERSATION_CRAFT}
 
 ${PACING}
 
-Keep replies to one to three sentences. Never output JSON, markdown, ratings, or meta commentary.
+Keep replies to one to three sentences.
+
+${NO_META_LABELS}
 
 ${ctx.isSameLanguage
   ? `Speak naturally in ${ctx.targetLangName}. No delimiters.`
   : delimiterRules(ctx, `This phase is entirely ${ctx.targetLangName}, so effectively your whole reply sits inside ⟦ ⟧.\n\n${example}`)}`;
+}
+
+/* ── Evaluation ─────────────────────────────────────────────────────────
+   The debrief. The character steps out of the scene and tells the learner,
+   plainly and kindly, how the session went and whether they passed.
+
+   This phase existed in the state machine but had no prompt of its own: the
+   dispatcher's default branch handed it the *unguided* prompt, so the
+   character carried on playing the scene and no scorecard was ever spoken.
+   ────────────────────────────────────────────────────────────────────── */
+
+/** `72/100` style lines, only for the figures we actually have. */
+function scorecardLines(ctx: TurnPromptContext): string {
+  const e = ctx.evaluation;
+  if (!e) return '';
+
+  const lines = [
+    `  Vocabulary: ${e.vocabulary}/100`,
+    `  Grammar: ${e.grammar}/100`,
+    `  Fluency: ${e.fluency}/100`,
+    `  Cultural fit: ${e.cultural}/100`,
+    `  Getting the task done: ${e.task}/100`,
+    `  Choosing the right register: ${e.expressionAppropriateness}/100`,
+    `  OVERALL: ${e.composite}/100 (pass mark is ${e.passingScore})`,
+    `  Scene goals reached: ${e.goalsCovered} of ${e.goalsTotal}`,
+  ];
+
+  if (e.icebreakerRecallPct !== null) {
+    lines.push(`  Words from the icebreaker they produced correctly: ${e.icebreakerRecallPct}%`);
+  }
+  if (e.medianResponseMs !== null) {
+    lines.push(`  Typical time to answer: ${(e.medianResponseMs / 1000).toFixed(1)}s per turn`);
+  }
+  if (e.notableCorrections.length > 0) {
+    lines.push(`  Things you corrected along the way:`);
+    for (const c of e.notableCorrections) {
+      lines.push(`    - they said "${c.original}" → "${c.corrected}"`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function buildEvaluationPrompt(ctx: TurnPromptContext): string {
+  const e = ctx.evaluation;
+
+  const languageRule = ctx.isSameLanguage
+    ? `Write naturally in ${ctx.targetLangName}.`
+    : `Write this entire message in ${ctx.nativeLangName}. This is the one moment since orientation where you are talking to them as their teacher rather than as a character, so it must land in a language they fully understand. No ${ctx.targetLangName} except when you are quoting something they said or should have said — and quote it inside ⟦ ⟧.`;
+
+  const verdictRule = !e
+    ? `- Tell them plainly whether they got through the session.`
+    : e.passed
+      ? `- Their overall score is ${e.composite}, at or above the ${e.passingScore} pass mark, so they COMPLETED this session successfully. Say so clearly and without hedging.`
+      : `- Their overall score is ${e.composite}, below the ${e.passingScore} pass mark, so they did NOT complete this session successfully this time. Say so plainly but kindly — name it as "not there yet", tell them exactly what would get them over the line, and make it obvious it is worth another go. Do not pretend they passed, and do not soften it into ambiguity.`;
+
+  return `${tutorPersona(ctx)}
+
+PHASE: EVALUATION — the scene is over. You are stepping out of character to tell ${ctx.learnerName || 'the learner'} how they did.${ctx.lessonTitle ? ` This session was the lesson "${ctx.lessonTitle}".` : ''}
+
+${scenarioContextBlock(ctx)}
+
+===== HOW THEY ACTUALLY DID =====
+${e ? scorecardLines(ctx) : '  (no scores were recorded for this session)'}
+=================================
+
+THIS TURN:
+- ${languageRule}
+- Open by telling them the scene is finished and that you are going to go over how it went. One sentence.
+- Then walk through their performance, using the figures above — do not invent numbers, and do not read the list out mechanically. Cover, in your own words: how their **grammar** held up, how their **vocabulary** and recall of the icebreaker words went, their **fluency and pacing** (how readily they answered), and how they handled the **cultural and politeness** side of ${ctx.targetLangName}.
+- Name one specific thing they did well and one specific thing to work on. Quote what they actually said where it helps — that is worth more than an adjective.
+${verdictRule}
+- Be the teacher they'd want: direct, warm, never condescending, never padded with praise they didn't earn.
+- Do not say goodbye yet — you will do that on your next turn. End here, on the verdict.
+- Five or six sentences at most.
+
+${NO_META_LABELS}
+- No bulleted list either. You are speaking this debrief out loud, not writing it down.
+
+${ctx.isSameLanguage ? '' : delimiterRules(ctx, `Your whole debrief is ${ctx.nativeLangName} and sits OUTSIDE ⟦ ⟧; only direct quotes of ${ctx.targetLangName} go inside.`)}`;
+}
+
+/* ── Farewell ───────────────────────────────────────────────────────────
+   The last turn of the session: back in character, in the target language,
+   closing the scene the way the scene would actually close.
+   ────────────────────────────────────────────────────────────────────── */
+
+export function buildFarewellPrompt(ctx: TurnPromptContext): string {
+  // Every other phase's prompt carries a worked example of the ⟦ ⟧ contract,
+  // and without one here the model substituted plain square brackets. That is
+  // not cosmetic: lib/roleplay/tts.ts splits on ⟦ ⟧ to decide which Azure
+  // voice reads which span, so a mis-delimited farewell is read aloud in the
+  // learner's native voice instead of the target language's.
+  const example = ctx.showPhonetic
+    ? `Example shape: ⟦ありがとうございました。またお越しください。(Arigatō gozaimashita. Mata okoshi kudasai.)⟧`
+    : `Example shape: ⟦your closing line in ${ctx.targetLangName}⟧`;
+
+  return `${tutorPersona(ctx)}
+
+PHASE: FAREWELL — the debrief is done and this is the final turn of the whole session.
+
+${scenarioContextBlock(ctx)}
+
+THIS TURN:
+- Step back into character as ${ctx.aiCharacterName} one last time and close the scene the way this scene would really close — the goodbye a ${ctx.aiCharacterRole} actually says.
+- Everything you say is in ${ctx.targetLangName}. Keep it to the kind of parting line they will hear in the real situation, so it is worth remembering.
+- Wish them well and leave the door open for next time. One or two sentences, no more.
+- No scores, no coaching, no meta commentary — that was the previous turn's job. Do not ask a question; nothing follows this.
+${phoneticRule(ctx)}
+
+${NO_META_LABELS}
+
+${ctx.isSameLanguage
+  ? `Speak naturally in ${ctx.targetLangName}. No delimiters.`
+  : delimiterRules(ctx, `This turn is entirely ${ctx.targetLangName}, so your whole reply sits inside ⟦ ⟧ — including the romaji, which goes inside the same pair of delimiters, not after them. Use the ⟦ ⟧ characters themselves; square brackets are not a substitute.\n\n${example}`)}`;
 }

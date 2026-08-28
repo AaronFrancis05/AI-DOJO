@@ -17,6 +17,21 @@ export function containsTargetScript(text: string, targetBcp47: string): boolean
   return false;
 }
 
+/**
+ * Whether `containsTargetScript` can actually answer for this target language.
+ * It only implements the CJK scripts, so for every other target — French,
+ * Spanish, Swahili — it returns false for text that IS in the target language.
+ *
+ * Callers that use script detection to tell a target-language span from a
+ * native-language one must gate on this and fall back to the ⟦ ⟧ span markers,
+ * or they will classify every span of a Latin-script target as native.
+ */
+export function hasDetectableScript(targetBcp47: string): boolean {
+  return targetBcp47.startsWith('ja')
+    || targetBcp47.startsWith('zh')
+    || targetBcp47.startsWith('ko');
+}
+
 const SPAN_DELIMITER = /⟦([^⟧]*)⟧/g;
 
 export interface LangSpan {
@@ -68,15 +83,20 @@ export function validateDelimiters(
     issues.push(`Target-language text (${targetLang}) found outside ⟦ ⟧ delimiters`);
   }
 
-  // Check inside each span
-  SPAN_DELIMITER.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = SPAN_DELIMITER.exec(text))) {
-    const inner = match[1];
-    // Inside should be target language — warn if it's pure native
-    const cleaned = inner.replace(/\([^)]*\)/g, '').trim();
-    if (cleaned && !containsTargetScript(cleaned, targetBcp47)) {
-      issues.push(`Content inside ⟦ ⟧ ("${cleaned}") does not appear to be ${targetLang}`);
+  // Check inside each span. Only where the script can actually answer:
+  // containsTargetScript is CJK-only, so for a French or Swahili target this
+  // reported every correctly-delimited target-language span as wrong, once per
+  // span, on every turn.
+  if (hasDetectableScript(targetBcp47)) {
+    SPAN_DELIMITER.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = SPAN_DELIMITER.exec(text))) {
+      const inner = match[1];
+      // Inside should be target language — warn if it's pure native
+      const cleaned = inner.replace(/\([^)]*\)/g, '').trim();
+      if (cleaned && !containsTargetScript(cleaned, targetBcp47)) {
+        issues.push(`Content inside ⟦ ⟧ ("${cleaned}") does not appear to be ${targetLang}`);
+      }
     }
   }
 

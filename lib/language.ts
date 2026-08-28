@@ -1,3 +1,6 @@
+/** Gesture the character greets, thanks and apologises with in this culture. */
+export type GreetingGesture = 'bow' | 'wave';
+
 export interface LanguageConfig {
   code: string;
   name: string;
@@ -7,8 +10,35 @@ export interface LanguageConfig {
   azureVoice: { female: string; male: string };
   hasPhonetic: boolean;
   ttsSupported: boolean;
+  /**
+   * Omitted means 'wave' — see getGreetingGesture(). Only set where the
+   * culture's default greeting is a bow, so the avatar doesn't wave at a
+   * Japanese learner on こんにちは.
+   */
+  greetingGesture?: GreetingGesture;
 }
 
+export interface NativeLanguage {
+  code: string;
+  name: string;
+  nativeName: string;
+}
+
+/**
+ * The compiled-in catalogue.
+ *
+ * These arrays are both the **seed** for the `languages` table and the
+ * **fallback** when it cannot be read, and at runtime they are the live
+ * catalogue: `hydrateLanguageCatalog()` replaces their contents in place with
+ * whatever the admin console has configured. Every lookup below reads the array
+ * on each call, so the ~50 call sites across prompts, TTS and the UI pick up a
+ * hydrated catalogue without changing a single signature.
+ *
+ * Mutating in place rather than reassigning is deliberate: an importer that
+ * captured the binding still sees the current catalogue. React components must
+ * NOT read these directly for rendering — a mutation does not re-render. They
+ * read `useLanguageCatalog()`, which holds the same data in state.
+ */
 export const TARGET_LANGUAGES: LanguageConfig[] = [
   {
     code: 'ja',
@@ -19,6 +49,7 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     azureVoice: { female: 'ja-JP-NanamiNeural', male: 'ja-JP-KeitaNeural' },
     hasPhonetic: true,
     ttsSupported: true,
+    greetingGesture: 'bow',
   },
   {
     code: 'en',
@@ -242,6 +273,7 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     azureVoice: { female: 'ko-KR-SunHiNeural', male: 'ko-KR-InJoonNeural' },
     hasPhonetic: true,
     ttsSupported: true,
+    greetingGesture: 'bow',
   },
   {
     code: 'th',
@@ -252,6 +284,9 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
     azureVoice: { female: 'th-TH-PremwadeeNeural', male: 'th-TH-NiwatNeural' },
     hasPhonetic: true,
     ttsSupported: true,
+    // The wai is a bow with pressed palms; of the two clips available it is
+    // far closer to a bow than to a wave.
+    greetingGesture: 'bow',
   },
   {
     code: 'vi',
@@ -329,7 +364,7 @@ export const TARGET_LANGUAGES: LanguageConfig[] = [
   },
 ];
 
-export const NATIVE_LANGUAGES: { code: string; name: string; nativeName: string }[] = [
+export const NATIVE_LANGUAGES: NativeLanguage[] = [
   { code: 'en', name: 'English', nativeName: 'English' },
   { code: 'ja', name: 'Japanese', nativeName: '日本語' },
   { code: 'lg', name: 'Luganda', nativeName: 'Luganda' },
@@ -364,6 +399,39 @@ export const NATIVE_LANGUAGES: { code: string; name: string; nativeName: string 
   { code: 'lo', name: 'Lao', nativeName: 'ລາວ' },
 ];
 
+/**
+ * Frozen copies of the shipped catalogue, taken before anything can hydrate.
+ *
+ * `src/seed.ts` seeds the `languages` table from these, and
+ * `lib/language-registry.ts` falls back to them when the table is empty or the
+ * database is unreachable — so a cold or misconfigured deploy still speaks the
+ * built-in set rather than nothing. They must not be read for anything else:
+ * the live catalogue is `TARGET_LANGUAGES` / `NATIVE_LANGUAGES` above.
+ */
+export const BUILT_IN_TARGET_LANGUAGES: readonly LanguageConfig[] = TARGET_LANGUAGES.map(l => ({
+  ...l,
+  bcp47: { ...l.bcp47 },
+  azureVoice: { ...l.azureVoice },
+}));
+export const BUILT_IN_NATIVE_LANGUAGES: readonly NativeLanguage[] = NATIVE_LANGUAGES.map(l => ({ ...l }));
+
+/**
+ * Replace the live catalogue with the one configured in the database.
+ *
+ * Called on the server from `loadLanguageCatalog()` and in the browser from
+ * `LanguageCatalogProvider`. In-place so existing importers stay correct; a
+ * no-op guard on an empty target list, because a catalogue with nothing in it
+ * would make `getTargetLangConfig` return undefined and take down every prompt
+ * and every voice — falling back to the built-ins is always the safer failure.
+ */
+export function hydrateLanguageCatalog(
+  target: readonly LanguageConfig[],
+  native: readonly NativeLanguage[],
+): void {
+  if (target.length > 0) TARGET_LANGUAGES.splice(0, TARGET_LANGUAGES.length, ...target);
+  if (native.length > 0) NATIVE_LANGUAGES.splice(0, NATIVE_LANGUAGES.length, ...native);
+}
+
 export function getTargetLangConfig(code: string): LanguageConfig {
   return TARGET_LANGUAGES.find(l => l.code === code) ?? TARGET_LANGUAGES[0];
 }
@@ -388,6 +456,14 @@ export function getNativeLangBcp47(code: string): string {
 
 export function getBCP47(code: string, type: 'stt' | 'tts'): string {
   return getTargetLangConfig(code).bcp47[type];
+}
+
+/**
+ * The gesture the AI character uses to greet, thank or apologise in this
+ * target language's culture. Defaults to 'wave' — a bow is the marked case.
+ */
+export function getGreetingGesture(code: string): GreetingGesture {
+  return getTargetLangConfig(code).greetingGesture ?? 'wave';
 }
 
 export function getAzureVoice(code: string, gender: string = 'female'): string {

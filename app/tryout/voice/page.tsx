@@ -5,13 +5,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Mic, Volume2, VolumeX, MessageSquare, X, Send } from 'lucide-react';
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
-import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
+import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useGuestRoleplaySession } from '@/lib/hooks/useGuestRoleplaySession';
-import { speakMixedText, stop as stopTts, resetStreamingTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { stop as stopTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { TryoutCompleteScreen } from '@/components/marketing/TryoutCompleteScreen';
+import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
 import { loadTryoutParams } from '@/lib/tryout/guest-params';
+import { useTryoutGate } from '@/lib/hooks/useTryoutGate';
 
 const CHAR_NAME = 'Sam';
 const CHAR_COLOR = '#2D3BC5';
@@ -53,7 +56,11 @@ function TryoutVoiceResolver() {
 }
 
 function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage: string; nativeLanguage: string }) {
-  const { conversations, sending, limitReached, completed, error, submitTurnStream, sendGreeting } = useGuestRoleplaySession({ targetLanguage, nativeLanguage });
+  // The page is reachable by direct URL, so it opens the gate itself rather
+  // than trusting that /tryout ran first.
+  const gate = useTryoutGate();
+  const { conversations, sending, limitReached, completed, blocked, blockedRetryAfterMs, error, submitTurnStream, sendGreeting } =
+    useGuestRoleplaySession({ targetLanguage, nativeLanguage });
 
   const [avatarMode, setAvatarMode] = useState<'idle' | 'listening' | 'talking'>('idle');
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -81,20 +88,26 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
   const handleUserUtterance = useCallback(async (text: string) => {
     if (sending || !text.trim() || limitReached || completed) return;
     stopTts();
-    resetStreamingTts();
+    const speaker = createReplySpeaker({
+      targetBcp47: getBCP47(targetLanguage, 'tts'),
+      nativeBcp47: getNativeLangBcp47(nativeLanguage),
+      phase: 'orientation',
+      isMuted: () => mutedRef.current,
+    });
     try {
       await submitTurnStream(text.trim(), {
         onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null),
+        // /api/tryout/turn answers with one JSON body rather than a token
+        // stream, so the reply arrives whole here; the speaker splits it into
+        // sentences so the first one starts without waiting for the rest.
         onTextDone: (t: string) => {
           setStreamingText(null);
-          const cleaned = cleanDisplay(t);
-          if (!mutedRef.current && cleaned) {
-            speakMixedText(cleaned, getBCP47(targetLanguage, 'tts'), getNativeLangBcp47(nativeLanguage), 'orientation').catch(() => {});
-          }
+          speaker.finish(cleanDisplay(t)).catch(() => {});
         },
       });
     } catch (e) {
       console.error(e);
+      stopTts();
     }
   }, [sending, limitReached, completed, submitTurnStream, targetLanguage, nativeLanguage]);
 
@@ -106,12 +119,24 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
   }, [chatInput, sending, handleUserUtterance]);
 
   const bcp47 = getBCP47(targetLanguage, 'stt');
-  const voice = useVoiceInput({ lang: bcp47, onFinal: handleUserUtterance });
+  // Barge-in lives in useVoiceInput.start(): it silences the character on
+  // every press, not only when the derived mode says it is talking. That mode
+  // dips to false in the gap between utterances of one reply, and a press
+  // landing in the gap used to leave the rest of the reply playing into an open
+  // mic. usePushToTalk holds the press/release gesture itself — notably the
+  // pointer capture that stops a finger sliding off the button being read as a
+  // release.
+  const voice = usePushToTalk({ lang: bcp47, onFinal: handleUserUtterance });
 
-  const handleMicStart = useCallback(async () => {
-    if (avatarMode === 'talking') stopTts();
-    await voice.start();
-  }, [avatarMode, voice]);
+  if (gate.state === 'blocked' || blocked) {
+    return (
+      <TryoutBlockedScreen
+        targetLanguage={targetLanguage}
+        nativeLanguage={nativeLanguage}
+        retryAfterMs={gate.state === 'blocked' ? gate.retryAfterMs : blockedRetryAfterMs}
+      />
+    );
+  }
 
   if (completed || limitReached) {
     return <TryoutCompleteScreen targetLanguage={targetLanguage} nativeLanguage={nativeLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
@@ -151,21 +176,25 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 </p>
                 <button
                   type="button"
+                  disabled={gate.state !== 'open'}
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
+                    const speaker = createReplySpeaker({
+                      targetBcp47: getBCP47(targetLanguage, 'tts'),
+                      nativeBcp47: getNativeLangBcp47(nativeLanguage),
+                      phase: 'orientation',
+                      isMuted: () => mutedRef.current,
+                    });
                     sendGreeting({
                       onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t) => {
                         setStreamingText(null);
-                        const cleaned = cleanDisplay(t);
-                        if (!mutedRef.current && cleaned) {
-                          speakMixedText(cleaned, getBCP47(targetLanguage, 'tts'), getNativeLangBcp47(nativeLanguage), 'orientation').catch(() => {});
-                        }
+                        speaker.finish(cleanDisplay(t)).catch(() => {});
                       },
                     }).catch(() => setGreetingSent(false));
                   }}
-                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
+                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
                 >
                   <Volume2 className="h-5 w-5" />
                   Start conversation
@@ -212,10 +241,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
               <div className="flex flex-col items-center gap-2">
                 <button
                   type="button"
-                  onPointerDown={handleMicStart}
-                  onPointerUp={voice.stop}
-                  onPointerLeave={voice.stop}
-                  onPointerCancel={voice.stop}
+                  {...voice.buttonProps}
                   disabled={sending || !greetingSent}
                   aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
                   aria-pressed={voice.isListening}
@@ -224,7 +250,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                       ? 'bg-dojo-warning shadow-[0_0_32px_rgba(242,169,59,0.5)] ring-4 ring-dojo-warning/20'
                       : 'bg-dojo-accent hover:scale-105 shadow-[0_8px_24px_rgba(45,59,197,0.4)]'
                   } disabled:opacity-40`}
-                  style={{ touchAction: 'none', transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
+                  style={{ ...voice.buttonProps.style, transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
                 >
                   <Mic className="h-7 w-7 text-white" />
                 </button>

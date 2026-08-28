@@ -11,10 +11,11 @@ import { SessionModeTabs } from '@/components/roleplay/SessionModeTabs';
 import { SessionInfoDrawer } from '@/components/roleplay/SessionInfoDrawer';
 import { VoiceCoachPanel } from '@/components/roleplay/VoiceCoachPanel';
 import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/roleplay/ConnectionLatencyIndicator';
-import { useVoiceInput } from '@/lib/hooks/useVoiceInput';
+import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
+import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
 import type { CelebrationVariant } from '@/components/roleplay/CelebrationOverlay';
@@ -22,6 +23,7 @@ import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
 import { LessonCompleteScreen } from '@/components/roleplay/LessonCompleteScreen';
 import { LessonIncompleteScreen } from '@/components/roleplay/LessonIncompleteScreen';
 import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-metrics';
+import { continueHref } from '@/lib/curriculum/continue-href';
 import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
@@ -46,7 +48,7 @@ export default function AvatarModePage() {
   const sessionId = Number(params.sessionId);
 
   const {
-    session, scenario, character, selectedAvatar, conversations, phase,
+    session, nextLesson, scenario, character, selectedAvatar, conversations, phase,
     loading, error, isActive, isCompleted, goals, completedGoals,
     domain, situation,
     evaluation, avgPronunciationScore, newWordsCount,
@@ -80,9 +82,9 @@ export default function AvatarModePage() {
   const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(0);
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
-  const { status: connectionStatus } = useLatencyMonitor();
+  const { status: connectionStatus, turnLatency } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
-  const { caption, playCaption, clear: clearCaption } = useAvatarCaptions();
+  const { caption, playCaption, showCaption, showLiveCaption, hideCaption, clear: clearCaption } = useAvatarCaptions();
 
   useEffect(() => {
     if (lastAiCompletedRef.current === 0) {
@@ -257,7 +259,16 @@ export default function AvatarModePage() {
     clearCaption();
     // Bridge the gap between the mic release and the first streamed token so
     // the learner sees the reply is coming, not that their voice was dropped.
-    playCaption('Thinking…', 4000).catch(() => {});
+    // It is replaced by the reply's own live caption on the first token, so it
+    // is shown rather than played on a timer.
+    showCaption('Thinking…');
+
+    const speaker = createReplySpeaker({
+      targetBcp47: getBCP47(targetLangRef.current, 'tts'),
+      nativeBcp47: getNativeLangBcp47(nativeLangRef.current),
+      phase: phaseRef.current,
+      isMuted: () => mutedRef.current,
+    });
 
     let fullText = '';
     const speechDoneRef = { current: false };
@@ -274,33 +285,26 @@ export default function AvatarModePage() {
         responseTimeMs,
         onToken: (t) => {
           if (t) fullText = t;
-          setStreamingText(t ? cleanDisplay(t) : null);
+          const cleaned = t ? cleanDisplay(t) : null;
+          setStreamingText(cleaned);
+          if (cleaned) showLiveCaption(cleaned);
         },
-        // Speak the reply as one complete clip once the model has finished,
-        // same as the replay button — synthesizing per-sentence as the model
-        // streamed made every sentence boundary pay its own Azure connect
-        // round trip, which read as slow/choppy compared to a single clip.
+        // Each completed sentence is synthesized while the model is still
+        // writing the next one, so the character starts talking on the first
+        // sentence rather than after the whole reply. finish() resolves when
+        // the last one has actually finished playing.
+        onTokenDelta: (delta) => speaker.feed(delta),
         onTextDone: (t: string) => {
-          const cleaned = cleanDisplay(t);
-          const estDuration = Math.max(3000, cleaned.length * 65);
-          if (cleaned) playCaption(cleaned, estDuration).catch(() => {});
-          if (!mutedRef.current && cleaned) {
-            speakMixedText(
-              cleaned,
-              getBCP47(targetLangRef.current, 'tts'),
-              getNativeLangBcp47(nativeLangRef.current),
-              phaseRef.current,
-            ).catch(() => {}).then(() => {
-              setAiTurnActive(false);
-              speechDoneRef.current = true;
-              tryShowCelebration();
-            });
-          } else {
+          speaker.finish(cleanDisplay(t)).catch(() => {}).then(() => {
+            hideCaption();
             setAiTurnActive(false);
             speechDoneRef.current = true;
             tryShowCelebration();
-          }
+          });
         },
+        // Arrives with text_done, i.e. as the first sentence starts being
+        // spoken — the whole point of not waiting for the analysis.
+        onGesture: (gesture) => { emotionSystemRef.current?.playGesture(gesture); },
         onRetry: (analysis) => {
           setLastCorrections(analysis.corrections ?? []);
           setSuggestedReplies(analysis.suggestedReplies ?? []);
@@ -341,13 +345,17 @@ export default function AvatarModePage() {
       }
     } catch (e: any) {
       console.error(e);
+      // Whatever was queued belongs to a turn that failed; leaving it to drain
+      // talks over the learner's retry.
+      stopTts();
+      clearCaption();
       emotionSystemRef.current?.stopThinking();
       setAiTurnActive(false);
     } finally {
       sendingRef.current = false;
       setSending(false);
     }
-  }, [submitTurnStream, conversations, clearCaption, playCaption]);
+  }, [submitTurnStream, conversations, clearCaption, showCaption, showLiveCaption, hideCaption]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -358,9 +366,19 @@ export default function AvatarModePage() {
 
   const bcp47 = getBCP47(targetLanguage, 'stt');
 
-  const voice = useVoiceInput({
+  // Barge-in lives in useVoiceInput.start(): it silences the character on
+  // every press, not only when the derived mode below says it is talking. That
+  // mode dips to false in the gap between utterances of one reply, and a press
+  // landing in the gap used to leave the rest of the reply playing into an open
+  // mic. usePushToTalk holds the press/release gesture itself — notably the
+  // pointer capture that stops a finger sliding off the button being read as a
+  // release.
+  const voice = usePushToTalk({
     lang: bcp47,
     onFinal: handleUserUtterance,
+    // RoleplaySessionProvider owns the recognizer for the whole session, so it
+    // survives the voice ⇄ avatar tab switch.
+    ownsRecognizer: false,
   });
 
   // Single source of truth for what the avatar is doing. This was previously
@@ -372,10 +390,6 @@ export default function AvatarModePage() {
   const avatarMode: 'idle' | 'listening' | 'talking' =
     isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
 
-  const handleMicStart = useCallback(async () => {
-    if (avatarMode === 'talking') stopTts();
-    await voice.start();
-  }, [avatarMode, voice]);
 
   const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
   const skillLevelLabel = situation?.skillLevel
@@ -427,7 +441,7 @@ export default function AvatarModePage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="hidden sm:block">
-            <ConnectionLatencyIndicator status={connectionStatus} />
+            <ConnectionLatencyIndicator status={connectionStatus} turnLatency={turnLatency} />
           </div>
           <button
             type="button"
@@ -486,19 +500,28 @@ export default function AvatarModePage() {
                   onClick={() => {
                     unlockAudio();
                     setGreetingSent(true);
+                    const speaker = createReplySpeaker({
+                      targetBcp47: getBCP47(targetLangRef.current, 'tts'),
+                      nativeBcp47: getNativeLangBcp47(nativeLangRef.current),
+                      phase: phaseRef.current,
+                      isMuted: () => mutedRef.current,
+                    });
                     sendGreeting({
-                      onToken: (t: string) => setStreamingText(t ? cleanDisplay(t) : null),
-                      onTextDone: (t: string) => {
-                        const cleaned = cleanDisplay(t);
-                        if (cleaned) playCaption(cleaned, Math.max(3000, cleaned.length * 65)).catch(() => {});
-                        if (mutedRef.current || !cleaned) return;
-                        speakMixedText(cleaned, getBCP47(targetLangRef.current, 'tts'), getNativeLangBcp47(nativeLangRef.current), phaseRef.current).catch(() => {});
+                      onToken: (t: string) => {
+                        const cleaned = t ? cleanDisplay(t) : null;
+                        setStreamingText(cleaned);
+                        if (cleaned) showLiveCaption(cleaned);
                       },
+                      onTokenDelta: (delta: string) => speaker.feed(delta),
+                      onTextDone: (t: string) => {
+                        speaker.finish(cleanDisplay(t)).catch(() => {}).then(() => hideCaption());
+                      },
+                      onGesture: (gesture: string) => { emotionSystemRef.current?.playGesture(gesture); },
                     })
                       .then(() => {
                         setStreamingText(null);
                       })
-                      .catch(() => { setStreamingText(null); setGreetingSent(false); });
+                      .catch(() => { stopTts(); clearCaption(); setStreamingText(null); setGreetingSent(false); });
                   }}
                   className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >
@@ -659,13 +682,7 @@ export default function AvatarModePage() {
                   )}
                   <button
                     type="button"
-                    onPointerDown={handleMicStart}
-                    onPointerUp={voice.stop}
-                    onPointerLeave={voice.stop}
-                    onPointerCancel={voice.stop}
-                    onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleMicStart(); } }}
-                    onKeyUp={(e) => { if (e.key === ' ' || e.key === 'Enter') voice.stop(); }}
-                    onBlur={voice.stop}
+                    {...voice.buttonProps}
                     disabled={!isActive || sending}
                     aria-label={voice.isListening ? 'Stop recording' : 'Start recording'}
                     aria-pressed={voice.isListening}
@@ -674,7 +691,7 @@ export default function AvatarModePage() {
                         ? 'bg-dojo-warning shadow-[0_0_32px_rgba(242,169,59,0.5)] ring-4 ring-dojo-warning/20'
                         : 'bg-dojo-accent/90 hover:bg-dojo-accent hover:scale-105 shadow-[0_8px_24px_rgba(45,59,197,0.4)] backdrop-blur-sm'
                     } disabled:opacity-40`}
-                    style={{ touchAction: 'none', transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
+                    style={{ ...voice.buttonProps.style, transform: voice.isListening ? `scale(${1 + voice.volumeLevel * 0.06})` : undefined }}
                   >
                     <Mic className="h-7 w-7 text-white" />
                   </button>
@@ -958,7 +975,7 @@ export default function AvatarModePage() {
             metrics={sessionMetrics}
             xpGained={completionResult.xpGained}
             newStreak={completionResult.newStreak}
-            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
             onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
           />
         ) : (
@@ -968,7 +985,7 @@ export default function AvatarModePage() {
             metrics={sessionMetrics}
             whatWentWrong={whatWentWrong}
             onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
-            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push('/home'); }}
+            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
             onLeave={() => { setCompletionResult(null); acknowledgeCompletion(); leaveSession(); }}
           />
         )

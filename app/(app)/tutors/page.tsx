@@ -15,8 +15,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
-import { getTargetLangConfig } from '@/lib/language';
-import { Video, Calendar, ArrowRight, GraduationCap } from 'lucide-react';
+import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { Video, Calendar, ArrowRight, GraduationCap, Users, ClipboardCheck, Bot } from 'lucide-react';
 
 interface TutorRow {
   id: number;
@@ -24,6 +24,7 @@ interface TutorRow {
   headline: string;
   bio: string | null;
   languages: string[];
+  instructionLanguages: string[];
   hourlyRateCents: number;
   currency: string;
   timezone: string;
@@ -39,6 +40,31 @@ interface BookingRow {
   purpose: string;
   targetLanguage: string;
   isTutor: boolean;
+}
+
+interface ClassRow {
+  id: number;
+  title: string;
+  tutorName: string;
+  targetLanguage: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  capacity: number;
+  enrolledCount: number;
+  myEnrollmentStatus: string | null;
+}
+
+interface AssessmentRow {
+  id: number;
+  title: string;
+  tutorName: string;
+  targetLanguage: string;
+  scheduledAt: string;
+  minutesPerLearner: number;
+  waitingCount: number;
+  myQueueState: string | null;
+  /** 'tutor' | 'ai' — an AI-examined assessment has no line to wait in. */
+  examiner: string;
 }
 
 function formatMoney(cents: number, currency: string): string {
@@ -66,6 +92,8 @@ export default function TutorsPage() {
   const user = useUser();
   const [tutors, setTutors] = useState<TutorRow[]>([]);
   const [upcoming, setUpcoming] = useState<BookingRow[]>([]);
+  const [classes, setClasses] = useState<ClassRow[]>([]);
+  const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   // Starts false when the feature is off, so the disabled path never has to
   // call setState from inside an effect just to stop a spinner.
   const [loading, setLoading] = useState(TUTORS_ENABLED);
@@ -75,8 +103,12 @@ export default function TutorsPage() {
     Promise.all([
       fetch('/api/tutors', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       fetch('/api/bookings', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
-    ]).then(([t, b]) => {
+      fetch('/api/classes', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+      fetch('/api/assessments', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+    ]).then(([t, b, c, a]) => {
       if (Array.isArray(t.tutors)) setTutors(t.tutors);
+      if (Array.isArray(c.classes)) setClasses(c.classes as ClassRow[]);
+      if (Array.isArray(a.assessments)) setAssessments(a.assessments as AssessmentRow[]);
       if (Array.isArray(b.bookings)) {
         // Filtered here rather than during render: "is this in the future?"
         // depends on the current time, which is not a pure value to read
@@ -91,8 +123,8 @@ export default function TutorsPage() {
     }).finally(() => setLoading(false));
   }, []);
 
-  // Ships dark until a LiveKit server is deployed. Showing a booking flow
-  // that cannot connect would be worse than showing nothing.
+  // Ships dark until Stream credentials are configured. Showing a booking
+  // flow that cannot connect would be worse than showing nothing.
   if (!TUTORS_ENABLED) {
     return (
       <div className="mx-auto w-full max-w-2xl p-6">
@@ -150,6 +182,91 @@ export default function TutorsPage() {
         </section>
       )}
 
+      {classes.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
+            Live classes
+          </h2>
+          <div className="space-y-3">
+            {classes.map((c) => (
+              <Card
+                key={c.id}
+                hoverable
+                className="p-4! cursor-pointer"
+                onClick={() => router.push(`/live/class/${c.id}`)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
+                    <Users className="h-5 w-5 text-dojo-accent" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-dojo-text-primary">{c.title}</p>
+                    <p className="text-xs text-dojo-text-muted">
+                      {c.tutorName} · {formatWhen(c.scheduledAt)} · {c.enrolledCount}/{c.capacity} enrolled
+                    </p>
+                  </div>
+                  <Badge variant="outline">{getTargetLangConfig(c.targetLanguage).name}</Badge>
+                  {c.myEnrollmentStatus && c.myEnrollmentStatus !== 'cancelled' && (
+                    <Badge variant="accent">Enrolled</Badge>
+                  )}
+                  <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {assessments.length > 0 && (
+        <section className="mb-10">
+          <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
+            Assessments
+          </h2>
+          <div className="space-y-3">
+            {assessments.map((a) => (
+              <Card
+                key={a.id}
+                hoverable
+                className="p-4! cursor-pointer"
+                onClick={() => router.push(`/live/assessment/${a.id}`)}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
+                    {a.examiner === 'ai' ? (
+                      <Bot className="h-5 w-5 text-dojo-accent" />
+                    ) : (
+                      <ClipboardCheck className="h-5 w-5 text-dojo-accent" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-dojo-text-primary">{a.title}</p>
+                    <p className="text-xs text-dojo-text-muted">
+                      {a.tutorName} · {formatWhen(a.scheduledAt)} ·{' '}
+                      {a.examiner === 'ai'
+                        ? `AI examiner · ${a.minutesPerLearner} min`
+                        : `${a.waitingCount} waiting`}
+                    </p>
+                  </div>
+                  <Badge variant="outline">{getTargetLangConfig(a.targetLanguage).name}</Badge>
+                  {a.myQueueState && (
+                    <Badge variant="accent" className="capitalize">
+                      {/* "Admitted" is a queue word, and there is no queue when the
+                          examiner is the AI — every learner is admitted at once. */}
+                      {a.examiner === 'ai'
+                        ? a.myQueueState === 'done'
+                          ? 'Finished'
+                          : 'Started'
+                        : a.myQueueState}
+                    </Badge>
+                  )}
+                  <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
           Available tutors
@@ -183,6 +300,10 @@ export default function TutorsPage() {
                   </div>
                 </div>
 
+                {/* Two capabilities, shown separately: what they teach, and
+                    what they can teach it in. A learner picking a tutor cares
+                    about both — a Japanese tutor who cannot explain in Luganda
+                    is the wrong tutor for a Luganda speaker. */}
                 <div className="mt-4 flex flex-wrap gap-2">
                   {t.languages.map((code) => (
                     <Badge key={code} variant="outline">
@@ -190,6 +311,13 @@ export default function TutorsPage() {
                     </Badge>
                   ))}
                 </div>
+
+                {t.instructionLanguages.length > 0 && (
+                  <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">
+                    Explains in{' '}
+                    {t.instructionLanguages.map((code) => getNativeLangName(code)).join(', ')}
+                  </p>
+                )}
 
                 {t.bio && (
                   <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-dojo-text-muted">{t.bio}</p>
