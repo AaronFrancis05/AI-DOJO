@@ -227,10 +227,11 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
 
       if (isLogin) {
         if (role === 'admin') {
-          const problem = await claimAdmin();
-          // Not fatal: they are signed in, and an existing admin whose address
-          // was since removed from the list still has a role to land on.
-          if (problem) setNotice(problem);
+          const claim = await claimAdmin();
+          // Not fatal either way: they are signed in, and `landAfterSignIn`
+          // routes off the role the server actually holds — an existing admin
+          // whose address was since removed still has one to land on.
+          if (claim.status !== 'claimed') setNotice(claim.message);
         }
         await landAfterSignIn();
         return;
@@ -258,10 +259,19 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
       }
 
       if (role === 'admin') {
-        const problem = await claimAdmin();
-        if (problem) {
-          setError(`${problem} Your account was created as a learner.`);
+        const claim = await claimAdmin();
+        if (claim.status === 'denied') {
+          // The allowlist's answer, and it is final.
+          setError(`${claim.message} Your account was created as a learner.`);
           router.push('/home');
+          return;
+        }
+        if (claim.status === 'unavailable') {
+          // Nothing has been decided about this address, so decide nothing:
+          // leave them here with the message rather than sending them into
+          // the learner app on the strength of a blip. The claim is
+          // idempotent — signing in again retries it.
+          setError(claim.message);
           return;
         }
       }

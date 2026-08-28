@@ -85,6 +85,21 @@ export function isAdminDestination(next: string | null | undefined): boolean {
 }
 
 /**
+ * What came back from an attempt to claim admin.
+ *
+ * `denied` is the allowlist's answer and is final: this address is not an
+ * admin and re-asking will not change that. `unavailable` is everything else
+ * — no session yet, the account row not readable, a 5xx, an offline browser —
+ * and says nothing about the address. Collapsing the two is what let a
+ * transient failure tell a genuine admin their account "was created as a
+ * learner" and route them into the learner app for good.
+ */
+export type AdminClaimResult =
+  | { status: 'claimed' }
+  | { status: 'denied'; message: string }
+  | { status: 'unavailable'; message: string };
+
+/**
  * Promotes an allowlisted address to admin, best effort.
  *
  * Lives here rather than on the sign-in form because three moments now owe
@@ -94,22 +109,41 @@ export function isAdminDestination(next: string | null | undefined): boolean {
  * and a returning admin arrives already signed in. A copy that any of them
  * skipped is an allowlisted operator left sitting in the learner wizard.
  *
- * Returns the message to show when the address is not on the list, or null
- * when there is nothing to say. `/api/auth/admin/claim` is the gate and is
- * idempotent, so calling it more than once costs nothing.
+ * `/api/auth/admin/claim` is the gate and is idempotent, so calling it more
+ * than once costs nothing — which is what makes a retry the right answer to
+ * `unavailable`.
  */
-export async function claimAdmin(): Promise<string | null> {
+export async function claimAdmin(): Promise<AdminClaimResult> {
+  let res: Response;
   try {
-    const res = await fetch('/api/auth/admin/claim', {
+    res = await fetch('/api/auth/admin/claim', {
       method: 'POST',
       credentials: 'include',
     });
-    if (res.ok) return null;
-    const data = (await res.json().catch(() => null)) as { error?: string } | null;
-    return data?.error ?? 'This address is not authorised for admin access.';
   } catch {
-    return 'Could not reach the server to confirm admin access.';
+    return {
+      status: 'unavailable',
+      message: 'Could not reach the server to confirm admin access.',
+    };
   }
+
+  if (res.ok) return { status: 'claimed' };
+
+  const data = (await res.json().catch(() => null)) as { error?: string } | null;
+
+  // 403 is the allowlist speaking — the one status that is about the address
+  // rather than about the request's timing or the server's health.
+  if (res.status === 403) {
+    return {
+      status: 'denied',
+      message: data?.error ?? 'This address is not authorised for admin access.',
+    };
+  }
+
+  return {
+    status: 'unavailable',
+    message: data?.error ?? 'Could not confirm admin access. Please try again.',
+  };
 }
 
 /**

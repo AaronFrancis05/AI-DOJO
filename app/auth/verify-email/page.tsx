@@ -22,6 +22,7 @@ import {
   fetchUserRole,
   isAdminDestination,
   roleHome,
+  roleSignInPath,
   safeNext,
 } from '@/lib/auth/destinations';
 import { LoaderIcon, CheckCircleIcon, AlertCircleIcon } from '@/components/Icons';
@@ -119,15 +120,24 @@ function VerifyEmailContent() {
       // loop: the (app) gate sends an un-onboarded learner to the wizard, and
       // /admin bounces them back to it every time.
       let landing = next;
-      let refused = false;
+      let held = false;
       if (data?.user && isAdminDestination(next)) {
-        const problem = await claimAdmin();
-        if (problem) {
-          refused = true;
-          // Verified and signed in, just not an admin. /admin would only
-          // bounce, so let their real role answer for where they belong.
-          setClaimProblem(`${problem} Your account was created as a learner.`);
+        const claim = await claimAdmin();
+        if (claim.status === 'denied') {
+          held = true;
+          // The allowlist has answered, and it will answer the same way next
+          // time. Verified and signed in, just not an admin: /admin would
+          // only bounce, so let their real role say where they belong.
+          setClaimProblem(`${claim.message} Your account was created as a learner.`);
           landing = null;
+        } else if (claim.status === 'unavailable') {
+          held = true;
+          // Says nothing about the address — a 5xx, a session not settled
+          // yet, an offline browser. Demoting on this would strand a real
+          // admin in the learner app over a blip. The admin door retries the
+          // claim on arrival, so send them there rather than deciding here.
+          setClaimProblem(`${claim.message} Sending you to the admin sign-in to try again.`);
+          landing = roleSignInPath('admin');
         }
       }
 
@@ -137,12 +147,12 @@ function VerifyEmailContent() {
         ? landing ?? roleHome(await fetchUserRole())
         : `/auth/signin?verified=1${next ? `&next=${encodeURIComponent(next)}` : ''}`;
 
-      // Long enough to read the refusal before the page moves on — 1.2s is a
-      // beat, not a message.
+      // Long enough to read what happened to the claim before the page moves
+      // on — 1.2s is a beat, not a message.
       setTimeout(() => {
         router.push(destination);
         router.refresh();
-      }, refused ? 4000 : 1200);
+      }, held ? 4000 : 1200);
     } catch (err) {
       setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'verify'));
     } finally {
