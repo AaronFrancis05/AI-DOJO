@@ -23,6 +23,7 @@ import PasswordInput from '@/components/PasswordInput';
 import ForgotPasswordModal from '@/components/ForgotPasswordModal';
 import { AuthRoleTabs } from '@/components/auth/AuthRoleTabs';
 import {
+  claimAdmin,
   fetchUserRole,
   roleHome,
   roleSignInPath,
@@ -153,45 +154,29 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
   // Already signed in? Send them where their *role* belongs, not where this
   // page's role says. This is the flip-flop the split doors were meant to fix:
   // a tutor who lands on the learner form is still a tutor.
+  //
+  // The claim runs here too, and has to: this effect fires before anyone can
+  // submit the form, so an admin who returns to their door with a live
+  // session was being redirected away from the only code that would have
+  // promoted them — as a learner, into the learner wizard.
   useEffect(() => {
     if (signedOut) return;
     let cancelled = false;
     authClient.getSession().then(async ({ data }) => {
       if (cancelled || !data?.user) return;
+      if (role === 'admin') await claimAdmin();
+      if (cancelled) return;
       const actualRole = await fetchUserRole();
       if (!cancelled) router.push(next ?? roleHome(actualRole));
     });
     return () => {
       cancelled = true;
     };
-  }, [router, signedOut, next]);
+  }, [router, signedOut, next, role]);
 
   /** Drops `?error=` so the previous attempt's message doesn't outlive it. */
   function clearRedirectError() {
     if (errorCode) router.replace(isLogin ? signInHref : signUpHref, { scroll: false });
-  }
-
-  /**
-   * Promotes an allowlisted address, best effort.
-   *
-   * Runs on both admin sign-in and admin sign-up: the Neon project will not
-   * issue a session until the email is verified, so a fresh admin's first
-   * *session* is often on their second visit, by which time the sign-up call
-   * is long gone. Returns the message to show when the address is not on the
-   * list, or null when there is nothing to say.
-   */
-  async function claimAdmin(): Promise<string | null> {
-    try {
-      const res = await fetch('/api/auth/admin/claim', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (res.ok) return null;
-      const data = await res.json().catch(() => null);
-      return data?.error ?? 'This address is not authorised for admin access.';
-    } catch {
-      return 'Could not reach the server to confirm admin access.';
-    }
   }
 
   /** Where this account belongs, asked of the server rather than assumed. */
@@ -242,10 +227,11 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
 
       if (isLogin) {
         if (role === 'admin') {
-          const problem = await claimAdmin();
-          // Not fatal: they are signed in, and an existing admin whose address
-          // was since removed from the list still has a role to land on.
-          if (problem) setNotice(problem);
+          const claim = await claimAdmin();
+          // Not fatal either way: they are signed in, and `landAfterSignIn`
+          // routes off the role the server actually holds — an existing admin
+          // whose address was since removed still has one to land on.
+          if (claim.status !== 'claimed') setNotice(claim.message);
         }
         await landAfterSignIn();
         return;
@@ -273,10 +259,19 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
       }
 
       if (role === 'admin') {
-        const problem = await claimAdmin();
-        if (problem) {
-          setError(`${problem} Your account was created as a learner.`);
+        const claim = await claimAdmin();
+        if (claim.status === 'denied') {
+          // The allowlist's answer, and it is final.
+          setError(`${claim.message} Your account was created as a learner.`);
           router.push('/home');
+          return;
+        }
+        if (claim.status === 'unavailable') {
+          // Nothing has been decided about this address, so decide nothing:
+          // leave them here with the message rather than sending them into
+          // the learner app on the strength of a blip. The claim is
+          // idempotent — signing in again retries it.
+          setError(claim.message);
           return;
         }
       }

@@ -17,7 +17,14 @@ import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
 // One definition of "is this `next` safe to follow", shared with the sign-in
 // pages that hand the value here — a gap in a second copy is a gap in both.
-import { fetchUserRole, roleHome, safeNext } from '@/lib/auth/destinations';
+import {
+  claimAdmin,
+  fetchUserRole,
+  isAdminDestination,
+  roleHome,
+  roleSignInPath,
+  safeNext,
+} from '@/lib/auth/destinations';
 import { LoaderIcon, CheckCircleIcon, AlertCircleIcon } from '@/components/Icons';
 import { Button } from '@/components/ui/Button';
 
@@ -49,6 +56,9 @@ function VerifyEmailContent() {
   const [sent, setSent] = useState(alreadySent);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
+  // Kept apart from `error`: verification itself succeeded, so this belongs on
+  // the success card rather than on a form the account no longer needs.
+  const [claimProblem, setClaimProblem] = useState('');
 
   // StrictMode mounts effects twice in development; a second send would spend
   // the first code before anyone could read it.
@@ -101,16 +111,48 @@ function VerifyEmailContent() {
       // sign-up path broke in the first place — an unauthenticated landing
       // just bounces back to /auth with nothing explaining why.
       const { data } = await authClient.getSession();
+
+      // An admin sign-up hands off to this page owing a promotion it could
+      // not make: it had no session to make it with. The sign-up assumed a
+      // sign-in would follow and settle it — but where the project
+      // auto-signs-in on verification there is no sign-in to follow, and the
+      // account went into the app as a learner. That is the endless-onboarding
+      // loop: the (app) gate sends an un-onboarded learner to the wizard, and
+      // /admin bounces them back to it every time.
+      let landing = next;
+      let held = false;
+      if (data?.user && isAdminDestination(next)) {
+        const claim = await claimAdmin();
+        if (claim.status === 'denied') {
+          held = true;
+          // The allowlist has answered, and it will answer the same way next
+          // time. Verified and signed in, just not an admin: /admin would
+          // only bounce, so let their real role say where they belong.
+          setClaimProblem(`${claim.message} Your account was created as a learner.`);
+          landing = null;
+        } else if (claim.status === 'unavailable') {
+          held = true;
+          // Says nothing about the address — a 5xx, a session not settled
+          // yet, an offline browser. Demoting on this would strand a real
+          // admin in the learner app over a blip. The admin door retries the
+          // claim on arrival, so send them there rather than deciding here.
+          setClaimProblem(`${claim.message} Sending you to the admin sign-in to try again.`);
+          landing = roleSignInPath('admin');
+        }
+      }
+
       // Role decides the landing when there is no explicit `next` — a tutor
       // who verifies their email belongs on the console, not the learner home.
       const destination = data?.user
-        ? next ?? roleHome(await fetchUserRole())
+        ? landing ?? roleHome(await fetchUserRole())
         : `/auth/signin?verified=1${next ? `&next=${encodeURIComponent(next)}` : ''}`;
 
+      // Long enough to read what happened to the claim before the page moves
+      // on — 1.2s is a beat, not a message.
       setTimeout(() => {
         router.push(destination);
         router.refresh();
-      }, 1200);
+      }, held ? 4000 : 1200);
     } catch (err) {
       setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'verify'));
     } finally {
@@ -127,6 +169,12 @@ function VerifyEmailContent() {
           </div>
           <h1 className="text-xl font-bold tracking-tight text-dojo-text-primary">Email verified</h1>
           <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">Taking you through…</p>
+          {claimProblem && (
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-left text-sm text-dojo-danger">
+              <AlertCircleIcon className="h-4 w-4 shrink-0" />
+              {claimProblem}
+            </div>
+          )}
         </div>
       </div>
     );
