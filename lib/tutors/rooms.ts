@@ -49,6 +49,19 @@ export function canJoinBooking(booking: BookingWindow, now: Date = new Date()): 
   if (booking.status === 'requested') {
     return { allowed: false, reason: 'The tutor has not confirmed this booking yet.' };
   }
+  // Both statuses outrank the clock, and deliberately so.
+  //
+  // 'completed' is the tutor saying the room is finished; the grace window
+  // would otherwise keep letting people back into a session that is over.
+  // 'live' is the tutor saying it has opened — a class started on the spot, or
+  // early — and a time check that still answered "this has not opened yet"
+  // would make going live mean nothing.
+  if (booking.status === 'completed') {
+    return { allowed: false, reason: 'This session has ended.' };
+  }
+  if (booking.status === 'live') {
+    return { allowed: true };
+  }
 
   const start = booking.scheduledAt.getTime();
   const end = start + booking.durationMinutes * 60 * 1000;

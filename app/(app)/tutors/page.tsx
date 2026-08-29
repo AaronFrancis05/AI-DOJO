@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { LiveBadge } from '@/components/ui/LiveBadge';
 
 import { Avatar } from '@/components/ui/Avatar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
@@ -52,6 +53,8 @@ interface ClassRow {
   capacity: number;
   enrolledCount: number;
   myEnrollmentStatus: string | null;
+  /** 'scheduled' | 'live' | 'completed' | 'cancelled'. */
+  status: string;
 }
 
 interface AssessmentRow {
@@ -65,6 +68,8 @@ interface AssessmentRow {
   myQueueState: string | null;
   /** 'tutor' | 'ai' — an AI-examined assessment has no line to wait in. */
   examiner: string;
+  /** 'scheduled' | 'live' | 'completed' | 'cancelled'. */
+  status: string;
 }
 
 function formatMoney(cents: number, currency: string): string {
@@ -77,6 +82,14 @@ function formatWhen(iso: string): string {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
+}
+
+/** Rooms that are running now, then the rest in the order they arrived. */
+function liveFirst<T extends { status: string }>(rows: T[]): T[] {
+  return [
+    ...rows.filter((r) => r.status === 'live'),
+    ...rows.filter((r) => r.status !== 'live'),
+  ];
 }
 
 const STATUS_VARIANT: Record<string, 'accent' | 'success' | 'default' | 'outline'> = {
@@ -107,8 +120,13 @@ export default function TutorsPage() {
       fetch('/api/assessments', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
     ]).then(([t, b, c, a]) => {
       if (Array.isArray(t.tutors)) setTutors(t.tutors);
-      if (Array.isArray(c.classes)) setClasses(c.classes as ClassRow[]);
-      if (Array.isArray(a.assessments)) setAssessments(a.assessments as AssessmentRow[]);
+      // Rooms already running come first. Both lists arrive soonest-first,
+      // which is the right order for a diary and the wrong one for a room the
+      // learner can only walk into while it is open.
+      if (Array.isArray(c.classes)) setClasses(liveFirst(c.classes as ClassRow[]));
+      if (Array.isArray(a.assessments)) {
+        setAssessments(liveFirst(a.assessments as AssessmentRow[]));
+      }
       if (Array.isArray(b.bookings)) {
         // Filtered here rather than during render: "is this in the future?"
         // depends on the current time, which is not a pure value to read
@@ -202,9 +220,12 @@ export default function TutorsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{c.title}</p>
                     <p className="text-xs text-dojo-text-muted">
-                      {c.tutorName} · {formatWhen(c.scheduledAt)} · {c.enrolledCount}/{c.capacity} enrolled
+                      {c.tutorName} ·{' '}
+                      {c.status === 'live' ? 'running now' : formatWhen(c.scheduledAt)} ·{' '}
+                      {c.enrolledCount}/{c.capacity} enrolled
                     </p>
                   </div>
+                  {c.status === 'live' && <LiveBadge className="shrink-0" />}
                   <Badge variant="outline">{getTargetLangConfig(c.targetLanguage).name}</Badge>
                   {c.myEnrollmentStatus && c.myEnrollmentStatus !== 'cancelled' && (
                     <Badge variant="accent">Enrolled</Badge>
@@ -241,12 +262,14 @@ export default function TutorsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{a.title}</p>
                     <p className="text-xs text-dojo-text-muted">
-                      {a.tutorName} · {formatWhen(a.scheduledAt)} ·{' '}
+                      {a.tutorName} ·{' '}
+                      {a.status === 'live' ? 'open now' : formatWhen(a.scheduledAt)} ·{' '}
                       {a.examiner === 'ai'
                         ? `AI examiner · ${a.minutesPerLearner} min`
                         : `${a.waitingCount} waiting`}
                     </p>
                   </div>
+                  {a.status === 'live' && <LiveBadge className="shrink-0" />}
                   <Badge variant="outline">{getTargetLangConfig(a.targetLanguage).name}</Badge>
                   {a.myQueueState && (
                     <Badge variant="accent" className="capitalize">

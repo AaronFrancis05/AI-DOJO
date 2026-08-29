@@ -16,6 +16,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { cn } from '@/lib/design-tokens';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import {
   ArrowLeft,
@@ -91,14 +92,20 @@ interface CourseProgressRow {
   acknowledgedUnitIds?: string | null;
 }
 
-/** The live class scheduled for a unit, when one is. */
-interface UnitClassRow {
+/**
+ * A live room pinned to a unit — a class or an assessment.
+ *
+ * One shape for both because the footer treats them the same way: a meeting
+ * with this unit's name on it, either running now or coming up. `kind` is what
+ * decides the wording and where the link goes.
+ */
+interface UnitRoomRow {
+  kind: 'class' | 'assessment';
   id: number;
   title: string;
   unitId: number | null;
   scheduledAt: string;
-  enrolledCount: number;
-  capacity: number;
+  status: string;
 }
 
 type LessonStatus = 'completed' | 'in-progress' | 'available' | 'locked';
@@ -146,7 +153,7 @@ export default function CourseDetailPage() {
   const [courseProgress, setCourseProgress] = useState<CourseProgressRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [startingLesson, setStartingLesson] = useState<number | null>(null);
-  const [unitClasses, setUnitClasses] = useState<UnitClassRow[]>([]);
+  const [unitRooms, setUnitRooms] = useState<UnitRoomRow[]>([]);
   const [acknowledgedUnits, setAcknowledgedUnits] = useState<number[]>([]);
   const [acknowledging, setAcknowledging] = useState<number | null>(null);
 
@@ -200,33 +207,47 @@ export default function CourseDetailPage() {
     };
   }, [slug, targetLanguage]);
 
-  // Scheduled live classes, indexed by the unit they belong to. One request
-  // for the whole course rather than one per unit — the API already answers
+  // Live rooms pinned to a unit — classes and assessments both. Two requests
+  // for the whole course rather than one per unit: each API already answers
   // "what is coming up" in a single query.
   useEffect(() => {
     if (!TUTORS_ENABLED) return;
     let cancelled = false;
-    fetch('/api/classes', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.success || !Array.isArray(data.classes)) return;
-        setUnitClasses(data.classes as UnitClassRow[]);
-      })
-      .catch(() => {
-        /* the footer falls back to the tutor list */
-      });
+    Promise.all([
+      fetch('/api/classes', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch('/api/assessments', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]).then(([c, a]) => {
+      if (cancelled) return;
+      const rooms: UnitRoomRow[] = [];
+      if (Array.isArray(c?.classes)) {
+        for (const row of c.classes) rooms.push({ ...row, kind: 'class' as const });
+      }
+      if (Array.isArray(a?.assessments)) {
+        for (const row of a.assessments) rooms.push({ ...row, kind: 'assessment' as const });
+      }
+      setUnitRooms(rooms);
+    });
     return () => { cancelled = true; };
   }, []);
 
-  const classByUnit = useMemo(() => {
-    const map = new Map<number, UnitClassRow>();
-    // The list arrives soonest-first, so the first hit for a unit is the next
-    // class for it.
-    for (const c of unitClasses) {
-      if (c.unitId != null && !map.has(c.unitId)) map.set(c.unitId, c);
+  const roomByUnit = useMemo(() => {
+    const map = new Map<number, UnitRoomRow>();
+    // A room that is running now outranks anything merely scheduled, however
+    // soon: it is the one the learner can only act on in this moment. Within
+    // each group the lists arrive soonest-first, so the first hit wins.
+    const ordered = [
+      ...unitRooms.filter((r) => r.status === 'live'),
+      ...unitRooms.filter((r) => r.status !== 'live'),
+    ];
+    for (const room of ordered) {
+      if (room.unitId != null && !map.has(room.unitId)) map.set(room.unitId, room);
     }
     return map;
-  }, [unitClasses]);
+  }, [unitRooms]);
 
   async function acknowledgeUnit(unitId: number) {
     setAcknowledging(unitId);
@@ -560,9 +581,11 @@ export default function CourseDetailPage() {
                         ))}
                     </div>
 
-                    {/* Appears only once every lesson in the unit is done. A
-                        unit still in progress has nothing to sign off and no
-                        reason to be sent to a live lesson for it yet. */}
+                    {/* Two separate things, deliberately gated differently.
+                        Signing a unit off needs every lesson in it done. A
+                        meeting for the unit does not: a class running right now
+                        is only joinable right now, and hiding it until the last
+                        lesson is finished is how a learner misses it. */}
                     {(() => {
                       const unitLessons = flatLessons.filter(
                         (f) => f.levelIdx === levelIdx && f.unitIdx === unitIdx,
@@ -570,39 +593,76 @@ export default function CourseDetailPage() {
                       const unitComplete =
                         unitLessons.length > 0 &&
                         unitLessons.every((f) => f.status === 'completed');
-                      if (!unitComplete) return null;
 
                       const acknowledged = acknowledgedUnits.includes(unit.id);
-                      const liveClass = classByUnit.get(unit.id) ?? null;
+                      const room = TUTORS_ENABLED ? roomByUnit.get(unit.id) ?? null : null;
+                      const isLive = room?.status === 'live';
+
+                      // Nothing to show: no meeting, and nothing to sign off.
+                      if (!room && !unitComplete) return null;
+
+                      const roomHref = room
+                        ? room.kind === 'class'
+                          ? `/live/class/${room.id}`
+                          : `/live/assessment/${room.id}`
+                        : null;
 
                       return (
                         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-dojo-border pt-4">
-                          {acknowledged ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-dojo-success-strong">
-                              <Check className="h-3.5 w-3.5" /> Unit finished
-                            </span>
-                          ) : (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              loading={acknowledging === unit.id}
-                              onClick={() => acknowledgeUnit(unit.id)}
-                            >
-                              <ClipboardList className="h-3.5 w-3.5" />
-                              Mark unit as finished
-                            </Button>
+                          {unitComplete && (
+                            acknowledged ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-dojo-success-strong">
+                                <Check className="h-3.5 w-3.5" /> Unit finished
+                              </span>
+                            ) : (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                loading={acknowledging === unit.id}
+                                onClick={() => acknowledgeUnit(unit.id)}
+                              >
+                                <ClipboardList className="h-3.5 w-3.5" />
+                                Mark unit as finished
+                              </Button>
+                            )
                           )}
 
-                          {TUTORS_ENABLED && (
-                            liveClass ? (
-                              <Link
-                                href={`/live/class/${liveClass.id}`}
-                                className="inline-flex items-center gap-2 rounded-(--radius-md) bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
-                              >
-                                <Users className="h-3.5 w-3.5" />
-                                Join live lesson · {new Date(liveClass.scheduledAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                              </Link>
-                            ) : (
+                          {room && roomHref ? (
+                            <Link
+                              href={roomHref}
+                              className={cn(
+                                'inline-flex items-center gap-2 rounded-(--radius-md) px-4 py-2 text-sm font-medium transition-colors',
+                                isLive
+                                  ? 'bg-dojo-danger text-white hover:bg-dojo-danger/90'
+                                  : 'bg-dojo-accent text-white hover:bg-dojo-accent/90',
+                              )}
+                            >
+                              {isLive ? (
+                                <>
+                                  {/* LiveBadge is not reused here: it paints its
+                                      dot and label in dojo-danger, which is this
+                                      button's own background. Same pulse, white
+                                      on red. */}
+                                  <span className="relative flex h-2.5 w-2.5">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
+                                  </span>
+                                  {room.kind === 'class' ? 'Join the class now' : 'Join the assessment now'}
+                                </>
+                              ) : (
+                                <>
+                                  {room.kind === 'class' ? (
+                                    <Users className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <ClipboardList className="h-3.5 w-3.5" />
+                                  )}
+                                  {room.kind === 'class' ? 'Live lesson' : 'Assessment'} ·{' '}
+                                  {new Date(room.scheduledAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </>
+                              )}
+                            </Link>
+                          ) : (
+                            unitComplete && TUTORS_ENABLED && (
                               <Link
                                 href="/tutors"
                                 className="inline-flex items-center gap-2 rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"

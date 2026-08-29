@@ -22,19 +22,32 @@ import { useLanguageCatalog } from '@/lib/language-context';
 import { useTutorProfile, type TutorProfile } from '@/lib/hooks/useTutorProfile';
 import { CLASS_DURATIONS_MINUTES, MAX_CLASS_CAPACITY } from '@/lib/tutors/config';
 import { interviewerChoices } from '@/lib/interview/persona';
+import { composeRoomTitle } from '@/lib/curriculum/room-title';
 import { cn } from '@/lib/design-tokens';
-import { Bot, Calendar, Check, ClipboardCheck, Plus, Users, Video } from 'lucide-react';
+import { Bot, Calendar, Check, ClipboardCheck, Plus, Radio, Users, Video, X } from 'lucide-react';
 
 const INTERVIEWER_CHOICES = interviewerChoices();
 
 interface BookingRow {
   id: number;
   tutorName: string;
+  learnerName: string | null;
   scheduledAt: string;
   durationMinutes: number;
   status: string;
   purpose: string;
   isTutor: boolean;
+}
+
+/** What each booking status means to the person reading it, in plain words. */
+function describeBookingStatus(status: string, isTutor: boolean): string {
+  if (status === 'requested') {
+    return isTutor ? 'Waiting on you to confirm' : 'Waiting for the tutor to confirm';
+  }
+  if (status === 'confirmed') return 'Confirmed — the room opens at the start time';
+  if (status === 'completed') return 'Finished';
+  if (status === 'cancelled') return 'Cancelled';
+  return status;
 }
 
 interface ClassRow {
@@ -99,6 +112,24 @@ function localInputToIso(value: string): string | null {
 
 type RoomKind = 'class' | 'assessment';
 
+/** The slice of /api/courses and /api/courses/[slug] the unit picker needs. */
+interface CourseOption {
+  id: number;
+  slug: string;
+  title: string;
+}
+interface UnitOption {
+  id: number;
+  title: string;
+  sequenceOrder: number;
+}
+interface LevelOption {
+  id: number;
+  title: string;
+  sequenceOrder: number;
+  units: UnitOption[];
+}
+
 function CreateRoomForm({
   kind,
   onCreated,
@@ -136,7 +167,24 @@ function CreateRoomForm({
         ? user.nativeLanguage
         : explainOptions[0]?.code) ?? '',
   );
+  // A drop-in opens the moment it is created; a scheduled room needs a date.
+  // One flag rather than a sentinel date, because it also decides the status
+  // the row is born in — see the `startNow` branch in POST /api/classes.
+  const [startNow, setStartNow] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
+
+  // Where in the curriculum this room sits. All three optional: a standalone
+  // conversation hour belongs to no unit.
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [levels, setLevels] = useState<LevelOption[]>([]);
+  const [courseSlug, setCourseSlug] = useState('');
+  const [levelId, setLevelId] = useState<number | null>(null);
+  const [unitId, setUnitId] = useState<number | null>(null);
+  // Set the first time the tutor edits the title themselves. From then on the
+  // unit picker stops rewriting it — a tutor who has named a room "retake for
+  // Thursday's absentees" must not lose it to a change of unit.
+  const [titleDirty, setTitleDirty] = useState(false);
+
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [capacity, setCapacity] = useState(12);
   const [minutesPerLearner, setMinutesPerLearner] = useState(10);
@@ -146,11 +194,73 @@ function CreateRoomForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // The course catalogue, for the unit picker. Failing quietly is right: the
+  // pin is optional, so a course list that would not load must not stop a
+  // tutor opening a room.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/courses', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success || !Array.isArray(data.courses)) return;
+        setCourses(data.courses as CourseOption[]);
+      })
+      .catch(() => { /* the picker stays empty; the room is still creatable */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Levels and units for the chosen course. `/api/courses/[slug]` already
+  // returns the whole tree, so one request covers both selects. Only the
+  // fetch lives in an effect; the selection resets belong to the event that
+  // caused them, in `pickCourse` below.
+  useEffect(() => {
+    if (!courseSlug) return;
+    let cancelled = false;
+    fetch(`/api/courses/${courseSlug}`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        setLevels((data.course?.levels ?? []) as LevelOption[]);
+      })
+      .catch(() => { if (!cancelled) setLevels([]); });
+    return () => { cancelled = true; };
+  }, [courseSlug]);
+
+  const selectedLevel = levels.find((l) => l.id === levelId) ?? null;
+  const selectedUnit = selectedLevel?.units.find((u) => u.id === unitId) ?? null;
+  const selectedCourseId = courses.find((c) => c.slug === courseSlug)?.id ?? null;
+
+  function pickCourse(slug: string) {
+    setCourseSlug(slug);
+    // A level and a unit from the previous course mean nothing under this one.
+    setLevels([]);
+    setLevelId(null);
+    setUnitId(null);
+  }
+
+  /**
+   * Picking a unit also names the room after it — until the tutor names it
+   * themselves, which `titleDirty` records. Done here rather than in an effect
+   * because it is a consequence of the choice, not of the state: a tutor who
+   * clears the unit keeps the title they were shown.
+   */
+  function pickUnit(id: number | null) {
+    setUnitId(id);
+    if (titleDirty || id == null) return;
+    const unit = selectedLevel?.units.find((u) => u.id === id);
+    if (!unit) return;
+    setTitle(composeRoomTitle({
+      unitSequence: unit.sequenceOrder,
+      unitTitle: unit.title,
+      kind,
+    }));
+  }
+
   const submit = useCallback(async () => {
     setError('');
-    const iso = localInputToIso(scheduledAt);
+    const iso = startNow ? null : localInputToIso(scheduledAt);
     if (!title.trim()) return setError('Give it a title.');
-    if (!iso) return setError('Pick a date and time.');
+    if (!startNow && !iso) return setError('Pick a date and time.');
     if (!targetLanguage) return setError('Pick the language you are teaching.');
     if (!instructionLanguage) return setError('Pick the language you will explain in.');
 
@@ -165,7 +275,10 @@ function CreateRoomForm({
           description: description.trim() || null,
           targetLanguage,
           instructionLanguage,
+          startNow,
           scheduledAt: iso,
+          courseId: selectedCourseId,
+          unitId,
           durationMinutes,
           ...(kind === 'class'
             ? { capacity }
@@ -180,6 +293,7 @@ function CreateRoomForm({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Could not create it.');
       setTitle('');
+      setTitleDirty(false);
       setDescription('');
       setScheduledAt('');
       setInterviewerBrief('');
@@ -189,7 +303,7 @@ function CreateRoomForm({
     } finally {
       setSaving(false);
     }
-  }, [kind, title, description, targetLanguage, instructionLanguage, scheduledAt, durationMinutes, capacity, minutesPerLearner, examiner, interviewerAvatarId, interviewerBrief, onCreated]);
+  }, [kind, title, description, targetLanguage, instructionLanguage, startNow, scheduledAt, selectedCourseId, unitId, durationMinutes, capacity, minutesPerLearner, examiner, interviewerAvatarId, interviewerBrief, onCreated]);
 
   const inputClass =
     'w-full rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none';
@@ -197,7 +311,9 @@ function CreateRoomForm({
   return (
     <Card className="!p-5">
       <h3 className="text-sm font-bold text-dojo-text-primary">
-        {kind === 'class' ? 'Schedule a class' : 'Schedule an assessment'}
+        {startNow
+          ? (kind === 'class' ? 'Start a class now' : 'Start an assessment now')
+          : (kind === 'class' ? 'Schedule a class' : 'Schedule an assessment')}
       </h3>
       <p className="mt-1 text-xs leading-relaxed text-dojo-text-muted">
         {kind === 'class'
@@ -206,6 +322,72 @@ function CreateRoomForm({
       </p>
 
       <div className="mt-4 space-y-4">
+        {/* Where in the curriculum this sits. Above the title because it names
+            the title — and because a room pinned to a unit is the one that
+            reaches learners where they finished it, on the course page. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label htmlFor={`${kind}-course`} className="mb-2 block text-sm text-dojo-text-primary">
+              Course <span className="text-dojo-text-muted">(optional)</span>
+            </label>
+            <select
+              id={`${kind}-course`}
+              value={courseSlug}
+              onChange={(e) => pickCourse(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">No course</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.slug}>{c.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor={`${kind}-level`} className="mb-2 block text-sm text-dojo-text-primary">
+              Level
+            </label>
+            <select
+              id={`${kind}-level`}
+              value={levelId ?? ''}
+              disabled={levels.length === 0}
+              onChange={(e) => {
+                setLevelId(e.target.value ? Number(e.target.value) : null);
+                setUnitId(null);
+              }}
+              className={cn(inputClass, levels.length === 0 && 'opacity-50')}
+            >
+              <option value="">Any level</option>
+              {levels.map((l) => (
+                <option key={l.id} value={l.id}>{l.sequenceOrder}. {l.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor={`${kind}-unit`} className="mb-2 block text-sm text-dojo-text-primary">
+              Unit
+            </label>
+            <select
+              id={`${kind}-unit`}
+              value={unitId ?? ''}
+              disabled={!selectedLevel}
+              onChange={(e) => pickUnit(e.target.value ? Number(e.target.value) : null)}
+              className={cn(inputClass, !selectedLevel && 'opacity-50')}
+            >
+              <option value="">No unit</option>
+              {(selectedLevel?.units ?? []).map((u) => (
+                <option key={u.id} value={u.id}>Unit {u.sequenceOrder} · {u.title}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-dojo-text-muted">
+              {selectedUnit
+                ? 'Learners see this on the course page when they reach the unit.'
+                : 'Pin it to a unit and it appears on the course page there.'}
+            </p>
+          </div>
+        </div>
+
         <div>
           <label htmlFor={`${kind}-title`} className="mb-2 block text-sm text-dojo-text-primary">
             Title
@@ -213,11 +395,19 @@ function CreateRoomForm({
           <input
             id={`${kind}-title`}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setTitleDirty(true);
+            }}
             maxLength={150}
             placeholder={kind === 'class' ? 'Ordering food — live practice' : 'Unit 2 speaking check'}
             className={inputClass}
           />
+          {selectedUnit && !titleDirty && (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-dojo-text-muted">
+              Named from the unit you picked. Type over it to use your own.
+            </p>
+          )}
         </div>
 
         <div>
@@ -272,16 +462,41 @@ function CreateRoomForm({
           </div>
 
           <div>
-            <label htmlFor={`${kind}-when`} className="mb-2 block text-sm text-dojo-text-primary">
-              When
-            </label>
-            <input
-              id={`${kind}-when`}
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className={inputClass}
-            />
+            <span className="mb-2 block text-sm text-dojo-text-primary">When</span>
+            {/* Two mutually exclusive answers, so a segmented pair rather than
+                a switch: "start now" is not the on-state of "schedule". */}
+            <div className="flex rounded-(--radius-md) border border-dojo-border p-1">
+              {([false, true] as const).map((now) => (
+                <button
+                  key={String(now)}
+                  type="button"
+                  aria-pressed={startNow === now}
+                  onClick={() => setStartNow(now)}
+                  className={cn(
+                    'flex-1 rounded-(--radius-sm) px-3 py-1.5 text-xs font-semibold transition-colors',
+                    startNow === now
+                      ? 'bg-dojo-accent text-white'
+                      : 'text-dojo-text-muted hover:text-dojo-text-primary',
+                  )}
+                >
+                  {now ? 'Start now' : 'Schedule'}
+                </button>
+              ))}
+            </div>
+            {startNow ? (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-dojo-text-muted">
+                Opens the moment you create it, and your learners are notified.
+              </p>
+            ) : (
+              <input
+                id={`${kind}-when`}
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                aria-label="Date and time"
+                className={cn(inputClass, 'mt-2')}
+              />
+            )}
           </div>
 
           <div>
@@ -427,7 +642,8 @@ function CreateRoomForm({
       {error && <p className="mt-4 text-sm text-dojo-danger">{error}</p>}
 
       <Button variant="primary" className="mt-6" loading={saving} disabled={saving} onClick={submit}>
-        <Plus className="h-4 w-4" /> Schedule
+        {startNow ? <Radio className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+        {startNow ? 'Start now' : 'Schedule'}
       </Button>
     </Card>
   );
@@ -477,6 +693,35 @@ export function TutorConsole() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const [decidingBooking, setDecidingBooking] = useState<number | null>(null);
+
+  /**
+   * Answering a booking request from the list it appears in.
+   *
+   * Reloads rather than patching local state: the same PATCH also notifies the
+   * learner, and a card showing "confirmed" while the write is still in flight
+   * would be claiming something the learner has not been told.
+   */
+  const decideBooking = useCallback(
+    async (bookingId: number, status: 'confirmed' | 'cancelled') => {
+      setDecidingBooking(bookingId);
+      try {
+        await fetch(`/api/bookings/${bookingId}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+        await load();
+      } catch {
+        /* the card stays as it was; the tutor can try again */
+      } finally {
+        setDecidingBooking(null);
+      }
+    },
+    [load],
+  );
+
   const tabs = [
     { id: 'schedule', label: 'Schedule' },
     { id: 'classes', label: 'Classes' },
@@ -520,26 +765,53 @@ export function TutorConsole() {
                   <p className={emptyClass}>No one-to-one bookings coming up.</p>
                 ) : (
                   bookings.map((b) => (
-                    <Link key={b.id} href={`/live/${b.id}`} className="block">
-                      <Card hoverable className="!p-4">
-                        <div className="flex items-center gap-4">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
-                            <Video className="h-5 w-5 text-dojo-accent" />
+                    <Card key={b.id} className="!p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
+                          <Video className="h-5 w-5 text-dojo-accent" />
+                        </div>
+                        <Link href={`/live/${b.id}`} className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-dojo-text-primary">
+                            {b.isTutor ? b.learnerName ?? 'A learner' : b.tutorName}
+                            {b.purpose === 'evaluation' && ' · Evaluation'}
+                          </p>
+                          <p className="text-xs text-dojo-text-muted">
+                            {formatWhen(b.scheduledAt)} · {b.durationMinutes} min ·{' '}
+                            {describeBookingStatus(b.status, b.isTutor)}
+                          </p>
+                        </Link>
+                        {/* Confirming used to mean opening the room page to do
+                            it. A request the tutor cannot answer from the list
+                            they see it in is a request that sits unanswered. */}
+                        {b.isTutor && b.status === 'requested' ? (
+                          <div className="flex shrink-0 gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              loading={decidingBooking === b.id}
+                              onClick={() => decideBooking(b.id, 'confirmed')}
+                            >
+                              <Check className="h-3.5 w-3.5" /> Confirm
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={decidingBooking === b.id}
+                              onClick={() => decideBooking(b.id, 'cancelled')}
+                            >
+                              <X className="h-3.5 w-3.5" /> Decline
+                            </Button>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-dojo-text-primary">
-                              One-to-one{b.purpose === 'evaluation' && ' · Evaluation'}
-                            </p>
-                            <p className="text-xs text-dojo-text-muted">
-                              {formatWhen(b.scheduledAt)} · {b.durationMinutes} min
-                            </p>
-                          </div>
-                          <Badge variant={b.status === 'confirmed' ? 'accent' : 'outline'} className="capitalize">
+                        ) : (
+                          <Badge
+                            variant={b.status === 'confirmed' ? 'accent' : 'outline'}
+                            className="shrink-0 capitalize"
+                          >
                             {b.status}
                           </Badge>
-                        </div>
-                      </Card>
-                    </Link>
+                        )}
+                      </div>
+                    </Card>
                   ))
                 )}
               </div>

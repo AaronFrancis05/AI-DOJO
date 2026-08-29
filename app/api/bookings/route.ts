@@ -9,9 +9,11 @@ import {
   chatRoomMembers,
 } from '@/src/schema';
 import { and, desc, eq, gte, ne, or } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { getAuthUser } from '@/lib/auth/server';
 import { generateCallId } from '@/lib/tutors/rooms';
 import { BOOKING_DURATIONS_MINUTES, DEFAULT_CALL_TYPE } from '@/lib/tutors/config';
+import { createNotification } from '@/lib/notifications';
 
 /** Rolls the booking transaction back and maps to the 409 response. */
 class SlotTakenError extends Error {}
@@ -29,15 +31,23 @@ export async function GET() {
 
   const [tutorProfile] = await db.select().from(tutors).where(eq(tutors.userId, user.id));
 
+  // The learner joins a second time under an alias: `users` is already bound
+  // to the tutor's account through `tutors.userId`. Without the name the tutor
+  // console could only label every request "One-to-one", which is no help at
+  // all when three of them are waiting to be confirmed.
+  const learners = alias(users, 'learner_users');
+
   const rows = await db
     .select({
       booking: tutorBookings,
       tutorName: users.name,
       tutorHeadline: tutors.headline,
+      learnerName: learners.name,
     })
     .from(tutorBookings)
     .innerJoin(tutors, eq(tutorBookings.tutorId, tutors.id))
     .innerJoin(users, eq(tutors.userId, users.id))
+    .innerJoin(learners, eq(tutorBookings.learnerId, learners.id))
     .where(
       tutorProfile
         ? or(eq(tutorBookings.learnerId, user.id), eq(tutorBookings.tutorId, tutorProfile.id))
@@ -47,11 +57,12 @@ export async function GET() {
 
   return Response.json({
     success: true,
-    bookings: rows.map(({ booking, tutorName, tutorHeadline }) => ({
+    bookings: rows.map(({ booking, tutorName, tutorHeadline, learnerName }) => ({
       id: booking.id,
       tutorId: booking.tutorId,
       tutorName,
       tutorHeadline,
+      learnerName,
       sessionId: booking.sessionId,
       targetLanguage: booking.targetLanguage,
       scheduledAt: booking.scheduledAt,
@@ -193,6 +204,21 @@ export async function POST(req: Request) {
       return Response.json({ error: 'That slot has just been taken' }, { status: 409 });
     }
     throw err;
+  }
+
+  // The other half of the booking loop. A request that nobody is told about
+  // sits at 'requested' until the learner gives up on it — the tutor has no
+  // reason to be looking at a console they were not summoned to.
+  if (bookingId != null) {
+    await createNotification({
+      userId: tutor.userId,
+      type: 'booking',
+      title: `${user.name || 'A learner'} requested a lesson`,
+      body: `${durationMinutes} minutes on ${scheduledAt.toLocaleString()}${
+        purpose === 'evaluation' ? ', to review an AI session' : ''
+      }. Confirm it from your Teaching console.`,
+      href: `/live/${bookingId}`,
+    });
   }
 
   return Response.json({ success: true, bookingId }, { status: 201 });

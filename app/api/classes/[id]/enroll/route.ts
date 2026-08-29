@@ -1,9 +1,8 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { dbPool } from '@/src/db-pool';
 import { chatRoomMembers, classEnrollments, classSessions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { loadClassForUser } from '@/lib/tutors/rooms-data';
+import { enrolLearner, loadClassForUser } from '@/lib/tutors/rooms-data';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
@@ -42,63 +41,7 @@ export async function POST(
     return Response.json({ error: 'This class was cancelled' }, { status: 409 });
   }
 
-  const result = await dbPool.transaction(async (tx) => {
-    // Namespaced away from the session lock the roleplay writer takes: both
-    // use pg_advisory_xact_lock with a bare integer, and a class id colliding
-    // with a session id would serialise two unrelated things.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${classId}, 1)`);
-
-    const [{ taken }] = await tx
-      .select({ taken: sql<number>`count(*)::int` })
-      .from(classEnrollments)
-      .where(and(
-        eq(classEnrollments.classSessionId, classId),
-        sql`${classEnrollments.status} <> 'cancelled'`,
-      ));
-
-    const [existing] = await tx
-      .select()
-      .from(classEnrollments)
-      .where(and(
-        eq(classEnrollments.classSessionId, classId),
-        eq(classEnrollments.learnerId, user.id),
-      ))
-      .limit(1);
-
-    if (existing && existing.status !== 'cancelled') return { ok: true as const };
-    if (Number(taken) >= found.classSession.capacity) {
-      return { ok: false as const, reason: 'This class is full' };
-    }
-
-    await tx
-      .insert(classEnrollments)
-      .values({ classSessionId: classId, learnerId: user.id, status: 'enrolled' })
-      .onConflictDoUpdate({
-        target: [classEnrollments.classSessionId, classEnrollments.learnerId],
-        set: { status: 'enrolled', enrolledAt: new Date() },
-      });
-
-    // The classroom's chat sidebar is a normal chat room, so enrolling has to
-    // add the learner to it — otherwise the sidebar 403s inside the room.
-    //
-    // `preferredLanguage` is seeded from the class's instruction language, so
-    // the sidebar arrives translated into the language the class is actually
-    // taught in rather than each learner's own. Null leaves the column null,
-    // which is the pre-existing behaviour: fall back to users.nativeLanguage.
-    // The learner can still override it per room.
-    if (found.classSession.chatRoomId) {
-      await tx
-        .insert(chatRoomMembers)
-        .values({
-          roomId: found.classSession.chatRoomId,
-          userId: user.id,
-          preferredLanguage: found.classSession.instructionLanguage,
-        })
-        .onConflictDoNothing();
-    }
-
-    return { ok: true as const };
-  });
+  const result = await enrolLearner(classId, user.id, found.classSession);
 
   if (!result.ok) {
     return Response.json({ error: result.reason }, { status: 409 });

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, or, sql } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { assessmentQueue, assessmentSessions, tutors, units, users } from '@/src/schema';
 import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
@@ -9,6 +9,8 @@ import {
   isKnownInterviewerAvatarId,
 } from '@/lib/interview/persona';
 import { tutorLanguageError } from '@/lib/tutors/languages';
+import { announceLive } from '@/lib/tutors/live';
+import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
 
 export const runtime = 'nodejs';
 
@@ -44,7 +46,11 @@ export async function GET(req: Request) {
     conditions.push(eq(assessmentSessions.unitId, unitId));
   }
   if (!includePast) {
-    conditions.push(gte(assessmentSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)));
+    // As on /api/classes: a live room outlasts the cutoff.
+    conditions.push(or(
+      eq(assessmentSessions.status, 'live'),
+      gte(assessmentSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)),
+    )!);
   }
 
   const rows = await db
@@ -151,9 +157,9 @@ export async function POST(req: Request) {
     : null;
   const durationMinutes = Number(body.durationMinutes ?? 60);
   const minutesPerLearner = Number(body.minutesPerLearner ?? 10);
-  const courseId = body.courseId != null ? Number(body.courseId) : null;
-  const unitId = body.unitId != null ? Number(body.unitId) : null;
-  const scheduledAt = new Date(String(body.scheduledAt ?? ''));
+  // As on /api/classes: the tutor is opening the room now, not booking it.
+  const startNow = body.startNow === true;
+  const scheduledAt = startNow ? new Date() : new Date(String(body.scheduledAt ?? ''));
   const examiner = body.examiner === 'ai' ? 'ai' : 'tutor';
   const rawAvatarId = body.aiInterviewerAvatarId ? String(body.aiInterviewerAvatarId) : '';
   const aiInterviewerBrief = body.aiInterviewerBrief
@@ -169,8 +175,12 @@ export async function POST(req: Request) {
   if (languageError) {
     return Response.json({ error: languageError }, { status: 400 });
   }
-  if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+  if (!startNow && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) {
     return Response.json({ error: 'scheduledAt must be a future date' }, { status: 400 });
+  }
+  const anchor = await resolveRoomAnchor(body.courseId, body.unitId);
+  if (!anchor.ok) {
+    return Response.json({ error: anchor.error }, { status: 400 });
   }
   if (!(CLASS_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
     return Response.json({ error: 'Unsupported duration' }, { status: 400 });
@@ -186,8 +196,8 @@ export async function POST(req: Request) {
     .insert(assessmentSessions)
     .values({
       tutorId: tutorProfile.id,
-      courseId: courseId != null && Number.isInteger(courseId) ? courseId : null,
-      unitId: unitId != null && Number.isInteger(unitId) ? unitId : null,
+      courseId: anchor.courseId,
+      unitId: anchor.unitId,
       title,
       description,
       targetLanguage,
@@ -205,8 +215,22 @@ export async function POST(req: Request) {
         ? rawAvatarId
         : DEFAULT_INTERVIEWER_AVATAR_ID,
       aiInterviewerBrief,
+      status: startNow ? 'live' : 'scheduled',
+      wentLiveAt: startNow ? scheduledAt : null,
     })
     .returning({ id: assessmentSessions.id });
+
+  if (startNow && created?.id != null) {
+    await announceLive({
+      kind: 'assessment',
+      tutorId: tutorProfile.id,
+      tutorName: user.name ?? 'Your tutor',
+      title,
+      courseId: anchor.courseId,
+      targetLanguage,
+      href: `/live/assessment/${created.id}`,
+    });
+  }
 
   return Response.json({ success: true, assessmentId: created?.id ?? null }, { status: 201 });
 }

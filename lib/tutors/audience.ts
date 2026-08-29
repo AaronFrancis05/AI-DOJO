@@ -53,7 +53,7 @@ export interface ResolvedAudience {
  * and `student_progress` — that is the point of not hard-deleting them — but
  * notifying them, or adding them to a new chat room, would be wrong.
  */
-async function activeLearners(ids: string[]): Promise<string[]> {
+export async function activeLearners(ids: string[]): Promise<string[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
 

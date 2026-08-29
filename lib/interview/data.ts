@@ -20,7 +20,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { dbPool } from '@/src/db-pool';
-import { aiInterviews, assessmentQueue, users } from '@/src/schema';
+import { aiInterviews, assessmentQueue, assessmentSessions, users } from '@/src/schema';
 import type { TurnScores } from '@/lib/ai-engine';
 import type { InterviewTurn } from './transcript';
 
@@ -35,7 +35,9 @@ export interface StartInterviewInput {
 
 export type StartInterviewResult =
   | { ok: true; interview: AiInterviewRow; resumed: boolean }
-  | { ok: false; reason: string; interview: AiInterviewRow };
+  // `interview` is null when the refusal is about the room rather than the
+  // learner's own attempt — a closed assessment has no interview to hand back.
+  | { ok: false; reason: string; interview: AiInterviewRow | null };
 
 /**
  * Takes the learner's queue slot and the interview row for it, creating both
@@ -59,6 +61,30 @@ export async function startInterview(
 
   return dbPool.transaction(async (tx): Promise<StartInterviewResult> => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${assessmentId})`);
+
+    // Re-read the room under the lock. The caller checked the join window
+    // before getting here, but between that check and this transaction the
+    // last learner in the queue can have submitted — and the auto-close takes
+    // this same lock to end the room. Without this, that race admits someone
+    // into an assessment that has just finished, and their interview belongs
+    // to a completed session nobody will look at.
+    //
+    // Closed, not "not live": a scheduled AI assessment inside its join window
+    // has never been PATCHed live, and refusing it would break the ordinary
+    // case that `canJoinBooking` already allows.
+    const [room] = await tx
+      .select({ status: assessmentSessions.status })
+      .from(assessmentSessions)
+      .where(eq(assessmentSessions.id, assessmentId))
+      .limit(1);
+
+    if (!room || room.status === 'completed' || room.status === 'cancelled') {
+      return {
+        ok: false,
+        reason: 'This assessment has closed.',
+        interview: null,
+      };
+    }
 
     const now = new Date();
 

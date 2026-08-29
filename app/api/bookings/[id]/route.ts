@@ -3,6 +3,7 @@ import { tutorBookings } from '@/src/schema';
 import { eq } from 'drizzle-orm';
 import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { loadBookingForUser } from '@/lib/tutors/bookings';
+import { createNotification } from '@/lib/notifications';
 
 export async function GET(
   _req: Request,
@@ -90,6 +91,52 @@ export async function PATCH(
   await db.update(tutorBookings)
     .set({ status, updatedAt: new Date() })
     .where(eq(tutorBookings.id, bookingId));
+
+  // Whoever did not make the move is the one who needs telling. Without this a
+  // learner had no way to find out their request had been accepted except by
+  // going back and looking, which is not a booking system so much as a form.
+  //
+  // After the update, never before: a notification about a transition that
+  // then failed to write would be worse than none.
+  // Only on a genuine transition. A tutor double-clicking Confirm, or a client
+  // retrying the PATCH, sends the same status twice; the write is idempotent
+  // but a second "your lesson is confirmed" is not — it reads as a second
+  // lesson. The stored status is the one from before this update.
+  const changed = found.booking.status !== status;
+
+  const when = found.booking.scheduledAt.toLocaleString();
+  const actorIsTutor = found.isTutor;
+  const counterpartyId = actorIsTutor ? found.booking.learnerId : found.tutorUserId;
+
+  if (!changed) {
+    return Response.json({ success: true, status });
+  }
+
+  if (status === 'confirmed') {
+    await createNotification({
+      userId: found.booking.learnerId,
+      type: 'booking',
+      title: 'Your lesson is confirmed',
+      body: `${found.tutorName} confirmed your ${found.booking.durationMinutes}-minute session on ${when}.`,
+      href: `/live/${bookingId}`,
+    });
+  } else if (status === 'completed') {
+    await createNotification({
+      userId: found.booking.learnerId,
+      type: 'booking',
+      title: 'Your lesson is wrapped up',
+      body: `${found.tutorName} marked your session on ${when} complete.`,
+      href: `/live/${bookingId}`,
+    });
+  } else if (status === 'cancelled') {
+    await createNotification({
+      userId: counterpartyId,
+      type: 'booking',
+      title: actorIsTutor ? 'Your lesson was cancelled' : 'A learner cancelled',
+      body: `The session on ${when} will not go ahead.`,
+      href: '/tutors',
+    });
+  }
 
   return Response.json({ success: true, status });
 }

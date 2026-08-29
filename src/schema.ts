@@ -933,6 +933,11 @@ export const classSessions = pgTable('class_sessions', {
   callType:       varchar('call_type', { length: 30 }).default('default').notNull(),
   // 'scheduled' | 'live' | 'completed' | 'cancelled'
   status:         varchar('status', { length: 20 }).default('scheduled').notNull(),
+  // When the room actually opened, as distinct from when it was scheduled to.
+  // Also the idempotency guard for the go-live fan-out: a tutor toggling
+  // live → scheduled → live must not announce themselves to the cohort twice.
+  // Null on a room that has never been opened, including a cancelled one.
+  wentLiveAt:     timestamp('went_live_at'),
   // The classroom's text chat reuses the messaging tables — and therefore the
   // per-member UgaJapa translation, which is the whole point in a room where
   // the learners do not share a native language.
@@ -999,6 +1004,9 @@ export const assessmentSessions = pgTable('assessment_sessions', {
   aiInterviewerBrief:    text('ai_interviewer_brief'),
   // 'scheduled' | 'live' | 'completed' | 'cancelled'
   status:         varchar('status', { length: 20 }).default('scheduled').notNull(),
+  // As on class_sessions: when the room actually opened, and the guard that
+  // keeps the go-live announcement from firing twice.
+  wentLiveAt:     timestamp('went_live_at'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
   updatedAt:      timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({

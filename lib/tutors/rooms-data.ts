@@ -14,6 +14,7 @@ import { dbPool } from '@/src/db-pool';
 import {
   assessmentQueue,
   assessmentSessions,
+  chatRoomMembers,
   classEnrollments,
   classSessions,
   tutors,
@@ -48,6 +49,84 @@ export async function loadClassForUser(classId: number, userId: string) {
     .limit(1);
 
   return { ...row, isTutor, enrollment: enrollment ?? null };
+}
+
+export type EnrolResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Puts a learner on a class roster.
+ *
+ * Capacity is enforced inside a transaction under an advisory lock rather than
+ * by a count-then-insert: two learners taking the last seat at the same moment
+ * would both read the same count and both be admitted.
+ *
+ * Lives here rather than in the enrol route because joining an instant class
+ * enrols on the way in — see the class token route. Two implementations of
+ * "take a seat" would be two capacity rules, and only one of them would be the
+ * one under the lock.
+ */
+export async function enrolLearner(
+  classId: number,
+  learnerId: string,
+  classSession: { capacity: number; chatRoomId: number | null; instructionLanguage: string | null },
+): Promise<EnrolResult> {
+  return dbPool.transaction(async (tx): Promise<EnrolResult> => {
+    // Namespaced away from the session lock the roleplay writer takes: both
+    // use pg_advisory_xact_lock with a bare integer, and a class id colliding
+    // with a session id would serialise two unrelated things.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${classId}, 1)`);
+
+    const [{ taken }] = await tx
+      .select({ taken: sql<number>`count(*)::int` })
+      .from(classEnrollments)
+      .where(and(
+        eq(classEnrollments.classSessionId, classId),
+        sql`${classEnrollments.status} <> 'cancelled'`,
+      ));
+
+    const [existing] = await tx
+      .select()
+      .from(classEnrollments)
+      .where(and(
+        eq(classEnrollments.classSessionId, classId),
+        eq(classEnrollments.learnerId, learnerId),
+      ))
+      .limit(1);
+
+    if (existing && existing.status !== 'cancelled') return { ok: true };
+    if (Number(taken) >= classSession.capacity) {
+      return { ok: false, reason: 'This class is full' };
+    }
+
+    await tx
+      .insert(classEnrollments)
+      .values({ classSessionId: classId, learnerId, status: 'enrolled' })
+      .onConflictDoUpdate({
+        target: [classEnrollments.classSessionId, classEnrollments.learnerId],
+        set: { status: 'enrolled', enrolledAt: new Date() },
+      });
+
+    // The classroom's chat sidebar is a normal chat room, so enrolling has to
+    // add the learner to it — otherwise the sidebar 403s inside the room.
+    //
+    // `preferredLanguage` is seeded from the class's instruction language, so
+    // the sidebar arrives translated into the language the class is actually
+    // taught in rather than each learner's own. Null leaves the column null,
+    // which is the pre-existing behaviour: fall back to users.nativeLanguage.
+    // The learner can still override it per room.
+    if (classSession.chatRoomId) {
+      await tx
+        .insert(chatRoomMembers)
+        .values({
+          roomId: classSession.chatRoomId,
+          userId: learnerId,
+          preferredLanguage: classSession.instructionLanguage,
+        })
+        .onConflictDoNothing();
+    }
+
+    return { ok: true };
+  });
 }
 
 /** Learners currently enrolled, for the roster and for notifications. */
@@ -269,6 +348,57 @@ export async function admitNext(
       .where(eq(assessmentQueue.id, next.id));
 
     return { ok: true, admittedLearnerId: next.learnerId };
+  });
+}
+
+/**
+ * Closes an AI-examined assessment once its queue has drained.
+ *
+ * The AI examiner admits everyone at once and each learner sits their own
+ * private interview, so there is no tutor in the room to press "end" — the
+ * room has to notice for itself that the last transcript is in.
+ *
+ * The check and the close are one transaction under the SAME advisory lock
+ * `startInterview` takes, and that is the whole point of the function: read
+ * the queue outside the lock and a learner can start an interview in the
+ * window between "nobody is pending" and the UPDATE, leaving their session
+ * attached to a room that has just closed. Holding the lock across both makes
+ * the two operations order against each other, and `startInterview` re-reads
+ * the status under it.
+ *
+ * Two clauses are load-bearing:
+ *  - `done > 0`, or a room that goes live with an empty queue is trivially
+ *    "finished" and closes before the first learner arrives.
+ *  - `status = 'live'` in the UPDATE, so two learners submitting the last two
+ *    interviews at once cannot both close it and both notify the tutor.
+ *
+ * @returns true only for the caller whose UPDATE actually closed the room.
+ */
+export async function closeAssessmentIfDrained(assessmentId: number): Promise<boolean> {
+  return dbPool.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${assessmentId})`);
+
+    const [counts] = await tx
+      .select({
+        pending: sql<number>`count(*) filter (where ${assessmentQueue.state} in ('waiting', 'admitted'))::int`,
+        done: sql<number>`count(*) filter (where ${assessmentQueue.state} = 'done')::int`,
+      })
+      .from(assessmentQueue)
+      .where(eq(assessmentQueue.assessmentId, assessmentId));
+
+    const drained = Number(counts?.pending ?? 0) === 0 && Number(counts?.done ?? 0) > 0;
+    if (!drained) return false;
+
+    const closed = await tx
+      .update(assessmentSessions)
+      .set({ status: 'completed', updatedAt: new Date() })
+      .where(and(
+        eq(assessmentSessions.id, assessmentId),
+        eq(assessmentSessions.status, 'live'),
+      ))
+      .returning({ id: assessmentSessions.id });
+
+    return closed.length > 0;
   });
 }
 
