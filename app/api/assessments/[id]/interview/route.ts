@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { countries, units, users } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { loadAssessmentForUser } from '@/lib/tutors/rooms-data';
+import { closeAssessmentIfDrained, loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
@@ -420,6 +420,27 @@ export async function PATCH(
 
   await publish(topics.assessment(assessmentId), { type: 'assessment.queue', assessmentId });
 
+  // The room closes itself. Nobody is examining an AI-run assessment, so there
+  // is no tutor present to press "end" — and leaving it 'live' would keep it on
+  // every learner's list, and keep late arrivals joining a queue that will
+  // never be worked. Only ever an AI room: a tutor ends their own.
+  // The drain check and the close are one locked transaction inside
+  // `closeAssessmentIfDrained`, taking the same advisory lock `startInterview`
+  // takes — otherwise a learner can begin an interview in the gap between the
+  // two and end up attached to a room that has just closed. It returns true
+  // only for the request that actually closed it.
+  let assessmentClosed = false;
+  if (found.assessment.examiner === 'ai' && found.assessment.status === 'live') {
+    assessmentClosed = await closeAssessmentIfDrained(assessmentId);
+    if (assessmentClosed) {
+      await publish(topics.assessment(assessmentId), {
+        type: 'assessment.status',
+        assessmentId,
+        status: 'completed',
+      });
+    }
+  }
+
   await createNotification({
     userId: user.id,
     type: 'assessment',
@@ -433,12 +454,18 @@ export async function PATCH(
   });
 
   // The tutor set this examination and was not in the room for it; the bell is
-  // how they learn it happened.
+  // how they learn it happened — and, on the last one, that the room has shut
+  // itself. Told once, in one notification, rather than as a second bell that
+  // says nothing the first did not.
   await createNotification({
     userId: found.tutorUserId,
     type: 'assessment',
-    title: `${learner.name || user.name} finished ${found.assessment.title}`,
-    body: summary || null,
+    title: assessmentClosed
+      ? `Everyone has been assessed in ${found.assessment.title}`
+      : `${learner.name || user.name} finished ${found.assessment.title}`,
+    body: assessmentClosed
+      ? `${learner.name || user.name} was the last in the queue, so the room has closed.`
+      : summary || null,
     href: `/live/assessment/${assessmentId}`,
   });
 

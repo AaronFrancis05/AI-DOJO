@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { classSessions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
@@ -6,6 +6,7 @@ import { loadClassForUser, loadClassRoster } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { createNotifications } from '@/lib/notifications';
+import { announceLive } from '@/lib/tutors/live';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
 
@@ -107,12 +108,46 @@ export async function PATCH(
     return Response.json({ error: 'Unsupported status' }, { status: 400 });
   }
 
+  // The status write is unconditional: a tutor may re-open a room they had
+  // dropped back to 'scheduled', and that must still take effect.
   await db
     .update(classSessions)
     .set({ status, updatedAt: new Date() })
     .where(eq(classSessions.id, classId));
 
+  // Claiming the first open is separate, and conditional in SQL rather than on
+  // the row we read above. Deciding it from that read is a check-then-act: two
+  // PATCHes racing would both see a null `wentLiveAt` and both announce. The
+  // `IS NULL` predicate makes exactly one of them win, and only the winner
+  // gets a row back.
+  let isFirstOpen = false;
+  if (status === 'live') {
+    const claimed = await db
+      .update(classSessions)
+      .set({ wentLiveAt: new Date() })
+      .where(and(eq(classSessions.id, classId), isNull(classSessions.wentLiveAt)))
+      .returning({ id: classSessions.id });
+    isFirstOpen = claimed.length > 0;
+  }
+
   await publish(topics.classSession(classId), { type: 'class.updated', classId });
+
+  if (isFirstOpen) {
+    // The roster is unioned with the cohort rather than replacing it: someone
+    // who enrolled in this one class may not be one of this tutor's learners
+    // by any other route, and they are the last person who should miss it.
+    const roster = await loadClassRoster(classId);
+    await announceLive({
+      kind: 'class',
+      tutorId: found.classSession.tutorId,
+      tutorName: found.tutorName ?? 'Your tutor',
+      title: found.classSession.title,
+      courseId: found.classSession.courseId,
+      targetLanguage: found.classSession.targetLanguage,
+      href: `/live/class/${classId}`,
+      extraLearnerIds: roster.map((r) => r.learnerId),
+    });
+  }
 
   // A cancellation is the one status change a learner must be told about
   // rather than discover by turning up.

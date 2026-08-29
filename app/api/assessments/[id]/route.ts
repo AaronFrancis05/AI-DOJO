@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { assessmentSessions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
@@ -8,6 +8,7 @@ import { tutorLanguageError } from '@/lib/tutors/languages';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
+import { announceLive } from '@/lib/tutors/live';
 import {
   DEFAULT_INTERVIEWER_AVATAR_ID,
   interviewerPersona,
@@ -174,6 +175,36 @@ export async function PATCH(
     .update(assessmentSessions)
     .set(patch)
     .where(eq(assessmentSessions.id, assessmentId));
+
+  // Same rule as a class, and claimed the same way: `IS NULL` in the WHERE
+  // rather than a decision made from the row read above, so two racing PATCHes
+  // cannot both announce. Only the request that gets a row back has opened it.
+  let isFirstOpen = false;
+  if (patch.status === 'live') {
+    const claimed = await db
+      .update(assessmentSessions)
+      .set({ wentLiveAt: new Date() })
+      .where(and(
+        eq(assessmentSessions.id, assessmentId),
+        isNull(assessmentSessions.wentLiveAt),
+      ))
+      .returning({ id: assessmentSessions.id });
+    isFirstOpen = claimed.length > 0;
+  }
+
+  if (isFirstOpen) {
+    // No roster to union in: an assessment has a queue, and it is empty until
+    // learners arrive — which is what this notification is for.
+    await announceLive({
+      kind: 'assessment',
+      tutorId: found.assessment.tutorId,
+      tutorName: found.tutorName ?? 'Your tutor',
+      title: found.assessment.title,
+      courseId: found.assessment.courseId,
+      targetLanguage: found.assessment.targetLanguage,
+      href: `/live/assessment/${assessmentId}`,
+    });
+  }
 
   // `assessment.status` is the event both rooms already listen on, and a
   // change of examiner re-renders the same page for the same reason a change
