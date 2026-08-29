@@ -6,6 +6,8 @@ import { enrolLearner, loadClassForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { buildJoinPayload } from '@/lib/tutors/join';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { publish } from '@/lib/realtime/bus';
+import { topics } from '@/lib/realtime/topics';
 
 export const runtime = 'nodejs';
 
@@ -62,6 +64,10 @@ export async function POST(
       if (!enrolled.ok) {
         return Response.json({ error: enrolled.reason }, { status: 403 });
       }
+      // The same event the enrol route publishes, for the same reason: a seat
+      // taken here is a seat taken, and the tutor's open register and the
+      // class lists have no other way to learn about it.
+      await publish(topics.classSession(classId), { type: 'class.updated', classId });
     }
   }
 

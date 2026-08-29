@@ -188,7 +188,7 @@ import a Stream chat client.
 | `lib/tutors/rooms.ts` | `generateCallId()` (random, never derived from a row id), `canJoinBooking()` server-side time gate shared by all three room types, `streamUserId()`, `createCallToken()` — a **call**-scoped token, so the call id's secrecy is a second line of defence rather than the only one. `role: 'admin'` only for the tutor. |
 | `lib/tutors/join.ts` | `buildJoinPayload()` — the one payload all three room types hand a joiner. Also upserts the joining user and pre-creates the call **as the tutor**, so the first learner through the door does not become its creator. |
 | `lib/tutors/bookings.ts` | `loadBookingForUser()` — collapses "not found" and "not yours" into one null so booking ids cannot be probed. |
-| `lib/tutors/rooms-data.ts` | The same for classes and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for classes so a class id cannot collide with a session id). `assessmentQueueDrained()` answers "is there anyone left?" for the AI examiner's auto-close. |
+| `lib/tutors/rooms-data.ts` | The same for classes and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for classes so a class id cannot collide with a session id). `closeAssessmentIfDrained()` runs the AI examiner's auto-close — drain check and status update in one transaction under the same advisory lock `startInterview` takes. |
 | `lib/tutors/live.ts` | `announceLive()` — the go-live fan-out for both room types. Resolves recipients through `resolveAudience()` (the pinned course's cohort, else all this tutor's learners) and never throws. |
 | `lib/curriculum/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
 | `lib/curriculum/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
@@ -228,11 +228,22 @@ calls `enrolLearner()` (same capacity rule, same advisory lock) after the
 window check. The assessment rule below is unchanged.
 
 **An AI-examined assessment closes itself.** Nobody is in the room to end it,
-so the interview-complete handler checks `assessmentQueueDrained()` and flips
-`status` to `'completed'` when nothing is `waiting` or `admitted` and at least
-one slot is `done`. The `done > 0` clause is what stops an empty room closing
-before anyone arrives; the `status = 'live'` predicate in the `UPDATE ... WHERE`
-is what stops two simultaneous finishers both closing it.
+so the interview-complete handler calls `closeAssessmentIfDrained()`, which
+flips `status` to `'completed'` when nothing is `waiting` or `admitted` and at
+least one slot is `done`. Three things hold it together: `done > 0` stops an
+empty room closing before anyone arrives; the `status = 'live'` predicate in
+the `UPDATE ... WHERE` stops two simultaneous finishers both closing it; and
+the whole check-and-close runs in one transaction under
+`pg_advisory_xact_lock(assessmentId)` — the **same** lock `startInterview`
+takes, which re-reads the status under it and refuses a closed room. Split
+across two statements the drain check and the close leave a window in which a
+learner starts an interview attached to a room that has just ended.
+
+**Every "first live" claim is made in SQL, never from a prior read.** Both
+`PATCH` routes write `wentLiveAt` with an `IS NULL` predicate and announce only
+if the update returns a row. Deciding it from the row the route already loaded
+is a check-then-act: two racing PATCHes both see null and both notify the
+cohort. The status write stays unconditional so a later re-open still applies.
 
 **The assessment rule — exactly one learner in the room at a time — is
 enforced at the token route**, which refuses anyone whose queue slot is not
@@ -336,7 +347,10 @@ only discover a confirmation by going back and looking.
 **A room going live notifies through `announceLive()`**, never with a
 membership query of its own. `resolveAudience()` stays the single definition of
 "my learners", so the bell reaches exactly the people the announcements console
-would.
+would. A class roster passed in as `extraLearnerIds` goes through the same
+`activeLearners()` filter before it is used: `class_enrollments.status`
+describes the seat, not the account behind it, so a suspended learner keeps
+their row and would otherwise be notified about a room they cannot join.
 
 ## Calendar (`/app/api/calendar/`, `lib/calendar/`, `app/(app)/calendar/`)
 

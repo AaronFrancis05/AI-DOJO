@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { assessmentSessions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
@@ -171,14 +171,26 @@ export async function PATCH(
     return Response.json({ error: 'Nothing to change' }, { status: 400 });
   }
 
-  // Same rule as a class: announce the first open only, guarded by wentLiveAt.
-  const isFirstOpen = patch.status === 'live' && found.assessment.wentLiveAt == null;
-  if (isFirstOpen) patch.wentLiveAt = new Date();
-
   await db
     .update(assessmentSessions)
     .set(patch)
     .where(eq(assessmentSessions.id, assessmentId));
+
+  // Same rule as a class, and claimed the same way: `IS NULL` in the WHERE
+  // rather than a decision made from the row read above, so two racing PATCHes
+  // cannot both announce. Only the request that gets a row back has opened it.
+  let isFirstOpen = false;
+  if (patch.status === 'live') {
+    const claimed = await db
+      .update(assessmentSessions)
+      .set({ wentLiveAt: new Date() })
+      .where(and(
+        eq(assessmentSessions.id, assessmentId),
+        isNull(assessmentSessions.wentLiveAt),
+      ))
+      .returning({ id: assessmentSessions.id });
+    isFirstOpen = claimed.length > 0;
+  }
 
   if (isFirstOpen) {
     // No roster to union in: an assessment has a queue, and it is empty until

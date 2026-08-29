@@ -98,9 +98,19 @@ export async function PATCH(
   //
   // After the update, never before: a notification about a transition that
   // then failed to write would be worse than none.
+  // Only on a genuine transition. A tutor double-clicking Confirm, or a client
+  // retrying the PATCH, sends the same status twice; the write is idempotent
+  // but a second "your lesson is confirmed" is not — it reads as a second
+  // lesson. The stored status is the one from before this update.
+  const changed = found.booking.status !== status;
+
   const when = found.booking.scheduledAt.toLocaleString();
   const actorIsTutor = found.isTutor;
   const counterpartyId = actorIsTutor ? found.booking.learnerId : found.tutorUserId;
+
+  if (!changed) {
+    return Response.json({ success: true, status });
+  }
 
   if (status === 'confirmed') {
     await createNotification({

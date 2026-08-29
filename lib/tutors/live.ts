@@ -13,7 +13,7 @@
  */
 
 import { createNotifications } from '@/lib/notifications';
-import { resolveAudience } from '@/lib/tutors/audience';
+import { activeLearners, resolveAudience } from '@/lib/tutors/audience';
 
 export interface LiveAnnouncement {
   kind: 'class' | 'assessment';
@@ -47,10 +47,17 @@ export async function announceLive(room: LiveAnnouncement): Promise<void> {
         })
       : await resolveAudience(room.tutorId, 'all_my_learners');
 
-    const recipients = [...new Set([
-      ...audience.learnerIds,
-      ...(room.extraLearnerIds ?? []),
-    ])];
+    // The roster is filtered through the same criterion, not trusted as given.
+    // `resolveAudience` already drops suspended and soft-deleted accounts, but
+    // a class roster does not: `class_enrollments.status` describes the seat,
+    // not the account behind it, so a suspended learner keeps their row — that
+    // is the whole point of not hard-deleting them — and would otherwise be
+    // notified about a room they cannot sign in to join.
+    const extra = room.extraLearnerIds?.length
+      ? await activeLearners(room.extraLearnerIds)
+      : [];
+
+    const recipients = [...new Set([...audience.learnerIds, ...extra])];
 
     if (recipients.length === 0) return;
 

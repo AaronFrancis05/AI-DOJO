@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { classSessions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
@@ -108,19 +108,27 @@ export async function PATCH(
     return Response.json({ error: 'Unsupported status' }, { status: 400 });
   }
 
-  // First open only. A tutor who drops the room back to 'scheduled' and starts
-  // it again has not opened a second class, and their cohort should not be
-  // told twice — `wentLiveAt` is what makes the fan-out below idempotent.
-  const isFirstOpen = status === 'live' && found.classSession.wentLiveAt == null;
-
+  // The status write is unconditional: a tutor may re-open a room they had
+  // dropped back to 'scheduled', and that must still take effect.
   await db
     .update(classSessions)
-    .set({
-      status,
-      updatedAt: new Date(),
-      ...(isFirstOpen ? { wentLiveAt: new Date() } : {}),
-    })
+    .set({ status, updatedAt: new Date() })
     .where(eq(classSessions.id, classId));
+
+  // Claiming the first open is separate, and conditional in SQL rather than on
+  // the row we read above. Deciding it from that read is a check-then-act: two
+  // PATCHes racing would both see a null `wentLiveAt` and both announce. The
+  // `IS NULL` predicate makes exactly one of them win, and only the winner
+  // gets a row back.
+  let isFirstOpen = false;
+  if (status === 'live') {
+    const claimed = await db
+      .update(classSessions)
+      .set({ wentLiveAt: new Date() })
+      .where(and(eq(classSessions.id, classId), isNull(classSessions.wentLiveAt)))
+      .returning({ id: classSessions.id });
+    isFirstOpen = claimed.length > 0;
+  }
 
   await publish(topics.classSession(classId), { type: 'class.updated', classId });
 

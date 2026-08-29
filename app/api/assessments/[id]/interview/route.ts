@@ -1,8 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { assessmentSessions, countries, units, users } from '@/src/schema';
+import { countries, units, users } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { assessmentQueueDrained, loadAssessmentForUser } from '@/lib/tutors/rooms-data';
+import { closeAssessmentIfDrained, loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
@@ -424,30 +424,20 @@ export async function PATCH(
   // is no tutor present to press "end" — and leaving it 'live' would keep it on
   // every learner's list, and keep late arrivals joining a queue that will
   // never be worked. Only ever an AI room: a tutor ends their own.
+  // The drain check and the close are one locked transaction inside
+  // `closeAssessmentIfDrained`, taking the same advisory lock `startInterview`
+  // takes — otherwise a learner can begin an interview in the gap between the
+  // two and end up attached to a room that has just closed. It returns true
+  // only for the request that actually closed it.
   let assessmentClosed = false;
   if (found.assessment.examiner === 'ai' && found.assessment.status === 'live') {
-    if (await assessmentQueueDrained(assessmentId)) {
-      const closed = await db
-        .update(assessmentSessions)
-        .set({ status: 'completed', updatedAt: new Date() })
-        .where(and(
-          eq(assessmentSessions.id, assessmentId),
-          // Re-checked in the WHERE, and the result is what decides whether we
-          // announce: two learners submitting the last two interviews at the
-          // same moment would otherwise both close the room and both tell the
-          // tutor it was over.
-          eq(assessmentSessions.status, 'live'),
-        ))
-        .returning({ id: assessmentSessions.id });
-
-      assessmentClosed = closed.length > 0;
-      if (assessmentClosed) {
-        await publish(topics.assessment(assessmentId), {
-          type: 'assessment.status',
-          assessmentId,
-          status: 'completed',
-        });
-      }
+    assessmentClosed = await closeAssessmentIfDrained(assessmentId);
+    if (assessmentClosed) {
+      await publish(topics.assessment(assessmentId), {
+        type: 'assessment.status',
+        assessmentId,
+        status: 'completed',
+      });
     }
   }
 

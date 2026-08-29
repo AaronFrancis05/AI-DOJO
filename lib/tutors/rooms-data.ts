@@ -352,26 +352,54 @@ export async function admitNext(
 }
 
 /**
- * Whether an AI-examined assessment has nothing left to do.
+ * Closes an AI-examined assessment once its queue has drained.
  *
  * The AI examiner admits everyone at once and each learner sits their own
  * private interview, so there is no tutor in the room to press "end" — the
  * room has to notice for itself that the last transcript is in.
  *
- * The `done > 0` clause is load-bearing. Without it an assessment that goes
- * live with an empty queue is trivially "finished", and would close itself
- * before the first learner had even arrived.
+ * The check and the close are one transaction under the SAME advisory lock
+ * `startInterview` takes, and that is the whole point of the function: read
+ * the queue outside the lock and a learner can start an interview in the
+ * window between "nobody is pending" and the UPDATE, leaving their session
+ * attached to a room that has just closed. Holding the lock across both makes
+ * the two operations order against each other, and `startInterview` re-reads
+ * the status under it.
+ *
+ * Two clauses are load-bearing:
+ *  - `done > 0`, or a room that goes live with an empty queue is trivially
+ *    "finished" and closes before the first learner arrives.
+ *  - `status = 'live'` in the UPDATE, so two learners submitting the last two
+ *    interviews at once cannot both close it and both notify the tutor.
+ *
+ * @returns true only for the caller whose UPDATE actually closed the room.
  */
-export async function assessmentQueueDrained(assessmentId: number): Promise<boolean> {
-  const [counts] = await db
-    .select({
-      pending: sql<number>`count(*) filter (where ${assessmentQueue.state} in ('waiting', 'admitted'))::int`,
-      done: sql<number>`count(*) filter (where ${assessmentQueue.state} = 'done')::int`,
-    })
-    .from(assessmentQueue)
-    .where(eq(assessmentQueue.assessmentId, assessmentId));
+export async function closeAssessmentIfDrained(assessmentId: number): Promise<boolean> {
+  return dbPool.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${assessmentId})`);
 
-  return Number(counts?.pending ?? 0) === 0 && Number(counts?.done ?? 0) > 0;
+    const [counts] = await tx
+      .select({
+        pending: sql<number>`count(*) filter (where ${assessmentQueue.state} in ('waiting', 'admitted'))::int`,
+        done: sql<number>`count(*) filter (where ${assessmentQueue.state} = 'done')::int`,
+      })
+      .from(assessmentQueue)
+      .where(eq(assessmentQueue.assessmentId, assessmentId));
+
+    const drained = Number(counts?.pending ?? 0) === 0 && Number(counts?.done ?? 0) > 0;
+    if (!drained) return false;
+
+    const closed = await tx
+      .update(assessmentSessions)
+      .set({ status: 'completed', updatedAt: new Date() })
+      .where(and(
+        eq(assessmentSessions.id, assessmentId),
+        eq(assessmentSessions.status, 'live'),
+      ))
+      .returning({ id: assessmentSessions.id });
+
+    return closed.length > 0;
+  });
 }
 
 /** Marks the admitted learner done without pulling the next one in. */
