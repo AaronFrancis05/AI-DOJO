@@ -8,6 +8,7 @@ import { tutorLanguageError } from '@/lib/tutors/languages';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
+import { announceLive } from '@/lib/tutors/live';
 import {
   DEFAULT_INTERVIEWER_AVATAR_ID,
   interviewerPersona,
@@ -170,10 +171,28 @@ export async function PATCH(
     return Response.json({ error: 'Nothing to change' }, { status: 400 });
   }
 
+  // Same rule as a class: announce the first open only, guarded by wentLiveAt.
+  const isFirstOpen = patch.status === 'live' && found.assessment.wentLiveAt == null;
+  if (isFirstOpen) patch.wentLiveAt = new Date();
+
   await db
     .update(assessmentSessions)
     .set(patch)
     .where(eq(assessmentSessions.id, assessmentId));
+
+  if (isFirstOpen) {
+    // No roster to union in: an assessment has a queue, and it is empty until
+    // learners arrive — which is what this notification is for.
+    await announceLive({
+      kind: 'assessment',
+      tutorId: found.assessment.tutorId,
+      tutorName: found.tutorName ?? 'Your tutor',
+      title: found.assessment.title,
+      courseId: found.assessment.courseId,
+      targetLanguage: found.assessment.targetLanguage,
+      href: `/live/assessment/${assessmentId}`,
+    });
+  }
 
   // `assessment.status` is the event both rooms already listen on, and a
   // change of examiner re-renders the same page for the same reason a change

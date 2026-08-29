@@ -188,7 +188,10 @@ import a Stream chat client.
 | `lib/tutors/rooms.ts` | `generateCallId()` (random, never derived from a row id), `canJoinBooking()` server-side time gate shared by all three room types, `streamUserId()`, `createCallToken()` — a **call**-scoped token, so the call id's secrecy is a second line of defence rather than the only one. `role: 'admin'` only for the tutor. |
 | `lib/tutors/join.ts` | `buildJoinPayload()` — the one payload all three room types hand a joiner. Also upserts the joining user and pre-creates the call **as the tutor**, so the first learner through the door does not become its creator. |
 | `lib/tutors/bookings.ts` | `loadBookingForUser()` — collapses "not found" and "not yours" into one null so booking ids cannot be probed. |
-| `lib/tutors/rooms-data.ts` | The same for classes and assessments, plus the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for classes so a class id cannot collide with a session id). |
+| `lib/tutors/rooms-data.ts` | The same for classes and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for classes so a class id cannot collide with a session id). `assessmentQueueDrained()` answers "is there anyone left?" for the AI examiner's auto-close. |
+| `lib/tutors/live.ts` | `announceLive()` — the go-live fan-out for both room types. Resolves recipients through `resolveAudience()` (the pinned course's cohort, else all this tutor's learners) and never throws. |
+| `lib/curriculum/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
+| `lib/curriculum/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
 | `components/tutors/CallStage.tsx` | The Stream video surface, shared by all three rooms. Token fetch, connect, participants + controls. Always tears the call down on unmount. |
 | `components/tutors/ClassRoom.tsx` | Grid layout, tutor mute-all and `pinForEveryone` spotlight, roster, chat sidebar. |
 | `components/tutors/AssessmentRoom.tsx` | Speaker layout + `WaitingQueue` + the tutor's grading form for whoever is admitted. |
@@ -196,7 +199,7 @@ import a Stream chat client.
 | `components/tutors/RoomChatPanel.tsx` | The in-room text chat. Backed by `chat_rooms` + UgaJapa, live over the realtime provider. Callers key it by `roomId`. |
 | `components/tutors/EvaluationForm.tsx` | The tutor's verdict on the AI's own six 0-100 dimensions. One form, two endpoints (`/api/bookings/[id]/evaluation`, `/api/assessments/[id]/evaluate`). |
 | `components/tutors/AvailabilityEditor.tsx` | The weekly bookable-hours editor over `GET`/`PUT /api/tutor/availability` (a wholesale replace — see the route). Shared by the console's Availability tab and the tutor onboarding wizard; `onSaved` is what lets the wizard advance on a successful save. |
-| `components/tutors/TutorConsole.tsx` | `/tutor`: schedule, classes, assessments, weekly availability editor. Assessments carry an examiner choice (me / AI) with an interviewer picker and a brief. |
+| `components/tutors/TutorConsole.tsx` | `/tutor`: schedule, classes, assessments, weekly availability editor. Assessments carry an examiner choice (me / AI) with an interviewer picker and a brief. The create form opens with a **Course → Level → Unit** picker that prefills the title via `composeRoomTitle()` (and stops once the tutor types), and a **Start now / Schedule** pair that swaps the date field for an instant open. The Schedule tab confirms and declines bookings inline. |
 | `components/tutors/ExaminerSwitch.tsx` | Tutor-only, on the assessment page: hand the room to the AI examiner or take it back, pick the interviewer, edit the brief. Lives here rather than only in the scheduling form because "I can't make it" is learned after scheduling. |
 | `components/tutors/AiInterviewRoom.tsx` | The AI-examined assessment, chosen by the page on `assessment.examiner`. Tutor → results; learner → their own interview. |
 | `components/tutors/AiInterviewStage.tsx` | The learner's live surface: still portrait, mic meter, countdown, running transcript, result. **Not** built on `CallStage` — there is no Stream call. |
@@ -205,6 +208,31 @@ import a Stream chat client.
 A Stream token **is** access to a call, so membership and the join window are
 both checked in the token route before one is minted. The call id is only ever
 returned alongside a valid token, never in a listing.
+
+**A room can be opened on the spot.** `startNow: true` on `POST /api/classes`
+or `POST /api/assessments` skips the future-date rule, inserts at
+`status: 'live'`, stamps `wentLiveAt`, and announces it. A scheduled room does
+the same on its first `PATCH` to `'live'` — `wentLiveAt` is the idempotency
+guard, so toggling live → scheduled → live does not notify twice.
+
+**`status` outranks the clock in `canJoinBooking()`.** `'live'` is always
+joinable and `'completed'` never is, whatever the window says: a tutor who
+opens a room early or on the spot has decided people may come in, and a fixed
+time gate would answer "this has not opened yet". Live rooms also survive the
+one-hour cutoff in both list routes, so a 90-minute class does not vanish from
+the page while it is still running.
+
+**A class enrols on the way in.** The class token route no longer refuses a
+learner without a seat — an instant class has no roster by definition — it
+calls `enrolLearner()` (same capacity rule, same advisory lock) after the
+window check. The assessment rule below is unchanged.
+
+**An AI-examined assessment closes itself.** Nobody is in the room to end it,
+so the interview-complete handler checks `assessmentQueueDrained()` and flips
+`status` to `'completed'` when nothing is `waiting` or `admitted` and at least
+one slot is `done`. The `done > 0` clause is what stops an empty room closing
+before anyone arrives; the `status = 'live'` predicate in the `UPDATE ... WHERE`
+is what stops two simultaneous finishers both closing it.
 
 **The assessment rule — exactly one learner in the room at a time — is
 enforced at the token route**, which refuses anyone whose queue slot is not
@@ -298,6 +326,17 @@ on the recipient's own realtime topic. `createNotification()` in
 an action that already succeeded, and failing that action because the courtesy
 failed would be backwards. The bell sits at the bottom of the sidebar and
 opens upward; it is live, never polled.
+
+**The booking lifecycle is notified end to end**, and each notification goes to
+whoever did *not* make the move: `POST /api/bookings` tells the tutor a request
+arrived, and `PATCH /api/bookings/[id]` tells the counterparty on confirm,
+complete and cancel. Before this the whole loop was silent — a learner could
+only discover a confirmation by going back and looking.
+
+**A room going live notifies through `announceLive()`**, never with a
+membership query of its own. `resolveAudience()` stays the single definition of
+"my learners", so the bell reaches exactly the people the announcements console
+would.
 
 ## Calendar (`/app/api/calendar/`, `lib/calendar/`, `app/(app)/calendar/`)
 
@@ -406,7 +445,7 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Tutors, Courses, Curriculum, Catalogue, Languages |
 | `/courses/[slug]/grades` | Grades | The AI's verdict per lesson beside the human tutor verdicts |
 | `/sessions/[id]/report` | Session Summary | Verdict card + score breakdown + transcript |
-| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished curriculum lesson lands — see `continueHref()` in `lib/curriculum/continue-href.ts`; free-form sessions still exit to `/home` |
+| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished curriculum lesson lands — see `continueHref()` in `lib/curriculum/continue-href.ts`; free-form sessions still exit to `/home`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live class or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
 | `/progress` | Progress Analytics | Radar chart + activity tabs |
 | `/leaderboard` | Leaderboard | Global/Friends/School tabs |
 | `/messages` | Messages | Thread list + message view |

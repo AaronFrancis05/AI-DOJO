@@ -14,6 +14,7 @@ import { dbPool } from '@/src/db-pool';
 import {
   assessmentQueue,
   assessmentSessions,
+  chatRoomMembers,
   classEnrollments,
   classSessions,
   tutors,
@@ -48,6 +49,84 @@ export async function loadClassForUser(classId: number, userId: string) {
     .limit(1);
 
   return { ...row, isTutor, enrollment: enrollment ?? null };
+}
+
+export type EnrolResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Puts a learner on a class roster.
+ *
+ * Capacity is enforced inside a transaction under an advisory lock rather than
+ * by a count-then-insert: two learners taking the last seat at the same moment
+ * would both read the same count and both be admitted.
+ *
+ * Lives here rather than in the enrol route because joining an instant class
+ * enrols on the way in — see the class token route. Two implementations of
+ * "take a seat" would be two capacity rules, and only one of them would be the
+ * one under the lock.
+ */
+export async function enrolLearner(
+  classId: number,
+  learnerId: string,
+  classSession: { capacity: number; chatRoomId: number | null; instructionLanguage: string | null },
+): Promise<EnrolResult> {
+  return dbPool.transaction(async (tx): Promise<EnrolResult> => {
+    // Namespaced away from the session lock the roleplay writer takes: both
+    // use pg_advisory_xact_lock with a bare integer, and a class id colliding
+    // with a session id would serialise two unrelated things.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${classId}, 1)`);
+
+    const [{ taken }] = await tx
+      .select({ taken: sql<number>`count(*)::int` })
+      .from(classEnrollments)
+      .where(and(
+        eq(classEnrollments.classSessionId, classId),
+        sql`${classEnrollments.status} <> 'cancelled'`,
+      ));
+
+    const [existing] = await tx
+      .select()
+      .from(classEnrollments)
+      .where(and(
+        eq(classEnrollments.classSessionId, classId),
+        eq(classEnrollments.learnerId, learnerId),
+      ))
+      .limit(1);
+
+    if (existing && existing.status !== 'cancelled') return { ok: true };
+    if (Number(taken) >= classSession.capacity) {
+      return { ok: false, reason: 'This class is full' };
+    }
+
+    await tx
+      .insert(classEnrollments)
+      .values({ classSessionId: classId, learnerId, status: 'enrolled' })
+      .onConflictDoUpdate({
+        target: [classEnrollments.classSessionId, classEnrollments.learnerId],
+        set: { status: 'enrolled', enrolledAt: new Date() },
+      });
+
+    // The classroom's chat sidebar is a normal chat room, so enrolling has to
+    // add the learner to it — otherwise the sidebar 403s inside the room.
+    //
+    // `preferredLanguage` is seeded from the class's instruction language, so
+    // the sidebar arrives translated into the language the class is actually
+    // taught in rather than each learner's own. Null leaves the column null,
+    // which is the pre-existing behaviour: fall back to users.nativeLanguage.
+    // The learner can still override it per room.
+    if (classSession.chatRoomId) {
+      await tx
+        .insert(chatRoomMembers)
+        .values({
+          roomId: classSession.chatRoomId,
+          userId: learnerId,
+          preferredLanguage: classSession.instructionLanguage,
+        })
+        .onConflictDoNothing();
+    }
+
+    return { ok: true };
+  });
 }
 
 /** Learners currently enrolled, for the roster and for notifications. */
@@ -270,6 +349,29 @@ export async function admitNext(
 
     return { ok: true, admittedLearnerId: next.learnerId };
   });
+}
+
+/**
+ * Whether an AI-examined assessment has nothing left to do.
+ *
+ * The AI examiner admits everyone at once and each learner sits their own
+ * private interview, so there is no tutor in the room to press "end" — the
+ * room has to notice for itself that the last transcript is in.
+ *
+ * The `done > 0` clause is load-bearing. Without it an assessment that goes
+ * live with an empty queue is trivially "finished", and would close itself
+ * before the first learner had even arrived.
+ */
+export async function assessmentQueueDrained(assessmentId: number): Promise<boolean> {
+  const [counts] = await db
+    .select({
+      pending: sql<number>`count(*) filter (where ${assessmentQueue.state} in ('waiting', 'admitted'))::int`,
+      done: sql<number>`count(*) filter (where ${assessmentQueue.state} = 'done')::int`,
+    })
+    .from(assessmentQueue)
+    .where(eq(assessmentQueue.assessmentId, assessmentId));
+
+  return Number(counts?.pending ?? 0) === 0 && Number(counts?.done ?? 0) > 0;
 }
 
 /** Marks the admitted learner done without pulling the next one in. */

@@ -6,6 +6,7 @@ import { loadClassForUser, loadClassRoster } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { createNotifications } from '@/lib/notifications';
+import { announceLive } from '@/lib/tutors/live';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
 
@@ -107,12 +108,38 @@ export async function PATCH(
     return Response.json({ error: 'Unsupported status' }, { status: 400 });
   }
 
+  // First open only. A tutor who drops the room back to 'scheduled' and starts
+  // it again has not opened a second class, and their cohort should not be
+  // told twice — `wentLiveAt` is what makes the fan-out below idempotent.
+  const isFirstOpen = status === 'live' && found.classSession.wentLiveAt == null;
+
   await db
     .update(classSessions)
-    .set({ status, updatedAt: new Date() })
+    .set({
+      status,
+      updatedAt: new Date(),
+      ...(isFirstOpen ? { wentLiveAt: new Date() } : {}),
+    })
     .where(eq(classSessions.id, classId));
 
   await publish(topics.classSession(classId), { type: 'class.updated', classId });
+
+  if (isFirstOpen) {
+    // The roster is unioned with the cohort rather than replacing it: someone
+    // who enrolled in this one class may not be one of this tutor's learners
+    // by any other route, and they are the last person who should miss it.
+    const roster = await loadClassRoster(classId);
+    await announceLive({
+      kind: 'class',
+      tutorId: found.classSession.tutorId,
+      tutorName: found.tutorName ?? 'Your tutor',
+      title: found.classSession.title,
+      courseId: found.classSession.courseId,
+      targetLanguage: found.classSession.targetLanguage,
+      href: `/live/class/${classId}`,
+      extraLearnerIds: roster.map((r) => r.learnerId),
+    });
+  }
 
   // A cancellation is the one status change a learner must be told about
   // rather than discover by turning up.

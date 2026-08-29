@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, or, sql } from 'drizzle-orm';
 import { db } from '@/src/db';
 import {
   chatRoomMembers,
@@ -19,6 +19,8 @@ import {
 } from '@/lib/tutors/config';
 import { dbPool } from '@/src/db-pool';
 import { tutorLanguageError } from '@/lib/tutors/languages';
+import { announceLive } from '@/lib/tutors/live';
+import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
 
 export const runtime = 'nodejs';
 
@@ -61,8 +63,14 @@ export async function GET(req: Request) {
   }
   if (!includePast) {
     // A class stays listed for an hour past its start so someone running late
-    // can still find it.
-    conditions.push(gte(classSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)));
+    // can still find it — unless it is actually live, in which case it stays
+    // listed for as long as it is. A 90-minute class vanishing from the page
+    // at the hour mark, while the tutor is still in the room, is the one case
+    // a fixed cutoff gets exactly backwards.
+    conditions.push(or(
+      eq(classSessions.status, 'live'),
+      gte(classSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)),
+    )!);
   }
 
   const rows = await db
@@ -169,9 +177,11 @@ export async function POST(req: Request) {
     : null;
   const durationMinutes = Number(body.durationMinutes ?? 60);
   const capacity = Number(body.capacity ?? 12);
-  const courseId = body.courseId != null ? Number(body.courseId) : null;
-  const unitId = body.unitId != null ? Number(body.unitId) : null;
-  const scheduledAt = new Date(String(body.scheduledAt ?? ''));
+  // A drop-in: the tutor is opening the room right now rather than booking it.
+  // `scheduledAt` is then the moment of creation, and the room is born 'live'
+  // — there is no earlier state for it to have been in.
+  const startNow = body.startNow === true;
+  const scheduledAt = startNow ? new Date() : new Date(String(body.scheduledAt ?? ''));
 
   if (!title || !targetLanguage) {
     return Response.json({ error: 'title and targetLanguage are required' }, { status: 400 });
@@ -182,8 +192,14 @@ export async function POST(req: Request) {
   if (languageError) {
     return Response.json({ error: languageError }, { status: 400 });
   }
-  if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+  // The future check applies to the scheduled path only: "now" is by definition
+  // not in the future by the time the insert runs.
+  if (!startNow && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) {
     return Response.json({ error: 'scheduledAt must be a future date' }, { status: 400 });
+  }
+  const anchor = await resolveRoomAnchor(body.courseId, body.unitId);
+  if (!anchor.ok) {
+    return Response.json({ error: anchor.error }, { status: 400 });
   }
   if (!(CLASS_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
     return Response.json({ error: 'Unsupported duration' }, { status: 400 });
@@ -221,8 +237,8 @@ export async function POST(req: Request) {
       .insert(classSessions)
       .values({
         tutorId: tutorProfile.id,
-        courseId: courseId != null && Number.isInteger(courseId) ? courseId : null,
-        unitId: unitId != null && Number.isInteger(unitId) ? unitId : null,
+        courseId: anchor.courseId,
+        unitId: anchor.unitId,
         title,
         description,
         targetLanguage,
@@ -233,11 +249,29 @@ export async function POST(req: Request) {
         callId: generateCallId(),
         callType: DEFAULT_CALL_TYPE,
         chatRoomId: room?.id ?? null,
+        status: startNow ? 'live' : 'scheduled',
+        wentLiveAt: startNow ? scheduledAt : null,
       })
       .returning({ id: classSessions.id });
 
     return created?.id ?? null;
   });
+
+  // After the transaction, never inside it: the announcement is a courtesy on
+  // top of a class that already exists, and a slow fan-out must not hold a
+  // write lock open. A scheduled class announces itself later, when the tutor
+  // PATCHes it live.
+  if (startNow && classId != null) {
+    await announceLive({
+      kind: 'class',
+      tutorId: tutorProfile.id,
+      tutorName: user.name ?? 'Your tutor',
+      title,
+      courseId: anchor.courseId,
+      targetLanguage,
+      href: `/live/class/${classId}`,
+    });
+  }
 
   return Response.json({ success: true, classId }, { status: 201 });
 }

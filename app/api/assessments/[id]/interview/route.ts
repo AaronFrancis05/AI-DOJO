@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { countries, units, users } from '@/src/schema';
+import { assessmentSessions, countries, units, users } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { loadAssessmentForUser } from '@/lib/tutors/rooms-data';
+import { assessmentQueueDrained, loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
@@ -420,6 +420,37 @@ export async function PATCH(
 
   await publish(topics.assessment(assessmentId), { type: 'assessment.queue', assessmentId });
 
+  // The room closes itself. Nobody is examining an AI-run assessment, so there
+  // is no tutor present to press "end" — and leaving it 'live' would keep it on
+  // every learner's list, and keep late arrivals joining a queue that will
+  // never be worked. Only ever an AI room: a tutor ends their own.
+  let assessmentClosed = false;
+  if (found.assessment.examiner === 'ai' && found.assessment.status === 'live') {
+    if (await assessmentQueueDrained(assessmentId)) {
+      const closed = await db
+        .update(assessmentSessions)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(and(
+          eq(assessmentSessions.id, assessmentId),
+          // Re-checked in the WHERE, and the result is what decides whether we
+          // announce: two learners submitting the last two interviews at the
+          // same moment would otherwise both close the room and both tell the
+          // tutor it was over.
+          eq(assessmentSessions.status, 'live'),
+        ))
+        .returning({ id: assessmentSessions.id });
+
+      assessmentClosed = closed.length > 0;
+      if (assessmentClosed) {
+        await publish(topics.assessment(assessmentId), {
+          type: 'assessment.status',
+          assessmentId,
+          status: 'completed',
+        });
+      }
+    }
+  }
+
   await createNotification({
     userId: user.id,
     type: 'assessment',
@@ -433,12 +464,18 @@ export async function PATCH(
   });
 
   // The tutor set this examination and was not in the room for it; the bell is
-  // how they learn it happened.
+  // how they learn it happened — and, on the last one, that the room has shut
+  // itself. Told once, in one notification, rather than as a second bell that
+  // says nothing the first did not.
   await createNotification({
     userId: found.tutorUserId,
     type: 'assessment',
-    title: `${learner.name || user.name} finished ${found.assessment.title}`,
-    body: summary || null,
+    title: assessmentClosed
+      ? `Everyone has been assessed in ${found.assessment.title}`
+      : `${learner.name || user.name} finished ${found.assessment.title}`,
+    body: assessmentClosed
+      ? `${learner.name || user.name} was the last in the queue, so the room has closed.`
+      : summary || null,
     href: `/live/assessment/${assessmentId}`,
   });
 
