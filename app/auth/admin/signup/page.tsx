@@ -10,9 +10,10 @@ export const metadata: Metadata = {
  * Reachable only by typing the URL.
  *
  * The account it creates is an ordinary one. It becomes an admin only if
- * `POST /api/auth/admin/claim` finds the address in `ADMIN_EMAILS` — an
- * environment variable a self-signup cannot reach. Anyone else who completes
- * this form ends up with a learner account and is told so.
+ * the address is in `ADMIN_EMAILS` — an environment variable a self-signup
+ * cannot reach. Password claims via `POST /api/auth/admin/claim`; Google is
+ * claimed in the OAuth callback. Anyone else who completes this form ends
+ * up with a learner account and is told so.
  */
 export default function AdminSignUpPage() {
   return (

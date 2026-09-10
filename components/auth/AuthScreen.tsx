@@ -105,10 +105,11 @@ export interface AuthScreenProps {
 
 /**
  * `role` is the door, not a claim. Nothing here grants anything: the account
- * created by an admin sign-up is a plain learner until
- * `POST /api/auth/admin/claim` checks its address against `ADMIN_EMAILS`
- * server-side, and a sign-in routes off the role the *server* reports rather
- * than off which page was open.
+ * created by an admin sign-up is a plain learner until the allowlist says
+ * otherwise. Password sign-in calls `POST /api/auth/admin/claim`; Google
+ * returns through the OAuth callback, which runs the same promotion. A
+ * sign-in then routes off the role the *server* reports rather than off
+ * which page was open.
  */
 export function AuthScreen({ role, mode }: AuthScreenProps) {
   const router = useRouter();
@@ -450,27 +451,20 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
             </button>
           </form>
 
-          {/* Google is a learner/tutor convenience. The OAuth callback cannot
-              carry an allowlist decision, so admin promotion stays on the
-              password path where the claim route can answer for it. */}
-          {role !== 'admin' && (
-            <>
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-dojo-border" />
-                <span className="text-xs text-dojo-text-muted">or continue with</span>
-                <div className="h-px flex-1 bg-dojo-border" />
-              </div>
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-dojo-border" />
+            <span className="text-xs text-dojo-text-muted">or continue with</span>
+            <div className="h-px flex-1 bg-dojo-border" />
+          </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleAuth}
-                className="flex w-full items-center justify-center gap-3 rounded-lg border border-dojo-border bg-dojo-surface py-3 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
-              >
-                <GoogleLogo />
-                Continue with Google
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={handleGoogleAuth}
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-dojo-border bg-dojo-surface py-3 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+          >
+            <GoogleLogo />
+            Continue with Google
+          </button>
 
           {role === 'learner' && (
             <p className="mt-6 text-center text-xs text-dojo-text-muted">

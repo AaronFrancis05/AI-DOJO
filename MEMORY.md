@@ -994,3 +994,11 @@ Follow-up to the commit above. Every finding was a check-then-act I had written 
 - **`class_enrollments.status` describes the seat, not the account.** A suspended learner keeps their enrolment row (that is the point of not hard-deleting), so the roster passed to `announceLive` as `extraLearnerIds` was reaching people who cannot sign in. Now filtered through the same `activeLearners()` that `resolveAudience` uses — exported from `lib/tutors/audience.ts` for it rather than reimplemented.
 - **Auto-enrol did not publish `class.updated`.** The explicit enrol route does, so a tutor's open register updated for one path and not the other.
 - Verified the suspended/deleted exclusion with three throwaway `users` rows inserted and deleted in a `finally` — the DB had no non-active accounts, so the filter was otherwise a no-op and the fix would have looked verified without being exercised.
+
+## 2026-09-09 (Google can claim admin)
+
+Admin sign-in/sign-up hid the Google button because the OAuth callback never ran the allowlist claim — only the password form called `POST /api/auth/admin/claim`. Operators on Google-only accounts had no frontend path to promotion.
+
+- `AuthScreen` now shows Continue with Google on the admin door as well.
+- The OAuth callback shares `promoteAllowlistedAdmin` with the claim route. An allowlisted address is promoted on Google return (existing account or first Google signup); everyone else is unchanged (existing role, or onboarding).
+- `ADMIN_EMAILS` remains the gate. The button grants nothing by itself.

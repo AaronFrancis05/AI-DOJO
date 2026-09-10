@@ -8,6 +8,9 @@ import { appendSetCookies } from '@/lib/auth/cookies';
 import { auth, getConfig } from '@/lib/auth/server';
 import { roleHome } from '@/lib/auth/destinations';
 import { toUserRole } from '@/lib/auth/roles';
+import { isAdminEmail } from '@/lib/auth/admin-allowlist';
+import { promoteAllowlistedAdmin } from '@/lib/auth/claim-admin';
+import { syncUser } from '@/lib/auth/sync-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
@@ -196,22 +199,36 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(appUrl('/auth/signin?error=exchange_failed'));
   }
 
-// Onboarding is only for brand-new signups. If this account already exists,
-  // the user is returning (just signing in) and should go straight to the app —
-  // to *their* part of it. A tutor who signs in with Google is still a tutor,
-  // and landing them on the learner dashboard is the same role confusion the
-  // split sign-in pages exist to end (see lib/auth/destinations.ts).
+  // Onboarding is only for brand-new *learner* signups. If this account
+  // already exists, the user is returning and should go straight to *their*
+  // part of the app. A tutor who signs in with Google is still a tutor.
+  //
+  // Admin is different: the password door claims via POST /api/auth/admin/claim,
+  // but Google never returns to that form. The allowlist is the gate, so an
+  // allowlisted address is promoted here — otherwise the admin Google button
+  // would sign them in as a learner.
   let redirectTarget = '/onboarding';
   try {
     const sessionData = await builtinResponse.clone().json();
     const email = sessionData?.user?.email as string | undefined;
+    const authId = sessionData?.user?.id as string | undefined;
+    const name = sessionData?.user?.name as string | undefined;
     if (email) {
       const [existing] = await db
         .select({ id: users.id, role: users.role })
         .from(users)
         .where(eq(users.email, email))
         .limit(1);
-      if (existing) redirectTarget = roleHome(toUserRole(existing.role));
+
+      if (existing) {
+        const promoted = await promoteAllowlistedAdmin(existing.id, email);
+        redirectTarget =
+          promoted === 'claimed' ? roleHome('admin') : roleHome(toUserRole(existing.role));
+      } else if (authId && isAdminEmail(email)) {
+        const dbUserId = await syncUser({ id: authId, email, name });
+        const promoted = await promoteAllowlistedAdmin(dbUserId, email);
+        if (promoted === 'claimed') redirectTarget = roleHome('admin');
+      }
     }
   } catch (err) {
     console.error('[oauth] failed to resolve existing user', err instanceof Error ? err.message : String(err));
