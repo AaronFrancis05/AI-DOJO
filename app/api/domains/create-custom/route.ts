@@ -1,4 +1,5 @@
 import { db } from '../../../../src/db';
+import { dbPool } from '../../../../src/db-pool';
 import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters } from '../../../../src/schema';
 import { requireRole, roleErrorResponse } from '../../../../lib/auth/server';
 import { getAIProvider } from '../../../../lib/ai-providers';
@@ -70,7 +71,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const session = await db.transaction(async (tx) => {
+  const session = await dbPool.transaction(async (tx) => {
     let domainSlug = baseSlug.slice(0, 40);
     const dmnValues = {
       name: domainName,

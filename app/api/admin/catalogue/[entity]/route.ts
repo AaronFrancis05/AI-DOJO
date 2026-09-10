@@ -1,5 +1,6 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '@/src/db';
+import { dbPool } from '@/src/db-pool';
 import { domains, scenarios, situations } from '@/src/schema';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { cacheDel, cacheKeys } from '@/lib/cache';
@@ -154,7 +155,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
   const table = spec.table as unknown as Record<string, never>;
 
   try {
-    const updated = await db.transaction(async (tx) => {
+    const updated = await dbPool.transaction(async (tx) => {
       const [row] = await tx
         .update(spec.table)
         .set(writable(updates))

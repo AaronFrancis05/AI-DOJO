@@ -1002,3 +1002,7 @@ Admin sign-in/sign-up hid the Google button because the OAuth callback never ran
 - `AuthScreen` now shows Continue with Google on the admin door as well.
 - The OAuth callback shares `promoteAllowlistedAdmin` with the claim route. An allowlisted address is promoted on Google return (existing account or first Google signup); everyone else is unchanged (existing role, or onboarding).
 - `ADMIN_EMAILS` remains the gate. The button grants nothing by itself.
+
+## 2026-09-09 (neon-http cannot run transactions)
+
+`db` in `src/db.ts` is the neon-http driver — one HTTPS request per query, so `db.transaction()` throws `No transactions support in neon-http driver`. Writes that must be atomic already go through `dbPool` (`src/db-pool.ts`, WebSocket Pool). Two remaining callers were still on `db.transaction`: `app/api/domains/create-custom/route.ts` (custom domain + situation + scenario + session) and `app/api/admin/catalogue/[entity]/route.ts` (domain slug rename + scenario denormalised copy). Both now use `dbPool.transaction`; plain reads/writes stay on `db`.
