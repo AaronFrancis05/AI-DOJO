@@ -995,13 +995,9 @@ Follow-up to the commit above. Every finding was a check-then-act I had written 
 - **Auto-enrol did not publish `class.updated`.** The explicit enrol route does, so a tutor's open register updated for one path and not the other.
 - Verified the suspended/deleted exclusion with three throwaway `users` rows inserted and deleted in a `finally` — the DB had no non-active accounts, so the filter was otherwise a no-op and the fix would have looked verified without being exercised.
 
-## 2026-09-09 (Google can claim admin)
+## 2026-09-08 (README rewrite)
 
-Admin sign-in/sign-up hid the Google button because the OAuth callback never ran the allowlist claim — only the password form called `POST /api/auth/admin/claim`. Operators on Google-only accounts had no frontend path to promotion.
-
-- `AuthScreen` now shows Continue with Google on the admin door as well.
-- The OAuth callback shares `promoteAllowlistedAdmin` with the claim route. An allowlisted address is promoted on Google return (existing account or first Google signup); everyone else is unchanged (existing role, or onboarding).
-- `ADMIN_EMAILS` remains the gate. The button grants nothing by itself.
+- `README.md` was truncated mid-install block, pointed at a stale clone URL (`AaronFrancis05`), and described a Japanese-only Gemini + three-table app. Rewrote it as the human architecture/setup overview: Next.js BFF, Neon Postgres + Neon Auth, Drizzle, multi-provider LLM, Azure Speech, Gemini Live, Stream.io, Upstash, Inngest. Setup now matches `.env.example` and `package.json` scripts. Product copy aligned with `PRODUCT.md`.
 
 ## 2026-09-09 (duplicate sign-up was labelled a network error)
 
@@ -1010,6 +1006,14 @@ Existing-email sign-up showed "Network error. Please try again." Neon returns 42
 ## 2026-09-09 (neon-http cannot run transactions)
 
 `db` in `src/db.ts` is the neon-http driver — one HTTPS request per query, so `db.transaction()` throws `No transactions support in neon-http driver`. Writes that must be atomic already go through `dbPool` (`src/db-pool.ts`, WebSocket Pool). Two remaining callers were still on `db.transaction`: `app/api/domains/create-custom/route.ts` (custom domain + situation + scenario + session) and `app/api/admin/catalogue/[entity]/route.ts` (domain slug rename + scenario denormalised copy). Both now use `dbPool.transaction`; plain reads/writes stay on `db`.
+
+## 2026-09-09 (Google can claim admin)
+
+Admin sign-in/sign-up hid the Google button because the OAuth callback never ran the allowlist claim — only the password form called `POST /api/auth/admin/claim`. Operators on Google-only accounts had no frontend path to promotion.
+
+- `AuthScreen` now shows Continue with Google on the admin door as well.
+- The OAuth callback shares `promoteAllowlistedAdmin` with the claim route. An allowlisted address is promoted on Google return (existing account or first Google signup); everyone else is unchanged (existing role, or onboarding).
+- `ADMIN_EMAILS` remains the gate. The button grants nothing by itself.
 
 ## 2026-09-10 (Catalogue Published did not hide from the hub)
 
