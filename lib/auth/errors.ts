@@ -13,11 +13,15 @@ function asAuthError(err: unknown): AuthErrorShape {
   return {};
 }
 
-function normalizeCode(code: unknown, message: string): string {
-  if (typeof code === 'string' && code.trim()) {
-    return code.trim().toLowerCase().replace(/-/g, '_');
-  }
+/** SDK remappings that hide the real Better Auth code. Prefer the message. */
+const GENERIC_CODES = new Set([
+  'validation_failed',
+  'unknown_error',
+  'unexpected_failure',
+  'internal_error',
+]);
 
+function classifyFromMessage(message: string): string {
   const lower = message.toLowerCase();
   if (
     lower.includes('already exists') ||
@@ -42,6 +46,27 @@ function normalizeCode(code: unknown, message: string): string {
     return 'invalid_token';
   }
   return '';
+}
+
+function normalizeCode(code: unknown, message: string): string {
+  const fromCode =
+    typeof code === 'string' && code.trim()
+      ? code.trim().toLowerCase().replace(/-/g, '_')
+      : '';
+  const fromMessage = classifyFromMessage(message);
+
+  // Neon/Better Auth send USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL; collapse
+  // every spelling onto the code `/auth/tutor` recovers from.
+  if (fromCode.includes('user_already_exists')) return 'user_already_exists';
+
+  // A 422 for an existing email is remapped to validation_failed. The original
+  // "already exists" text is still on the error — use it rather than the
+  // generic code, or catch blocks show "Network error".
+  if (fromMessage && (!fromCode || GENERIC_CODES.has(fromCode))) {
+    return fromMessage;
+  }
+
+  return fromCode || fromMessage;
 }
 
 function messageForCode(code: string, context: AuthErrorContext): string | null {
@@ -147,6 +172,13 @@ export function getAuthErrorMessage(
   // generic 422 → validation_failed and treats "already exists" as 409.
   if (context === 'sign-in' && (status === 401 || status === 400)) {
     return 'Invalid email or password.';
+  }
+
+  // Sign-up 409/422 with no recoverable code is almost always an existing
+  // email whose body was stripped. Point them at sign-in rather than a
+  // network failure they cannot act on.
+  if (context === 'sign-up' && (status === 409 || status === 422)) {
+    return 'Please check the information you entered, then try signing in.';
   }
 
   // Do not surface raw provider text for auth UX — it can leak account state.

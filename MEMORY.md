@@ -1003,6 +1003,10 @@ Admin sign-in/sign-up hid the Google button because the OAuth callback never ran
 - The OAuth callback shares `promoteAllowlistedAdmin` with the claim route. An allowlisted address is promoted on Google return (existing account or first Google signup); everyone else is unchanged (existing role, or onboarding).
 - `ADMIN_EMAILS` remains the gate. The button grants nothing by itself.
 
+## 2026-09-09 (duplicate sign-up was labelled a network error)
+
+Existing-email sign-up showed "Network error. Please try again." Neon returns 422 `USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL`; the Neon Auth SDK does not know that spelling and remaps it to `validation_failed`, then throws. `getAuthErrorMessage` trusted the generic code and never read the "already exists" text, so the catch fallback won. Mapping now prefers the message over generic codes, collapses the long code onto `user_already_exists` (so tutor signup can still recover), and treats an unclassified sign-up 409/422 as "check what you entered, then try signing in" rather than a network failure. Copy still does not say the address is taken.
+
 ## 2026-09-09 (neon-http cannot run transactions)
 
 `db` in `src/db.ts` is the neon-http driver — one HTTPS request per query, so `db.transaction()` throws `No transactions support in neon-http driver`. Writes that must be atomic already go through `dbPool` (`src/db-pool.ts`, WebSocket Pool). Two remaining callers were still on `db.transaction`: `app/api/domains/create-custom/route.ts` (custom domain + situation + scenario + session) and `app/api/admin/catalogue/[entity]/route.ts` (domain slug rename + scenario denormalised copy). Both now use `dbPool.transaction`; plain reads/writes stay on `db`.

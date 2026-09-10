@@ -13,6 +13,46 @@ test('does not reveal that an email address already has an account during sign-u
   );
 });
 
+test('does not call a duplicate-email 422 a network error', () => {
+  // Neon returns 422 USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL. The SDK does not
+  // know that spelling, remaps it to validation_failed, and the client
+  // throws — which used to hit the catch fallback "Network error".
+  const neonThrown = {
+    code: 'validation_failed',
+    status: 422,
+    message: 'User already exists. Use another email.',
+  };
+  assert.equal(getAuthErrorCode(neonThrown), 'user_already_exists');
+  assert.equal(
+    getAuthErrorMessage(neonThrown, 'Network error. Please try again.', 'sign-up'),
+    'Please check the information you entered, then try signing in.',
+  );
+
+  assert.equal(
+    getAuthErrorCode({ code: 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL' }),
+    'user_already_exists',
+  );
+
+  // Body stripped: still a sign-up 422, still not a network failure.
+  assert.equal(
+    getAuthErrorMessage(
+      { code: 'validation_failed', status: 422, message: 'HTTP 422 Unprocessable Entity' },
+      'Network error. Please try again.',
+      'sign-up',
+    ),
+    'Please check the information you entered, then try signing in.',
+  );
+
+  assert.equal(
+    getAuthErrorMessage(
+      new TypeError('Failed to fetch'),
+      'Network error. Please try again.',
+      'sign-up',
+    ),
+    'Network error. Please try again.',
+  );
+});
+
 test('uses a neutral message for password length errors', () => {
   assert.equal(
     getAuthErrorMessage({ code: 'PASSWORD_TOO_SHORT' }, 'Fallback'),
