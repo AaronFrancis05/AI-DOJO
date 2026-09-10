@@ -17,6 +17,7 @@ function adaptDbDomain(d: Domain): DomainFixture {
     situationCount: d.situationCount ?? 0,
     displayOrder: d.displayOrder ?? 0,
     imageUrl: d.imageUrl ?? undefined,
+    isActive: d.isActive !== false,
   };
 }
 
@@ -24,7 +25,7 @@ export async function getDomains(): Promise<{ data: DomainFixture[]; source: Dat
   try {
     const res = await fetch('/api/domains', { credentials: 'include' });
     const body = await res.json();
-    if (body.success && body.domains.length > 0) {
+    if (body.success && Array.isArray(body.domains)) {
       return { data: body.domains.map(adaptDbDomain), source: 'live' };
     }
   } catch (err) {

@@ -6,8 +6,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { getDomains } from '@/lib/data/domains';
+import { cn } from '@/lib/design-tokens';
 import Link from 'next/link';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import {
@@ -80,8 +82,13 @@ export default function HubPage() {
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {domains.map((domain) => {
             const Icon = iconMap[domain.icon] ?? Compass;
+            const unpublished = domain.isActive === false;
             return (
-              <Link key={domain.id} href={`/dojo/${domain.slug}`} className="block">
+              <Link
+                key={domain.id}
+                href={`/dojo/${domain.slug}`}
+                className={cn('block', unpublished && 'opacity-40')}
+              >
                 <Card hoverable className="group h-full !p-0 overflow-hidden border-dojo-border hover:border-dojo-accent transition-all duration-300 shadow-lg hover:shadow-dojo-accent/10">
                   <div
                     className="relative flex h-36 items-center justify-center overflow-hidden"
@@ -106,9 +113,12 @@ export default function HubPage() {
                     </div>
                   </div>
                   <div className="p-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-base font-semibold text-dojo-text-primary">{domain.name}</h3>
-                      <ArrowRight className="h-4 w-4 text-dojo-text-muted transition-transform group-hover:translate-x-0.5" />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-dojo-text-primary">{domain.name}</h3>
+                        {unpublished && <Badge variant="outline">archived</Badge>}
+                      </div>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-dojo-text-muted transition-transform group-hover:translate-x-0.5" />
                     </div>
                     <p className="mt-1 text-xs text-dojo-text-muted leading-relaxed">
                       {domain.description}

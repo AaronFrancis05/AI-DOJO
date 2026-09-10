@@ -1,24 +1,40 @@
 import { db } from '../../../src/db';
 import { situations, domains } from '../../../src/schema';
-import { eq, asc } from 'drizzle-orm';
+import { getUserRole } from '@/lib/auth/server';
+import { and, eq, asc } from 'drizzle-orm';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const domainSlug = url.searchParams.get('domainSlug');
-
-  let query = db.select().from(situations).orderBy(asc(situations.displayOrder));
+  const includeArchived = (await getUserRole()) === 'admin';
 
   if (domainSlug) {
-    const [domain] = await db.select().from(domains).where(eq(domains.slug, domainSlug));
-    if (domain) {
-      query = db
-        .select()
-        .from(situations)
-        .where(eq(situations.domainId, domain.id))
-        .orderBy(asc(situations.displayOrder)) as any;
-    }
+    const [domain] = await db
+      .select()
+      .from(domains)
+      .where(
+        includeArchived
+          ? eq(domains.slug, domainSlug)
+          : and(eq(domains.slug, domainSlug), eq(domains.isActive, true)),
+      );
+    if (!domain) return Response.json({ success: true, situations: [] });
+
+    const list = await db
+      .select()
+      .from(situations)
+      .where(
+        includeArchived
+          ? eq(situations.domainId, domain.id)
+          : and(eq(situations.domainId, domain.id), eq(situations.isActive, true)),
+      )
+      .orderBy(asc(situations.displayOrder));
+    return Response.json({ success: true, situations: list });
   }
 
-  const list = await query;
+  const list = await db
+    .select()
+    .from(situations)
+    .where(includeArchived ? undefined : eq(situations.isActive, true))
+    .orderBy(asc(situations.displayOrder));
   return Response.json({ success: true, situations: list });
 }

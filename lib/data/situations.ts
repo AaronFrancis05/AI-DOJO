@@ -19,6 +19,7 @@ function adaptDbSituation(d: Situation, domainSlug?: string): SituationFixture {
       : d.focusPills) ?? [],
     displayOrder: d.displayOrder ?? 0,
     counterpartRole: d.counterpartRole ?? '',
+    isActive: d.isActive !== false,
   };
 }
 
@@ -26,7 +27,7 @@ export async function getSituationsByDomain(domainSlug: string): Promise<{ data:
   try {
     const res = await fetch(`/api/situations?domainSlug=${domainSlug}`, { credentials: 'include' });
     const body = await res.json();
-    if (body.success && body.situations.length > 0) {
+    if (body.success && Array.isArray(body.situations)) {
       return { data: body.situations.map((s: any) => adaptDbSituation(s, domainSlug)), source: 'live' };
     }
   } catch (err) {
@@ -52,7 +53,7 @@ export async function getAllSituations(): Promise<{ data: SituationFixture[]; so
   try {
     const res = await fetch('/api/situations', { credentials: 'include' });
     const body = await res.json();
-    if (body.success && body.situations.length > 0) {
+    if (body.success && Array.isArray(body.situations)) {
       return { data: body.situations.map(adaptDbSituation), source: 'live' };
     }
   } catch (err) {

@@ -35,6 +35,7 @@ export interface Domain {
   situationCount: number;
   displayOrder: number;
   createdAt: string;
+  isActive?: boolean;
 }
 
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced';
@@ -52,4 +53,5 @@ export interface Situation {
   displayOrder: number;
   createdAt: string;
   counterpartRole?: string;
+  isActive?: boolean;
 }

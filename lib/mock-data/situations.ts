@@ -17,6 +17,8 @@ export interface SituationFixture {
   focusPills: string[];
   displayOrder: number;
   counterpartRole: string;  // role the AI character plays in this situation
+  /** False when an admin has unpublished the situation. Learners never see those. */
+  isActive?: boolean;
 }
 
 export const situations: SituationFixture[] = [

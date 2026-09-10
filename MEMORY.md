@@ -1006,3 +1006,11 @@ Admin sign-in/sign-up hid the Google button because the OAuth callback never ran
 ## 2026-09-09 (neon-http cannot run transactions)
 
 `db` in `src/db.ts` is the neon-http driver — one HTTPS request per query, so `db.transaction()` throws `No transactions support in neon-http driver`. Writes that must be atomic already go through `dbPool` (`src/db-pool.ts`, WebSocket Pool). Two remaining callers were still on `db.transaction`: `app/api/domains/create-custom/route.ts` (custom domain + situation + scenario + session) and `app/api/admin/catalogue/[entity]/route.ts` (domain slug rename + scenario denormalised copy). Both now use `dbPool.transaction`; plain reads/writes stay on `db`.
+
+## 2026-09-10 (Catalogue Published did not hide from the hub)
+
+Admin Catalogue's Published toggle writes `domains.isActive` / `situations.isActive`, but the learner listing APIs never filtered on it — so turning a domain off left it on `/hub`. The console copy already said archiving removes it from the hub; the APIs had not caught up.
+
+- Learner reads now filter `isActive = true`: `GET /api/domains`, `/api/domains/[slug]`, `/api/situations`, `/api/situations/[id]`. A saved URL to an unpublished domain or situation 404s the same as a missing one.
+- Empty live results must not fall back to fixtures. `getDomains` / `getSituationsByDomain` treated `length > 0` as "the API worked", so unpublishing every domain would have refilled the hub from `lib/mock-data`. Success is now `Array.isArray`.
+- Admins still see unpublished rows, faded (`opacity-40` + the same `archived` badge as EntityTree). The listing routes include archived only when `getUserRole() === 'admin'` — client `useUser().role` is display-only and is not the gate. Clicking through still works for preview; learners never receive the rows.

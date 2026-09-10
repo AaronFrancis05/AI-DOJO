@@ -1,5 +1,6 @@
 import { db } from '../../../../src/db';
-import { situations } from '../../../../src/schema';
+import { domains, situations } from '../../../../src/schema';
+import { getUserRole } from '@/lib/auth/server';
 import { eq } from 'drizzle-orm';
 
 export async function GET(
@@ -15,6 +16,21 @@ export async function GET(
   const [situation] = await db.select().from(situations).where(eq(situations.id, numericId));
   if (!situation) {
     return Response.json({ success: false, error: 'Situation not found' }, { status: 404 });
+  }
+
+  const includeArchived = (await getUserRole()) === 'admin';
+  if (!includeArchived) {
+    if (!situation.isActive) {
+      return Response.json({ success: false, error: 'Situation not found' }, { status: 404 });
+    }
+    const [domain] = await db
+      .select({ isActive: domains.isActive })
+      .from(domains)
+      .where(eq(domains.id, situation.domainId))
+      .limit(1);
+    if (!domain?.isActive) {
+      return Response.json({ success: false, error: 'Situation not found' }, { status: 404 });
+    }
   }
 
   return Response.json({ success: true, situation });

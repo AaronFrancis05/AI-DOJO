@@ -14,6 +14,8 @@ export interface DomainFixture {
   situationCount: number;
   displayOrder: number;
   imageUrl?: string;
+  /** False when an admin has unpublished the domain. Learners never see those. */
+  isActive?: boolean;
 }
 
 export const domains: DomainFixture[] = [
