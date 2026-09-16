@@ -5,7 +5,12 @@ import { Card } from '@/components/ui/Card';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { RadarChart, type RadarDataPoint } from '@/components/ui/RadarChart';
-import { getUserStats, getWeeklyActivity, type WeeklyActivity } from '@/lib/data/sessions';
+import {
+  getUserStats,
+  getWeeklyActivity,
+  type UserStats,
+  type WeeklyActivity,
+} from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import {
@@ -52,11 +57,16 @@ const monthlyData = [
   { month: 'Feb', score: 82 },
 ];
 
+type ProgressStats = UserStats & {
+  xp?: number;
+  streak?: number;
+};
+
 export default function ProgressPage() {
   usePageTitle('Progress');
   const user = useUser();
-  const [stats, setStats] = useState<any>(null);
-  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [stats, setStats] = useState<ProgressStats | null>(null);
+  const [weeklyData, setWeeklyData] = useState<WeeklyActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -72,10 +82,10 @@ export default function ProgressPage() {
     load();
   }, []);
 
-  const displayXP = stats?.xp ?? user?.xp ?? 0;
+  const displayXP = stats?.xp ?? stats?.totalXP ?? user?.xp ?? 0;
   const displaySessions = stats?.totalSessions ?? 0;
   const displayCompleted = stats?.completedSessions ?? 0;
-  const displayStreak = stats?.streak ?? user?.streak ?? 0;
+  const displayStreak = stats?.streak ?? stats?.currentStreak ?? user?.streak ?? 0;
 
   return (
     <div className="mx-auto max-w-6xl p-6">
