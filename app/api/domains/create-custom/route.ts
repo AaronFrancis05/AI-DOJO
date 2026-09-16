@@ -4,12 +4,42 @@ import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, ch
 import { requireRole, roleErrorResponse } from '../../../../lib/auth/server';
 import { getAIProvider } from '../../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../../lib/language';
+import { isRecord } from '../../../../lib/roleplay/api-types';
 import { eq, and, count } from 'drizzle-orm';
 
 interface VocabInput {
   targetText: string;
   translation: string;
   phonetic?: string;
+}
+
+type VocabRow = {
+  targetText: string;
+  phonetic: string;
+  translation: string;
+  category: string;
+  usageTip: string;
+  formalityLevel: string;
+};
+
+function parseGeneratedVocab(value: unknown): VocabRow | null {
+  if (!isRecord(value)) return null;
+
+  const targetText = String(value.targetText ?? '');
+  const translation = String(value.translation ?? '');
+  if (!targetText || !translation) return null;
+
+  return {
+    targetText,
+    phonetic: String(value.phonetic ?? ''),
+    translation,
+    category: String(value.category ?? 'general'),
+    usageTip: String(value.usageTip ?? ''),
+    formalityLevel: typeof value.formalityLevel === 'string'
+      && ['casual', 'polite', 'formal'].includes(value.formalityLevel)
+      ? value.formalityLevel
+      : 'polite',
+  };
 }
 
 function slugify(text: string): string {
@@ -72,7 +102,7 @@ export async function POST(req: Request) {
   }
 
   const session = await dbPool.transaction(async (tx) => {
-    let domainSlug = baseSlug.slice(0, 40);
+    const domainSlug = baseSlug.slice(0, 40);
     const dmnValues = {
       name: domainName,
       description: situationTitle,
@@ -90,8 +120,8 @@ export async function POST(req: Request) {
         const [d] = await tx.insert(domains).values({ ...dmnValues, slug: candidate }).returning();
         domain = d;
         break;
-      } catch (err: any) {
-        if (err?.code === '23505' && attempt < 4) continue;
+      } catch (err: unknown) {
+        if (isRecord(err) && err.code === '23505' && attempt < 4) continue;
         throw err;
       }
     }
@@ -126,7 +156,7 @@ export async function POST(req: Request) {
     const lang = targetLanguage ?? 'ja';
     const langName = getTargetLangConfig(lang).name;
 
-    let vocabRows: Array<{ targetText: string; phonetic: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+    let vocabRows: VocabRow[] = [];
 
     if (vocabItems && Array.isArray(vocabItems)) {
       const valid = vocabItems.slice(0, 8).filter((v: VocabInput) => v.targetText && v.translation);
@@ -160,16 +190,12 @@ Each item must be a single ${langName} word or short phrase directly relevant to
   "formalityLevel": "casual, polite, or formal"
 }`;
         const raw = await provider.generateJSON(vocabSystemPrompt, []);
-        const parsed = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          vocabRows = parsed.slice(0, 8).map((v: any) => ({
-            targetText: String(v.targetText ?? ''),
-            phonetic: String(v.phonetic ?? ''),
-            translation: String(v.translation ?? ''),
-            category: String(v.category ?? 'general'),
-            usageTip: String(v.usageTip ?? ''),
-            formalityLevel: ['casual', 'polite', 'formal'].includes(v.formalityLevel) ? v.formalityLevel : 'polite',
-          })).filter((v: any) => v.targetText && v.translation);
+          vocabRows = parsed
+            .slice(0, 8)
+            .map(parseGeneratedVocab)
+            .filter((v): v is VocabRow => v !== null);
         }
       } catch {
         // AI call failed — leave vocabRows empty; the defensive fix in the
@@ -179,7 +205,7 @@ Each item must be a single ${langName} word or short phrase directly relevant to
 
     if (vocabRows.length > 0) {
       await tx.insert(vocabulary).values(
-        vocabRows.map((v: any) => ({
+        vocabRows.map((v) => ({
           scenarioId: scenario.id,
           targetText: v.targetText,
           phonetic: v.phonetic ?? '',

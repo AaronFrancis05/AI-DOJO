@@ -39,7 +39,7 @@ export async function POST(
   token = randomUUID();
   try {
     await db.insert(shareTokens).values({ sessionId, token });
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Race condition: unique constraint violation means another request created it first
     const [dup] = await db.select().from(shareTokens).where(eq(shareTokens.sessionId, sessionId));
     if (dup) {

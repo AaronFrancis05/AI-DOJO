@@ -4,8 +4,38 @@ import { sessions, scenarios, evaluations, situations, domains, characters, user
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../lib/language';
+import { isRecord } from '../../../lib/roleplay/api-types';
 import { eq, and, count, desc } from 'drizzle-orm';
 import { AVATAR_SOURCES, FEMALE_AVATAR_IDS, avatarRoleLine } from '../../../lib/avatar/catalog';
+
+type VocabRow = {
+  targetText: string;
+  phonetic: string;
+  translation: string;
+  category: string;
+  usageTip: string;
+  formalityLevel: string;
+};
+
+function parseGeneratedVocab(value: unknown): VocabRow | null {
+  if (!isRecord(value)) return null;
+
+  const targetText = String(value.targetText ?? '');
+  const translation = String(value.translation ?? '');
+  if (!targetText || !translation) return null;
+
+  return {
+    targetText,
+    phonetic: String(value.phonetic ?? ''),
+    translation,
+    category: String(value.category ?? 'general'),
+    usageTip: String(value.usageTip ?? ''),
+    formalityLevel: typeof value.formalityLevel === 'string'
+      && ['casual', 'polite', 'formal'].includes(value.formalityLevel)
+      ? value.formalityLevel
+      : 'polite',
+  };
+}
 
 export async function GET(req: Request) {
   const user = await getAuthUser();
@@ -145,7 +175,7 @@ export async function POST(req: Request) {
       const lang = targetLanguage ?? 'ja';
       const langName = getTargetLangConfig(lang).name;
 
-      let vocabRows: Array<{ targetText: string; phonetic: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+      let vocabRows: VocabRow[] = [];
 
       const focusPills = situation.focusPills?.split('|||').map((s: string) => s.trim()).filter(Boolean) ?? [];
 
@@ -167,16 +197,12 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   "formalityLevel": "casual, polite, or formal"
 }`;
         const raw = await provider.generateJSON(vocabSystemPrompt, []);
-        const parsed = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          vocabRows = parsed.slice(0, 8).map((v: any) => ({
-            targetText: String(v.targetText ?? ''),
-            phonetic: String(v.phonetic ?? ''),
-            translation: String(v.translation ?? ''),
-            category: String(v.category ?? 'general'),
-            usageTip: String(v.usageTip ?? ''),
-            formalityLevel: ['casual', 'polite', 'formal'].includes(v.formalityLevel) ? v.formalityLevel : 'polite',
-          })).filter((v: any) => v.targetText && v.translation);
+          vocabRows = parsed
+            .slice(0, 8)
+            .map(parseGeneratedVocab)
+            .filter((v): v is VocabRow => v !== null);
         }
       } catch {
         // AI call failed — fall through to fallback below

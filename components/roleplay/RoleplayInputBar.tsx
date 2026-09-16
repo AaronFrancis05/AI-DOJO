@@ -14,13 +14,50 @@ interface RoleplayInputBarProps {
   onToggleTextInput?: () => void;
 }
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognitionLike;
+}
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onToggleTextInput }: RoleplayInputBarProps) {
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [muted, setMuted] = useState(false);
   const [micReady, setMicReady] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const finalTranscriptRef = useRef('');
 
   useEffect(() => {
@@ -49,8 +86,9 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
 
     if (roleplayCapabilities.stt === 'disabled') return;
 
+    const speechWindow: SpeechRecognitionWindow = window;
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
 
     if (!SpeechRecognition) return;
 
@@ -59,7 +97,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
     recognition.continuous = true;
     recognition.interimResults = true;
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       let interim = '';
       let final = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {

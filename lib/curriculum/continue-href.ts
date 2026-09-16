@@ -1,4 +1,4 @@
-import type { NextLessonTarget } from '@/lib/hooks/useRoleplaySession';
+import type { NextLessonTarget } from '@/lib/roleplay/api-types';
 
 /**
  * Where the "Continue" button on a completion screen goes.

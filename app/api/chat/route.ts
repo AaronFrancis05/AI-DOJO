@@ -306,9 +306,9 @@ export async function POST(req: Request) {
       const blendedFluency = Math.round(((currentFluencyScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.fluency) / scoredTurnsCount);
       const blendedCultural = Math.round(((currentCulturalScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.cultural) / scoredTurnsCount);
       const blendedTask = Math.round(((currentTaskScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.task) / scoredTurnsCount);
-      const blendedExpression = Math.round(((currentExpressionScore * (scoredTurnsCount - 1)) + (mlPipelineOutput.scores as any).expressionAppropriateness) / scoredTurnsCount);
+      const blendedExpression = Math.round(((currentExpressionScore * (scoredTurnsCount - 1)) + mlPipelineOutput.scores.expressionAppropriateness) / scoredTurnsCount);
 
-      const updateData: Record<string, any> = {
+      const updateData: Partial<typeof sessions.$inferInsert> = {
         totalTurns: currentTurnNo,
         runningScore,
         stalledTurnCount: newStalledTurnCount,
@@ -447,7 +447,7 @@ export async function POST(req: Request) {
     }
 
     // ── Response ──
-    const responsePayload: Record<string, any> = {
+    const responsePayload = {
       success: true,
       phase: writeResult.newPhase,
       runningScore: writeResult.runningScore,

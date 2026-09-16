@@ -15,8 +15,8 @@ async function main() {
     const parsed = JSON.parse(raw);
     console.log('✅ SUCCESS — Groq provider responded:');
     console.log(JSON.stringify(parsed, null, 2));
-  } catch (err: any) {
-    console.error('❌ FAILED:', err.message ?? err);
+  } catch (err) {
+    console.error('❌ FAILED:', err instanceof Error ? err.message : err);
     process.exit(1);
   }
 }

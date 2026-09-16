@@ -4,7 +4,14 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Target, Lightbulb, BookOpen, User, Flag } from 'lucide-react';
-import { behaviorModeClass, skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
+import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
+import type {
+  CharacterDto,
+  DomainDto,
+  ScenarioDto,
+  SessionDto,
+  SituationDto,
+} from '@/lib/roleplay/api-types';
 
 interface GoalData {
   id: number;
@@ -19,20 +26,24 @@ interface VocabData {
   english: string;
 }
 
+function isSkillLevel(value: string | undefined): value is SkillLevel {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced';
+}
+
 export interface RoleplaySidePanelProps {
   goals: GoalData[];
   completedGoals: number[];
   vocabulary: VocabData[];
-  situation: any;
-  scenario: any;
-  session: any;
+  situation: SituationDto | null;
+  scenario: ScenarioDto | null;
+  session: SessionDto | null;
   isActive: boolean;
   isCompleted: boolean;
   onPause: () => void;
   onEnd: () => void;
   onViewReport: () => void;
-  domain?: any;
-  character?: any;
+  domain?: DomainDto | null;
+  character?: CharacterDto | null;
   charName?: string;
   charRole?: string;
   charColor?: string;
@@ -56,6 +67,8 @@ export function RoleplaySidePanel({
   charRole,
   charColor,
 }: RoleplaySidePanelProps) {
+  const skillLevel = situation?.skillLevel;
+
   return (
     <>
       {/* ── Session Information summary ── */}
@@ -105,10 +118,10 @@ export function RoleplaySidePanel({
               </span>
             </div>
           )}
-          {(situation?.skillLevel as SkillLevel) && (
+          {isSkillLevel(skillLevel) && (
             <div className="flex items-center justify-between">
               <span className="text-dojo-text-muted">Skill Level</span>
-              <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
+              <Badge variant={skillLevel}>{skillLevel}</Badge>
             </div>
           )}
           {(situation?.learningGoals ?? scenario?.learningGoals) && (

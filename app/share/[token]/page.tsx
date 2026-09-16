@@ -14,13 +14,18 @@ import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
+import {
+  isRecord,
+  isSharedSessionResponse,
+  type SharedSessionResponse,
+} from '@/lib/roleplay/api-types';
 import { ArrowLeft, Lock } from 'lucide-react';
 
 export default function SharedSessionPage() {
   const params = useParams();
   const token = params.token as string;
 
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<SharedSessionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -28,11 +33,15 @@ export default function SharedSessionPage() {
     async function load() {
       try {
         const res = await fetch(`/api/share/${token}`);
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Not found'); }
-        const d = await res.json();
-        setData(d);
-      } catch (e: any) {
-        setError(e.message);
+        if (!res.ok) {
+          const body: unknown = await res.json();
+          throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'Not found');
+        }
+        const body: unknown = await res.json();
+        if (!isSharedSessionResponse(body)) throw new Error('Invalid shared session response');
+        setData(body);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load session');
       } finally {
         setLoading(false);
       }
@@ -166,7 +175,7 @@ export default function SharedSessionPage() {
           <Card>
             <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">Goals Completed</h3>
             <div className="space-y-2">
-              {goalCompletions.map((gc: any, i: number) => (
+              {goalCompletions.map((gc, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm">
                   <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold
                     ${gc.achieved ?? true ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'}`}>
@@ -189,8 +198,8 @@ export default function SharedSessionPage() {
           ) : (
             <div className="space-y-4">
               {conversations
-                .sort((a: any, b: any) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
-                .map((msg: any, i: number) => {
+                .sort((a, b) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
+                .map((msg, i) => {
                   const isUser = msg.speaker === 'user';
                   return (
                     <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -222,7 +231,7 @@ export default function SharedSessionPage() {
                         )}
                         {msg.corrections?.length > 0 && (
                           <div className="mt-1 space-y-1">
-                            {msg.corrections.map((c: any, j: number) => (
+                            {msg.corrections.map((c, j) => (
                               <div key={j} className="rounded-lg bg-dojo-warning/10 border border-dojo-warning/30 px-3 py-2 text-xs">
                                 <Badge variant="accent" className="mb-1">{c.correctionType}</Badge>
                                 <p className="text-dojo-text-primary">

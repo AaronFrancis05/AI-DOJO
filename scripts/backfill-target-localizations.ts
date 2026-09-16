@@ -79,6 +79,10 @@ interface GeneratedGoal {
   targetPhrase?: string;
 }
 
+function sanitizeGeneratedText(value: string | undefined): string | undefined {
+  return value?.replace(/___/g, '').trim();
+}
+
 function buildScenarioPrompt(langName: string, langCode: string, sc: typeof scenarios.$inferSelect): string {
   return `You are designing a language-learning roleplay scenario for a learner studying ${langName} (${langCode}) for business/travel purposes.
 
@@ -204,9 +208,13 @@ async function backfillScenarios(
         continue;
       }
 
-      for (const k of Object.keys(parsed) as Array<keyof GeneratedScenario>) {
-        if (typeof parsed[k] === 'string') parsed[k] = (parsed[k] as string).replace(/___/g, '').trim() as any;
-      }
+      parsed.title = sanitizeGeneratedText(parsed.title);
+      parsed.context = sanitizeGeneratedText(parsed.context);
+      parsed.learningGoals = sanitizeGeneratedText(parsed.learningGoals);
+      parsed.aiCharacterName = sanitizeGeneratedText(parsed.aiCharacterName);
+      parsed.aiCharacterRole = sanitizeGeneratedText(parsed.aiCharacterRole);
+      parsed.userCharacterName = sanitizeGeneratedText(parsed.userCharacterName);
+      parsed.userCharacterRole = sanitizeGeneratedText(parsed.userCharacterRole);
 
       await db.insert(scenarioLocalizations).values({
         scenarioId: sc.id,
@@ -268,9 +276,10 @@ async function backfillSituations(
         continue;
       }
 
-      for (const k of Object.keys(parsed) as Array<keyof GeneratedSituation>) {
-        if (typeof parsed[k] === 'string') parsed[k] = (parsed[k] as string).replace(/___/g, '').trim() as any;
-      }
+      parsed.title = sanitizeGeneratedText(parsed.title);
+      parsed.context = sanitizeGeneratedText(parsed.context);
+      parsed.learningGoals = sanitizeGeneratedText(parsed.learningGoals);
+      parsed.focusPills = sanitizeGeneratedText(parsed.focusPills);
 
       await db.insert(situationLocalizations).values({
         situationId: st.id,

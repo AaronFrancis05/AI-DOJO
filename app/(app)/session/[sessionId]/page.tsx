@@ -2,9 +2,37 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getTargetLangConfig } from '@/lib/language';
 import { ArrowLeft, Volume2, User } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+
+interface SessionChooserSession {
+  scenarioTitle?: string;
+  phase?: string;
+  status?: string;
+}
+
+interface SessionChooserScenario {
+  title?: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isSessionChooserSession(value: unknown): value is SessionChooserSession {
+  return isRecord(value)
+    && (value.scenarioTitle === undefined || typeof value.scenarioTitle === 'string')
+    && (value.phase === undefined || typeof value.phase === 'string')
+    && (value.status === undefined || typeof value.status === 'string');
+}
+
+function isSessionChooserScenario(value: unknown): value is SessionChooserScenario {
+  return isRecord(value) && (value.title === undefined || typeof value.title === 'string');
+}
+
+function getErrorMessage(value: unknown): string | null {
+  return isRecord(value) && typeof value.error === 'string' ? value.error : null;
+}
 
 export default function SessionChooserPage() {
   const params = useParams();
@@ -13,8 +41,8 @@ export default function SessionChooserPage() {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [session, setSession] = useState<any>(null);
-  const [scenario, setScenario] = useState<any>(null);
+  const [session, setSession] = useState<SessionChooserSession | null>(null);
+  const [scenario, setScenario] = useState<SessionChooserScenario | null>(null);
 
   useEffect(() => {
     if (!Number.isFinite(sessionId)) {
@@ -25,12 +53,22 @@ export default function SessionChooserPage() {
     async function load() {
       try {
         const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
-        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Session not found'); }
-        const data = await res.json();
+        if (!res.ok) {
+          const errorBody: unknown = await res.json().catch(() => null);
+          throw new Error(getErrorMessage(errorBody) ?? 'Session not found');
+        }
+        const data: unknown = await res.json();
+        if (
+          !isRecord(data) ||
+          !isSessionChooserSession(data.session) ||
+          !isSessionChooserScenario(data.scenario)
+        ) {
+          throw new Error('Invalid session response');
+        }
         setSession(data.session);
         setScenario(data.scenario);
-      } catch (e: any) {
-        setLoadError(e.message ?? 'Failed to load session');
+      } catch (error: unknown) {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load session');
       } finally {
         setLoading(false);
       }

@@ -2,18 +2,24 @@
 
 import { Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
+import { behaviorModeClass, type BehaviorMode, type SkillLevel } from '@/lib/design-tokens';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import type { DomainDto, SessionDto, SituationDto } from '@/lib/roleplay/api-types';
 
 /* ── Types (mirrors page.tsx) ──────────────────── */
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
 
+interface ScenarioInfo {
+  title: string;
+  learningGoals: string;
+}
+
 interface SessionInfoPanelProps {
-  domain: any;
-  situation: any;
-  scenario: any;
-  session: any;
-  character: any;
+  domain: Pick<DomainDto, 'name'> | null;
+  situation: Pick<SituationDto, 'title' | 'learningGoals' | 'skillLevel'> | null;
+  scenario: ScenarioInfo | null;
+  session: Pick<SessionDto, 'behaviorMode'> | null;
+  character: unknown;
   charName: string;
   charColor: string;
   goals: GoalData[];
@@ -27,8 +33,16 @@ interface SessionInfoPanelProps {
   correctionCount?: number;
 }
 
+function isBehaviorMode(value: string | undefined): value is BehaviorMode {
+  return value === 'standard' || value === 'trouble';
+}
+
+function isSkillLevel(value: string | undefined): value is SkillLevel {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced';
+}
+
 export function SessionInfoPanel({
-  domain, situation, scenario, session, character,
+  domain, situation, scenario, session,
   charName, charColor, goals, completedGoals, isActive, isCompleted,
   onEnd, onViewReport, targetLanguage, nativeLanguage, correctionCount,
 }: SessionInfoPanelProps) {
@@ -36,6 +50,12 @@ export function SessionInfoPanel({
     situation?.learningGoals ?? scenario?.learningGoals ?? '';
   const targetName = targetLanguage ? getTargetLangConfig(targetLanguage).name : '';
   const nativeName = nativeLanguage ? getNativeLangName(nativeLanguage) : '';
+  const behaviorMode = isBehaviorMode(session?.behaviorMode)
+    ? session.behaviorMode
+    : undefined;
+  const skillLevel = isSkillLevel(situation?.skillLevel)
+    ? situation.skillLevel
+    : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -91,24 +111,23 @@ export function SessionInfoPanel({
             </div>
           </div>
 
-          {session?.behaviorMode && (
+          {behaviorMode && (
             <div className="flex items-center justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Difficulty</span>
               <span
                 className={`px-2.5 py-0.5 rounded-[--radius-pill] text-[11px] font-medium border ${
-                  behaviorModeClass[session.behaviorMode as keyof typeof behaviorModeClass] ??
-                  behaviorModeClass.standard
+                  behaviorModeClass[behaviorMode]
                 }`}
               >
-                {session.behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
+                {behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
               </span>
             </div>
           )}
 
-          {situation?.skillLevel && (
+          {skillLevel && (
             <div className="flex items-center justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Skill Level</span>
-              <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
+              <Badge variant={skillLevel}>{skillLevel}</Badge>
             </div>
           )}
         </div>

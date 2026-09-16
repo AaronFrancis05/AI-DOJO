@@ -45,17 +45,33 @@ export interface SessionMetrics {
   goalsTotal: number;
 }
 
+function isRecord(source: unknown): source is Record<string, unknown> {
+  return typeof source === 'object' && source !== null;
+}
+
+function readDimensionScore(source: unknown, key: keyof DimensionScores): number | undefined {
+  if (!isRecord(source) || !(key in source)) return undefined;
+  const value = source[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
 export function buildSessionMetrics(opts: {
-  evaluation: any | null;
-  session: any | null;
+  evaluation: unknown;
+  session: unknown;
   avgPronunciationScore: number | null;
   newWordsCount: number | null;
   completedGoals: number[];
   goals: GoalData[];
 }): SessionMetrics {
-  const vocabulary = opts.evaluation?.vocabularyScore ?? opts.session?.vocabularyScore ?? 0;
-  const accuracy = opts.evaluation?.grammarScore ?? opts.session?.grammarScore ?? 0;
-  const fluency = opts.evaluation?.fluencyScore ?? opts.session?.fluencyScore ?? 0;
+  const vocabulary = readDimensionScore(opts.evaluation, 'vocabularyScore')
+    ?? readDimensionScore(opts.session, 'vocabularyScore')
+    ?? 0;
+  const accuracy = readDimensionScore(opts.evaluation, 'grammarScore')
+    ?? readDimensionScore(opts.session, 'grammarScore')
+    ?? 0;
+  const fluency = readDimensionScore(opts.evaluation, 'fluencyScore')
+    ?? readDimensionScore(opts.session, 'fluencyScore')
+    ?? 0;
   return {
     vocabulary,
     accuracy,

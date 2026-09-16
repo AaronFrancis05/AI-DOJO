@@ -8,8 +8,7 @@ async function main() {
   });
 
   console.log('=== Top-level keys ===');
-  for (const k of Object.keys(auth).sort()) {
-    const v = (auth as any)[k];
+  for (const [k, v] of Object.entries(auth).sort(([a], [b]) => a.localeCompare(b))) {
     const type = typeof v === 'function' ? 'fn' : typeof v;
     if (type === 'object' && v !== null) {
       const sub = Object.keys(v).slice(0, 10);

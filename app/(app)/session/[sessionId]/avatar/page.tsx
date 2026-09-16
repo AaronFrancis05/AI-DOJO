@@ -14,6 +14,7 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
+import type { CorrectionItem } from '@/lib/ai-engine';
 import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
@@ -67,7 +68,7 @@ export default function AvatarModePage() {
   const [greetingSent, setGreetingSent] = useState(false);
   const [muted, setMuted] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [lastCorrections, setLastCorrections] = useState<any[]>([]);
+  const [lastCorrections, setLastCorrections] = useState<CorrectionItem[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [coachOpen, setCoachOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -110,7 +111,7 @@ export default function AvatarModePage() {
   const charName = selectedAvatar?.name ?? character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
-  const avatarModelUrl = selectedAvatar?.file ?? character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
+  const avatarModelUrl = selectedAvatar?.file ?? character?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
 
   // Anchored on the session's own start time rather than this page's mount:
   // avatar and voice are two views of one session, so switching between them
@@ -225,17 +226,17 @@ export default function AvatarModePage() {
 
   useEffect(() => {
     if (unacknowledgedCompletion && !completionResult) {
-      const source = evaluation ?? session ?? {};
+      const source = evaluation ?? session;
       const compositeScore = computeCompositeScore('completed', {
-        vocabularyScore: source.vocabularyScore ?? 0,
-        grammarScore: source.grammarScore ?? 0,
-        fluencyScore: source.fluencyScore ?? 0,
-        culturalScore: source.culturalScore ?? 0,
-        taskScore: source.taskScore ?? 0,
+        vocabularyScore: source?.vocabularyScore ?? 0,
+        grammarScore: source?.grammarScore ?? 0,
+        fluencyScore: source?.fluencyScore ?? 0,
+        culturalScore: source?.culturalScore ?? 0,
+        taskScore: source?.taskScore ?? 0,
         // Weighted at 0.10 by computeCompositeScore. Omitting it here scored
         // the same evaluation lower than the report page does, so a session
         // could celebrate as failed and read as passed.
-        expressionAppropriatenessScore: source.expressionAppropriatenessScore ?? 0,
+        expressionAppropriatenessScore: source?.expressionAppropriatenessScore ?? 0,
       });
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
@@ -343,7 +344,7 @@ export default function AvatarModePage() {
         setLastCorrections(latestUser.corrections);
         setCoachOpen(true);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       // Whatever was queued belongs to a turn that failed; leaving it to drain
       // talks over the learner's retry.
@@ -640,7 +641,7 @@ export default function AvatarModePage() {
               </div>
               {character?.personalityTraits && character.personalityTraits.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {character.personalityTraits.slice(0, 3).map((trait: string, i: number) => (
+                  {character.personalityTraits.slice(0, 3).map((trait, i) => (
                     <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-1 text-[10px] text-dojo-text-muted font-medium">
                       {trait}
                     </span>

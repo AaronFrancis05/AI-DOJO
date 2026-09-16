@@ -1,9 +1,14 @@
 import { situations as fixtureSituations, type SituationFixture } from '@/lib/mock-data/situations';
+import type { BehaviorMode } from '@/lib/design-tokens';
 import type { DataSource } from './result';
 import { type Situation } from '../types';
 
 export { fixtureSituations as situations };
 export type { SituationFixture };
+
+function isBehaviorMode(value: unknown): value is BehaviorMode {
+  return value === 'standard' || value === 'trouble';
+}
 
 function adaptDbSituation(d: Situation, domainSlug?: string): SituationFixture {
   return {
@@ -12,7 +17,7 @@ function adaptDbSituation(d: Situation, domainSlug?: string): SituationFixture {
     title: d.title,
     context: d.context,
     skillLevel: d.skillLevel,
-    behaviorMode: (d.behaviorMode as any) ?? 'standard',
+    behaviorMode: isBehaviorMode(d.behaviorMode) ? d.behaviorMode : 'standard',
     learningGoals: d.learningGoals,
     focusPills: (typeof d.focusPills === 'string'
       ? d.focusPills.includes('|||') ? d.focusPills.split('|||') : d.focusPills.split(',')
@@ -28,7 +33,7 @@ export async function getSituationsByDomain(domainSlug: string): Promise<{ data:
     const res = await fetch(`/api/situations?domainSlug=${domainSlug}`, { credentials: 'include' });
     const body = await res.json();
     if (body.success && Array.isArray(body.situations)) {
-      return { data: body.situations.map((s: any) => adaptDbSituation(s, domainSlug)), source: 'live' };
+      return { data: body.situations.map((s: Situation) => adaptDbSituation(s, domainSlug)), source: 'live' };
     }
   } catch (err) {
     console.error(`[data/situations] fetch for "${domainSlug}" failed, serving fixture fallback`, err);

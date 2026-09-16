@@ -18,15 +18,39 @@ import { sessionHistory } from '@/lib/data/sessions';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { computeCompositeScore, PASSING_SCORE_THRESHOLD } from '@/lib/roleplay/phase-engine';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import {
+  isRecord,
+  isSessionDetailResponse,
+  type ConversationDto,
+  type EvaluationDto,
+  type GoalCompletionDto,
+  type GoalDto,
+  type ScenarioDto,
+  type SessionDto,
+} from '@/lib/roleplay/api-types';
 import { ArrowLeft, ExternalLink, Trophy, Target, Repeat2, RotateCcw, Users } from 'lucide-react';
 
+type ReportSession = Pick<
+  SessionDto,
+  'id' | 'status' | 'totalTurns' | 'startedAt' | 'completedAt'
+> & Partial<Pick<
+  SessionDto,
+  | 'vocabularyScore'
+  | 'grammarScore'
+  | 'fluencyScore'
+  | 'culturalScore'
+  | 'taskScore'
+  | 'expressionAppropriatenessScore'
+  | 'feedback'
+>> & { scenarioTitle?: string };
+
 interface DataRecord {
-  session: any;
-  scenario: any;
-  conversations: any[];
-  evaluation: any | null;
-  goalCompletions: any[];
-  goals?: any[];
+  session: ReportSession;
+  scenario: (Partial<ScenarioDto> & { title: string }) | null;
+  conversations: ConversationDto[];
+  evaluation: EvaluationDto | null;
+  goalCompletions: GoalCompletionDto[];
+  goals?: GoalDto[];
 }
 
 export default function SessionReportPage() {
@@ -41,11 +65,15 @@ export default function SessionReportPage() {
     async function load() {
       try {
         const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Not found'); }
-        const d = await res.json();
-        setData(d);
-      } catch (e: any) {
-        setError(e.message);
+        if (!res.ok) {
+          const body: unknown = await res.json();
+          throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'Not found');
+        }
+        const body: unknown = await res.json();
+        if (!isSessionDetailResponse(body)) throw new Error('Invalid session response');
+        setData(body);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load session');
         // Fallback: use mock
         const s = sessionHistory.find(x => x.id === sessionId);
         if (s) {
@@ -56,7 +84,7 @@ export default function SessionReportPage() {
             evaluation: null,
             goalCompletions: [],
             goals: [],
-          } as any);
+          });
         }
       } finally {
         setLoading(false);
@@ -96,7 +124,9 @@ export default function SessionReportPage() {
   const { session, scenario, conversations, evaluation, goalCompletions, goals } = data;
 
   const userTurns = (conversations ?? []).filter((c: { speaker: string }) => c.speaker === 'user');
-  const responseTimes = userTurns.map((c: { responseTimeMs?: number }) => c.responseTimeMs).filter((t: number | undefined): t is number => typeof t === 'number' && t > 0);
+  const responseTimes = userTurns
+    .map((c) => c.responseTimeMs)
+    .filter((t): t is number => typeof t === 'number' && t > 0);
   const avgResponseTime = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a: number, b: number) => a + b, 0) / responseTimes.length) : null;
   const medianResponseTime = responseTimes.length > 0
     ? (() => { const sorted = [...responseTimes].sort((a: number, b: number) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2); })()
@@ -296,14 +326,14 @@ export default function SessionReportPage() {
         <Card>
           <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">Goals</h3>
           <div className="space-y-2">
-            {goalCompletions.map((gc: any, i: number) => (
+            {goalCompletions.map((gc, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold
                   ${gc.achieved ?? true ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'}`}>
                   {gc.achieved ?? true ? '✓' : i + 1}
                 </span>
                 <span className={gc.achieved ?? true ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}>
-                  {gc.goalText ?? gc.goal_type}
+                  {gc.goalText}
                 </span>
                 {gc.goalType && (
                   <Badge variant="default" className="ml-auto">{gc.goalType}</Badge>
@@ -320,8 +350,8 @@ export default function SessionReportPage() {
           <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Conversation</h3>
           <div className="space-y-4">
             {conversations
-              .sort((a: any, b: any) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
-              .map((msg: any, i: number) => {
+              .sort((a, b) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
+              .map((msg, i) => {
                 const isUser = msg.speaker === 'user';
                 return (
                   <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -339,9 +369,9 @@ export default function SessionReportPage() {
                           ? 'rounded-br-none bg-dojo-accent'
                           : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
                       }`}>
-                        {(msg.messageTarget || msg.messageJp) && (
+                        {msg.messageTarget && (
                           <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                            {cleanDisplay(msg.messageTarget ?? msg.messageJp)}
+                            {cleanDisplay(msg.messageTarget)}
                           </p>
                         )}
                         {msg.messagePhonetic && (
@@ -349,9 +379,9 @@ export default function SessionReportPage() {
                             {msg.messagePhonetic}
                           </p>
                         )}
-                        {(msg.messageNative || msg.messageEn) && (
+                        {msg.messageNative && (
                           <p className={`text-xs ${isUser ? 'text-white/60' : 'text-dojo-text-muted'}`}>
-                            {msg.messageNative ?? msg.messageEn}
+                            {msg.messageNative}
                           </p>
                         )}
                       </div>
@@ -363,7 +393,7 @@ export default function SessionReportPage() {
                       {/* Corrections inline */}
                       {msg.corrections?.length > 0 && (
                         <div className="mt-1 space-y-1">
-                          {msg.corrections.map((c: any, j: number) => (
+                          {msg.corrections.map((c, j) => (
                             <div key={j} className="rounded-lg bg-dojo-warning/10 border border-dojo-warning/30 px-3 py-2 text-xs">
                               <Badge variant="accent" className="mb-1">{c.correctionType}</Badge>
                               <p className="text-dojo-text-primary">

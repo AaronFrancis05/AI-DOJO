@@ -63,6 +63,8 @@ const situationFixtures = [
   { domainSlug: 'hospital', title: 'Difficult Family Conversation', context: 'A resident\'s condition has worsened — deliver the update to an upset family member with care and honesty.', skillLevel: 'advanced', behaviorMode: 'trouble', learningGoals: 'Deliver sensitive news calmly while managing an emotional reaction', focusPills: 'Elderly Care|||Difficult News|||Emotional Regulation|||Compassion', displayOrder: 13 },
 ];
 
+type SituationInsert = typeof situations.$inferInsert;
+
 async function seedDomainData() {
   console.log('=== Domain Data Seeder ===\n');
 
@@ -104,7 +106,7 @@ async function seedDomainData() {
     .where(inArray(situations.title, allFixtureTitles));
   const existingTitles = new Set(existingRows.map(r => r.title));
 
-  const toInsert = situationFixtures
+  const toInsert: SituationInsert[] = situationFixtures
     .map(sf => {
       const domainId = domainMap.get(sf.domainSlug);
       if (!domainId) {
@@ -123,7 +125,7 @@ async function seedDomainData() {
         displayOrder: sf.displayOrder,
       };
     })
-    .filter(Boolean) as any[];
+    .filter((row): row is SituationInsert => row !== null);
 
   if (toInsert.length > 0) {
     await db.insert(situations).values(toInsert);

@@ -1022,3 +1022,10 @@ Admin Catalogue's Published toggle writes `domains.isActive` / `situations.isAct
 - Learner reads now filter `isActive = true`: `GET /api/domains`, `/api/domains/[slug]`, `/api/situations`, `/api/situations/[id]`. A saved URL to an unpublished domain or situation 404s the same as a missing one.
 - Empty live results must not fall back to fixtures. `getDomains` / `getSituationsByDomain` treated `length > 0` as "the API worked", so unpublishing every domain would have refilled the hub from `lib/mock-data`. Success is now `Array.isArray`.
 - Admins still see unpublished rows, faded (`opacity-40` + the same `archived` badge as EntityTree). The listing routes include archived only when `getUserRole() === 'admin'` — client `useUser().role` is display-only and is not the gate. Clicking through still works for preview; learners never receive the rows.
+
+## 2026-09-14 (`no-explicit-any` boundary typing)
+
+- Removed all 120 `@typescript-eslint/no-explicit-any` violations without changing the ESLint configuration or adding suppressions.
+- Added `lib/roleplay/api-types.ts` as the shared client/API boundary: JSON-safe Drizzle row DTOs, session/share response types, the chat SSE discriminated union, and runtime guards for untrusted JSON.
+- Session, report, share, roleplay panels, API/data helpers, database maintenance scripts, and SDK error paths now use existing schema inference, provider types, concrete DTOs, or `unknown` narrowed at the boundary.
+- Added boundary tests for valid and malformed session/share/SSE payloads. `npm test` passes; TypeScript reports only the pre-existing duplicate Three.js type-definition errors in `AnimatedModel.tsx`.
