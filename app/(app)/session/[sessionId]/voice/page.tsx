@@ -79,7 +79,7 @@ export default function VoiceOnlyPage() {
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
   const [aiTurnActive, setAiTurnActive] = useState(false);
   const pendingCelebrationRef = useRef<CompletionResult | null>(null);
-  const lastAiCompletedRef = useRef<number>(Date.now());
+  const lastAiCompletedRef = useRef<number | null>(null);
   const { status: connectionStatus, turnLatency } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const { caption, showCaption, showLiveCaption, hideCaption, clear: clearCaption } = useAvatarCaptions();
@@ -158,6 +158,7 @@ export default function VoiceOnlyPage() {
   // immediately release a second device handle.
 
   useEffect(() => {
+    lastAiCompletedRef.current = Date.now();
     setOnSpeakingChange((speaking) => {
       setIsAiSpeaking(speaking);
       if (!speaking) lastAiCompletedRef.current = Date.now();
@@ -218,7 +219,9 @@ export default function VoiceOnlyPage() {
     // suggestions for the turn being corrected right now, and a clean turn
     // leaves no leftover chips to answer.
     setSuggestedReplies([]);
-    const responseTimeMs = Date.now() - lastAiCompletedRef.current;
+    const responseTimeMs = lastAiCompletedRef.current === null
+      ? 0
+      : Date.now() - lastAiCompletedRef.current;
     stopTts();
     clearCaption();
     // Bridge the gap between the mic release and the first streamed token so

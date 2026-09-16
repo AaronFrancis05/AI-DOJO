@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AvatarSource } from '@/lib/avatar/catalog';
-import { getTargetLangConfig } from '@/lib/language';
 import { setVoiceGender } from '@/lib/roleplay/tts';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import type { CorrectionItem } from '@/lib/ai-engine';
@@ -173,13 +172,10 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   const [evaluation, setEvaluation] = useState<EvaluationDto | null>(null);
   const [avgPronunciationScore, setAvgPronunciationScore] = useState<number | null>(null);
   const [newWordsCount, setNewWordsCount] = useState<number | null>(null);
-  const targetLanguageRef = useRef('ja');
-  const nativeLanguageRef = useRef('en');
   const isRetryRef = useRef(false);
   // Read inside submitTurnStream, which callers hold across renders — the
   // `session` state itself would be a stale closure there.
   const sessionStatusRef = useRef<string | null>(null);
-  const lastAiCompletedRef = useRef<number>(Date.now());
   const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
 
   useEffect(() => {
@@ -223,8 +219,6 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         setEvaluation(data.evaluation ?? null);
         setAvgPronunciationScore(typeof data.avgPronunciationScore === 'number' ? data.avgPronunciationScore : null);
         setNewWordsCount(typeof data.newWordsCount === 'number' ? data.newWordsCount : null);
-        if (data.session?.targetLanguage) targetLanguageRef.current = data.session.targetLanguage;
-        if (data.session?.nativeLanguage) nativeLanguageRef.current = data.session.nativeLanguage;
         if (data.session?.phase) setPhase(data.session.phase);
 
         // Check if completion was unacknowledged
@@ -272,12 +266,8 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     load();
   }, [sessionId]);
 
-  const targetLanguage = targetLanguageRef.current;
-  const nativeLanguage = nativeLanguageRef.current;
   const isActive = session?.status === 'active' || session?.status === 'paused';
   const isCompleted = session?.status === 'completed';
-
-  const targetLangName = getTargetLangConfig(targetLanguage).name;
 
   /**
    * Bring local state in line with a session the server considers finished and
@@ -461,7 +451,6 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
             options?.onRetry?.(payload.analysis);
             break;
           case 'done':
-            lastAiCompletedRef.current = Date.now();
             isRetryRef.current = false;
             finalPhase = payload.phase;
             finalAnalysis = payload.analysis;

@@ -1,3 +1,7 @@
+import { EN_DIFFICULTY_TIERS } from './en/difficultyTiers';
+import { JA_APPROPRIATENESS_RUBRIC } from './ja/appropriatenessRubric';
+import { JA_DIFFICULTY_TIERS } from './ja/difficultyTiers';
+
 const GENERIC_TIER_DESCRIPTIONS: Record<string, string> = {
   beginner: 'Use only high-frequency, simple vocabulary and short sentences. Restate or simplify if the learner seems confused. Avoid complex grammar or register shifts.',
   intermediate: 'Use natural everyday vocabulary and standard register. Sentences can be of moderate length and complexity. Minimise hand-holding.',
@@ -5,32 +9,24 @@ const GENERIC_TIER_DESCRIPTIONS: Record<string, string> = {
 };
 
 function loadLanguagePack(langCode: string): Record<string, string> | null {
-  try {
-    switch (langCode) {
-      case 'ja':
-        return require('./ja/difficultyTiers').JA_DIFFICULTY_TIERS;
-      case 'en':
-        return require('./en/difficultyTiers').EN_DIFFICULTY_TIERS;
-      default:
-        return null;
-    }
-  } catch {
-    return null;
+  switch (langCode) {
+    case 'ja':
+      return JA_DIFFICULTY_TIERS;
+    case 'en':
+      return EN_DIFFICULTY_TIERS;
+    default:
+      return null;
   }
 }
 
 const GENERIC_APPROPRIATENESS_RUBRIC = `Score expressionAppropriateness (0-100) based on how socially and situationally appropriate the user's expression was for the scene. This is NOT about grammatical correctness — it is about register, politeness level, and social fit. For example: using formal language with a superior vs casual speech with a peer; choosing a situationally fitting phrase rather than a technically correct but odd one; matching the formality expected by the scenario setting.`;
 
 function loadAppropriatenessRubric(langCode: string): string | null {
-  try {
-    switch (langCode) {
-      case 'ja':
-        return require('./ja/appropriatenessRubric').JA_APPROPRIATENESS_RUBRIC;
-      default:
-        return null;
-    }
-  } catch {
-    return null;
+  switch (langCode) {
+    case 'ja':
+      return JA_APPROPRIATENESS_RUBRIC;
+    default:
+      return null;
   }
 }
 
