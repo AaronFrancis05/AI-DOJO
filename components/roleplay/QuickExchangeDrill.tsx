@@ -36,7 +36,6 @@ export function QuickExchangeDrill({
   onSubmitResponse,
 }: QuickExchangeDrillProps) {
   const [drillIndex, setDrillIndex] = useState(0);
-  const [exchangeStep, setExchangeStep] = useState(0);
   const [phase, setPhase] = useState<'intro' | 'listening' | 'result'>('intro');
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -44,7 +43,8 @@ export function QuickExchangeDrill({
   const [busy, setBusy] = useState(false);
   const [responseTime, setResponseTime] = useState(0);
   const bcp47 = getBCP47(targetLanguage, 'tts');
-  const exchangeStartRef = useRef<number>(Date.now());
+  const exchangeStartRef = useRef<number | null>(null);
+  const hasAutoPlayed = useRef(false);
 
   const currentDrill = drills[drillIndex];
 
@@ -52,15 +52,9 @@ export function QuickExchangeDrill({
     if (voiceGender) setVoiceGender(voiceGender);
   }, [voiceGender]);
 
-  if (drills.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center p-6">
-        <p className="text-dojo-text-muted text-sm">No drills available for this session.</p>
-      </div>
-    );
-  }
-
   const handlePlayPrompt = useCallback(async () => {
+    if (!currentDrill) return;
+
     setBusy(true);
     try {
       await ttsSpeak(currentDrill.promptEn, 'en-US');
@@ -74,21 +68,23 @@ export function QuickExchangeDrill({
     }
   }, [currentDrill, bcp47]);
 
-  const hasAutoPlayed = useRef(false);
   useEffect(() => {
-    if (phase === 'intro' && !hasAutoPlayed.current && !busy) {
-      hasAutoPlayed.current = true;
-      handlePlayPrompt();
+    if (phase !== 'intro') {
+      hasAutoPlayed.current = false;
+      return;
     }
-    if (phase !== 'intro') hasAutoPlayed.current = false;
-  }, [phase, handlePlayPrompt, busy]);
+    if (!currentDrill || hasAutoPlayed.current || busy) return;
+
+    hasAutoPlayed.current = true;
+    void handlePlayPrompt();
+  }, [currentDrill, phase, handlePlayPrompt, busy]);
 
   const handleResponse = useCallback(async () => {
     if (busy) return;
     const input = transcript.trim();
     if (!input) return;
     setBusy(true);
-    const elapsed = Date.now() - exchangeStartRef.current;
+    const elapsed = exchangeStartRef.current === null ? 0 : Date.now() - exchangeStartRef.current;
     setResponseTime(elapsed);
 
     try {
@@ -103,7 +99,7 @@ export function QuickExchangeDrill({
     } finally {
       setBusy(false);
     }
-  }, [transcript, currentDrill, onSubmitResponse, busy]);
+  }, [transcript, onSubmitResponse, busy]);
 
   const handleNext = useCallback(() => {
     if (drillIndex + 1 >= drills.length) {
@@ -126,6 +122,14 @@ export function QuickExchangeDrill({
   }, [drills.length]);
 
   const totalExchanges = drills.length;
+
+  if (!currentDrill) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <p className="text-dojo-text-muted text-sm">No drills available for this session.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
