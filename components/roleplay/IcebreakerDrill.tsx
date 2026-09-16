@@ -45,6 +45,8 @@ export function IcebreakerDrill({
   }, [voiceGender]);
 
   useEffect(() => {
+    // A parent advances the word; reset this drill's local attempt state for it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPhase('intro');
     setAttemptNo(1);
     setTranscript('');

@@ -45,6 +45,9 @@ export default function OnboardingStepPage() {
 
   useEffect(() => {
     if (step === 'domain' && dbDomains.length === 0 && !loadingDomains) {
+      // This marks the externally loaded domain request in flight, preventing
+      // duplicate requests while its promise is pending.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadingDomains(true);
       fetch('/api/domains', { credentials: 'include' })
         .then(r => r.json())

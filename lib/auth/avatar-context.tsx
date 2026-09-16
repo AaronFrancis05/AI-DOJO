@@ -41,7 +41,11 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { fetchAvatars(); }, [fetchAvatars]);
+  useEffect(() => {
+    // Load the authenticated user's external avatar collection on provider mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchAvatars();
+  }, [fetchAvatars]);
 
   const selectedAvatar = avatars.find(a => a.isSelected) ?? null;
 

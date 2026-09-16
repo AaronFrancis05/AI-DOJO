@@ -46,6 +46,9 @@ export default function SessionChooserPage() {
 
   useEffect(() => {
     if (!Number.isFinite(sessionId)) {
+      // Invalid route parameters cannot be loaded, so terminate the initial
+      // loading state in the same effect that validates them.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadError('Invalid session');
       setLoading(false);
       return;

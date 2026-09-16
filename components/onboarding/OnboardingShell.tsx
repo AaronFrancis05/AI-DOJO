@@ -78,7 +78,11 @@ export function OnboardingShell({
 }: OnboardingShellProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    // Client-only rendering prevents server/client hydration differences.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const stepKeys = steps.map((s) => s.key);
   const currentIndex = stepKeys.indexOf(currentStep);

@@ -185,7 +185,11 @@ export function AvatarViewport3D({
     framedRef.current = framed;
   }, [framed]);
 
-  useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
+  useEffect(() => {
+    // WebGL can only be detected after the browser environment is available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWebglSupported(detectWebGLSupport());
+  }, []);
 
   // Starts the clip download alongside the character GLB instead of after it:
   // the manager can only ask for clips once the model has finished parsing.

@@ -175,6 +175,9 @@ export default function AvatarModePage() {
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   useEffect(() => {
+    // Session data arrives asynchronously; these defaults must be replaced before
+    // speech recognition and synthesis are used.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
     setVoiceGender(session?.voiceGender || character?.gender || 'Female');
@@ -238,6 +241,8 @@ export default function AvatarModePage() {
         // could celebrate as failed and read as passed.
         expressionAppropriatenessScore: source?.expressionAppropriatenessScore ?? 0,
       });
+      // This is an externally persisted completion discovered after the session loads.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
   }, [unacknowledgedCompletion, completionResult, session, evaluation]);
