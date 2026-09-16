@@ -5,23 +5,10 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
-import { getLeaderboardGlobal } from '@/lib/data/sessions';
+import { getLeaderboardGlobal, type LeaderboardEntry } from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
-import { skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
 import { Trophy, Medal, Flame } from 'lucide-react';
-
-interface LeaderboardEntry {
-  rank: number;
-  userId: string;
-  name: string;
-  level: string;
-  xp: number;
-  sessionsCompleted: number;
-  averageScore: number;
-  streak: number;
-  isCurrentUser: boolean;
-}
 
 const tabs: Tab[] = [
   { id: 'global', label: 'Global' },
@@ -37,11 +24,8 @@ export default function LeaderboardPage() {
   const [source, setSource] = useState<'live' | 'fixture'>('live');
 
   useEffect(() => {
-    getLeaderboardGlobal().then(({ entries, source: s }) => {
-      setGlobalData(entries.map((e: any) => ({
-        ...e,
-        isCurrentUser: !!user?.id && e.userId === user.id,
-      })));
+    getLeaderboardGlobal(user?.id).then(({ entries, source: s }) => {
+      setGlobalData(entries);
       setSource(s);
       setLoading(false);
     });
@@ -81,7 +65,7 @@ export default function LeaderboardPage() {
                   <div>
                     <p className="text-base font-semibold text-dojo-text-primary">{currentUser.name}</p>
                     <div className="flex items-center gap-3 mt-0.5">
-                      <Badge variant={currentUser.level as SkillLevel}>{currentUser.level}</Badge>
+                      <Badge variant={currentUser.levelVariant}>{currentUser.level}</Badge>
                       <span className="text-xs text-dojo-text-muted">{currentUser.xp} XP</span>
                     </div>
                   </div>
@@ -155,7 +139,7 @@ function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-dojo-text-primary truncate">{entry.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <Badge variant={entry.level as SkillLevel}>{entry.level}</Badge>
+              <Badge variant={entry.levelVariant}>{entry.level}</Badge>
               <span className="text-xs text-dojo-text-muted">{entry.sessionsCompleted} sessions</span>
             </div>
           </div>

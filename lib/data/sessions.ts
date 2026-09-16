@@ -12,10 +12,26 @@ import {
   messageThreads as fixtureMessages,
   type UserStats,
   type WeeklyActivity,
+  type SessionHistoryFixture,
+  type LeaderboardEntry as FixtureLeaderboardEntry,
 } from '@/lib/mock-data/sessions';
 import type { DataSource } from './result';
+import type { SkillLevel } from '@/lib/design-tokens';
 
 export type { UserStats, WeeklyActivity };
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  name: string;
+  level: string;
+  levelVariant: SkillLevel | 'default';
+  xp: number;
+  sessionsCompleted: number;
+  averageScore: number;
+  streak: number;
+  isCurrentUser: boolean;
+}
 
 export {
   fixtureWeekly as weeklyActivity,
@@ -42,7 +58,7 @@ export async function getUserStats(): Promise<{ stats: UserStats | null; source:
   return { stats: null, source: 'fixture' };
 }
 
-export async function getSessionHistory(): Promise<{ sessions: any[]; source: DataSource }> {
+export async function getSessionHistory(): Promise<{ sessions: SessionHistoryFixture[]; source: DataSource }> {
   try {
     const res = await fetch('/api/sessions', { credentials: 'include' });
     const body = await res.json();
@@ -55,7 +71,7 @@ export async function getSessionHistory(): Promise<{ sessions: any[]; source: Da
   return { sessions: fixtureHistory, source: 'fixture' };
 }
 
-export async function getSessionById(id: number): Promise<{ session: any | null; source: DataSource }> {
+export async function getSessionById(id: number): Promise<{ session: SessionHistoryFixture | null; source: DataSource }> {
   try {
     const res = await fetch(`/api/sessions/${id}`, { credentials: 'include' });
     if (!res.ok) return { session: null, source: 'fixture' };
@@ -66,20 +82,86 @@ export async function getSessionById(id: number): Promise<{ session: any | null;
   } catch (err) {
     console.error(`[data/sessions] getSessionById(${id}) failed`, err);
   }
-  return { session: fixtureHistory.find((s: any) => s.id === id) ?? null, source: 'fixture' };
+  return { session: fixtureHistory.find((s) => s.id === id) ?? null, source: 'fixture' };
 }
 
-export async function getLeaderboardGlobal(): Promise<{ entries: any[]; source: DataSource }> {
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isSkillLevel(value: unknown): value is SkillLevel {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced';
+}
+
+function parseLeaderboardEntry(value: unknown, currentUserId?: string): LeaderboardEntry | null {
+  if (!isRecord(value)) return null;
+  const row = value;
+  if (typeof row.userId !== 'string' || typeof row.name !== 'string') return null;
+
+  const rank = toFiniteNumber(row.rank);
+  const xp = toFiniteNumber(row.xp);
+  const sessionsCompleted = toFiniteNumber(row.sessionsCompleted);
+  const averageScore = toFiniteNumber(row.averageScore);
+  const streak = toFiniteNumber(row.streak);
+  if (rank === null || xp === null || sessionsCompleted === null || averageScore === null || streak === null) {
+    return null;
+  }
+
+  return {
+    rank,
+    userId: row.userId,
+    name: row.name,
+    level: String(row.level),
+    levelVariant: isSkillLevel(row.level) ? row.level : 'default',
+    xp,
+    sessionsCompleted,
+    averageScore,
+    streak,
+    isCurrentUser: currentUserId
+      ? row.userId === currentUserId
+      : row.isCurrentUser === true,
+  };
+}
+
+function normalizeFixtureLeaderboard(
+  entries: FixtureLeaderboardEntry[],
+  currentUserId?: string,
+): LeaderboardEntry[] {
+  return entries.flatMap((entry) => {
+    const normalized = parseLeaderboardEntry(entry, currentUserId);
+    return normalized ? [normalized] : [];
+  });
+}
+
+export async function getLeaderboardGlobal(
+  currentUserId?: string,
+): Promise<{ entries: LeaderboardEntry[]; source: DataSource }> {
   try {
     const res = await fetch('/api/leaderboard', { credentials: 'include' });
-    const body = await res.json();
-    if (body.success && Array.isArray(body.leaderboard)) {
-      return { entries: body.leaderboard, source: 'live' };
+    const body: unknown = await res.json();
+    if (isRecord(body) && body.success === true && Array.isArray(body.leaderboard)) {
+      return {
+        entries: body.leaderboard.flatMap((entry: unknown) => {
+          const normalized = parseLeaderboardEntry(entry, currentUserId);
+          return normalized ? [normalized] : [];
+        }),
+        source: 'live',
+      };
     }
   } catch (err) {
     console.error('[data/sessions] getLeaderboardGlobal failed', err);
   }
-  return { entries: fixtureGlobal, source: 'fixture' };
+  return {
+    entries: normalizeFixtureLeaderboard(fixtureGlobal, currentUserId),
+    source: 'fixture',
+  };
 }
 
 export async function getWeeklyActivity(): Promise<{ data: WeeklyActivity[]; source: DataSource }> {
