@@ -497,7 +497,7 @@ export async function POST(req: Request) {
 
           // ── Phase-agnostic retry gate (bounded to exactly 1 retry) ──
           let pendingRetryCorrectionId: number | null = null;
-          let retryEarlyExit = false;
+          const retryEarlyExit = false;
 
           // Orientation predates any target-language production, and the
           // debrief and farewell come after the scene has ended — holding the
