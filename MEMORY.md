@@ -1041,3 +1041,7 @@ Unsplash domain photos now use `next/image` with `unoptimized`. `images.unsplash
 ## 2026-09-17 (Dicebear SVG via next/image)
 
 Session info character portrait (`api.dicebear.com` bottts SVG) now uses `next/image` with `unoptimized`. `dangerouslyAllowSVG` was not enabled — `unoptimized` serves the original URL and skips the optimizer. User-supplied avatars remain `<img>`.
+
+## 2026-09-17 (remaining img: settings vs Avatar)
+
+Settings "My Avatars" thumbnails are catalog `/ai-avatars/thumbnails/*.webp`, so they use `next/image` like `AvatarPicker`. `components/ui/Avatar` keeps `<img>` with a targeted `no-img-element` disable: `src` mixes local paths, OAuth hosts, and data URIs.

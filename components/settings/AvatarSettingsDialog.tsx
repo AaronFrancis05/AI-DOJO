@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { Dialog } from '@/components/ui/Dialog';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
@@ -141,9 +142,11 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                           >
                             <div className="flex h-12 w-12 items-center justify-center rounded-full overflow-hidden bg-dojo-surface">
                               {av.thumbnailUrl && !av.thumbnailUrl.endsWith('.glb') ? (
-                                <img
+                                <Image
                                   src={av.thumbnailUrl}
                                   alt="Avatar"
+                                  width={48}
+                                  height={48}
                                   className="h-full w-full object-cover"
                                   onError={(e) => {
                                     (e.target as HTMLImageElement).style.display = 'none';

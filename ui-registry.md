@@ -52,7 +52,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `HexBadge` | `icon: LucideIcon`, `label`, `unlocked`, `size` | SVG hexagon clip path around lucide icon |
 | `TrendValue` | `value`, `trend: up\|down\|neutral`, `trendLabel` | Number + ▲/▼ arrow with colour |
 | `LiveBadge` | — | Pulsing red dot + "Live" text |
-| `Avatar` | `name`, `src?`, `size`, `color` | Initials fallback with optional image |
+| `Avatar` | `name`, `src?`, `size`, `color` | Initials fallback with optional image. `src` is user-supplied (catalog path, OAuth host, or data URI) so it stays a native `<img>` with `@next/next/no-img-element` disabled |
 | `RadarChart` | `data: RadarDataPoint[]`, `size`, `levels`, `color` | SVG-based radar/spider chart with labels |
 | `BehaviorModeToggle` | `value`, `onChange` | Standard/Trouble pill toggle |
 | `SliderRow` | `label`, `value`, `min/max`, `onChange` | Labelled range slider for settings |
@@ -586,7 +586,7 @@ Accounts deleted in the console *before* `auth_user_id` existed stay NULL and
 are indistinguishable from invitations; clear those with the purge route.
 
 ## Design Pattern Notes
-- Local raster assets (`/logo.png`, `/landing/*`, `/ai-avatars/thumbnails/*`, `/characters/*`) use `next/image`. Unsplash domain photos (`images.unsplash.com`) and Dicebear SVG portraits (`api.dicebear.com`) use `next/image` with `unoptimized`, both listed in `next.config.ts` `images.remotePatterns`. Other remote or user-supplied URLs (Gravatar/Google, DB `thumbnailUrl`) stay as `<img>`
+- Local raster assets (`/logo.png`, `/landing/*`, `/ai-avatars/thumbnails/*`, `/characters/*`) use `next/image`. Unsplash domain photos (`images.unsplash.com`) and Dicebear SVG portraits (`api.dicebear.com`) use `next/image` with `unoptimized`, both listed in `next.config.ts` `images.remotePatterns`. The `Avatar` primitive keeps a native `<img>` because `src` is not a closed host set
 - All cards use `bg-dojo-surface` with `border-dojo-border` by default
 - Interactive cards: add `hoverable` prop for `hover:border-dojo-accent`
 - Active/highlighted cards: use `raised` prop OR `ring-2 ring-dojo-accent`
