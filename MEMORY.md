@@ -1053,3 +1053,10 @@ Settings "My Avatars" thumbnails are catalog `/ai-avatars/thumbnails/*.webp`, so
 ## 2026-09-17 (CI build on push/PR)
 
 `.github/workflows/build.yml` mirrors `lint.yml` / `test.yml`: Node 20, `npm ci`, `npm run build` on `push`/`pull_request` to `main`. Expected to fail until the production build is made CI-ready (env / compile issues).
+
+## 2026-09-17 (build type errors)
+
+Two typecheck failures blocked `tsc` / `next build`:
+
+- `POST /api/sessions` persisted `behaviorMode` but never read it from the JSON body (`Cannot find name 'behaviorMode'`). The client already sends it; the handler now destructures it and still defaults to `'standard'`.
+- `AnimatedModel` failed because this workspace has two `@types/three` copies (npm 0.185.1 and pnpm 0.185.3), so r3f's `directionalLight` props recurse until TS2321 and `cloneSkeleton` rejects `useGLTF`'s `Group`. Emotion light is a `THREE.DirectionalLight` via `<primitive>`; the clone argument is asserted to `cloneSkeleton`'s own parameter type.

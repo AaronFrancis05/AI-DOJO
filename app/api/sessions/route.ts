@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId } = body;
+  const { situationId, characterId, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId, behaviorMode } = body;
 
   const [profile] = await db
     .select({

@@ -46,7 +46,11 @@ const EMOTION_COLORS: Record<string, string> = {
 };
 
 export function EmotionLight({ emotion }: { emotion?: string }) {
-  const lightRef = useRef<THREE.DirectionalLight>(null);
+  const light = useMemo(() => {
+    const instance = new THREE.DirectionalLight(0xffffff, 0.4);
+    instance.position.set(-2, 3, 3);
+    return instance;
+  }, []);
   const targetColor = useMemo(() => {
     const hex = EMOTION_COLORS[emotion ?? ''] ?? '#ffffff';
     return new THREE.Color(hex);
@@ -54,13 +58,13 @@ export function EmotionLight({ emotion }: { emotion?: string }) {
 
   useFrame((_, delta) => {
     try {
-      if (lightRef.current) lightRef.current.color.lerp(targetColor, delta * 2);
+      light.color.lerp(targetColor, delta * 2);
     } catch (err) {
       console.error('[EmotionLight] frame error:', err);
     }
   });
 
-  return <directionalLight ref={lightRef} position={[-2, 3, 3]} intensity={0.4} />;
+  return <primitive object={light} />;
 }
 
 export function SceneLoadingFallback() {
@@ -466,7 +470,7 @@ export function AnimatedModel({ url, mode, emotion, gesture, cameraMode, cameraI
 } & AvatarAnimationProps) {
   const { scene: originalScene } = useGLTF(url);
   const scene = useMemo(() => {
-    const cloned = cloneSkeleton(originalScene) as THREE.Group;
+    const cloned = cloneSkeleton(originalScene as Parameters<typeof cloneSkeleton>[0]) as THREE.Group;
     // Both run before the clone is ever handed to React, so the very first
     // rendered frame is an arms-down character standing at the right height.
     applyRestPose(cloned);
