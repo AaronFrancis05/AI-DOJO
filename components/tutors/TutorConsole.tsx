@@ -6,6 +6,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
@@ -594,10 +595,11 @@ function CreateRoomForm({
                             : 'border-dojo-border hover:border-dojo-accent',
                         )}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- catalogue portrait, fixed local asset */}
-                        <img
+                        <Image
                           src={choice.imageSrc}
                           alt=""
+                          width={48}
+                          height={48}
                           className="mx-auto h-12 w-12 rounded-full object-cover"
                         />
                         <span className="mt-2 block truncate text-[11px] text-dojo-text-primary">

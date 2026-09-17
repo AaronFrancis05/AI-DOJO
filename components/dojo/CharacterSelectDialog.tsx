@@ -12,6 +12,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog } from '@/components/ui/Dialog';
@@ -296,11 +297,12 @@ export function CharacterSelectDialog({
                     <Check className="h-3 w-3" />
                   </span>
                 )}
-                <img
+                <Image
                   src={av.thumbnail}
                   alt={av.name}
+                  width={80}
+                  height={80}
                   className="h-20 w-20 rounded-full object-cover bg-dojo-border"
-                  loading="lazy"
                 />
                 <span className="text-xs font-semibold text-dojo-text-primary line-clamp-1">{av.name}</span>
                 <span className="text-xs leading-tight text-dojo-text-muted line-clamp-1">{avatarRoleSnippet(av)}</span>

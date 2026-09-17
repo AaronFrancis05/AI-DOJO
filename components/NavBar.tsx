@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
@@ -31,7 +32,7 @@ export default function NavBar() {
             href="/home"
             className="mr-4 whitespace-nowrap flex-shrink-0 text-lg font-semibold tracking-tight text-neutral-900"
           >
-            <img src="/logo.png" alt="" className="h-6 w-6 inline-block mr-1.5" />AI DOJO
+            <Image src="/logo.png" alt="" width={24} height={24} className="mr-1.5 inline-block h-6 w-6" />AI DOJO
           </Link>
           <Link href="/sessions" className={linkClass('/sessions')}>
             <ListIcon className="h-4 w-4" />

@@ -1029,3 +1029,7 @@ Admin Catalogue's Published toggle writes `domains.isActive` / `situations.isAct
 - Added `lib/roleplay/api-types.ts` as the shared client/API boundary: JSON-safe Drizzle row DTOs, session/share response types, the chat SSE discriminated union, and runtime guards for untrusted JSON.
 - Session, report, share, roleplay panels, API/data helpers, database maintenance scripts, and SDK error paths now use existing schema inference, provider types, concrete DTOs, or `unknown` narrowed at the boundary.
 - Added boundary tests for valid and malformed session/share/SSE payloads. `npm test` passes; TypeScript reports only the pre-existing duplicate Three.js type-definition errors in `AnimatedModel.tsx`.
+
+## 2026-09-17 (`no-img-element` for local assets)
+
+Replaced hardcoded local `<img>` with `next/image` (logos, marketing `/landing/*` decorations, catalog thumbnails, lesson-result character art). Remote/user-supplied URLs (Unsplash domain cards, Dicebear, `Avatar`, settings `thumbnailUrl`) were left as `<img>` — they need `images.remotePatterns` or `unoptimized`, which was out of scope.

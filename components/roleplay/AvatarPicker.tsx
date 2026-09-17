@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useMemo, useState } from 'react';
 import { AVATAR_SOURCES, type AvatarSource } from '@/lib/avatar/catalog';
 import { cn } from '@/lib/design-tokens';
@@ -61,12 +62,12 @@ export function AvatarPicker({ selectedId, onSelect, className, disabled }: Avat
               )}
             >
               <div className="relative aspect-[4/3] w-full overflow-hidden bg-dojo-canvas">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={avatar.thumbnail}
                   alt={avatar.name}
-                  className="h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
-                  loading="lazy"
+                  fill
+                  sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+                  className="object-cover object-top transition-transform duration-300 group-hover:scale-[1.02]"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}

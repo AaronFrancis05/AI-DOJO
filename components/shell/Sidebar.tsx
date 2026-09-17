@@ -7,6 +7,7 @@
 'use client';
 
 import { cn } from '@/lib/design-tokens';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
@@ -116,7 +117,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     <aside className="flex h-full w-60 flex-col bg-dojo-sidebar border-r border-dojo-border shrink-0">
       {/* Logo */}
       <div className="flex h-16 items-center gap-2.5 border-b border-dojo-border pl-14 pr-14 md:pl-5 md:pr-5 justify-center md:justify-start">
-        <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg object-cover" />
+        <Image src="/logo.png" alt="" width={32} height={32} className="h-8 w-8 rounded-lg object-cover" />
         <span className="text-lg font-semibold text-dojo-text-primary tracking-tight">
           AI DOJO
         </span>

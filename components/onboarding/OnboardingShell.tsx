@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ONBOARDING_STEPS, type StepConfig } from '@/lib/onboarding/steps';
@@ -47,7 +48,7 @@ function OnboardingShellInner({ children, stepIndex, totalSteps, isTransition, n
 
         <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-1.5">
-            <img src="/logo.png" alt="" className="h-4 w-4" />
+            <Image src="/logo.png" alt="" width={16} height={16} className="h-4 w-4" />
             <p className="text-xs text-dojo-text-muted">AI DOJO</p>
           </div>
         </div>

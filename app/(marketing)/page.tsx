@@ -216,11 +216,13 @@ export default async function LandingPage() {
         </div>
 
         {/* Ink-wash pagoda illustration, bottom-left */}
-        <img
+        <Image
           src="/landing/house.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 left-0 hidden w-56 select-none opacity-70 sm:block lg:w-72"
+          width={1536}
+          height={1024}
+          className="pointer-events-none absolute bottom-0 left-0 hidden h-auto w-56 select-none opacity-70 sm:block lg:w-72"
         />
 
         <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-16 sm:px-6 sm:pt-20 sm:pb-20 lg:pt-24">
@@ -505,11 +507,13 @@ export default async function LandingPage() {
 
       {/* ── HOW IT WORKS ── */}
       <section id="how" className="scroll-mt-16 relative overflow-hidden border-y border-dojo-border bg-dojo-surface/40 py-16 sm:py-20">
-        <img
+        <Image
           src="/landing/banboo.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute -right-6 bottom-0 hidden w-72 select-none opacity-80 lg:block xl:w-80"
+          width={1536}
+          height={1024}
+          className="pointer-events-none absolute -right-6 bottom-0 hidden h-auto w-72 select-none opacity-80 lg:block xl:w-80"
         />
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-dojo-accent">How It Works</p>
@@ -594,11 +598,13 @@ export default async function LandingPage() {
 
       {/* ── BOTTOM CTA BANNER ── */}
       <section id="cta" className="scroll-mt-16 relative mx-4 my-16 max-w-7xl overflow-hidden rounded-2xl border border-dojo-accent/30 bg-dojo-surface-raised shadow-[0_24px_80px_-32px_rgba(193,57,43,0.35)] sm:mx-6 lg:mx-auto sm:my-20">
-        <img
+        <Image
           src="/landing/dojo-gate.png"
           alt=""
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-6 left-0 hidden w-48 select-none opacity-90 sm:block lg:w-60"
+          width={1536}
+          height={1024}
+          className="pointer-events-none absolute -bottom-6 left-0 hidden h-auto w-48 select-none opacity-90 sm:block lg:w-60"
         />
 
         <div className="relative flex flex-col items-center justify-between gap-6 px-6 py-12 text-center sm:flex-row sm:px-10 sm:py-14 sm:text-left sm:pl-56 lg:pl-64">

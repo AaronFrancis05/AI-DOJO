@@ -19,6 +19,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -96,10 +97,11 @@ export function AiInterviewStage({
               interview.examinerSpeaking ? 'bg-dojo-accent' : 'bg-dojo-border',
             )}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- catalogue portrait, fixed local asset */}
-            <img
+            <Image
               src={interviewer.imageSrc}
               alt={interviewer.name}
+              width={96}
+              height={96}
               className="h-24 w-24 rounded-full object-cover"
             />
             {interview.examinerSpeaking && (

@@ -92,11 +92,11 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `RoleplayInputBar` | Text/voice toggle input + send button. Input has `min-w-0 flex-1` for proper shrink on narrow viewports. |
 | `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
 | `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
-| `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
+| `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp` via `next/image` `fill`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
 | `AvatarCaptionsOverlay` | Translucent `bg-black/30 border-white/10 backdrop-blur-sm` pill, absolutely positioned at `bottom-6` (override via `className`, e.g. `bottom-32` to clear the mic controls); `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. Always floats — never render it in flow, a reserved caption band crops the avatar viewport above it. |
 | `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`). Nothing is shown until the character is both framed AND standing in its idle animation — until then a DOM-level progress bar ("Preparing {name}") sits over a fully transparent canvas, and the 3D content fades in over 500 ms. Calls `preloadAnimationClips()` on mount so the clips download alongside the model. |
 | `PhaseTransitionCard` | Phase-change card, `aspect-[11/10] max-w-md`. The coach art from `PHASE_META.portraitSrc` is the card itself (full-bleed `background-image`, framed by `artSize`/`artPosition`), with the title/description over a top-left scrim and a numbered 1→6 stepper over a bottom scrim. Copy is `text-white` because it always sits on the dark artwork. |
-| `ResultsAvatarBackdrop` | Shared backdrop for `LessonCompleteScreen` / `LessonIncompleteScreen`. Layers: blurred+dimmed copy of the art → radial mood glow → the art itself at full opacity, height-fitted and centred so the coach is never cropped or washed out → scrims limited to the top/bottom strips and the outer quarter of each side (where the stat panels sit). `fit="portrait"` caps and feathers small square art (`lesson-incomplete.png`, 380×380) instead of upscaling it to full height. Never put a full-screen scrim over the character. |
+| `ResultsAvatarBackdrop` | Shared backdrop for `LessonCompleteScreen` / `LessonIncompleteScreen`. Layers: blurred+dimmed copy of the art (`next/image` `fill`) → radial mood glow → the art itself at full opacity, height-fitted and centred so the coach is never cropped or washed out → scrims limited to the top/bottom strips and the outer quarter of each side (where the stat panels sit). `fit="portrait"` caps and feathers small square art (`lesson-incomplete.png`, 380×380) instead of upscaling it to full height. Never put a full-screen scrim over the character. Callers pass local `/characters/...` paths only. |
 
 ## Speech & Avatar Runtime (`/lib/roleplay/`, `/components/roleplay/three/`)
 
@@ -586,6 +586,7 @@ Accounts deleted in the console *before* `auth_user_id` existed stay NULL and
 are indistinguishable from invitations; clear those with the purge route.
 
 ## Design Pattern Notes
+- Local raster assets (`/logo.png`, `/landing/*`, `/ai-avatars/thumbnails/*`, `/characters/*`) use `next/image`. Remote or user-supplied URLs (Unsplash, Dicebear SVG, Gravatar/Google, DB `thumbnailUrl`) stay as `<img>` until `images.remotePatterns` is an explicit product decision
 - All cards use `bg-dojo-surface` with `border-dojo-border` by default
 - Interactive cards: add `hoverable` prop for `hover:border-dojo-accent`
 - Active/highlighted cards: use `raised` prop OR `ring-2 ring-dojo-accent`
