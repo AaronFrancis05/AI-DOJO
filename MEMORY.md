@@ -1052,7 +1052,7 @@ Settings "My Avatars" thumbnails are catalog `/ai-avatars/thumbnails/*.webp`, so
 
 ## 2026-09-17 (CI build on push/PR)
 
-`.github/workflows/build.yml` mirrors `lint.yml` / `test.yml`: Node 20, `npm ci`, `npm run build` on `push`/`pull_request` to `main`. Expected to fail until the production build is made CI-ready (env / compile issues).
+`.github/workflows/build.yml` mirrors `lint.yml` / `test.yml`: Node 20, `npm ci`, `npm run build` on `push`/`pull_request` to `main`. Build-time env uses the same placeholders as the Dockerfile builder stage (`DATABASE_URL`, `APP_ORIGIN`, Neon Auth). Not GitHub Secrets — this job compiles, it does not deploy, and `NEXT_PUBLIC_*` is what would be inlined into the browser.
 
 ## 2026-09-17 (build type errors)
 

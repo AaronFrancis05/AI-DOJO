@@ -9,6 +9,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Placeholders so `next build` can evaluate import-time checks.
+      # Same values as the Dockerfile builder stage. Real secrets are
+      # injected at runtime on deploy — this job does not ship the artifact.
+      DATABASE_URL: postgresql://build:build@localhost:5432/build
+      NEON_AUTH_BASE_URL: https://example.invalid
+      NEON_AUTH_COOKIE_SECRET: build-time-placeholder-secret-min-32-chars
+      APP_ORIGIN: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
