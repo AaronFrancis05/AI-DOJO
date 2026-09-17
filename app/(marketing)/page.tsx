@@ -483,11 +483,13 @@ export default async function LandingPage() {
                   className="group overflow-hidden rounded-2xl border border-dojo-border bg-dojo-surface-raised transition-colors hover:border-dojo-accent/50"
                 >
                   <div className="relative aspect-[4/3] overflow-hidden">
-                    <img
+                    <Image
                       src={domain.image}
                       alt=""
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      loading="lazy"
+                      fill
+                      unoptimized
+                      sizes="(min-width: 1024px) 20vw, (min-width: 640px) 33vw, 50vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-110"
                     />
                     <div className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-md">
                       {Icon && <Icon className="h-4 w-4" />}

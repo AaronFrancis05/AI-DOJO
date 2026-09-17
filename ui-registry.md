@@ -586,7 +586,7 @@ Accounts deleted in the console *before* `auth_user_id` existed stay NULL and
 are indistinguishable from invitations; clear those with the purge route.
 
 ## Design Pattern Notes
-- Local raster assets (`/logo.png`, `/landing/*`, `/ai-avatars/thumbnails/*`, `/characters/*`) use `next/image`. Remote or user-supplied URLs (Unsplash, Dicebear SVG, Gravatar/Google, DB `thumbnailUrl`) stay as `<img>` until `images.remotePatterns` is an explicit product decision
+- Local raster assets (`/logo.png`, `/landing/*`, `/ai-avatars/thumbnails/*`, `/characters/*`) use `next/image`. Unsplash domain photos (`images.unsplash.com`, listed in `next.config.ts` `images.remotePatterns`) use `next/image` with `unoptimized`. Other remote or user-supplied URLs (Dicebear SVG, Gravatar/Google, DB `thumbnailUrl`) stay as `<img>`
 - All cards use `bg-dojo-surface` with `border-dojo-border` by default
 - Interactive cards: add `hoverable` prop for `hover:border-dojo-accent`
 - Active/highlighted cards: use `raised` prop OR `ring-2 ring-dojo-accent`

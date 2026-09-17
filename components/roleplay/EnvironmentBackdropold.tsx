@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useMemo } from 'react';
 
 const backdropImages: Record<string, string> = {
@@ -21,10 +22,13 @@ export function EnvironmentBackdrop({ domainSlug }: { domainSlug?: string }) {
 
   return (
     <div className="absolute inset-0 -z-10 overflow-hidden">
-      <img
+      <Image
         src={src}
         alt=""
-        className="h-full w-full object-cover opacity-20"
+        fill
+        unoptimized
+        sizes="100vw"
+        className="object-cover opacity-20"
         draggable={false}
       />
       <div className="absolute inset-0 bg-gradient-to-b from-dojo-canvas/60 via-dojo-canvas/40 to-dojo-canvas/80" />

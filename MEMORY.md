@@ -1033,3 +1033,7 @@ Admin Catalogue's Published toggle writes `domains.isActive` / `situations.isAct
 ## 2026-09-17 (`no-img-element` for local assets)
 
 Replaced hardcoded local `<img>` with `next/image` (logos, marketing `/landing/*` decorations, catalog thumbnails, lesson-result character art). Remote/user-supplied URLs (Unsplash domain cards, Dicebear, `Avatar`, settings `thumbnailUrl`) were left as `<img>` — they need `images.remotePatterns` or `unoptimized`, which was out of scope.
+
+## 2026-09-17 (Unsplash via next/image)
+
+Unsplash domain photos now use `next/image` with `unoptimized`. `images.unsplash.com` is listed in `next.config.ts` `images.remotePatterns` (Hub cards, marketing scenario tiles, `EnvironmentBackdrop`). Dicebear / user avatars remain `<img>`.
