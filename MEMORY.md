@@ -1049,3 +1049,7 @@ Settings "My Avatars" thumbnails are catalog `/ai-avatars/thumbnails/*.webp`, so
 ## 2026-09-17 (CI tests on push/PR)
 
 `.github/workflows/test.yml` mirrors `lint.yml`: Node 20, `npm ci`, `npm test` on `push`/`pull_request` to `main`. Unit tests need no DB or secrets.
+
+## 2026-09-17 (CI build on push/PR)
+
+`.github/workflows/build.yml` mirrors `lint.yml` / `test.yml`: Node 20, `npm ci`, `npm run build` on `push`/`pull_request` to `main`. Expected to fail until the production build is made CI-ready (env / compile issues).
