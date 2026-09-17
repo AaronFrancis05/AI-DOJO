@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { behaviorModeClass, type BehaviorMode, type SkillLevel } from '@/lib/design-tokens';
@@ -103,7 +104,14 @@ export function SessionInfoPanel({
                 className="flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-dojo-border overflow-hidden"
                 style={{ backgroundColor: charColor }}
               >
-                <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${charName}&backgroundColor=${charColor.replace('#','')}`} alt={charName} className="h-full w-full object-cover" />
+                <Image
+                  src={`https://api.dicebear.com/7.x/bottts/svg?seed=${charName}&backgroundColor=${charColor.replace('#','')}`}
+                  alt={charName}
+                  width={24}
+                  height={24}
+                  unoptimized
+                  className="h-full w-full object-cover"
+                />
               </span>
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-[9px] font-medium text-dojo-text-muted">
                 U
