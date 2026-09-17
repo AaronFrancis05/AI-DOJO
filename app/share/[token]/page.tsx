@@ -9,7 +9,6 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
@@ -19,7 +18,7 @@ import {
   isSharedSessionResponse,
   type SharedSessionResponse,
 } from '@/lib/roleplay/api-types';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 
 export default function SharedSessionPage() {
   const params = useParams();

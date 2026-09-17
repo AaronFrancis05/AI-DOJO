@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '@/src/db';
 import {
   aiInterviews,

@@ -28,7 +28,7 @@ import {
   type ScenarioDto,
   type SessionDto,
 } from '@/lib/roleplay/api-types';
-import { ArrowLeft, ExternalLink, Trophy, Target, Repeat2, RotateCcw, Users } from 'lucide-react';
+import { ArrowLeft, Trophy, Target, Repeat2, RotateCcw, Users } from 'lucide-react';
 
 type ReportSession = Pick<
   SessionDto,

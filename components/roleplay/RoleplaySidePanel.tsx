@@ -3,7 +3,7 @@
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Target, Lightbulb, BookOpen, User, Flag } from 'lucide-react';
+import { Target, Lightbulb, BookOpen, Flag } from 'lucide-react';
 import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
 import type {
   CharacterDto,
@@ -62,9 +62,7 @@ export function RoleplaySidePanel({
   onEnd,
   onViewReport,
   domain,
-  character,
   charName,
-  charRole,
   charColor,
 }: RoleplaySidePanelProps) {
   const skillLevel = situation?.skillLevel;

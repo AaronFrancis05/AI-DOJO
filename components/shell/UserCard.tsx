@@ -22,7 +22,6 @@ interface UserCardProps {
 
 export function UserCard({
   name,
-  tier,
   level,
   xp,
   xpToNext,

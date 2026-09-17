@@ -1,7 +1,6 @@
 'use client';
 
 import { cn } from '@/lib/design-tokens';
-import { Smile } from 'lucide-react';
 
 interface ConversationBubbleProps {
   speaker: 'user' | 'ai';

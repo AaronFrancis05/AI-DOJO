@@ -33,7 +33,7 @@ import { cn } from '@/lib/design-tokens';
 import {
   ArrowLeft, Info, Mic, Volume2, VolumeX,
   MessageSquare, X, Send, Clock, Globe, CheckCircle2, Circle,
-  ChevronUp, Lightbulb, Flag,
+  ChevronUp, Lightbulb,
 } from 'lucide-react';
 
 interface CompletionResult {
@@ -276,7 +276,6 @@ export default function AvatarModePage() {
       isMuted: () => mutedRef.current,
     });
 
-    let fullText = '';
     const speechDoneRef = { current: false };
     const analysisDoneRef = { current: false };
     const tryShowCelebration = () => {
@@ -290,7 +289,6 @@ export default function AvatarModePage() {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
         onToken: (t) => {
-          if (t) fullText = t;
           const cleaned = t ? cleanDisplay(t) : null;
           setStreamingText(cleaned);
           if (cleaned) showLiveCaption(cleaned);

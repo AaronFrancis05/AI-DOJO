@@ -95,7 +95,7 @@ export function CharacterSelectDialog({
     if (!open) return;
     let cancelled = false;
     async function load() {
-      const [sitRes, domRes, charsRes, statsRes] = await Promise.all([
+      const [sitRes, , charsRes, statsRes] = await Promise.all([
         getSituationById(situationIdNum),
         getDomainBySlug(domainSlug),
         getCharacters(),

@@ -8,7 +8,6 @@
 
 import { useState } from 'react';
 import { Sidebar } from './Sidebar';
-import { useUser } from '@/lib/auth/user-context';
 import { Menu, X } from 'lucide-react';
 
 interface AppShellProps {
@@ -17,7 +16,6 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const user = useUser();
 
   return (
     <div className="flex h-dvh w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">

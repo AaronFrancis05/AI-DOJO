@@ -1,7 +1,6 @@
 import { db } from '@/src/db';
 import { sessions, vocabulary, vocabularyEncounters, vocabularyLocalizations } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { nextPhase } from '@/lib/roleplay/phase-engine';
 import { eq, and, sql } from 'drizzle-orm';
 
 export async function POST(
@@ -31,7 +30,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { vocabularyId, transcript, accuracyScore, attemptNumber } = body;
+  const { vocabularyId, accuracyScore, attemptNumber } = body;
 
   if (!vocabularyId || typeof accuracyScore !== 'number') {
     return Response.json({ error: 'vocabularyId and accuracyScore are required' }, { status: 400 });

@@ -153,7 +153,7 @@ async function seedDomainData() {
   }
 
   // Update situationCount on each domain to match actual count
-  for (const [slug, id] of domainMap) {
+  for (const [, id] of domainMap) {
     const rows = await db.select({ count: sql<number>`count(*)` })
       .from(situations)
       .where(eq(situations.domainId, id));

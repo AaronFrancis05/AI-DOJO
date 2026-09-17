@@ -85,7 +85,6 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
   }, [fetchAvatars]);
 
   const deleteAvatar = useCallback(async (id: number) => {
-    const deleted = avatars.find(a => a.id === id);
     setAvatars(prev => prev.filter(a => a.id !== id));
     try {
       const res = await fetch(`/api/user/avatars/${id}`, { method: 'DELETE', credentials: 'include' });

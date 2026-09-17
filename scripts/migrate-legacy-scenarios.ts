@@ -1,6 +1,6 @@
 import { db } from '../src/db';
-import { scenarios, situations, domains, characters, scenarioGoals, vocabulary } from '../src/schema';
-import { eq, and, like } from 'drizzle-orm';
+import { scenarios, situations, domains, characters } from '../src/schema';
+import { eq } from 'drizzle-orm';
 
 const DOMAIN_MAP: Record<string, string> = {
   daily_life: 'daily_life',

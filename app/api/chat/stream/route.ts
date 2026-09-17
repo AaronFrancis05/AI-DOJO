@@ -401,9 +401,8 @@ export async function POST(req: Request) {
 
           // Validate ⟦ ⟧ delimiter usage when languages differ
           const targetBcp47 = getBCP47(targetLanguage, 'tts');
-          const nativeBcp47 = getBCP47(nativeLanguage, 'tts');
           if (!isSameLanguage) {
-            const validation = validateDelimiters(fullAiText, targetBcp47, nativeBcp47);
+            const validation = validateDelimiters(fullAiText, targetBcp47);
             if (!validation.valid) {
               console.warn('[SPAN VALIDATOR] delimiter issues:', validation.issues);
             }
@@ -496,9 +495,6 @@ export async function POST(req: Request) {
           const hasCorrections = (correctionItems.length > 0 && correctionItems.some(c => c.correctedText)) || hasLowPronunciation;
 
           // ── Phase-agnostic retry gate (bounded to exactly 1 retry) ──
-          let pendingRetryCorrectionId: number | null = null;
-          const retryEarlyExit = false;
-
           // Orientation predates any target-language production, and the
           // debrief and farewell come after the scene has ended — holding the
           // learner back for a retry in any of them would stall the session on
@@ -525,7 +521,7 @@ export async function POST(req: Request) {
             } else if (!prevPendingId && !isRetryOfPreviousMistake) {
               const validCorrections = correctionItems.filter(c => c.correctedText);
               if (validCorrections.length > 0) {
-                const { newPendingRetryId, userConvId } = await withSessionLock(numericSessionId, async (tx) => {
+                await withSessionLock(numericSessionId, async (tx) => {
                   const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
                   if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
 
@@ -618,11 +614,7 @@ export async function POST(req: Request) {
                     sessionUpdate.icebreakerVocabAttempts = newVocabAttempts;
                   }
                   await tx.update(sessions).set(sessionUpdate).where(eq(sessions.id, numericSessionId));
-
-                  return { newPendingRetryId: newPendingId, userConvId: userConversation.id };
                 });
-
-                pendingRetryCorrectionId = newPendingRetryId;
               }
 
               send(JSON.stringify({

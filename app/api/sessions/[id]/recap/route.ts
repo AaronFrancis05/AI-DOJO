@@ -1,9 +1,9 @@
 import { db } from '@/src/db';
-import { sessions, scenarios, situations, scenarioGoals, goalCompletions, vocabulary } from '@/src/schema';
+import { sessions, scenarios, situations, scenarioGoals, goalCompletions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
 import { getAIProvider } from '@/lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 const RECAP_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 

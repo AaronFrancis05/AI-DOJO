@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { getNativeLangName } from '@/lib/language';
 import { useLanguageCatalog } from '@/lib/language-context';
 import { ChevronDown, Check } from 'lucide-react';
 

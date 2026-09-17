@@ -1,15 +1,11 @@
 import { db } from '../../../src/db';
-import { dbPool, withSessionLock } from '../../../src/db-pool';
+import { withSessionLock } from '../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, countries } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import { AIProviderError, AIQuotaError, AIModelError } from '../../../lib/ai-providers';
 import { buildConversationHistory } from '../../../lib/roleplay/conversation-history';
-import { getTargetLangConfig } from '../../../lib/language';
 import {
   nextPhase,
-  computeCompositeScore,
-  PRONUNCIATION_PASS_THRESHOLD,
-  PASSING_SCORE_THRESHOLD,
   STALL_THRESHOLD,
   SAFETY_CAP_TURN,
   UNGUIDED_MISTAKE_PENALTY,
@@ -27,7 +23,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { sessionId, userRawInput, accuracyScore, isRetryOfPreviousMistake } = body;
+    const { sessionId, userRawInput, isRetryOfPreviousMistake } = body;
     const responseTimeMs = typeof body.responseTimeMs === 'number' ? body.responseTimeMs : null;
 
     if (!sessionId || !userRawInput) {
@@ -138,9 +134,6 @@ export async function POST(req: Request) {
       learnerProfile.name,
       learnerProfile.countryName,
     );
-
-    const targetCfg = getTargetLangConfig(targetLanguage);
-    const isJapanese = targetLanguage === 'ja';
 
     const hasCorrections = mlPipelineOutput.corrections && mlPipelineOutput.corrections.length > 0 && mlPipelineOutput.corrections.some(c => c.correctedText);
 

@@ -22,7 +22,6 @@ export async function POST(req: Request) {
 
     const rawSessionId = body.sessionId;
     const rawUserInput = body.userRawInput;
-    const isRetryOfPreviousMistake = body.isRetryOfPreviousMistake === true;
 
     if (!rawSessionId || !rawUserInput) {
       return Response.json({ error: 'sessionId and userRawInput are required' }, { status: 400 });

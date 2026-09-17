@@ -240,7 +240,6 @@ export default function VoiceOnlyPage() {
       isMuted: () => mutedRef.current,
     });
 
-    let fullText = '';
     const speechDoneRef = { current: false };
     const analysisDoneRef = { current: false };
     const tryShowCelebration = () => {
@@ -254,7 +253,6 @@ export default function VoiceOnlyPage() {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
         onToken: (t) => {
-          if (t) fullText = t;
           const cleaned = t ? cleanDisplay(t) : null;
           setStreamingText(cleaned);
           if (cleaned) showLiveCaption(cleaned);

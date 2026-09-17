@@ -248,6 +248,7 @@ export class DojoBrainAdapter {
   }
 
   async translate(text: string, _target = "ja"): Promise<{ text: string }> {
+    void _target;
     return { text };
   }
 

@@ -1,7 +1,7 @@
 import { db } from '@/src/db';
 import { users, sessions, evaluations } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { eq, desc, sql, and } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 
 export async function GET() {
   const authUser = await getAuthUser();

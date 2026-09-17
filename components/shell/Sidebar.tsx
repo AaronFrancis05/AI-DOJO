@@ -8,7 +8,7 @@
 
 import { cn } from '@/lib/design-tokens';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
@@ -81,7 +81,6 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const user = useUser();
   const currentAvatarUrl = useCurrentAvatar();
   // Honest identity: stored name → email local-part → "You" (never a fake
@@ -109,7 +108,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     window.location.href = '/auth/signin?signed_out=1';
   }
 
-  const handleClick = (href: string) => {
+  const handleClick = () => {
     if (onNavigate) onNavigate();
   };
 
@@ -132,7 +131,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => handleClick(item.href)}
+              onClick={handleClick}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                 active

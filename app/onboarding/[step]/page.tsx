@@ -15,7 +15,7 @@ import {
 import { SingleSelectStep, InterstitialStep, OnboardingShell } from '@/components/onboarding';
 import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
 import { useLanguageCatalog } from '@/lib/language-context';
-import { Sparkles, MessageSquare, Mic, User, BookOpen, Clock, CheckCircle2, LoaderIcon } from 'lucide-react';
+import { Sparkles, MessageSquare, BookOpen, CheckCircle2, LoaderIcon } from 'lucide-react';
 import { authClient } from '@/lib/auth/client';
 import { getAuthErrorMessage } from '@/lib/auth/errors';
 
@@ -27,7 +27,6 @@ export default function OnboardingStepPage() {
   const step = params.step as string;
   const { state, dispatch } = useOnboarding();
   const catalog = useLanguageCatalog();
-  const [modeValue, setModeValue] = useState(state.preferredMode);
   const [saving, setSaving] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
   const [email, setEmail] = useState('');
@@ -481,7 +480,6 @@ export default function OnboardingStepPage() {
     ),
   };
 
-  const stepConfig = ONBOARDING_STEPS.find(s => s.key === step);
   if (!step) return null;
 
   return (

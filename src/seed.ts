@@ -699,14 +699,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s1Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'はじめまして！私はハナです。日本へようこそ！お名前は何ですか？',
       messagePhonetic: 'Hajimemashite! Watashi wa Hana desu. Nihon e youkoso! O-namae wa nan desu ka?',
       messageNative: 'Nice to meet you! I am Hana. Welcome to Japan! What is your name?',
       emotionTone: 'warm-friendly', gestureHint: 'slight bow with a welcoming smile',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s1Turn1User = await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 1, speaker: 'user',
@@ -727,14 +727,14 @@ const [s1Row] = await db.insert(sessions).values({
       severity: 'minor',
     });
 
-    const s1Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'リネットさん、はじめまして！ウガンダからなんですね。どんなことを勉強していますか？',
       messagePhonetic: 'Rinetto-san, hajimemashite! Uganda kara nan desu ne. Donna koto o benkyou shite imasu ka?',
       messageNative: 'Lynnette, nice to meet you! So you are from Uganda. What are you studying?',
       emotionTone: 'curious-engaged', gestureHint: 'tilts head slightly with interest',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s1Turn2User = await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 2, speaker: 'user',
@@ -754,14 +754,14 @@ const [s1Row] = await db.insert(sessions).values({
       severity: 'minor',
     });
 
-    const s1Turn3Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 3, speaker: 'ai',
       messageTarget: '素晴らしいです！日本語で話すのはとても楽しいですね。今日は会えて本当に嬉しかったです。また会いましょう！',
       messagePhonetic: 'Subarashii desu! Nihongo de hanasu no wa totemo tanoshii desu ne. Kyou wa aete hontou ni ureshikatta desu. Mata aimashou!',
       messageNative: 'Wonderful! Speaking in Japanese is very fun, isn\'t it? I was truly happy to meet you today. Let\'s meet again!',
       emotionTone: 'warm-encouraging', gestureHint: 'small bow with both hands clasped',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s1Turn3User = await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 3, speaker: 'user',
@@ -806,14 +806,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s2Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'いらっしゃいませ！何をお探しですか？',
       messagePhonetic: 'Irasshaimase! Nani o osagashi desu ka?',
       messageNative: 'Welcome! What are you looking for?',
       emotionTone: 'cheerful-service', gestureHint: 'friendly nod from behind the counter',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s2Turn1User = await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 1, speaker: 'user',
@@ -824,14 +824,14 @@ const [s1Row] = await db.insert(sessions).values({
       isEnglishWhenExpected: false, isValidInContext: true,
     }).returning();
 
-    const s2Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'かしこまりました。１本でよろしいですか？',
       messagePhonetic: 'Kashikomarimashita. Ippon de yoroshii desu ka?',
       messageNative: 'Certainly. Is one bottle okay?',
       emotionTone: 'polite-service', gestureHint: 'reaches toward the drink cooler',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s2Turn2User = await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 2, speaker: 'user',
@@ -882,14 +882,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s3Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'どうぞお入りください。初めまして、採用担当の田中と申します。よろしくお願いいたします。',
       messagePhonetic: 'Douzo o-hairi kudasai. Hajimemashite, saiyou tantou no Tanaka to moushimasu. Yoroshiku onegai itashimasu.',
       messageNative: 'Please come in. Nice to meet you, I am Tanaka from recruitment. Pleased to meet you.',
       emotionTone: 'formal-respectful', gestureHint: 'gestures to the seat with open hand',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s3Turn1User = await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 1, speaker: 'user',
@@ -909,14 +909,14 @@ const [s1Row] = await db.insert(sessions).values({
       severity: 'minor',
     });
 
-    const s3Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'デザイアさん、これまでの職歴について教えていただけますか？',
       messagePhonetic: 'Dezaia-san, kore made no shokureki ni tsuite oshiete itadakemasu ka?',
       messageNative: 'Desire, could you tell me about your work experience so far?',
       emotionTone: 'polite-interview', gestureHint: 'sits forward with poised posture',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s3Turn2User = await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 2, speaker: 'user',
@@ -927,32 +927,32 @@ const [s1Row] = await db.insert(sessions).values({
       isEnglishWhenExpected: false, isValidInContext: true,
     }).returning();
 
-    const s3Turn3Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 3, speaker: 'ai',
       messageTarget: 'なるほど。では、日本語で仕事をする上で、一番大切だと思うことは何ですか？',
       messagePhonetic: 'Naruhodo. Dewa, nihongo de shigoto o suru ue de, ichiban taisetsu da to omou koto wa nan desu ka?',
       messageNative: 'I see. So, what do you think is the most important thing when working in Japanese?',
       emotionTone: 'thoughtful-probing', gestureHint: 'nods slowly while listening',
       isValidInContext: true,
-    }).returning();
+    });
 
-    const s3Turn3User = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 3, speaker: 'user',
       messageTarget: 'コミュニケーションだと思います。正しい敬語を使うことと、相手の気持ちを理解することが大事です。',
       messagePhonetic: 'Komyunikeeshon da to omoimasu. Tadashii keigo o tsukau koto to, aite no kimochi o rikai suru koto ga daiji desu.',
       messageNative: 'I think communication is. Using correct keigo and understanding the other person\'s feelings are important.',
       emotionTone: 'thoughtful-sincere', gestureHint: null,
       isEnglishWhenExpected: false, isValidInContext: true,
-    }).returning();
+    });
 
-    const s3Turn4Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 4, speaker: 'ai',
       messageTarget: '素晴らしい考えですね。では、最後に—この会社でどんなことを実現したいですか？',
       messagePhonetic: 'Subarashii kangae desu ne. Dewa, saigo ni — kono kaisha de donna koto o jitsugen shitai desu ka?',
       messageNative: 'That\'s a wonderful perspective. Then, finally — what do you want to achieve at this company?',
       emotionTone: 'impressed-warm', gestureHint: 'smiles appreciatively',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s3Turn4User = await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 4, speaker: 'user',
@@ -1005,14 +1005,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s4Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'いらっしゃいませ！何名様ですか？',
       messagePhonetic: 'Irasshaimase! Nan-mei-sama desu ka?',
       messageNative: 'Welcome! How many people?',
       emotionTone: 'cheerful', gestureHint: 'holds out menu with both hands',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s4Turn1User = await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 1, speaker: 'user',
@@ -1023,14 +1023,14 @@ const [s1Row] = await db.insert(sessions).values({
       isEnglishWhenExpected: false, isValidInContext: true,
     }).returning();
 
-    const s4Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'かしこまりました。こちらがメニューでございます。ご注文がお決まりになりましたらお呼びください。',
       messagePhonetic: 'Kashikomarimashita. Kochira ga menyuu de gozaimasu. Go-chuumon ga o-kimari ni narimashitara o-yobi kudasai.',
       messageNative: 'Certainly. Here is our menu. Please call me when you have decided your order.',
       emotionTone: 'polite-service', gestureHint: 'places menu on table with both hands',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s4Turn2User = await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 2, speaker: 'user',

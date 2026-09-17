@@ -1,6 +1,6 @@
 import { db } from '../../../src/db';
 import { dbPool } from '../../../src/db-pool';
-import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
+import { sessions, scenarios, situations, domains, characters, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
 import { getTargetLangConfig } from '../../../lib/language';
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId } = body;
+  const { situationId, characterId, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId } = body;
 
   const [profile] = await db
     .select({
@@ -124,8 +124,6 @@ export async function POST(req: Request) {
     }
 
     const resolvedCharacterId = characterId ? Number(characterId) : null;
-    const resolvedMode = behaviorMode ?? 'standard';
-
     const [existingScenario] = await db
       .select()
       .from(scenarios)

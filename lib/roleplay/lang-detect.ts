@@ -69,7 +69,6 @@ export function splitIntoLangSpans(raw: string): LangSpan[] {
 export function validateDelimiters(
   text: string,
   targetBcp47: string,
-  nativeBcp47: string,
 ): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
 
