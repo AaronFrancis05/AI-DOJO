@@ -98,7 +98,7 @@ export function IcebreakerDrill({
     } finally {
       setBusy(false);
     }
-  }, [word.id, transcript, accuracy, attemptNo, onAttempt]);
+  }, [word.id, word.japanese, transcript, accuracy, attemptNo, onAttempt, busy]);
 
   const handleNext = useCallback(() => {
     if (wordIndex + 1 >= vocabCount) {

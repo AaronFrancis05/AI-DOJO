@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   useOnboarding,
   clearPersistedOnboarding,
@@ -36,11 +36,6 @@ export default function OnboardingStepPage() {
   const [dbDomains, setDbDomains] = useState<{ id: number; name: string; icon: string; description: string }[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(step === 'account');
-  const autoAdvanceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  useEffect(() => {
-    return () => autoAdvanceTimers.current.forEach(clearTimeout);
-  }, []);
 
   useEffect(() => {
     if (step === 'domain' && dbDomains.length === 0 && !loadingDomains) {
@@ -125,7 +120,6 @@ export default function OnboardingStepPage() {
   useEffect(() => {
     if (step === 'personalizing') {
       const t = setTimeout(() => router.push('/onboarding/plan-ready'), 2000);
-      autoAdvanceTimers.current.push(t);
       return () => clearTimeout(t);
     }
   }, [step, router]);
@@ -133,7 +127,6 @@ export default function OnboardingStepPage() {
   useEffect(() => {
     if (step === 'plan-ready') {
       const t = setTimeout(() => router.push('/onboarding/account'), 2500);
-      autoAdvanceTimers.current.push(t);
       return () => clearTimeout(t);
     }
   }, [step, router]);

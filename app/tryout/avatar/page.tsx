@@ -108,7 +108,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
       console.error(e);
       stopTts();
     }
-  }, [sending, limitReached, completed, submitTurnStream, targetLanguage, nativeLanguage]);
+  }, [sending, limitReached, submitTurnStream, targetLanguage, nativeLanguage]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();

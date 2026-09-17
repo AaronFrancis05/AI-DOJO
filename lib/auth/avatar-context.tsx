@@ -92,7 +92,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
     } catch {
       await fetchAvatars();
     }
-  }, [avatars, fetchAvatars]);
+  }, [fetchAvatars]);
 
   return (
     <AvatarContext.Provider value={{ avatars, selectedAvatar, loading, selectAvatar, addAvatar, deleteAvatar, refresh: fetchAvatars }}>

@@ -196,7 +196,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     } finally {
       if (startPromiseRef.current === startPromise) startPromiseRef.current = null;
     }
-  }, [lang, onFinal]);
+  }, [lang]);
 
   const stop = useCallback(async () => {
     if (startPromiseRef.current) {
