@@ -2,10 +2,10 @@ import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { and, eq, ne } from 'drizzle-orm';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
+import { unknownLanguageCodes } from '@/lib/tutors/language-catalog';
 import {
   parseLanguageCodes,
   serializeLanguageCodes,
-  unknownLanguageCodes,
 } from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';

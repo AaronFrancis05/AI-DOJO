@@ -10,8 +10,10 @@
  * Both are stored comma-separated on the row, which is the shape `languages`
  * already had — denormalised because they are read on every listing and never
  * queried independently.
+ *
+ * Database-free: catalogue membership lives in `language-catalog.ts`. This
+ * file must not import Drizzle — unit tests import it without DATABASE_URL.
  */
-import { loadLanguageCatalog } from '@/lib/language-registry';
 
 /** Accepts either the stored comma-separated string or a JSON array of codes. */
 export function parseLanguageCodes(value: unknown): string[] {
@@ -76,19 +78,4 @@ export function tutorLanguageError(
     return `You are not listed as explaining in ${instructionLanguage}. Add it to your profile first.`;
   }
   return null;
-}
-
-/**
- * Which of `codes` are not offered on that side of the configured catalogue.
- * Empty means every code is valid.
- */
-export async function unknownLanguageCodes(
-  codes: string[],
-  side: 'target' | 'native',
-): Promise<string[]> {
-  const catalog = await loadLanguageCatalog();
-  const known = new Set<string>(
-    (side === 'target' ? catalog.target : catalog.native).map((l) => l.code),
-  );
-  return codes.filter((c) => !known.has(c));
 }

@@ -1060,3 +1060,7 @@ Two typecheck failures blocked `tsc` / `next build`:
 
 - `POST /api/sessions` persisted `behaviorMode` but never read it from the JSON body (`Cannot find name 'behaviorMode'`). The client already sends it; the handler now destructures it and still defaults to `'standard'`.
 - `AnimatedModel` failed because this workspace has two `@types/three` copies (npm 0.185.1 and pnpm 0.185.3), so r3f's `directionalLight` props recurse until TS2321 and `cloneSkeleton` rejects `useGLTF`'s `Group`. Emotion light is a `THREE.DirectionalLight` via `<primitive>`; the clone argument is asserted to `cloneSkeleton`'s own parameter type.
+
+## 2026-09-17 (tests must not require DATABASE_URL)
+
+`npm test` is unit tests with no DB. CI failed because `lib/tutors/languages.ts` imported `language-registry` (and therefore `src/db`) at module load; `src/db` throws when `DATABASE_URL` is unset. Parse/validate stays in `languages.ts`. Catalogue membership (`unknownLanguageCodes`) moved to `lib/tutors/language-catalog.ts`. `src/db` still fails fast in the running app.
