@@ -1064,3 +1064,7 @@ Two typecheck failures blocked `tsc` / `next build`:
 ## 2026-09-17 (tests must not require DATABASE_URL)
 
 `npm test` is unit tests with no DB. CI failed because `lib/tutors/languages.ts` imported `language-registry` (and therefore `src/db`) at module load; `src/db` throws when `DATABASE_URL` is unset. Parse/validate stays in `languages.ts`. Catalogue membership (`unknownLanguageCodes`) moved to `lib/tutors/language-catalog.ts`. `src/db` still fails fast in the running app.
+
+## 2026-09-18 (CI Node 20 deprecation)
+
+Lint / test / build workflows now use `actions/checkout@v7` and `actions/setup-node@v7` (Node 24 action runtime; Node 20 is removed from runners on 2026-09-23). App Node is 22 to match the production Dockerfile. `ubuntu-latest` left as-is.
