@@ -115,6 +115,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Docker alternatives: `npm run docker:dev` (hot reload) or `npm run docker:prod`. Neon, Upstash, and AI providers stay external — they are not bundled in Compose.
 
+A push to `main` that passes lint, test, and `next build` publishes the production `Dockerfile` to GHCR as `ghcr.io/<owner>/<repo>:latest` and `:sha-<git-sha>`. Lint and test also run on every branch push and on pull-request open/update.
+
 ---
 
 ## Scripts

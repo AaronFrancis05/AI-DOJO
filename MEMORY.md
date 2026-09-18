@@ -1068,3 +1068,11 @@ Two typecheck failures blocked `tsc` / `next build`:
 ## 2026-09-18 (CI Node 20 deprecation)
 
 Lint / test / build workflows now use `actions/checkout@v7` and `actions/setup-node@v7` (Node 24 action runtime; Node 20 is removed from runners on 2026-09-23). App Node is 22 to match the production Dockerfile. `ubuntu-latest` left as-is.
+
+## 2026-09-18 (GHCR image on main)
+
+`lint.yml` / `test.yml` still run on push and PR to `main`. Standalone `build.yml` is gone. `.github/workflows/image.yml` runs only on push to `main`: lint, test, and `next build` in parallel, then (if all three pass) builds the existing production `Dockerfile` and pushes `ghcr.io/<owner>/<repo>:latest` and `:sha-<git-sha>`. Lint/test duplicate on `main` by design. Image job uses `packages: write` and `GITHUB_TOKEN`; Dockerfile build-time env stays the placeholder defaults. No deploy.
+
+## 2026-09-18 (lint/test on every branch)
+
+`lint.yml` and `test.yml` now run on every branch push (`**`) and on every pull-request open/update, not only `main`. Image publish stays `main`-only.
