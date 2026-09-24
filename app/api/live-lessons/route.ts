@@ -3,8 +3,8 @@ import { db } from '@/src/db';
 import {
   chatRoomMembers,
   chatRooms,
-  classEnrollments,
-  classSessions,
+  liveLessonEnrollments,
+  liveLessons,
   tutors,
   units,
   users,
@@ -12,9 +12,9 @@ import {
 import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { generateCallId } from '@/lib/tutors/rooms';
 import {
-  CLASS_DURATIONS_MINUTES,
+  LIVE_LESSON_DURATIONS_MINUTES,
   DEFAULT_CALL_TYPE,
-  MAX_CLASS_CAPACITY,
+  MAX_LIVE_LESSON_CAPACITY,
   TUTORS_ENABLED,
 } from '@/lib/tutors/config';
 import { dbPool } from '@/src/db-pool';
@@ -25,15 +25,15 @@ import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
 export const runtime = 'nodejs';
 
 /**
- * Scheduled group classes.
+ * Scheduled live lessons.
  *
  * GET is deliberately broad — a learner browsing what is on, a tutor looking
  * at their own schedule, and the course page asking "is there a live lesson
  * for this unit?" are the same query with different filters:
  *
- *   ?mine=1      only classes I teach or am enrolled in
- *   ?unitId=N    only classes pinned to that curriculum unit
- *   ?past=1      include classes that have already finished
+ *   ?mine=1      only live lessons I teach or am enrolled in
+ *   ?unitId=N    only live lessons pinned to that curriculum unit
+ *   ?past=1      include live lessons that have already finished
  */
 export async function GET(req: Request) {
   if (!TUTORS_ENABLED) {
@@ -57,84 +57,84 @@ export async function GET(req: Request) {
     .where(eq(tutors.userId, user.id))
     .limit(1);
 
-  const conditions = [sql`${classSessions.status} <> 'cancelled'`];
+  const conditions = [sql`${liveLessons.status} <> 'cancelled'`];
   if (unitId != null && Number.isInteger(unitId)) {
-    conditions.push(eq(classSessions.unitId, unitId));
+    conditions.push(eq(liveLessons.unitId, unitId));
   }
   if (!includePast) {
-    // A class stays listed for an hour past its start so someone running late
+    // A live lesson stays listed for an hour past its start so someone running late
     // can still find it — unless it is actually live, in which case it stays
-    // listed for as long as it is. A 90-minute class vanishing from the page
+    // listed for as long as it is. A 90-minute live lesson vanishing from the page
     // at the hour mark, while the tutor is still in the room, is the one case
     // a fixed cutoff gets exactly backwards.
     conditions.push(or(
-      eq(classSessions.status, 'live'),
-      gte(classSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)),
+      eq(liveLessons.status, 'live'),
+      gte(liveLessons.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)),
     )!);
   }
 
   const rows = await db
     .select({
-      classSession: classSessions,
+      liveLesson: liveLessons,
       tutorName: users.name,
       tutorAvatar: users.avatarSrc,
       unitTitle: units.title,
       enrolledCount: sql<number>`(
-        select count(*)::int from ${classEnrollments}
-        where ${classEnrollments.classSessionId} = ${classSessions.id}
-          and ${classEnrollments.status} <> 'cancelled'
+        select count(*)::int from ${liveLessonEnrollments}
+        where ${liveLessonEnrollments.liveLessonId} = ${liveLessons.id}
+          and ${liveLessonEnrollments.status} <> 'cancelled'
       )`,
       myEnrollmentStatus: sql<string | null>`(
-        select ${classEnrollments.status} from ${classEnrollments}
-        where ${classEnrollments.classSessionId} = ${classSessions.id}
-          and ${classEnrollments.learnerId} = ${user.id}
+        select ${liveLessonEnrollments.status} from ${liveLessonEnrollments}
+        where ${liveLessonEnrollments.liveLessonId} = ${liveLessons.id}
+          and ${liveLessonEnrollments.learnerId} = ${user.id}
         limit 1
       )`,
     })
-    .from(classSessions)
-    .innerJoin(tutors, eq(classSessions.tutorId, tutors.id))
+    .from(liveLessons)
+    .innerJoin(tutors, eq(liveLessons.tutorId, tutors.id))
     .innerJoin(users, eq(tutors.userId, users.id))
-    .leftJoin(units, eq(classSessions.unitId, units.id))
+    .leftJoin(units, eq(liveLessons.unitId, units.id))
     .where(and(...conditions))
-    .orderBy(includePast ? desc(classSessions.scheduledAt) : asc(classSessions.scheduledAt))
+    .orderBy(includePast ? desc(liveLessons.scheduledAt) : asc(liveLessons.scheduledAt))
     .limit(100);
 
   const visible = mine
     ? rows.filter(
         (r) =>
-          (tutorProfile && r.classSession.tutorId === tutorProfile.id) ||
+          (tutorProfile && r.liveLesson.tutorId === tutorProfile.id) ||
           r.myEnrollmentStatus != null,
       )
     : rows;
 
   return Response.json({
     success: true,
-    classes: visible.map((r) => ({
-      id: r.classSession.id,
-      title: r.classSession.title,
-      description: r.classSession.description,
-      tutorId: r.classSession.tutorId,
+    liveLessons: visible.map((r) => ({
+      id: r.liveLesson.id,
+      title: r.liveLesson.title,
+      description: r.liveLesson.description,
+      tutorId: r.liveLesson.tutorId,
       tutorName: r.tutorName,
       tutorAvatarSrc: r.tutorAvatar,
-      courseId: r.classSession.courseId,
-      unitId: r.classSession.unitId,
+      courseId: r.liveLesson.courseId,
+      unitId: r.liveLesson.unitId,
       unitTitle: r.unitTitle,
-      targetLanguage: r.classSession.targetLanguage,
-      instructionLanguage: r.classSession.instructionLanguage,
-      scheduledAt: r.classSession.scheduledAt,
-      durationMinutes: r.classSession.durationMinutes,
-      capacity: r.classSession.capacity,
+      targetLanguage: r.liveLesson.targetLanguage,
+      instructionLanguage: r.liveLesson.instructionLanguage,
+      scheduledAt: r.liveLesson.scheduledAt,
+      durationMinutes: r.liveLesson.durationMinutes,
+      capacity: r.liveLesson.capacity,
       enrolledCount: Number(r.enrolledCount),
-      status: r.classSession.status,
+      status: r.liveLesson.status,
       myEnrollmentStatus: r.myEnrollmentStatus,
       // The call id is never listed. It is handed out only alongside a token
-      // from /api/live/class/[classId]/token, after the checks there pass.
-      isTutor: Boolean(tutorProfile && r.classSession.tutorId === tutorProfile.id),
+      // from /api/live/lesson/[lessonId]/token, after the checks there pass.
+      isTutor: Boolean(tutorProfile && r.liveLesson.tutorId === tutorProfile.id),
     })),
   });
 }
 
-/** Creates a class. Tutors only — a learner cannot schedule teaching. */
+/** Creates a live lesson. Tutors only — a learner cannot schedule teaching. */
 export async function POST(req: Request) {
   if (!TUTORS_ENABLED) {
     return Response.json({ error: 'Live tutoring is not enabled.' }, { status: 404 });
@@ -201,26 +201,26 @@ export async function POST(req: Request) {
   if (!anchor.ok) {
     return Response.json({ error: anchor.error }, { status: 400 });
   }
-  if (!(CLASS_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
+  if (!(LIVE_LESSON_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
     return Response.json({ error: 'Unsupported duration' }, { status: 400 });
   }
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CLASS_CAPACITY) {
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_LIVE_LESSON_CAPACITY) {
     return Response.json(
-      { error: `Capacity must be between 1 and ${MAX_CLASS_CAPACITY}` },
+      { error: `Capacity must be between 1 and ${MAX_LIVE_LESSON_CAPACITY}` },
       { status: 400 },
     );
   }
 
-  // The class and its chat room are one unit of work, for the same reason a
-  // booking and its room are: a class whose chat room failed to create would
+  // The live lesson and its chat room are one unit of work, for the same reason a
+  // booking and its room are: a live lesson whose chat room failed to create would
   // have a sidebar nobody can post in.
-  const classId = await dbPool.transaction(async (tx) => {
+  const lessonId = await dbPool.transaction(async (tx) => {
     const [room] = await tx
       .insert(chatRooms)
       .values({
         name: title.slice(0, 150),
         isGroup: true,
-        kind: 'class',
+        kind: 'live_lesson',
         ownerTutorId: tutorProfile.id,
         createdBy: user.id,
       })
@@ -234,7 +234,7 @@ export async function POST(req: Request) {
     }
 
     const [created] = await tx
-      .insert(classSessions)
+      .insert(liveLessons)
       .values({
         tutorId: tutorProfile.id,
         courseId: anchor.courseId,
@@ -252,26 +252,26 @@ export async function POST(req: Request) {
         status: startNow ? 'live' : 'scheduled',
         wentLiveAt: startNow ? scheduledAt : null,
       })
-      .returning({ id: classSessions.id });
+      .returning({ id: liveLessons.id });
 
     return created?.id ?? null;
   });
 
   // After the transaction, never inside it: the announcement is a courtesy on
-  // top of a class that already exists, and a slow fan-out must not hold a
-  // write lock open. A scheduled class announces itself later, when the tutor
+  // top of a live lesson that already exists, and a slow fan-out must not hold a
+  // write lock open. A scheduled live lesson announces itself later, when the tutor
   // PATCHes it live.
-  if (startNow && classId != null) {
+  if (startNow && lessonId != null) {
     await announceLive({
-      kind: 'class',
+      kind: 'live_lesson',
       tutorId: tutorProfile.id,
       tutorName: user.name ?? 'Your tutor',
       title,
       courseId: anchor.courseId,
       targetLanguage,
-      href: `/live/class/${classId}`,
+      href: `/live/lesson/${lessonId}`,
     });
   }
 
-  return Response.json({ success: true, classId }, { status: 201 });
+  return Response.json({ success: true, lessonId }, { status: 201 });
 }

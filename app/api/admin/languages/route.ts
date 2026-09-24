@@ -47,8 +47,8 @@ export async function GET() {
             union all select target_language from sessions
             union all select native_language from sessions
             union all select target_language from student_progress
-            union all select target_language from class_sessions
-            union all select instruction_language from class_sessions
+            union all select target_language from live_lessons
+            union all select instruction_language from live_lessons
           ) refs
           where code is not null
           group by 1
@@ -228,7 +228,7 @@ export async function DELETE(req: Request) {
       learners: sql<number>`(select count(*)::int from users where preferred_target_language = ${code} or native_language = ${code})`,
       sessions: sql<number>`(select count(*)::int from sessions where target_language = ${code} or native_language = ${code})`,
       enrolments: sql<number>`(select count(*)::int from student_progress where target_language = ${code})`,
-      classes: sql<number>`(select count(*)::int from class_sessions where target_language = ${code} or instruction_language = ${code})`,
+      liveLessons: sql<number>`(select count(*)::int from live_lessons where target_language = ${code} or instruction_language = ${code})`,
     })
     .from(languages)
     .limit(1);
@@ -237,7 +237,7 @@ export async function DELETE(req: Request) {
     Number(counts?.learners ?? 0) +
     Number(counts?.sessions ?? 0) +
     Number(counts?.enrolments ?? 0) +
-    Number(counts?.classes ?? 0);
+    Number(counts?.liveLessons ?? 0);
 
   if (total > 0) {
     return Response.json(
@@ -245,7 +245,7 @@ export async function DELETE(req: Request) {
         error:
           `"${code}" is still in use by ${counts?.learners ?? 0} account(s), ` +
           `${counts?.sessions ?? 0} session(s), ${counts?.enrolments ?? 0} enrolment(s) and ` +
-          `${counts?.classes ?? 0} class(es). Disable it instead of deleting it.`,
+          `${counts?.liveLessons ?? 0} live lesson(s). Disable it instead of deleting it.`,
       },
       { status: 409 },
     );

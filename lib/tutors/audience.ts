@@ -15,8 +15,8 @@ import { db } from '@/src/db';
 import {
   assessmentQueue,
   assessmentSessions,
-  classEnrollments,
-  classSessions,
+  liveLessonEnrollments,
+  liveLessons,
   studentProgress,
   tutorBookings,
   tutors,
@@ -24,7 +24,7 @@ import {
 } from '@/src/schema';
 import { tutorLanguageSets } from '@/lib/tutors/languages';
 
-export const AUDIENCE_KINDS = ['class', 'course', 'all_my_learners'] as const;
+export const AUDIENCE_KINDS = ['live_lesson', 'course', 'all_my_learners'] as const;
 export type AudienceKind = (typeof AUDIENCE_KINDS)[number];
 
 export function isAudienceKind(value: unknown): value is AudienceKind {
@@ -32,8 +32,8 @@ export function isAudienceKind(value: unknown): value is AudienceKind {
 }
 
 export interface AudienceScope {
-  /** Required for `class`. Must belong to this tutor. */
-  classSessionId?: number | null;
+  /** Required for `live_lesson`. Must belong to this tutor. */
+  liveLessonId?: number | null;
   /** Required for `course`. */
   courseId?: number | null;
   /** Narrows `course` to one target language. */
@@ -42,14 +42,14 @@ export interface AudienceScope {
 
 export interface ResolvedAudience {
   learnerIds: string[];
-  /** Set when the scope was unusable — a class that is not this tutor's, say. */
+  /** Set when the scope was unusable — a live lesson that is not this tutor's, say. */
   error: string | null;
 }
 
 /**
  * Only accounts that can actually receive something.
  *
- * A suspended or soft-deleted learner still has rows in `class_enrollments`
+ * A suspended or soft-deleted learner still has rows in `live_lesson_enrollments`
  * and `student_progress` — that is the point of not hard-deleting them — but
  * notifying them, or adding them to a new chat room, would be wrong.
  */
@@ -70,23 +70,23 @@ export async function resolveAudience(
   kind: AudienceKind,
   scope: AudienceScope = {},
 ): Promise<ResolvedAudience> {
-  if (kind === 'class') {
-    const classSessionId = scope.classSessionId;
-    if (!classSessionId || !Number.isInteger(classSessionId)) {
-      return { learnerIds: [], error: 'Pick a class.' };
+  if (kind === 'live_lesson') {
+    const liveLessonId = scope.liveLessonId;
+    if (!liveLessonId || !Number.isInteger(liveLessonId)) {
+      return { learnerIds: [], error: 'Pick a live lesson.' };
     }
 
-    // The ownership check is the join, not a separate read: a class id that is
-    // not this tutor's simply yields no rows, so it cannot be used to probe
-    // another tutor's roster either.
+    // The ownership check is the join, not a separate read: a live lesson id
+    // that is not this tutor's simply yields no rows, so it cannot be used to
+    // probe another tutor's roster either.
     const rows = await db
-      .select({ learnerId: classEnrollments.learnerId })
-      .from(classEnrollments)
-      .innerJoin(classSessions, eq(classEnrollments.classSessionId, classSessions.id))
+      .select({ learnerId: liveLessonEnrollments.learnerId })
+      .from(liveLessonEnrollments)
+      .innerJoin(liveLessons, eq(liveLessonEnrollments.liveLessonId, liveLessons.id))
       .where(and(
-        eq(classEnrollments.classSessionId, classSessionId),
-        eq(classSessions.tutorId, tutorId),
-        ne(classEnrollments.status, 'cancelled'),
+        eq(liveLessonEnrollments.liveLessonId, liveLessonId),
+        eq(liveLessons.tutorId, tutorId),
+        ne(liveLessonEnrollments.status, 'cancelled'),
       ));
 
     return { learnerIds: await activeLearners(rows.map((r) => r.learnerId)), error: null };
@@ -142,21 +142,21 @@ export async function resolveAudience(
 
 /**
  * Every learner this tutor has actually taught — the union of the three ways
- * that can be true: a class they ran, a booking they took, an assessment they
+ * that can be true: a live lesson they ran, a booking they took, an assessment they
  * examined. Not filtered for account status; `activeLearners` does that.
  *
  * Three separate queries rather than one UNION so each stays a plain indexed
  * lookup on its own table; the sets are small and merged here.
  */
 async function tutorOwnLearnerIds(tutorId: number): Promise<string[]> {
-  const [classRows, bookingRows, assessmentRows] = await Promise.all([
+  const [lessonRows, bookingRows, assessmentRows] = await Promise.all([
     db
-      .select({ learnerId: classEnrollments.learnerId })
-      .from(classEnrollments)
-      .innerJoin(classSessions, eq(classEnrollments.classSessionId, classSessions.id))
+      .select({ learnerId: liveLessonEnrollments.learnerId })
+      .from(liveLessonEnrollments)
+      .innerJoin(liveLessons, eq(liveLessonEnrollments.liveLessonId, liveLessons.id))
       .where(and(
-        eq(classSessions.tutorId, tutorId),
-        ne(classEnrollments.status, 'cancelled'),
+        eq(liveLessons.tutorId, tutorId),
+        ne(liveLessonEnrollments.status, 'cancelled'),
       )),
     db
       .select({ learnerId: tutorBookings.learnerId })
@@ -173,7 +173,7 @@ async function tutorOwnLearnerIds(tutorId: number): Promise<string[]> {
   ]);
 
   return [...new Set([
-    ...classRows.map((r) => r.learnerId),
+    ...lessonRows.map((r) => r.learnerId),
     ...bookingRows.map((r) => r.learnerId),
     ...assessmentRows.map((r) => r.learnerId),
   ])];

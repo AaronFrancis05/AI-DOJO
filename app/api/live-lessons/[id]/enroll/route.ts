@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { chatRoomMembers, classEnrollments, classSessions } from '@/src/schema';
+import { chatRoomMembers, liveLessonEnrollments, liveLessons } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { enrolLearner, loadClassForUser } from '@/lib/tutors/rooms-data';
+import { enrolLearner, loadLiveLessonForUser } from '@/lib/tutors/rooms-data';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
@@ -10,7 +10,7 @@ import { topics } from '@/lib/realtime/topics';
 export const runtime = 'nodejs';
 
 /**
- * Enrol in a class.
+ * Enrol in a live lesson.
  *
  * Capacity is enforced inside a transaction under an advisory lock rather
  * than by a count-then-insert: two learners taking the last seat at the same
@@ -27,32 +27,32 @@ export async function POST(
   const user = await getAuthUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const classId = Number((await params).id);
-  if (!Number.isInteger(classId)) {
-    return Response.json({ error: 'Invalid class id' }, { status: 400 });
+  const lessonId = Number((await params).id);
+  if (!Number.isInteger(lessonId)) {
+    return Response.json({ error: 'Invalid live lesson id' }, { status: 400 });
   }
 
-  const found = await loadClassForUser(classId, user.id);
-  if (!found) return Response.json({ error: 'Class not found' }, { status: 404 });
+  const found = await loadLiveLessonForUser(lessonId, user.id);
+  if (!found) return Response.json({ error: 'Live lesson not found' }, { status: 404 });
   if (found.isTutor) {
-    return Response.json({ error: 'You are teaching this class' }, { status: 400 });
+    return Response.json({ error: 'You are teaching this live lesson' }, { status: 400 });
   }
-  if (found.classSession.status === 'cancelled') {
-    return Response.json({ error: 'This class was cancelled' }, { status: 409 });
+  if (found.liveLesson.status === 'cancelled') {
+    return Response.json({ error: 'This live lesson was cancelled' }, { status: 409 });
   }
 
-  const result = await enrolLearner(classId, user.id, found.classSession);
+  const result = await enrolLearner(lessonId, user.id, found.liveLesson);
 
   if (!result.ok) {
     return Response.json({ error: result.reason }, { status: 409 });
   }
 
-  await publish(topics.classSession(classId), { type: 'class.updated', classId });
+  await publish(topics.liveLesson(lessonId), { type: 'lesson.updated', lessonId });
   return Response.json({ success: true }, { status: 201 });
 }
 
 /**
- * Withdraw from a class.
+ * Withdraw from a live lesson.
  *
  * The row is kept and marked cancelled rather than deleted: a tutor looking
  * at their register should be able to see that someone signed up and pulled
@@ -69,24 +69,24 @@ export async function DELETE(
   const user = await getAuthUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const classId = Number((await params).id);
-  if (!Number.isInteger(classId)) {
-    return Response.json({ error: 'Invalid class id' }, { status: 400 });
+  const lessonId = Number((await params).id);
+  if (!Number.isInteger(lessonId)) {
+    return Response.json({ error: 'Invalid live lesson id' }, { status: 400 });
   }
 
   const [row] = await db
-    .select({ id: classSessions.id, chatRoomId: classSessions.chatRoomId })
-    .from(classSessions)
-    .where(eq(classSessions.id, classId))
+    .select({ id: liveLessons.id, chatRoomId: liveLessons.chatRoomId })
+    .from(liveLessons)
+    .where(eq(liveLessons.id, lessonId))
     .limit(1);
-  if (!row) return Response.json({ error: 'Class not found' }, { status: 404 });
+  if (!row) return Response.json({ error: 'Live lesson not found' }, { status: 404 });
 
   await db
-    .update(classEnrollments)
+    .update(liveLessonEnrollments)
     .set({ status: 'cancelled' })
     .where(and(
-      eq(classEnrollments.classSessionId, classId),
-      eq(classEnrollments.learnerId, user.id),
+      eq(liveLessonEnrollments.liveLessonId, lessonId),
+      eq(liveLessonEnrollments.learnerId, user.id),
     ));
 
   // Chat membership goes with the seat: someone who withdrew should not keep
@@ -100,6 +100,6 @@ export async function DELETE(
       ));
   }
 
-  await publish(topics.classSession(classId), { type: 'class.updated', classId });
+  await publish(topics.liveLesson(lessonId), { type: 'lesson.updated', lessonId });
   return Response.json({ success: true });
 }

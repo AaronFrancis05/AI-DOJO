@@ -344,6 +344,13 @@
       "when": 1787996573859,
       "tag": "0049_unknown_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789727846158,
+      "tag": "0050_class_to_live_lessons",
+      "breakpoints": true
     }
   ]
 }

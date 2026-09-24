@@ -43,7 +43,7 @@ interface BookingRow {
   isTutor: boolean;
 }
 
-interface ClassRow {
+interface LiveLessonRow {
   id: number;
   title: string;
   tutorName: string;
@@ -105,7 +105,7 @@ export default function TutorsPage() {
   const user = useUser();
   const [tutors, setTutors] = useState<TutorRow[]>([]);
   const [upcoming, setUpcoming] = useState<BookingRow[]>([]);
-  const [classes, setClasses] = useState<ClassRow[]>([]);
+  const [liveLessons, setLiveLessons] = useState<LiveLessonRow[]>([]);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   // Starts false when the feature is off, so the disabled path never has to
   // call setState from inside an effect just to stop a spinner.
@@ -116,14 +116,14 @@ export default function TutorsPage() {
     Promise.all([
       fetch('/api/tutors', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       fetch('/api/bookings', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
-      fetch('/api/classes', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+      fetch('/api/live-lessons', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       fetch('/api/assessments', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
     ]).then(([t, b, c, a]) => {
       if (Array.isArray(t.tutors)) setTutors(t.tutors);
       // Rooms already running come first. Both lists arrive soonest-first,
       // which is the right order for a diary and the wrong one for a room the
       // learner can only walk into while it is open.
-      if (Array.isArray(c.classes)) setClasses(liveFirst(c.classes as ClassRow[]));
+      if (Array.isArray(c.liveLessons)) setLiveLessons(liveFirst(c.liveLessons as LiveLessonRow[]));
       if (Array.isArray(a.assessments)) {
         setAssessments(liveFirst(a.assessments as AssessmentRow[]));
       }
@@ -200,18 +200,18 @@ export default function TutorsPage() {
         </section>
       )}
 
-      {classes.length > 0 && (
+      {liveLessons.length > 0 && (
         <section className="mb-10">
           <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
-            Live classes
+            Live lessons
           </h2>
           <div className="space-y-3">
-            {classes.map((c) => (
+            {liveLessons.map((c) => (
               <Card
                 key={c.id}
                 hoverable
                 className="p-4! cursor-pointer"
-                onClick={() => router.push(`/live/class/${c.id}`)}
+                onClick={() => router.push(`/live/lesson/${c.id}`)}
               >
                 <div className="flex items-center gap-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">

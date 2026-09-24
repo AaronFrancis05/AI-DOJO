@@ -28,8 +28,8 @@ export const topics = {
   user: (userId: string) => `user:${userId}`,
   /** Queue movement in one assessment room. Tutor + queued learners. */
   assessment: (assessmentId: number) => `assessment:${assessmentId}`,
-  /** Roster/status changes on one scheduled class. */
-  classSession: (classId: number) => `class:${classId}`,
+  /** Roster/status changes on one live lesson. */
+  liveLesson: (lessonId: number) => `lesson:${lessonId}`,
 } as const;
 
 export type RealtimeEvent =
@@ -43,8 +43,8 @@ export type RealtimeEvent =
   | { type: 'assessment.queue'; assessmentId: number }
   /** The assessment itself moved between scheduled/live/completed. */
   | { type: 'assessment.status'; assessmentId: number; status: string }
-  /** A class session changed status or roster. */
-  | { type: 'class.updated'; classId: number };
+  /** A live lesson changed status or roster. */
+  | { type: 'lesson.updated'; lessonId: number };
 
 /** A rough guard for values arriving off the wire. */
 export function isRealtimeEvent(value: unknown): value is RealtimeEvent {

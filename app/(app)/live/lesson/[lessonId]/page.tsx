@@ -1,5 +1,5 @@
 /* ───────────────────────────────────────────────
-   Live class — one tutor, many learners, plus the translated chat sidebar.
+   Live lesson — one tutor, many learners, plus the translated chat sidebar.
    ─────────────────────────────────────────────── */
 
 'use client';
@@ -9,7 +9,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { ClassRoom, type RosterEntry } from '@/components/tutors/ClassRoom';
+import { LiveLessonRoom, type RosterEntry } from '@/components/tutors/LiveLessonRoom';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useRealtimeTopics } from '@/lib/realtime/context';
 import { topics } from '@/lib/realtime/topics';
@@ -17,7 +17,7 @@ import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { getTargetLangConfig } from '@/lib/language';
 import { ArrowLeft } from 'lucide-react';
 
-interface ClassDetail {
+interface LiveLessonDetail {
   id: number;
   title: string;
   description: string | null;
@@ -35,41 +35,41 @@ interface ClassDetail {
   joinBlockedReason: string | null;
 }
 
-export default function LiveClassPage() {
-  const params = useParams<{ classId: string }>();
+export default function LiveLessonPage() {
+  const params = useParams<{ lessonId: string }>();
   const router = useRouter();
-  const classId = Number(params.classId);
-  usePageTitle('Live class');
+  const lessonId = Number(params.lessonId);
+  usePageTitle('Live lesson');
 
-  const [detail, setDetail] = useState<ClassDetail | null>(null);
+  const [detail, setDetail] = useState<LiveLessonDetail | null>(null);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   // Starts false when there is nothing to fetch — feature off, or a malformed
   // id — so those paths never call setState from inside an effect just to
   // stop a spinner.
-  const [loading, setLoading] = useState(TUTORS_ENABLED && Number.isInteger(classId));
+  const [loading, setLoading] = useState(TUTORS_ENABLED && Number.isInteger(lessonId));
   const [error, setError] = useState('');
   const [enrolling, setEnrolling] = useState(false);
 
   const load = useCallback(
     () =>
-      !TUTORS_ENABLED || !Number.isInteger(classId)
+      !TUTORS_ENABLED || !Number.isInteger(lessonId)
         ? Promise.resolve()
-        : fetch(`/api/classes/${classId}`, { credentials: 'include' })
+        : fetch(`/api/live-lessons/${lessonId}`, { credentials: 'include' })
             .then((res) => res.json())
             .then((data) => {
               setLoading(false);
               if (data.success) {
-                setDetail(data.classSession as ClassDetail);
+                setDetail(data.liveLesson as LiveLessonDetail);
                 setRoster((data.roster ?? []) as RosterEntry[]);
               } else {
-                setError(data.error ?? 'Class not found.');
+                setError(data.error ?? 'Live lesson not found.');
               }
             })
             .catch(() => {
               setLoading(false);
-              setError('Could not load this class.');
+              setError('Could not load this live lesson.');
             }),
-    [classId],
+    [lessonId],
   );
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function LiveClassPage() {
   // The roster moves as people enrol and arrive; nobody should have to
   // refresh a live page to see who is in the room.
   useRealtimeTopics(
-    Number.isInteger(classId) ? [topics.classSession(classId)] : null,
+    Number.isInteger(lessonId) ? [topics.liveLesson(lessonId)] : null,
     { onEvent: () => { void load(); }, onSync: load },
   );
 
@@ -87,7 +87,7 @@ export default function LiveClassPage() {
     setEnrolling(true);
     setError('');
     try {
-      const res = await fetch(`/api/classes/${classId}/enroll`, {
+      const res = await fetch(`/api/live-lessons/${lessonId}/enroll`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -99,7 +99,7 @@ export default function LiveClassPage() {
     } finally {
       setEnrolling(false);
     }
-  }, [classId, load]);
+  }, [lessonId, load]);
 
   if (!TUTORS_ENABLED) {
     return (
@@ -125,7 +125,7 @@ export default function LiveClassPage() {
     return (
       <div className="mx-auto w-full max-w-2xl p-6">
         <Card className="py-12 text-center">
-          <p className="text-sm text-dojo-text-muted">{error || 'Class not found.'}</p>
+          <p className="text-sm text-dojo-text-muted">{error || 'Live lesson not found.'}</p>
           <Button variant="secondary" className="mt-6" onClick={() => router.push('/tutors')}>
             Back to tutors
           </Button>
@@ -172,7 +172,7 @@ export default function LiveClassPage() {
       {!detail.isTutor && !enrolled ? (
         <Card className="py-12 text-center">
           <p className="text-sm leading-relaxed text-dojo-text-muted">
-            You are not enrolled in this class yet.
+            You are not enrolled in this live lesson yet.
           </p>
           {error && <p className="mt-3 text-sm text-dojo-danger">{error}</p>}
           <Button variant="primary" className="mt-6" loading={enrolling} onClick={enroll}>
@@ -180,8 +180,8 @@ export default function LiveClassPage() {
           </Button>
         </Card>
       ) : (
-        <ClassRoom
-          classId={detail.id}
+        <LiveLessonRoom
+          lessonId={detail.id}
           chatRoomId={detail.chatRoomId}
           roster={roster}
           canJoin={detail.canJoin}

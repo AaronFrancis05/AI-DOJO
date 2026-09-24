@@ -22,6 +22,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/live/class/:id",
+        destination: "/live/lesson/:id",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

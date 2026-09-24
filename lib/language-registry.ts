@@ -113,7 +113,7 @@ export async function invalidateLanguageCatalog(): Promise<void> {
 
 /**
  * Whether `code` is offered on the given side of the pair. Used to validate
- * anything a user picks — a tutor's teaching languages, a class's instruction
+ * anything a user picks — a tutor's teaching languages, a live lesson's instruction
  * language — against what is actually configured, rather than against a
  * hardcoded list that would drift from the admin's choices.
  */

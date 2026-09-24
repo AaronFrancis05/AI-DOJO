@@ -214,14 +214,14 @@ function TutorEditor({
       <div className="mt-6 space-y-6">
         <LanguagePillGroup
           label="Languages they teach"
-          hint="The target language a learner practises. Every class they schedule is checked against this."
+          hint="The target language a learner practises. Every live lesson they schedule is checked against this."
           options={catalog.target}
           selected={languages}
           onToggle={toggle(languages, setLanguages)}
         />
         <LanguagePillGroup
           label="Languages they explain in"
-          hint="How they coach and give feedback. They pick one of these per class."
+          hint="How they coach and give feedback. They pick one of these per live lesson."
           options={catalog.native}
           selected={instructionLanguages}
           onToggle={toggle(instructionLanguages, setInstructionLanguages)}

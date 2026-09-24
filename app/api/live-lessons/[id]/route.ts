@@ -1,8 +1,8 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { classSessions } from '@/src/schema';
+import { liveLessons } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { loadClassForUser, loadClassRoster } from '@/lib/tutors/rooms-data';
+import { loadLiveLessonForUser, loadLiveLessonRoster } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { createNotifications } from '@/lib/notifications';
@@ -12,7 +12,7 @@ import { topics } from '@/lib/realtime/topics';
 
 export const runtime = 'nodejs';
 
-const CLASS_STATUSES = ['scheduled', 'live', 'completed', 'cancelled'] as const;
+const LIVE_LESSON_STATUSES = ['scheduled', 'live', 'completed', 'cancelled'] as const;
 
 export async function GET(
   _req: Request,
@@ -25,36 +25,36 @@ export async function GET(
   const user = await getAuthUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const classId = Number((await params).id);
-  if (!Number.isInteger(classId)) {
-    return Response.json({ error: 'Invalid class id' }, { status: 400 });
+  const lessonId = Number((await params).id);
+  if (!Number.isInteger(lessonId)) {
+    return Response.json({ error: 'Invalid live lesson id' }, { status: 400 });
   }
 
-  const found = await loadClassForUser(classId, user.id);
-  if (!found) return Response.json({ error: 'Class not found' }, { status: 404 });
+  const found = await loadLiveLessonForUser(lessonId, user.id);
+  if (!found) return Response.json({ error: 'Live lesson not found' }, { status: 404 });
 
-  const roster = await loadClassRoster(classId);
+  const roster = await loadLiveLessonRoster(lessonId);
   const decision = canJoinBooking({
-    scheduledAt: found.classSession.scheduledAt,
-    durationMinutes: found.classSession.durationMinutes,
-    status: found.classSession.status,
+    scheduledAt: found.liveLesson.scheduledAt,
+    durationMinutes: found.liveLesson.durationMinutes,
+    status: found.liveLesson.status,
   });
 
   return Response.json({
     success: true,
-    classSession: {
-      id: found.classSession.id,
-      title: found.classSession.title,
-      description: found.classSession.description,
+    liveLesson: {
+      id: found.liveLesson.id,
+      title: found.liveLesson.title,
+      description: found.liveLesson.description,
       tutorName: found.tutorName,
-      courseId: found.classSession.courseId,
-      unitId: found.classSession.unitId,
-      targetLanguage: found.classSession.targetLanguage,
-      scheduledAt: found.classSession.scheduledAt,
-      durationMinutes: found.classSession.durationMinutes,
-      capacity: found.classSession.capacity,
-      status: found.classSession.status,
-      chatRoomId: found.classSession.chatRoomId,
+      courseId: found.liveLesson.courseId,
+      unitId: found.liveLesson.unitId,
+      targetLanguage: found.liveLesson.targetLanguage,
+      scheduledAt: found.liveLesson.scheduledAt,
+      durationMinutes: found.liveLesson.durationMinutes,
+      capacity: found.liveLesson.capacity,
+      status: found.liveLesson.status,
+      chatRoomId: found.liveLesson.chatRoomId,
       isTutor: found.isTutor,
       myEnrollmentStatus: found.enrollment?.status ?? null,
       canJoin: decision.allowed,
@@ -84,16 +84,16 @@ export async function PATCH(
   const user = await getAuthUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const classId = Number((await params).id);
-  if (!Number.isInteger(classId)) {
-    return Response.json({ error: 'Invalid class id' }, { status: 400 });
+  const lessonId = Number((await params).id);
+  if (!Number.isInteger(lessonId)) {
+    return Response.json({ error: 'Invalid live lesson id' }, { status: 400 });
   }
 
-  const found = await loadClassForUser(classId, user.id);
+  const found = await loadLiveLessonForUser(lessonId, user.id);
   // 404 rather than 403 for a learner: the same reason loadBookingForUser
   // collapses "not found" and "not yours".
   if (!found || !found.isTutor) {
-    return Response.json({ error: 'Class not found' }, { status: 404 });
+    return Response.json({ error: 'Live lesson not found' }, { status: 404 });
   }
 
   let body: { status?: unknown };
@@ -104,16 +104,16 @@ export async function PATCH(
   }
 
   const status = String(body.status ?? '');
-  if (!(CLASS_STATUSES as readonly string[]).includes(status)) {
+  if (!(LIVE_LESSON_STATUSES as readonly string[]).includes(status)) {
     return Response.json({ error: 'Unsupported status' }, { status: 400 });
   }
 
   // The status write is unconditional: a tutor may re-open a room they had
   // dropped back to 'scheduled', and that must still take effect.
   await db
-    .update(classSessions)
+    .update(liveLessons)
     .set({ status, updatedAt: new Date() })
-    .where(eq(classSessions.id, classId));
+    .where(eq(liveLessons.id, lessonId));
 
   // Claiming the first open is separate, and conditional in SQL rather than on
   // the row we read above. Deciding it from that read is a check-then-act: two
@@ -123,28 +123,28 @@ export async function PATCH(
   let isFirstOpen = false;
   if (status === 'live') {
     const claimed = await db
-      .update(classSessions)
+      .update(liveLessons)
       .set({ wentLiveAt: new Date() })
-      .where(and(eq(classSessions.id, classId), isNull(classSessions.wentLiveAt)))
-      .returning({ id: classSessions.id });
+      .where(and(eq(liveLessons.id, lessonId), isNull(liveLessons.wentLiveAt)))
+      .returning({ id: liveLessons.id });
     isFirstOpen = claimed.length > 0;
   }
 
-  await publish(topics.classSession(classId), { type: 'class.updated', classId });
+  await publish(topics.liveLesson(lessonId), { type: 'lesson.updated', lessonId });
 
   if (isFirstOpen) {
     // The roster is unioned with the cohort rather than replacing it: someone
-    // who enrolled in this one class may not be one of this tutor's learners
+    // who enrolled in this one live lesson may not be one of this tutor's learners
     // by any other route, and they are the last person who should miss it.
-    const roster = await loadClassRoster(classId);
+    const roster = await loadLiveLessonRoster(lessonId);
     await announceLive({
-      kind: 'class',
-      tutorId: found.classSession.tutorId,
+      kind: 'live_lesson',
+      tutorId: found.liveLesson.tutorId,
       tutorName: found.tutorName ?? 'Your tutor',
-      title: found.classSession.title,
-      courseId: found.classSession.courseId,
-      targetLanguage: found.classSession.targetLanguage,
-      href: `/live/class/${classId}`,
+      title: found.liveLesson.title,
+      courseId: found.liveLesson.courseId,
+      targetLanguage: found.liveLesson.targetLanguage,
+      href: `/live/lesson/${lessonId}`,
       extraLearnerIds: roster.map((r) => r.learnerId),
     });
   }
@@ -152,11 +152,11 @@ export async function PATCH(
   // A cancellation is the one status change a learner must be told about
   // rather than discover by turning up.
   if (status === 'cancelled') {
-    const roster = await loadClassRoster(classId);
+    const roster = await loadLiveLessonRoster(lessonId);
     await createNotifications(roster.map((r) => r.learnerId), {
-      type: 'class',
-      title: 'A live class was cancelled',
-      body: `${found.classSession.title} on ${found.classSession.scheduledAt.toLocaleString()} will not run.`,
+      type: 'live_lesson',
+      title: 'A live lesson was cancelled',
+      body: `${found.liveLesson.title} on ${found.liveLesson.scheduledAt.toLocaleString()} will not run.`,
       href: '/tutors',
     });
   }

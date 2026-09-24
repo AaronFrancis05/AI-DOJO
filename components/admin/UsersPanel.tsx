@@ -110,7 +110,7 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
 
   const softDelete = useCallback(async (u: AdminUser) => {
     if (!window.confirm(
-      `Close ${u.name || u.email}'s account?\n\nTheir sessions, grades and class enrolments are kept so other people's records stay intact — but the account is anonymised and can no longer be signed into.`,
+      `Close ${u.name || u.email}'s account?\n\nTheir sessions, grades and live-lesson enrolments are kept so other people's records stay intact — but the account is anonymised and can no longer be signed into.`,
     )) return;
 
     setBusyId(u.id);
@@ -127,7 +127,7 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
 
   const purge = useCallback(async (u: AdminUser) => {
     const typed = window.prompt(
-      `PERMANENTLY delete ${u.email}?\n\nThis cannot be undone. Their sessions, evaluations, class enrolments and the tutor verdicts filed about them are all deleted — which changes other people's rosters and grade history too.\n\nType the account email to confirm:`,
+      `PERMANENTLY delete ${u.email}?\n\nThis cannot be undone. Their sessions, evaluations, live-lesson enrolments and the tutor verdicts filed about them are all deleted — which changes other people's rosters and grade history too.\n\nType the account email to confirm:`,
       '',
     );
     if (!typed) return;
@@ -135,7 +135,7 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
     setBusyId(u.id);
     onError('');
     try {
-      const data = await adminFetch<{ purged?: { sessions: number; classEnrollments: number } }>(
+      const data = await adminFetch<{ purged?: { sessions: number; liveLessonEnrollments: number } }>(
         `/api/admin/users/${u.id}/purge`,
         { method: 'POST', body: { confirmEmail: typed } },
       );
@@ -144,7 +144,7 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
       // deleted row on screen and read as if nothing had happened.
       window.alert(
         data.purged
-          ? `Deleted. ${data.purged.sessions} session(s) and ${data.purged.classEnrollments} class enrolment(s) went with it.`
+          ? `Deleted. ${data.purged.sessions} session(s) and ${data.purged.liveLessonEnrollments} live-lesson enrolment(s) went with it.`
           : 'Deleted.',
       );
       reload();

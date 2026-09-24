@@ -62,7 +62,7 @@ const navItems: NavItem[] = [
  * Sessions, Progress and Leaderboard are all surfaces of someone's own
  * practice, and a tutor has none — the XP and streak they were being offered
  * were permanently zero. Teaching is their home, and Calendar carries the
- * classes, assessments and bookings they run (see `GET /api/calendar`).
+ * live lessons, assessments and bookings they run (see `GET /api/calendar`).
  */
 const tutorNavItems: NavItem[] = [
   { label: 'Teaching',  href: '/tutor',    icon: GraduationCap },

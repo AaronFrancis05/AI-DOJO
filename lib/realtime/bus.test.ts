@@ -73,5 +73,5 @@ test('topic builders produce the strings the authorizer parses', () => {
   assert.equal(topics.chatRoom(12), 'chat:12');
   assert.equal(topics.user('abc'), 'user:abc');
   assert.equal(topics.assessment(3), 'assessment:3');
-  assert.equal(topics.classSession(4), 'class:4');
+  assert.equal(topics.liveLesson(4), 'lesson:4');
 });

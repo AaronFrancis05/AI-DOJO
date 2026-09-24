@@ -1,7 +1,7 @@
 /**
  * Validating the curriculum unit a live room is pinned to.
  *
- * `class_sessions.unit_id` and `assessment_sessions.unit_id` are what the
+ * `live_lessons.unit_id` and `assessment_sessions.unit_id` are what the
  * course page keys its "join the live lesson for this unit" footer on, so a
  * pin that points at a unit from another course does not fail loudly — it
  * fails by never appearing where the tutor expected it. Both create routes

@@ -13,7 +13,7 @@ interface Stats {
   activeCourses: number;
   activeDomains: number;
   enabledTargetLanguages: number;
-  upcomingClasses: number;
+  upcomingLiveLessons: number;
   upcomingAssessments: number;
 }
 
@@ -27,7 +27,7 @@ const TILES: { key: keyof Stats; label: string; hint?: string; alert?: boolean }
   { key: 'enabledTargetLanguages', label: 'Languages offered', hint: 'On the Languages tab' },
   { key: 'activeCourses', label: 'Published courses' },
   { key: 'activeDomains', label: 'Active domains' },
-  { key: 'upcomingClasses', label: 'Classes this week' },
+  { key: 'upcomingLiveLessons', label: 'Live lessons this week' },
   { key: 'upcomingAssessments', label: 'Assessments this week' },
 ];
 

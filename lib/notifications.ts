@@ -16,7 +16,7 @@ import { topics } from '@/lib/realtime/topics';
 export type NotificationType =
   | 'evaluation'
   | 'booking'
-  | 'class'
+  | 'live_lesson'
   | 'assessment'
   // The only one a human writes rather than a completed action producing it —
   // see POST /api/tutor/announcements.

@@ -19,8 +19,8 @@ import {
   assessmentQueue,
   assessmentSessions,
   chatRoomMembers,
-  classEnrollments,
-  classSessions,
+  liveLessonEnrollments,
+  liveLessons,
   tutors,
 } from '@/src/schema';
 
@@ -62,22 +62,22 @@ export async function canSubscribe(topic: string, userId: string): Promise<boole
       return Boolean(member);
     }
 
-    case 'class': {
-      const classId = Number(rawId);
-      if (!Number.isInteger(classId)) return false;
+    case 'lesson': {
+      const lessonId = Number(rawId);
+      if (!Number.isInteger(lessonId)) return false;
       const [row] = await db
-        .select({ tutorId: classSessions.tutorId })
-        .from(classSessions)
-        .where(eq(classSessions.id, classId))
+        .select({ tutorId: liveLessons.tutorId })
+        .from(liveLessons)
+        .where(eq(liveLessons.id, lessonId))
         .limit(1);
       if (!row) return false;
       if (await isTutorOf(row.tutorId, userId)) return true;
       const [enrollment] = await db
-        .select({ id: classEnrollments.id })
-        .from(classEnrollments)
+        .select({ id: liveLessonEnrollments.id })
+        .from(liveLessonEnrollments)
         .where(and(
-          eq(classEnrollments.classSessionId, classId),
-          eq(classEnrollments.learnerId, userId),
+          eq(liveLessonEnrollments.liveLessonId, lessonId),
+          eq(liveLessonEnrollments.learnerId, userId),
         ))
         .limit(1);
       return Boolean(enrollment);

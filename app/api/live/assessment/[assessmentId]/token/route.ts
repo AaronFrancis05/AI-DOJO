@@ -9,7 +9,7 @@ export const runtime = 'nodejs';
 /**
  * Mints a Stream call token for one assessment room.
  *
- * The rule that makes this an examination rather than a class lives here: a
+ * The rule that makes this an examination rather than a live lessons here: a
  * learner gets a token only while their queue slot is `admitted`. Enforcing
  * it in the UI would mean a learner who knew the endpoint could sit in on
  * someone else's exam, so the queue state is checked at the only point that

@@ -1,5 +1,5 @@
 /* ───────────────────────────────────────────────
-   ClassRoom — one tutor, many learners.
+   LiveLessonRoom — one tutor, many learners.
 
    The video surface is CallStage; everything here is what makes it a
    classroom rather than a call: a grid layout, the tutor's mute-all and
@@ -26,8 +26,8 @@ export interface RosterEntry {
   status: string;
 }
 
-interface ClassRoomProps {
-  classId: number;
+interface LiveLessonRoomProps {
+  lessonId: number;
   chatRoomId: number | null;
   roster: RosterEntry[];
   canJoin: boolean;
@@ -39,7 +39,7 @@ interface ClassRoomProps {
  *
  * Inside CallStage's providers, so the Stream hooks resolve. Spotlight is
  * `pinForEveryone`, not a local pin: the point of spotlighting a learner
- * mid-lesson is that the rest of the class looks at them too.
+ * mid-lesson is that the rest of the live lesson looks at them too.
  */
 function TutorTools({ call }: { call: Call }) {
   const { useParticipants } = useCallStateHooks();
@@ -112,20 +112,20 @@ function TutorTools({ call }: { call: Call }) {
   );
 }
 
-export function ClassRoom({
-  classId,
+export function LiveLessonRoom({
+  lessonId,
   chatRoomId,
   roster,
   canJoin,
   joinBlockedReason,
-}: ClassRoomProps) {
+}: LiveLessonRoomProps) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="min-w-0 space-y-4">
         <CallStage
-          tokenEndpoint={`/api/live/class/${classId}/token`}
+          tokenEndpoint={`/api/live/lesson/${lessonId}/token`}
           layout="grid"
-          joinLabel="Join class"
+          joinLabel="Join lesson"
           idleMessage="Your camera and microphone start on. You can turn either off once you're in."
           blocked={!canJoin}
           blockedReason={joinBlockedReason ?? undefined}

@@ -77,7 +77,7 @@ const COPY: Record<UserRole, {
     showcaseBody: 'Run live lessons and assessments alongside the AI, with the learner’s whole practice history in front of you.',
     showcasePoints: [
       { icon: <CalendarClock className="h-4 w-4 text-dojo-accent" />, text: 'Publish your availability' },
-      { icon: <Users className="h-4 w-4 text-dojo-accent" />, text: 'Live classes and 1-to-1 lessons' },
+      { icon: <Users className="h-4 w-4 text-dojo-accent" />, text: 'Live lessons and 1-to-1 lessons' },
       { icon: <ClipboardList className="h-4 w-4 text-dojo-accent" />, text: 'Assessments and grading' },
       { icon: <Wallet className="h-4 w-4 text-dojo-accent" />, text: 'Set your own hourly rate' },
     ],

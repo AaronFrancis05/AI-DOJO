@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { classSessions, courses, tutorAnnouncements, tutors } from '@/src/schema';
+import { liveLessons, courses, tutorAnnouncements, tutors } from '@/src/schema';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { createNotifications } from '@/lib/notifications';
 import { isAudienceKind, resolveAudience } from '@/lib/tutors/audience';
@@ -44,11 +44,11 @@ export async function GET() {
   const rows = await db
     .select({
       announcement: tutorAnnouncements,
-      className: classSessions.title,
+      lessonTitle: liveLessons.title,
       courseName: courses.title,
     })
     .from(tutorAnnouncements)
-    .leftJoin(classSessions, eq(tutorAnnouncements.classSessionId, classSessions.id))
+    .leftJoin(liveLessons, eq(tutorAnnouncements.liveLessonId, liveLessons.id))
     .leftJoin(courses, eq(tutorAnnouncements.courseId, courses.id))
     .where(eq(tutorAnnouncements.tutorId, profile.id))
     .orderBy(desc(tutorAnnouncements.createdAt))
@@ -63,7 +63,7 @@ export async function GET() {
       targetLanguage: r.announcement.targetLanguage,
       instructionLanguage: r.announcement.instructionLanguage,
       audienceKind: r.announcement.audienceKind,
-      audienceName: r.className ?? r.courseName ?? null,
+      audienceName: r.lessonTitle ?? r.courseName ?? null,
       recipientCount: r.announcement.recipientCount,
       createdAt: r.announcement.createdAt,
     })),
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
 
   const profile = await loadTutorProfile(user.id);
   if (!profile) return Response.json({ error: 'No tutor profile' }, { status: 404 });
-  // The same gate `POST /api/classes` applies: an unverified tutor is not in
+  // The same gate `POST /api/live-lessons` applies: an unverified tutor is not in
   // front of learners yet, so they cannot message them either.
   if (profile.verificationStatus !== 'verified') {
     return Response.json(
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Unknown audience' }, { status: 400 });
   }
 
-  const classSessionId = body.classSessionId != null ? Number(body.classSessionId) : null;
+  const liveLessonId = body.liveLessonId != null ? Number(body.liveLessonId) : null;
   const courseId = body.courseId != null ? Number(body.courseId) : null;
   const targetLanguage = body.targetLanguage ? String(body.targetLanguage).trim() : null;
   const instructionLanguage = body.instructionLanguage
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
   }
 
   const audience = await resolveAudience(profile.id, audienceKind, {
-    classSessionId,
+    liveLessonId,
     courseId,
     targetLanguage,
   });
@@ -163,7 +163,7 @@ export async function POST(req: Request) {
       targetLanguage,
       instructionLanguage,
       audienceKind,
-      classSessionId: audienceKind === 'class' ? classSessionId : null,
+      liveLessonId: audienceKind === 'live_lesson' ? liveLessonId : null,
       courseId: audienceKind === 'course' ? courseId : null,
       // Counted at send time. The audience moves as learners enrol and leave,
       // so recomputing it later would not describe what was delivered.

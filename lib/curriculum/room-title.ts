@@ -15,12 +15,12 @@ export interface RoomTitleParts {
   /** `units.sequenceOrder` — 1-based, as stored. */
   unitSequence: number;
   unitTitle: string;
-  kind: 'class' | 'assessment';
+  kind: 'live_lesson' | 'assessment';
 }
 
 export function composeRoomTitle({ unitSequence, unitTitle, kind }: RoomTitleParts): string {
-  const suffix = kind === 'class' ? 'live practice' : 'speaking check';
-  // Matches the column: varchar(150) on both class_sessions and
+  const suffix = kind === 'live_lesson' ? 'live practice' : 'speaking check';
+  // Matches the column: varchar(150) on both live_lessons and
   // assessment_sessions. A long unit title is trimmed here rather than
   // silently truncated by the route.
   return `Unit ${unitSequence} · ${unitTitle} — ${suffix}`.slice(0, 150);

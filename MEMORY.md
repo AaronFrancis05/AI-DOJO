@@ -1076,3 +1076,12 @@ Lint / test / build workflows now use `actions/checkout@v7` and `actions/setup-n
 ## 2026-09-18 (lint/test on every branch)
 
 `lint.yml` and `test.yml` now run on every branch push (`**`) and on every pull-request open/update, not only `main`. Image publish stays `main`-only.
+
+## 2026-09-18 (class → live lesson)
+
+The marketplace group live is not a 学級. Product copy already said "Live lesson"; schema/API still said `class`. Renamed in one pass:
+
+- Tables `class_sessions` / `class_enrollments` → `live_lessons` / `live_lesson_enrollments` (`live_lesson_id`). Migration `drizzle/0050_class_to_live_lessons.sql` is `RENAME` plus data backfill (`chat_rooms.kind`, cohort `audience_key` `class|` → `live_lesson|`, announcement `audience_kind`, notification `type`). Do not apply until asked — `db:migrate` has historically stalled at 0002.
+- Routes `/api/classes` → `/api/live-lessons`, `/live/class/[id]` → `/live/lesson/[id]`, token `/api/live/lesson/[lessonId]/token`. `next.config.ts` 301s the old page path.
+- Chat kind / audience / realtime: `live_lesson`, topic `lesson:{id}`, event `lesson.updated`. `ClassRoom` → `LiveLessonRoom`. Booking tables stay `tutor_bookings`.
+- `class` is now free for a future standing 学級. Org features (Friends / School) were not started.

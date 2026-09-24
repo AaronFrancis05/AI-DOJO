@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
  * The irreversible counterpart of `DELETE /api/admin/users` (which soft-deletes
  * and keeps the foreign keys intact). This exists for a genuine erasure
  * request, and nothing else should use it: `users.id` cascades into sessions,
- * conversations, evaluations, class enrolments, chat messages, queue slots and
+ * conversations, evaluations, live-lesson enrolments, chat messages, queue slots and
  * tutor verdicts, so a purge rewrites other people's records too — a tutor's
  * roster loses a learner retroactively, and grades filed against them vanish.
  *
@@ -63,7 +63,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const [counts] = await db
     .select({
       sessions: sql<number>`(select count(*)::int from sessions where user_id = ${userId})`,
-      classEnrollments: sql<number>`(select count(*)::int from class_enrollments where learner_id = ${userId})`,
+      liveLessonEnrollments: sql<number>`(select count(*)::int from live_lesson_enrollments where learner_id = ${userId})`,
       tutorEvaluations: sql<number>`(select count(*)::int from tutor_evaluations where learner_id = ${userId})`,
       chatMessages: sql<number>`(select count(*)::int from chat_messages where sender_id = ${userId})`,
     })
@@ -104,7 +104,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // What went with them. `chat_messages.sender_id` is ON DELETE SET NULL,
       // so those messages survive as authorless rather than disappearing.
       sessions: Number(counts?.sessions ?? 0),
-      classEnrollments: Number(counts?.classEnrollments ?? 0),
+      liveLessonEnrollments: Number(counts?.liveLessonEnrollments ?? 0),
       tutorEvaluations: Number(counts?.tutorEvaluations ?? 0),
       chatMessagesOrphaned: Number(counts?.chatMessages ?? 0),
     },

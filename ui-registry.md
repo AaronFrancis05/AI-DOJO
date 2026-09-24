@@ -155,7 +155,7 @@ tab cares about.
 
 | Module | Notes |
 |--------|-------|
-| `lib/realtime/topics.ts` | Topic builders (`chat:{id}`, `user:{id}`, `class:{id}`, `assessment:{id}`) and the `RealtimeEvent` union. Client-safe — no server imports. |
+| `lib/realtime/topics.ts` | Topic builders (`chat:{id}`, `user:{id}`, `lesson:{id}`, `assessment:{id}`) and the `RealtimeEvent` union. Client-safe — no server imports. |
 | `lib/realtime/bus.ts` | Server fan-out over Upstash Redis pub/sub (`POST /publish/{ch}`, `GET /subscribe/{a,b,c}` returning `text/event-stream`). Payloads are base64 so a comma or newline cannot split a frame. Falls back to an in-process emitter when Redis is unconfigured; `isFanOutDurable()` reports which. |
 | `lib/realtime/authorize.ts` | The only place a subscription is checked. One topic failing is dropped, not fatal to the connection. |
 | `app/api/realtime/route.ts` | `GET ?topics=a,b` gives SSE. 25s heartbeat, deliberate close 15s before `maxDuration` so the client reconnects on its own terms. |
@@ -188,18 +188,18 @@ import a Stream chat client.
 | `lib/tutors/rooms.ts` | `generateCallId()` (random, never derived from a row id), `canJoinBooking()` server-side time gate shared by all three room types, `streamUserId()`, `createCallToken()` — a **call**-scoped token, so the call id's secrecy is a second line of defence rather than the only one. `role: 'admin'` only for the tutor. |
 | `lib/tutors/join.ts` | `buildJoinPayload()` — the one payload all three room types hand a joiner. Also upserts the joining user and pre-creates the call **as the tutor**, so the first learner through the door does not become its creator. |
 | `lib/tutors/bookings.ts` | `loadBookingForUser()` — collapses "not found" and "not yours" into one null so booking ids cannot be probed. |
-| `lib/tutors/rooms-data.ts` | The same for classes and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for classes so a class id cannot collide with a session id). `closeAssessmentIfDrained()` runs the AI examiner's auto-close — drain check and status update in one transaction under the same advisory lock `startInterview` takes. |
+| `lib/tutors/rooms-data.ts` | The same for live lessons and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for live lessons so a live-lesson id cannot collide with a session id). `closeAssessmentIfDrained()` runs the AI examiner's auto-close — drain check and status update in one transaction under the same advisory lock `startInterview` takes. |
 | `lib/tutors/live.ts` | `announceLive()` — the go-live fan-out for both room types. Resolves recipients through `resolveAudience()` (the pinned course's cohort, else all this tutor's learners) and never throws. |
 | `lib/curriculum/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
 | `lib/curriculum/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
 | `components/tutors/CallStage.tsx` | The Stream video surface, shared by all three rooms. Token fetch, connect, participants + controls. Always tears the call down on unmount. |
-| `components/tutors/ClassRoom.tsx` | Grid layout, tutor mute-all and `pinForEveryone` spotlight, roster, chat sidebar. |
+| `components/tutors/LiveLessonRoom.tsx` | Grid layout, tutor mute-all and `pinForEveryone` spotlight, roster, chat sidebar. |
 | `components/tutors/AssessmentRoom.tsx` | Speaker layout + `WaitingQueue` + the tutor's grading form for whoever is admitted. |
 | `components/tutors/WaitingQueue.tsx` | Two audiences, one component: the tutor sees the line and admits from it; a learner sees only their own place and estimate. The split is enforced server-side — the API returns an empty `queue` to a learner. |
 | `components/tutors/RoomChatPanel.tsx` | The in-room text chat. Backed by `chat_rooms` + UgaJapa, live over the realtime provider. Callers key it by `roomId`. |
 | `components/tutors/EvaluationForm.tsx` | The tutor's verdict on the AI's own six 0-100 dimensions. One form, two endpoints (`/api/bookings/[id]/evaluation`, `/api/assessments/[id]/evaluate`). |
 | `components/tutors/AvailabilityEditor.tsx` | The weekly bookable-hours editor over `GET`/`PUT /api/tutor/availability` (a wholesale replace — see the route). Shared by the console's Availability tab and the tutor onboarding wizard; `onSaved` is what lets the wizard advance on a successful save. |
-| `components/tutors/TutorConsole.tsx` | `/tutor`: schedule, classes, assessments, weekly availability editor. Assessments carry an examiner choice (me / AI) with an interviewer picker and a brief. The create form opens with a **Course → Level → Unit** picker that prefills the title via `composeRoomTitle()` (and stops once the tutor types), and a **Start now / Schedule** pair that swaps the date field for an instant open. The Schedule tab confirms and declines bookings inline. |
+| `components/tutors/TutorConsole.tsx` | `/tutor`: schedule, live lessons, assessments, weekly availability editor. Assessments carry an examiner choice (me / AI) with an interviewer picker and a brief. The create form opens with a **Course → Level → Unit** picker that prefills the title via `composeRoomTitle()` (and stops once the tutor types), and a **Start now / Schedule** pair that swaps the date field for an instant open. The Schedule tab confirms and declines bookings inline. |
 | `components/tutors/ExaminerSwitch.tsx` | Tutor-only, on the assessment page: hand the room to the AI examiner or take it back, pick the interviewer, edit the brief. Lives here rather than only in the scheduling form because "I can't make it" is learned after scheduling. |
 | `components/tutors/AiInterviewRoom.tsx` | The AI-examined assessment, chosen by the page on `assessment.examiner`. Tutor → results; learner → their own interview. |
 | `components/tutors/AiInterviewStage.tsx` | The learner's live surface: still portrait, mic meter, countdown, running transcript, result. **Not** built on `CallStage` — there is no Stream call. |
@@ -209,7 +209,7 @@ A Stream token **is** access to a call, so membership and the join window are
 both checked in the token route before one is minted. The call id is only ever
 returned alongside a valid token, never in a listing.
 
-**A room can be opened on the spot.** `startNow: true` on `POST /api/classes`
+**A room can be opened on the spot.** `startNow: true` on `POST /api/live-lessons`
 or `POST /api/assessments` skips the future-date rule, inserts at
 `status: 'live'`, stamps `wentLiveAt`, and announces it. A scheduled room does
 the same on its first `PATCH` to `'live'` — `wentLiveAt` is the idempotency
@@ -219,11 +219,11 @@ guard, so toggling live → scheduled → live does not notify twice.
 joinable and `'completed'` never is, whatever the window says: a tutor who
 opens a room early or on the spot has decided people may come in, and a fixed
 time gate would answer "this has not opened yet". Live rooms also survive the
-one-hour cutoff in both list routes, so a 90-minute class does not vanish from
+one-hour cutoff in both list routes, so a 90-minute live lesson does not vanish from
 the page while it is still running.
 
-**A class enrols on the way in.** The class token route no longer refuses a
-learner without a seat — an instant class has no roster by definition — it
+**A live lesson enrols on the way in.** The live-lesson token route no longer refuses a
+learner without a seat — an instant live lesson has no roster by definition — it
 calls `enrolLearner()` (same capacity rule, same advisory lock) after the
 window check. The assessment rule below is unchanged.
 
@@ -347,8 +347,8 @@ only discover a confirmation by going back and looking.
 **A room going live notifies through `announceLive()`**, never with a
 membership query of its own. `resolveAudience()` stays the single definition of
 "my learners", so the bell reaches exactly the people the announcements console
-would. A class roster passed in as `extraLearnerIds` goes through the same
-`activeLearners()` filter before it is used: `class_enrollments.status`
+would. A live-lesson roster passed in as `extraLearnerIds` goes through the same
+`activeLearners()` filter before it is used: `live_lesson_enrollments.status`
 describes the seat, not the account behind it, so a suspended learner keeps
 their row and would otherwise be notified about a room they cannot join.
 
@@ -357,7 +357,7 @@ their row and would otherwise be notified about a room they cannot join.
 `calendar_tasks` is the only table the calendar owns: a user's own to-dos
 (`kind: 'task'`) and the lesson-plan reminders seeded right after onboarding
 (`kind: 'lesson_reminder'`, pointing at `sourceLessonId`). Everything else on
-the page — practice sessions, tutor bookings, classes, assessments — already
+the page — practice sessions, tutor bookings, live lessons, assessments — already
 has a dated row of its own, so `GET /api/calendar` reads those live and
 normalises all five kinds into one `CalendarItem` shape rather than copying
 them in. A caller who has a `tutors` row gets their teaching schedule folded
@@ -369,7 +369,7 @@ in beside their learner rows, so the one page serves both.
 | `GET /api/calendar?from&to` | Aggregates the five kinds. `from`/`to` default to a month either side of today; the page passes the displayed month so stepping months refetches. |
 | `POST /api/calendar/tasks`, `PATCH`/`DELETE /api/calendar/tasks/[id]` | To-do CRUD, ownership-checked against the caller. |
 | All-day bucketing | All-day rows are stored at **UTC midnight** and bucketed onto the grid by their **UTC** date (`toDateStr(iso, allDay)`); timed rows bucket by local date. Reading an all-day row in local time would push it to the previous day for every viewer west of UTC. |
-| Correlated subqueries | Don't. "My enrolment" / "my queue slot" use a `leftJoin` narrowed to the user. Drizzle only qualifies column names once a query has a join — in a join-less query, `where class_session_id = id` emits `id` unqualified and Postgres resolves it against the *subquery's own* table, so the correlation silently never matches. |
+| Correlated subqueries | Don't. "My enrolment" / "my queue slot" use a `leftJoin` narrowed to the user. Drizzle only qualifies column names once a query has a join — in a join-less query, `where live_lesson_id = id` emits `id` unqualified and Postgres resolves it against the *subquery's own* table, so the correlation silently never matches. |
 | Checkbox nesting | The done/undone button is a **sibling** of the row's `<Link>`, never inside it: a `<button>` in an `<a>` is invalid nesting and hydrates badly. |
 
 ## Admin Console (`/app/(app)/admin/`, `components/admin/`, `/app/api/admin/`)
@@ -453,17 +453,17 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/tutors` | Tutor Discovery | Verified tutor list + upcoming bookings. Gated by `NEXT_PUBLIC_TUTORS_ENABLED` |
 | `/tutors/[id]` | Booking | Slot picker from `/api/tutors/[id]/availability` → `POST /api/bookings` |
 | `/live/[bookingId]` | Live Session (1:1) | `CallStage` video + `RoomChatPanel` + the tutor's `EvaluationForm` |
-| `/live/class/[classId]` | Live Class | `ClassRoom` — grid, roster, tutor mute-all/spotlight, translated chat sidebar |
+| `/live/lesson/[lessonId]` | Live lesson | `LiveLessonRoom` — grid, roster, tutor mute-all/spotlight, translated chat sidebar |
 | `/live/assessment/[assessmentId]` | Assessment Room | `AssessmentRoom` — one learner at a time, `WaitingQueue`, per-learner grading |
-| `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, class/assessment creation, availability editor |
+| `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, live-lesson/assessment creation, availability editor |
 | `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Tutors, Courses, Curriculum, Catalogue, Languages |
 | `/courses/[slug]/grades` | Grades | The AI's verdict per lesson beside the human tutor verdicts |
 | `/sessions/[id]/report` | Session Summary | Verdict card + score breakdown + transcript |
-| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished curriculum lesson lands — see `continueHref()` in `lib/curriculum/continue-href.ts`; free-form sessions still exit to `/home`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live class or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
+| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished curriculum lesson lands — see `continueHref()` in `lib/curriculum/continue-href.ts`; free-form sessions still exit to `/home`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live lesson or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
 | `/progress` | Progress Analytics | Radar chart + activity tabs |
 | `/leaderboard` | Leaderboard | Global/Friends/School tabs |
 | `/messages` | Messages | Thread list + message view |
-| `/calendar` | Calendar | Month grid + day agenda, backed by `GET /api/calendar`: to-dos, lesson-plan reminders, practice sessions, and (tutoring enabled) bookings/classes/assessments for learner and tutor alike |
+| `/calendar` | Calendar | Month grid + day agenda, backed by `GET /api/calendar`: to-dos, lesson-plan reminders, practice sessions, and (tutoring enabled) bookings/live lessons/assessments for learner and tutor alike |
 | `/settings` | Settings | Preferences + Notifications + Privacy |
 | `/settings/avatar` | Avatar & Character | Tabbed: avatar presets + voice prefs |
 | `/settings/billing` | Subscription | Plan cards |

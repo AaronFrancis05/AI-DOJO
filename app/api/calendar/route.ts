@@ -4,8 +4,8 @@ import {
   assessmentQueue,
   assessmentSessions,
   calendarTasks,
-  classEnrollments,
-  classSessions,
+  liveLessonEnrollments,
+  liveLessons,
   courseLevels,
   courses,
   lessons,
@@ -23,7 +23,7 @@ export const runtime = 'nodejs';
 
 interface CalendarItem {
   id: string;
-  kind: 'task' | 'lesson_reminder' | 'session' | 'booking' | 'class' | 'assessment';
+  kind: 'task' | 'lesson_reminder' | 'session' | 'booking' | 'live_lesson' | 'assessment';
   title: string;
   subtitle?: string;
   at: string;
@@ -38,7 +38,7 @@ interface CalendarItem {
  * carries a date rather than a copy of them: `calendar_tasks` (to-dos and the
  * post-onboarding lesson-plan reminders — the one thing with no other home),
  * practice `sessions`, and — when tutoring is enabled — `tutor_bookings`,
- * `class_sessions`/`class_enrollments`, and
+ * `live_lessons`/`live_lesson_enrollments`, and
  * `assessment_sessions`/`assessment_queue`. A caller with a `tutors` row gets
  * their teaching schedule folded in alongside their learner-side items, so
  * one endpoint serves both `/calendar` roles.
@@ -154,32 +154,32 @@ export async function GET(req: Request) {
 
     // "My" enrolment / queue slot comes from a LEFT JOIN narrowed to this
     // user, not a correlated subquery. Both are at most one row per parent
-    // (uq_class_enrollment, uq_assessment_queue_learner), and the join keeps
+    // (uq_live_lesson_enrollment, uq_assessment_queue_learner), and the join keeps
     // the query readable — but the real reason is that Drizzle only qualifies
     // column names once a query has a join. In a join-less query a subquery
-    // written as `where class_session_id = id` emits `id` unqualified, which
+    // written as `where live_lesson_id = id` emits `id` unqualified, which
     // Postgres resolves against the SUBQUERY's own table, so the correlation
     // silently never matches.
-    const classesQuery = db
+    const lessonsQuery = db
       .select({
-        classSession: classSessions,
-        myEnrollmentStatus: classEnrollments.status,
+        liveLesson: liveLessons,
+        myEnrollmentStatus: liveLessonEnrollments.status,
       })
-      .from(classSessions)
-      .leftJoin(classEnrollments, and(
-        eq(classEnrollments.classSessionId, classSessions.id),
-        eq(classEnrollments.learnerId, user.id),
-        ne(classEnrollments.status, 'cancelled'),
+      .from(liveLessons)
+      .leftJoin(liveLessonEnrollments, and(
+        eq(liveLessonEnrollments.liveLessonId, liveLessons.id),
+        eq(liveLessonEnrollments.learnerId, user.id),
+        ne(liveLessonEnrollments.status, 'cancelled'),
       ))
       .where(and(
-        ne(classSessions.status, 'cancelled'),
-        gte(classSessions.scheduledAt, from),
-        lte(classSessions.scheduledAt, to),
+        ne(liveLessons.status, 'cancelled'),
+        gte(liveLessons.scheduledAt, from),
+        lte(liveLessons.scheduledAt, to),
         tutorProfile
-          ? or(eq(classSessions.tutorId, tutorProfile.id), isNotNull(classEnrollments.id))
-          : isNotNull(classEnrollments.id),
+          ? or(eq(liveLessons.tutorId, tutorProfile.id), isNotNull(liveLessonEnrollments.id))
+          : isNotNull(liveLessonEnrollments.id),
       ))
-      .orderBy(asc(classSessions.scheduledAt));
+      .orderBy(asc(liveLessons.scheduledAt));
 
     const assessmentsQuery = db
       .select({
@@ -201,9 +201,9 @@ export async function GET(req: Request) {
       ))
       .orderBy(asc(assessmentSessions.scheduledAt));
 
-    const [bookingRows, classRows, assessmentRows] = await Promise.all([
+    const [bookingRows, lessonRows, assessmentRows] = await Promise.all([
       bookingsQuery,
-      classesQuery,
+      lessonsQuery,
       assessmentsQuery,
     ]);
 
@@ -222,21 +222,21 @@ export async function GET(req: Request) {
       });
     }
 
-    for (const { classSession, myEnrollmentStatus } of classRows) {
+    for (const { liveLesson, myEnrollmentStatus } of lessonRows) {
       // A row reaches here either because the caller teaches it or because
       // they are enrolled — so no enrolment means they are the tutor.
       items.push({
-        id: `class-${classSession.id}`,
-        kind: 'class',
-        title: classSession.title,
-        subtitle: `${classSession.durationMinutes} min · ${
+        id: `lesson-${liveLesson.id}`,
+        kind: 'live_lesson',
+        title: liveLesson.title,
+        subtitle: `${liveLesson.durationMinutes} min · ${
           myEnrollmentStatus === 'attended' ? 'Attended'
             : myEnrollmentStatus ? 'Enrolled'
             : 'Teaching'
         }`,
-        at: classSession.scheduledAt.toISOString(),
-        status: classSession.status,
-        href: `/live/class/${classSession.id}`,
+        at: liveLesson.scheduledAt.toISOString(),
+        status: liveLesson.status,
+        href: `/live/lesson/${liveLesson.id}`,
       });
     }
 

@@ -176,7 +176,7 @@ export async function PATCH(
     .set(patch)
     .where(eq(assessmentSessions.id, assessmentId));
 
-  // Same rule as a class, and claimed the same way: `IS NULL` in the WHERE
+  // Same rule as a live lesson, and claimed the same way: `IS NULL` in the WHERE
   // rather than a decision made from the row read above, so two racing PATCHes
   // cannot both announce. Only the request that gets a row back has opened it.
   let isFirstOpen = false;

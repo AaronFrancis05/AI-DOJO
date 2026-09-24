@@ -3,7 +3,7 @@ import { db } from '@/src/db';
 import { assessmentQueue, assessmentSessions, tutors, units, users } from '@/src/schema';
 import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { generateCallId } from '@/lib/tutors/rooms';
-import { CLASS_DURATIONS_MINUTES, DEFAULT_CALL_TYPE, TUTORS_ENABLED } from '@/lib/tutors/config';
+import { LIVE_LESSON_DURATIONS_MINUTES, DEFAULT_CALL_TYPE, TUTORS_ENABLED } from '@/lib/tutors/config';
 import {
   DEFAULT_INTERVIEWER_AVATAR_ID,
   isKnownInterviewerAvatarId,
@@ -17,7 +17,7 @@ export const runtime = 'nodejs';
 /**
  * Scheduled assessment rooms.
  *
- * Same filters as /api/classes — `?mine=1`, `?unitId=N`, `?past=1` — because
+ * Same filters as /api/live-lessons — `?mine=1`, `?unitId=N`, `?past=1` — because
  * the surfaces that list them (the tutor console, the learner's tutors page,
  * a course unit) ask the same three questions of both.
  */
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     conditions.push(eq(assessmentSessions.unitId, unitId));
   }
   if (!includePast) {
-    // As on /api/classes: a live room outlasts the cutoff.
+    // As on /api/live-lessons: a live room outlasts the cutoff.
     conditions.push(or(
       eq(assessmentSessions.status, 'live'),
       gte(assessmentSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)),
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
     : null;
   const durationMinutes = Number(body.durationMinutes ?? 60);
   const minutesPerLearner = Number(body.minutesPerLearner ?? 10);
-  // As on /api/classes: the tutor is opening the room now, not booking it.
+  // As on /api/live-lessons: the tutor is opening the room now, not booking it.
   const startNow = body.startNow === true;
   const scheduledAt = startNow ? new Date() : new Date(String(body.scheduledAt ?? ''));
   const examiner = body.examiner === 'ai' ? 'ai' : 'tutor';
@@ -169,7 +169,7 @@ export async function POST(req: Request) {
   if (!title || !targetLanguage) {
     return Response.json({ error: 'title and targetLanguage are required' }, { status: 400 });
   }
-  // Same rule as /api/classes, from the same helper — a tutor may only examine
+  // Same rule as /api/live-lessons, from the same helper — a tutor may only examine
   // in a pair they hold. It also reaches the AI examiner's locked brief.
   const languageError = tutorLanguageError(tutorProfile, targetLanguage, instructionLanguage);
   if (languageError) {
@@ -182,7 +182,7 @@ export async function POST(req: Request) {
   if (!anchor.ok) {
     return Response.json({ error: anchor.error }, { status: 400 });
   }
-  if (!(CLASS_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
+  if (!(LIVE_LESSON_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
     return Response.json({ error: 'Unsupported duration' }, { status: 400 });
   }
   if (!Number.isInteger(minutesPerLearner) || minutesPerLearner < 2 || minutesPerLearner > 60) {

@@ -56,10 +56,10 @@ export function tutorLanguageSets(tutor: {
  * Whether this tutor may schedule in this language pair.
  *
  * Returns a message to send back as a 400, or null when the pair is fine.
- * Shared by every scheduling route so a class, an assessment and a booking
+ * Shared by every scheduling route so a live lesson, an assessment and a booking
  * cannot disagree about what a tutor is allowed to run — before this existed,
  * `targetLanguage` was only checked for being non-empty, so a tutor could
- * schedule a Japanese class without teaching Japanese.
+ * schedule a Japanese live lesson without teaching Japanese.
  *
  * `instructionLanguage` is optional: null means the pre-existing behaviour of
  * each learner reading in their own native language.

@@ -12,7 +12,7 @@ export const users = pgTable('users', {
   // lib/auth/server.ts. 'admin' satisfies every other role.
   role:                  varchar('role', { length: 20 }).default('learner').notNull(),
   // 'active' | 'suspended' | 'deleted'. Access is revoked here rather than by
-  // deleting the row: users.id is referenced by sessions, evaluations, class
+  // deleting the row: users.id is referenced by sessions, evaluations, live-lesson
   // rosters and grades, so a hard delete rewrites other people's history.
   // Enforced in getAuthUser() — a suspended account gets no session, so the
   // check sits with authorisation rather than in the UI. 'deleted' is a soft
@@ -735,10 +735,10 @@ export const chatRooms = pgTable('chat_rooms', {
   id:        serial('id').primaryKey(),
   name:      varchar('name', { length: 150 }),                       // optional display name (group chats)
   isGroup:   boolean('is_group').default(false).notNull(),
-  // 'direct'  — a 1:1 or ad-hoc group room, de-duplicated by membership.
-  // 'class'   — the room a scheduled class_session creates for itself.
-  // 'cohort'  — a tutor's standing room for their learners, which outlives any
-  //             one class. Found by (ownerTutorId, audienceKey) so re-running
+  // 'direct'      — a 1:1 or ad-hoc group room, de-duplicated by membership.
+  // 'live_lesson' — the room a scheduled live_lesson creates for itself.
+  // 'cohort'      — a tutor's standing room for their learners, which outlives any
+  //             one live lesson. Found by (ownerTutorId, audienceKey) so re-running
   //             the create adds newly-enrolled learners instead of a second
   //             room — see `audienceKey` below for why the name is not enough.
   kind:      varchar('kind', { length: 20 }).default('direct').notNull(),
@@ -845,8 +845,8 @@ export const tutors = pgTable('tutors', {
   // The native languages this tutor can *explain* in, same comma-separated
   // shape as `languages` above. The two are different capabilities: `languages`
   // is what they teach (the target), this is what they teach it in. A tutor who
-  // speaks five languages can pair any of them, and a class picks one of each —
-  // see class_sessions.instructionLanguage.
+  // speaks five languages can pair any of them, and a live lesson picks one of each —
+  // see live_lessons.instructionLanguage.
   instructionLanguages: text('instruction_languages'),
   hourlyRateCents: integer('hourly_rate_cents').default(0).notNull(),
   currency:        varchar('currency', { length: 3 }).default('USD').notNull(),
@@ -904,19 +904,19 @@ export const tutorBookings = pgTable('tutor_bookings', {
   idxLearner:       index('idx_tutor_bookings_learner').on(t.learnerId),
 }));
 
-/* ── Group classrooms ──────────────────────────────────────────────────
+/* ── Live lessons ──────────────────────────────────────────────────────
  *
  * A scheduled lesson one tutor teaches to many learners, optionally pinned
  * to a curriculum unit so the course page can offer "join the live lesson
  * for this unit". Distinct from `tutor_bookings`, which is 1:1 and initiated
- * by the learner: a class is created by the tutor and enrolled into.
+ * by the learner: a live lesson is created by the tutor and enrolled into.
  */
 
-export const classSessions = pgTable('class_sessions', {
+export const liveLessons = pgTable('live_lessons', {
   id:             serial('id').primaryKey(),
   tutorId:        integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
-  // Both nullable: a class may be a standalone conversation hour rather than
-  // the live counterpart of one unit.
+  // Both nullable: a live lesson may be a standalone conversation hour rather
+  // than the live counterpart of one unit.
   courseId:       integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
   unitId:         integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
   title:          varchar('title', { length: 150 }).notNull(),
@@ -938,34 +938,34 @@ export const classSessions = pgTable('class_sessions', {
   // live → scheduled → live must not announce themselves to the cohort twice.
   // Null on a room that has never been opened, including a cancelled one.
   wentLiveAt:     timestamp('went_live_at'),
-  // The classroom's text chat reuses the messaging tables — and therefore the
+  // The room's text chat reuses the messaging tables — and therefore the
   // per-member UgaJapa translation, which is the whole point in a room where
   // the learners do not share a native language.
   chatRoomId:     integer('chat_room_id').references(() => chatRooms.id, { onDelete: 'set null' }),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
   updatedAt:      timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
-  idxTutorSchedule: index('idx_class_sessions_tutor_scheduled').on(t.tutorId, t.scheduledAt),
+  idxTutorSchedule: index('idx_live_lessons_tutor_scheduled').on(t.tutorId, t.scheduledAt),
   // "Is there a live lesson for this unit?" is the course page's query.
-  idxUnitSchedule:  index('idx_class_sessions_unit_scheduled').on(t.unitId, t.scheduledAt),
+  idxUnitSchedule:  index('idx_live_lessons_unit_scheduled').on(t.unitId, t.scheduledAt),
 }));
 
-export const classEnrollments = pgTable('class_enrollments', {
+export const liveLessonEnrollments = pgTable('live_lesson_enrollments', {
   id:             serial('id').primaryKey(),
-  classSessionId: integer('class_session_id').references(() => classSessions.id, { onDelete: 'cascade' }).notNull(),
+  liveLessonId:   integer('live_lesson_id').references(() => liveLessons.id, { onDelete: 'cascade' }).notNull(),
   learnerId:      text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   // 'enrolled' | 'attended' | 'cancelled'
   status:         varchar('status', { length: 20 }).default('enrolled').notNull(),
   enrolledAt:     timestamp('enrolled_at').defaultNow().notNull(),
   attendedAt:     timestamp('attended_at'),
 }, (t) => ({
-  uqEnrollment: uniqueIndex('uq_class_enrollment').on(t.classSessionId, t.learnerId),
-  idxLearner:   index('idx_class_enrollments_learner').on(t.learnerId),
+  uqEnrollment: uniqueIndex('uq_live_lesson_enrollment').on(t.liveLessonId, t.learnerId),
+  idxLearner:   index('idx_live_lesson_enrollments_learner').on(t.learnerId),
 }));
 
 /* ── Assessment rooms ──────────────────────────────────────────────────
  *
- * The same call plumbing as a class, run as an examination: exactly one
+ * The same call plumbing as a live lesson, run as an examination: exactly one
  * learner is in the room at a time and the rest wait in a queue the tutor
  * admits from. The queue is OURS — a table, pushed over lib/realtime — not
  * Stream's, because who is next is an academic decision, not a media one.
@@ -979,7 +979,7 @@ export const assessmentSessions = pgTable('assessment_sessions', {
   title:          varchar('title', { length: 150 }).notNull(),
   description:    text('description'),
   targetLanguage: varchar('target_language', { length: 10 }).notNull(),
-  // As on class_sessions — and it also reaches the AI examiner, whose locked
+  // As on live_lessons — and it also reaches the AI examiner, whose locked
   // brief tells it to examine in the target language but explain in this one.
   instructionLanguage: varchar('instruction_language', { length: 10 }),
   scheduledAt:    timestamp('scheduled_at').notNull(),
@@ -1004,7 +1004,7 @@ export const assessmentSessions = pgTable('assessment_sessions', {
   aiInterviewerBrief:    text('ai_interviewer_brief'),
   // 'scheduled' | 'live' | 'completed' | 'cancelled'
   status:         varchar('status', { length: 20 }).default('scheduled').notNull(),
-  // As on class_sessions: when the room actually opened, and the guard that
+  // As on live_lessons: when the room actually opened, and the guard that
   // keeps the go-live announcement from firing twice.
   wentLiveAt:     timestamp('went_live_at'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
@@ -1142,17 +1142,17 @@ export const tutorEvaluationsRelations = relations(tutorEvaluations, ({ one }) =
   session: one(sessions,      { fields: [tutorEvaluations.sessionId], references: [sessions.id] }),
 }));
 
-export const classSessionsRelations = relations(classSessions, ({ one, many }) => ({
-  tutor:       one(tutors,    { fields: [classSessions.tutorId],    references: [tutors.id] }),
-  course:      one(courses,   { fields: [classSessions.courseId],   references: [courses.id] }),
-  unit:        one(units,     { fields: [classSessions.unitId],     references: [units.id] }),
-  chatRoom:    one(chatRooms, { fields: [classSessions.chatRoomId], references: [chatRooms.id] }),
-  enrollments: many(classEnrollments),
+export const liveLessonsRelations = relations(liveLessons, ({ one, many }) => ({
+  tutor:       one(tutors,    { fields: [liveLessons.tutorId],    references: [tutors.id] }),
+  course:      one(courses,   { fields: [liveLessons.courseId],   references: [courses.id] }),
+  unit:        one(units,     { fields: [liveLessons.unitId],     references: [units.id] }),
+  chatRoom:    one(chatRooms, { fields: [liveLessons.chatRoomId], references: [chatRooms.id] }),
+  enrollments: many(liveLessonEnrollments),
 }));
 
-export const classEnrollmentsRelations = relations(classEnrollments, ({ one }) => ({
-  classSession: one(classSessions, { fields: [classEnrollments.classSessionId], references: [classSessions.id] }),
-  learner:      one(users,         { fields: [classEnrollments.learnerId],      references: [users.id] }),
+export const liveLessonEnrollmentsRelations = relations(liveLessonEnrollments, ({ one }) => ({
+  liveLesson: one(liveLessons, { fields: [liveLessonEnrollments.liveLessonId], references: [liveLessons.id] }),
+  learner:    one(users,       { fields: [liveLessonEnrollments.learnerId],    references: [users.id] }),
 }));
 
 export const assessmentSessionsRelations = relations(assessmentSessions, ({ one, many }) => ({
@@ -1183,7 +1183,7 @@ export const aiInterviewsRelations = relations(aiInterviews, ({ one }) => ({
 export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  // 'evaluation' | 'class' | 'assessment' | 'booking' | 'announcement' — what
+  // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' — what
   // produced it. 'announcement' is the only one a human authors; the rest fall
   // out of an action that already succeeded.
   type:      varchar('type', { length: 40 }).notNull(),
@@ -1213,10 +1213,10 @@ export const tutorAnnouncements = pgTable('tutor_announcements', {
   // The course the announcement is about, and the language it is written in.
   targetLanguage:      varchar('target_language', { length: 10 }),
   instructionLanguage: varchar('instruction_language', { length: 10 }),
-  // 'class' | 'course' | 'all_my_learners' — resolved by resolveAudience() in
-  // lib/tutors/audience.ts, which is the only place the membership rules live.
+  // 'live_lesson' | 'course' | 'all_my_learners' — resolved by resolveAudience()
+  // in lib/tutors/audience.ts, which is the only place the membership rules live.
   audienceKind:        varchar('audience_kind', { length: 20 }).notNull(),
-  classSessionId:      integer('class_session_id').references(() => classSessions.id, { onDelete: 'set null' }),
+  liveLessonId:        integer('live_lesson_id').references(() => liveLessons.id, { onDelete: 'set null' }),
   courseId:            integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
   // Counted at send time. The audience changes as learners enrol and leave, so
   // recomputing it later would not describe what was actually delivered.
@@ -1231,7 +1231,7 @@ export const tutorAnnouncements = pgTable('tutor_announcements', {
 // The one genuinely new piece of scheduled data: a user's own to-dos, plus
 // the "do this lesson" reminders seeded onto a learner's calendar right
 // after onboarding (see lib/calendar/seed-lesson-plan.ts). Everything else
-// that shows up on /calendar — sessions, tutor bookings, classes,
+// that shows up on /calendar — sessions, tutor bookings, live lessons,
 // assessments — already has its own row with a date; /api/calendar reads
 // those live rather than copying them in here.
 

@@ -454,7 +454,7 @@ export default function TutorSignupPage() {
 
               <LanguagePillGroup
                 label="Languages you can explain in"
-                hint="How you coach and give feedback. Pick every language you can teach in — you choose one per class."
+                hint="How you coach and give feedback. Pick every language you can teach in — you choose one per live lesson."
                 options={catalog.native}
                 selected={instructionLanguages}
                 onToggle={toggleInstructionLanguage}
