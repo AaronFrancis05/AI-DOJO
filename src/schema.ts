@@ -559,6 +559,77 @@ export const srsCards = pgTable('srs_cards', {
   uniqueUserVocab: uniqueIndex('uq_srs_cards_key').on(table.userId, table.vocabularyId),
 }));
 
+// ── Organizations ─────────────────────────────────────────
+//
+// A learner belongs to exactly one organization. Groups are named subsets of
+// that organization's members and never cross an organization. Tutors are not
+// members: a `tutors` row stays independent of this tree.
+//
+// The default organization (slug `ai-dojo`, `isDefault`) is where sign-up and
+// retirement land. Another organization can invite only a learner who is
+// currently there, and only that learner's acceptance moves them.
+
+export const organizations = pgTable('organizations', {
+  id:        serial('id').primaryKey(),
+  name:      varchar('name', { length: 120 }).notNull(),
+  slug:      varchar('slug', { length: 60 }).notNull().unique(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  // 'active' | 'archived'
+  status:    varchar('status', { length: 20 }).default('active').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // One default organization. Rows with is_default = false are outside the index.
+  uqDefault: uniqueIndex('uq_organizations_default')
+    .on(t.isDefault)
+    .where(sql`${t.isDefault} = true`),
+}));
+
+export const organizationMemberships = pgTable('organization_memberships', {
+  id:             serial('id').primaryKey(),
+  organizationId: integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  // 'member' | 'admin' — a membership role, not users.role.
+  role:           varchar('role', { length: 20 }).default('member').notNull(),
+  joinedAt:       timestamp('joined_at').defaultNow().notNull(),
+}, (t) => ({
+  idxOrg: index('idx_organization_memberships_org').on(t.organizationId),
+}));
+
+export const groups = pgTable('groups', {
+  id:             serial('id').primaryKey(),
+  organizationId: integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  name:           varchar('name', { length: 120 }).notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqName: uniqueIndex('uq_groups_org_name').on(t.organizationId, t.name),
+}));
+
+export const groupMemberships = pgTable('group_memberships', {
+  id:       serial('id').primaryKey(),
+  groupId:  integer('group_id').references(() => groups.id, { onDelete: 'cascade' }).notNull(),
+  userId:   text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  joinedAt: timestamp('joined_at').defaultNow().notNull(),
+}, (t) => ({
+  uqMember: uniqueIndex('uq_group_memberships').on(t.groupId, t.userId),
+  idxUser:  index('idx_group_memberships_user').on(t.userId),
+}));
+
+export const organizationInvitations = pgTable('organization_invitations', {
+  id:              serial('id').primaryKey(),
+  organizationId:  integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  invitedByUserId: text('invited_by_user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'pending' | 'accepted' | 'declined' | 'revoked'
+  status:          varchar('status', { length: 20 }).default('pending').notNull(),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+  respondedAt:     timestamp('responded_at'),
+}, (t) => ({
+  uqPending: uniqueIndex('uq_organization_invitations_pending')
+    .on(t.organizationId, t.userId)
+    .where(sql`${t.status} = 'pending'`),
+  idxUserStatus: index('idx_organization_invitations_user_status').on(t.userId, t.status),
+}));
+
 // ── Relations ────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -571,6 +642,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   courseProgress:   many(studentProgress),
   lessonProgress:   many(studentLessonProgress),
   srsCards:         many(srsCards),
+  organizationMembership: one(organizationMemberships, { fields: [users.id], references: [organizationMemberships.userId] }),
 }));
 
 export const coursesRelations = relations(courses, ({ many }) => ({
@@ -1183,9 +1255,10 @@ export const aiInterviewsRelations = relations(aiInterviews, ({ one }) => ({
 export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' — what
-  // produced it. 'announcement' is the only one a human authors; the rest fall
-  // out of an action that already succeeded.
+  // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' |
+  // 'organization_invite' — what produced it. 'announcement' and
+  // 'organization_invite' are the ones a human authors; the rest fall out of
+  // an action that already succeeded.
   type:      varchar('type', { length: 40 }).notNull(),
   title:     varchar('title', { length: 160 }).notNull(),
   body:      text('body'),
@@ -1263,4 +1336,31 @@ export const calendarTasks = pgTable('calendar_tasks', {
 export const calendarTasksRelations = relations(calendarTasks, ({ one }) => ({
   user:         one(users,   { fields: [calendarTasks.userId],         references: [users.id] }),
   sourceLesson: one(lessons, { fields: [calendarTasks.sourceLessonId], references: [lessons.id] }),
+}));
+
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  memberships: many(organizationMemberships),
+  groups:      many(groups),
+  invitations: many(organizationInvitations),
+}));
+
+export const organizationMembershipsRelations = relations(organizationMemberships, ({ one }) => ({
+  organization: one(organizations, { fields: [organizationMemberships.organizationId], references: [organizations.id] }),
+  user:         one(users,         { fields: [organizationMemberships.userId],         references: [users.id] }),
+}));
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  organization: one(organizations, { fields: [groups.organizationId], references: [organizations.id] }),
+  members:      many(groupMemberships),
+}));
+
+export const groupMembershipsRelations = relations(groupMemberships, ({ one }) => ({
+  group: one(groups, { fields: [groupMemberships.groupId], references: [groups.id] }),
+  user:  one(users,  { fields: [groupMemberships.userId],  references: [users.id] }),
+}));
+
+export const organizationInvitationsRelations = relations(organizationInvitations, ({ one }) => ({
+  organization: one(organizations, { fields: [organizationInvitations.organizationId], references: [organizations.id] }),
+  user:         one(users,         { fields: [organizationInvitations.userId],         references: [users.id] }),
+  invitedBy:    one(users,         { fields: [organizationInvitations.invitedByUserId], references: [users.id] }),
 }));

@@ -33,6 +33,7 @@ import {
   Repeat2,
   Users,
   ShieldCheck,
+  Building2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -75,6 +76,7 @@ const tutorNavItems: NavItem[] = [
  *  is convenience only — /admin and /tutor re-check the role server-side. */
 const adminNavItem: NavItem = { label: 'Admin', href: '/admin', icon: ShieldCheck };
 const tutorNavItem: NavItem = { label: 'Teaching', href: '/tutor', icon: GraduationCap };
+const organizationNavItem: NavItem = { label: 'Organization', href: '/organization', icon: Building2 };
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -97,6 +99,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         ...navItems,
         ...(TUTORS_ENABLED && user?.role === 'admin' ? [tutorNavItem] : []),
         ...(user?.role === 'admin' ? [adminNavItem] : []),
+        ...(user?.organizationAdmin ? [organizationNavItem] : []),
       ];
 
   const isActive = (href: string) => {
@@ -152,9 +155,14 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         <NotificationBell onNavigate={onNavigate} />
       </div>
 
-      {/* User Card — bottom of sidebar */}
+      {/* Identity row opens the profile page. Level/XP and the tutor badge
+          stay put — that page does not show them. */}
       <div className="border-t border-dojo-border p-4">
-        <div className="flex items-center gap-3">
+        <Link
+          href="/profile"
+          onClick={handleClick}
+          className="-mx-2 -mt-2 flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-dojo-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
+        >
           <Avatar
             name={displayName}
             src={currentAvatarUrl ?? user?.avatarSrc}
@@ -165,8 +173,15 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             <p className="text-sm font-semibold text-dojo-text-primary truncate">
               {displayName}
             </p>
+            {user?.organizationName && (
+              <p className="truncate text-xs text-dojo-text-muted">
+                {user.groupNames && user.groupNames.length > 0
+                  ? `${user.organizationName} · ${user.groupNames.join(', ')}`
+                  : user.organizationName}
+              </p>
+            )}
           </div>
-        </div>
+        </Link>
         {/* A tutor earns no XP, so the learner's level bar read "0 / 1000"
             forever. Their standing is whether learners can see them yet. */}
         {isTutor ? (

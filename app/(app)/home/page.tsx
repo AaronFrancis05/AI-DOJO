@@ -861,14 +861,12 @@ export default function HomePage() {
       <Card className="!p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">Recent Sessions</h2>
-          {!loading && sessions.length > 3 && (
-            <Link href="/sessions">
-              <Button variant="ghost" size="sm" className="h-8 text-xs font-bold">
-                View Full History
-                <ArrowRight className="ml-1 h-3 w-3" />
-              </Button>
-            </Link>
-          )}
+          <Link href="/sessions?from=home">
+            <Button variant="ghost" size="sm" className="h-8 text-xs font-bold">
+              View Full History
+              <ArrowRight className="ml-1 h-3 w-3" />
+            </Button>
+          </Link>
         </div>
 
         {loading ? (

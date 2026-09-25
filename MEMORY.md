@@ -1085,3 +1085,25 @@ The marketplace group live is not a 学級. Product copy already said "Live less
 - Routes `/api/classes` → `/api/live-lessons`, `/live/class/[id]` → `/live/lesson/[id]`, token `/api/live/lesson/[lessonId]/token`. `next.config.ts` 301s the old page path.
 - Chat kind / audience / realtime: `live_lesson`, topic `lesson:{id}`, event `lesson.updated`. `ClassRoom` → `LiveLessonRoom`. Booking tables stay `tutor_bookings`.
 - `class` is now free for a future standing 学級. Org features (Friends / School) were not started.
+
+## 2026-09-24 (organizations and groups)
+
+Learners belong to exactly one organization. Groups are named subsets of that organization and do not cross it. Tutors stay outside this tree. Cohort chat rooms are unchanged.
+
+- Tables: `organizations`, `organization_memberships` (`user_id` unique), `groups`, `group_memberships`, `organization_invitations`. Migration `drizzle/0051_clear_rictor.sql` also inserts the default organization `ai-dojo` and a `member` row for every existing `learner`.
+- Sign-up is unchanged on screen. `syncUser` and `POST /api/admin/users/create` call `ensureLearnerMembership`, which places a learner with no row into `ai-dojo`.
+- Movement: an organization admin retires a member (they return to `ai-dojo` and leave their groups). A destination admin may then invite by email, and only a learner currently in `ai-dojo` can be invited. Acceptance moves them. The invite error for anyone else does not name their current organization.
+- The first administrator of an organization is appointed by a platform admin (`POST /api/admin/organizations/[id]/admins`), without an invitation.
+- Organization admin is a membership role, not `users.role`. `/organization` re-checks it. Progress on that page reads existing `student_progress` for members of that organization.
+
+## 2026-09-24 (sidebar profile link)
+
+The display-name editor lived at `/auth/profile` on the old top-bar page (`NavBar`, neutral white). It now lives at `/profile` inside the app shell, styled like Settings. `/auth/profile` redirects there. The sidebar identity row — avatar, name, organization and groups — links to `/profile`. The level/XP bar and the tutor badge stay static, because that page does not show them. Sign Out stays on the sidebar; the old page's second sign-out block was not carried over. `components/NavBar.tsx` is unused and removed.
+
+## 2026-09-24 (sessions back link)
+
+Home's Recent Sessions "View Full History" is always shown and opens `/sessions?from=home`, which is the only entry that renders "Back to Home". The sidebar opens `/sessions` with no return link, because that page is a top-level destination there.
+
+## 2026-09-25 (profile email)
+
+`/profile` shows the signed-in address and whether Neon Auth has verified it. An unverified address can be confirmed with the same email OTP used at sign-up. `authClient.changeEmail` sends a confirmation before the address changes. `syncUser` and `resolveDbId` match the auth id first and then the email, and write the new address onto the existing row — an email-only lookup would miss that row and insert a second account.

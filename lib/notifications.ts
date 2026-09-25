@@ -18,9 +18,9 @@ export type NotificationType =
   | 'booking'
   | 'live_lesson'
   | 'assessment'
-  // The only one a human writes rather than a completed action producing it —
-  // see POST /api/tutor/announcements.
-  | 'announcement';
+  // The ones a human writes rather than a completed action producing them.
+  | 'announcement'
+  | 'organization_invite';
 
 export interface CreateNotificationInput {
   userId: string;

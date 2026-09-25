@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -31,6 +31,10 @@ export default function SessionsPage() {
   usePageTitle('All Sessions');
   const router = useRouter();
   const user = useUser();
+  // Home's "View Full History" is a drill-down. The sidebar opens the same
+  // page as a top-level destination, so the return link only belongs to the
+  // home entry.
+  const fromHome = useSearchParams().get('from') === 'home';
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -84,9 +88,11 @@ export default function SessionsPage() {
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-6">
-        <Link href="/home" className="inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary mb-4">
-          <ArrowLeft className="h-4 w-4" /> Back to Home
-        </Link>
+        {fromHome && (
+          <Link href="/home" className="inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary mb-4">
+            <ArrowLeft className="h-4 w-4" /> Back to Home
+          </Link>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">All Sessions</h1>

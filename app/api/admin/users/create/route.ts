@@ -5,6 +5,7 @@ import { users } from '@/src/schema';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { isUserRole, DEFAULT_ROLE } from '@/lib/auth/roles';
 import { isLanguageEnabled } from '@/lib/language-registry';
+import { ensureLearnerMembership } from '@/lib/organizations/membership';
 
 export const runtime = 'nodejs';
 
@@ -97,6 +98,8 @@ export async function POST(req: Request) {
     // here would drop them into an app with no course.
     onboardingCompletedAt: null,
   });
+
+  if (role === 'learner') await ensureLearnerMembership(id);
 
   return Response.json({ success: true, user: { id, email, name, role } }, { status: 201 });
 }

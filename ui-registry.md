@@ -81,9 +81,22 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Component | Notes |
 |-----------|-------|
 | `AppShell` | Wraps every (app) route; sidebar + UserCard + content |
-| `Sidebar` | **Two navs, chosen by `users.role`.** Learner: Home, Tutors, Hub, Courses, Review, Sessions, Progress, Leaderboard, Messages, Calendar, Settings. Tutor: Teaching, Messages, Calendar, Settings — the learner entries are all surfaces of someone's own practice, which a tutor has none of. `admin` keeps the learner nav with `Teaching` and `Admin` appended (admin satisfies every role). The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. Hiding a link is convenience only — `/tutor` and `/admin` re-check the role server-side |
+| `Sidebar` | **Two navs, chosen by `users.role`.** Learner: Home, Tutors, Hub, Courses, Review, Sessions, Progress, Leaderboard, Messages, Calendar, Settings. Tutor: Teaching, Messages, Calendar, Settings — the learner entries are all surfaces of someone's own practice, which a tutor has none of. `admin` keeps the learner nav with `Teaching` and `Admin` appended (admin satisfies every role). A learner whose organization membership role is `admin` also gets `Organization` (`user.organizationAdmin`). Under the display name, a learner sees their organization and, when they have any, group names (`text-xs text-dojo-text-muted`, truncated). The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. The identity row (avatar, name, organization and groups) links to `/profile`, which renders inside this shell (display name, email, and password, `Card` + `Button`, same page padding as Settings). The level/XP bar and the tutor badge stay static — that page does not show them. Sign Out stays a separate control. `/auth/profile` redirects to `/profile`. Hiding a link is convenience only — `/tutor`, `/admin` and `/organization` re-check server-side |
 | `NotificationBell` | Unread badge + dropdown above the user card. Subscribes to the signed-in user's own realtime topic; opens upward so the panel clears the sidebar's bottom edge |
 | `UserCard` | Avatar + name + tier badge + level/XP bar — rendered at sidebar bottom |
+
+## Organizations
+
+A learner belongs to exactly one organization. Groups are subsets inside that organization. Tutors are not members. The default organization (`slug` `ai-dojo`) is where sign-up and retirement land. Another organization invites only someone who is currently there; acceptance is what moves them.
+
+| Surface | Notes |
+|---------|-------|
+| `components/admin/OrganizationsPanel.tsx` | Admin console tab. Creates an organization and appoints its first administrator by email. Same shell as the other admin panels: `max-w-7xl` page, `Card`, `Button`, `adminInputClass` |
+| `components/organization/OrganizationConsole.tsx` | `/organization`, organization administrators only. Tabs: People, Groups, Invitations, Progress. A group name is edited in place (Rename, then Save). Retirement is hidden on the public organization |
+| `components/organization/InvitationsPanel.tsx` | `/organization/invitations`, any signed-in learner. Accept moves them; decline leaves them where they are |
+| `components/organization/OrganizationCard.tsx` | Settings card: current organization name, group names, and a link when an invitation is waiting |
+
+Membership changes live in `lib/organizations/membership.ts`. Invite refusals that would name another organization collapse to one sentence in `lib/organizations/rules.ts`.
 
 ## Roleplay Components (`/components/roleplay/`)
 | Component | Notes |

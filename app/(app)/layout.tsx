@@ -6,6 +6,7 @@ import { UserProvider } from '@/lib/auth/user-context';
 import { LanguageCatalogProvider } from '@/lib/language-context';
 import { loadLanguageCatalog } from '@/lib/language-registry';
 import { toUserRole } from '@/lib/auth/roles';
+import { listMyGroups, loadMembership } from '@/lib/organizations/membership';
 import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
@@ -121,12 +122,32 @@ export default async function AppLayout({
       }
     }
 
+    let organizationAdmin = false;
+    let organizationName: string | null = null;
+    let groupNames: string[] = [];
+    if (role === 'learner') {
+      try {
+        const membership = await loadMembership(authId);
+        if (membership) {
+          organizationAdmin = membership.role === 'admin';
+          organizationName = membership.organizationName;
+          const groups = await listMyGroups(authId, membership.organizationId);
+          groupNames = groups.map((group) => group.name);
+        }
+      } catch (err) {
+        console.error('[app-layout] organization membership read failed', err);
+      }
+    }
+
     user = {
       id: authId,
       name: dbUser?.name || providerName || '',
       email: dbUser?.email || u.email || '',
       level: dbUser?.level ?? 'beginner',
       role,
+      organizationAdmin,
+      organizationName,
+      groupNames,
       tutorStatus,
       tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,

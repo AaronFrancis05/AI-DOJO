@@ -351,6 +351,13 @@
       "when": 1789727846158,
       "tag": "0050_class_to_live_lessons",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790226737293,
+      "tag": "0051_clear_rictor",
+      "breakpoints": true
     }
   ]
 }

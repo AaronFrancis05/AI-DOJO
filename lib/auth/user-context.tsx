@@ -12,6 +12,12 @@ export interface UserContextValue {
    *  Never the authority for access: every tutor/admin route re-checks it
    *  server-side through requireRole(). */
   role: UserRole;
+  /** True when this account's organization membership role is admin.
+   *  Display only — `/organization` re-checks the membership. */
+  organizationAdmin?: boolean;
+  /** Display only. Absent for tutors and anyone with no membership. */
+  organizationName?: string | null;
+  groupNames?: string[];
   /** `tutors.verification_status` for a tutor account, null for anyone else.
    *  Display only — what a pending tutor is allowed to do is decided by the
    *  routes that read the column themselves. */
