@@ -15,6 +15,7 @@ import { getAuthErrorMessage } from '@/lib/auth/errors';
 import { useUser } from '@/lib/auth/user-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import PasswordInput from '@/components/PasswordInput';
 
@@ -271,9 +272,11 @@ export default function ProfilePage() {
           <h2 className="text-sm font-semibold text-dojo-text-primary">Email</h2>
           <p className="mt-3 text-sm text-dojo-text-primary break-all">{currentEmail || '—'}</p>
           {emailVerified !== null && (
-            <p className={`mt-1 text-xs font-medium ${emailVerified ? 'text-dojo-success' : 'text-dojo-text-muted'}`}>
-              {emailVerified ? 'Verified' : 'Not verified'}
-            </p>
+            <div className="mt-2">
+              <Badge variant={emailVerified ? 'success' : 'warning'}>
+                {emailVerified ? 'Verified' : 'Not verified'}
+              </Badge>
+            </div>
           )}
 
           {emailVerified === false && (

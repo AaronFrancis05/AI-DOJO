@@ -14,28 +14,36 @@ interface OrganizationMe {
 /** The learner's own organization and groups. Invitations are answered on their own page. */
 export function OrganizationCard() {
   const [data, setData] = useState<OrganizationMe | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     adminFetch<OrganizationMe>('/api/organization/me')
       .then((row) => { if (!cancelled) setData(row); })
-      .catch(() => { if (!cancelled) setData(null); });
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
 
-  if (!data?.organization && !(data?.invitations.length)) return null;
+  if (!loading && !data?.organization && !(data?.invitations.length)) return null;
 
   return (
     <Card className="mb-6">
-      {data?.organization && (
+      {(loading || data?.organization) && (
         <div className="space-y-4">
           <div>
             <p className="text-xs font-medium text-dojo-text-muted">Organization</p>
-            <p className="mt-1 text-sm font-semibold text-dojo-text-primary">{data.organization.name}</p>
+            {loading ? (
+              <p className="mt-1 text-sm text-dojo-text-muted">Loading…</p>
+            ) : (
+              <p className="mt-1 text-sm font-semibold text-dojo-text-primary">{data?.organization?.name}</p>
+            )}
           </div>
           <div>
             <p className="text-xs font-medium text-dojo-text-muted">Groups</p>
-            {data.groups.length > 0 ? (
+            {loading ? (
+              <p className="mt-1 text-sm text-dojo-text-muted">Loading…</p>
+            ) : data && data.groups.length > 0 ? (
               <ul className="mt-1 space-y-1">
                 {data.groups.map((group) => (
                   <li key={group.id} className="text-sm font-semibold text-dojo-text-primary">{group.name}</li>

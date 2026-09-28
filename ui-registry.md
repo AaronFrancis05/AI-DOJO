@@ -41,7 +41,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 ## UI Primitives (`/components/ui/`)
 | Component | Props | Usage Notes |
 |-----------|-------|-------------|
-| `Badge` | `variant: beginner\|intermediate\|advanced\|accent\|default` | Skill level badges, status labels |
+| `Badge` | `variant: beginner\|intermediate\|advanced\|accent\|default\|premium\|outline\|success\|warning` | Skill level badges and status labels. `success` and `warning` are a rounded-full border with a light fill (`bg-dojo-success/10`, `bg-dojo-warning/10`) |
 | `Pill` | `variant: standard\|trouble\|default`, `active`, `onClick` | Outlined toggle pills, practice focus tags |
 | `Card` | `raised`, `hoverable`, `onClick`, `id` | Surface container with border; raised uses `surface-raised` bg. `id` is for link/scroll anchors (e.g. the `#unit-{id}` a finished lesson lands on) |
 | `Button` | `variant: primary\|secondary\|ghost\|danger`, `size`, `loading` | Primary uses accent, secondary uses border+surface |
@@ -94,7 +94,7 @@ A learner belongs to exactly one organization. Groups are subsets inside that or
 | `components/admin/OrganizationsPanel.tsx` | Admin console tab. Creates an organization and appoints its first administrator by email. Same shell as the other admin panels: `max-w-7xl` page, `Card`, `Button`, `adminInputClass` |
 | `components/organization/OrganizationConsole.tsx` | `/organization`, organization administrators only. Tabs: People, Groups, Invitations, Tutors, Progress. Tutors is absent on the public organization. It lists allowed tutors and the same bookable catalogue learners see (name, headline, languages, rate), and Remove asks for confirmation. A group name is edited in place (Rename, then Save). Retirement asks for confirmation, and is hidden on the public organization. Removing someone from a group also asks for confirmation. Deleting the group itself asks for confirmation and is refused while anyone is still in it; the button stays disabled with that reason. The last administrator's Retire control stays disabled, with the note to appoint another administrator first |
 | `components/organization/InvitationsPanel.tsx` | `/organization/invitations`, any signed-in learner. Accept moves them and refreshes the app shell so the sidebar shows the new organization; decline leaves them where they are |
-| `components/organization/OrganizationCard.tsx` | Settings card. Organization and Groups are separate labeled rows (an empty group list reads "None"). A link appears when an invitation is waiting |
+| `components/organization/OrganizationCard.tsx` | Settings card. The frame is visible immediately; Organization and Groups show "Loading…" until `/api/organization/me` returns, then separate labeled rows (an empty group list reads "None"). A link appears when an invitation is waiting |
 
 Membership changes live in `lib/organizations/membership.ts`. Invite refusals that would name another organization collapse to one sentence in `lib/organizations/rules.ts`.
 
