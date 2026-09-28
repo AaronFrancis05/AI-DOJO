@@ -92,7 +92,7 @@ A learner belongs to exactly one organization. Groups are subsets inside that or
 | Surface | Notes |
 |---------|-------|
 | `components/admin/OrganizationsPanel.tsx` | Admin console tab. Creates an organization and appoints its first administrator by email. Same shell as the other admin panels: `max-w-7xl` page, `Card`, `Button`, `adminInputClass` |
-| `components/organization/OrganizationConsole.tsx` | `/organization`, organization administrators only. Tabs: People, Groups, Invitations, Tutors, Progress. Tutors is absent on the public organization. It lists allowed tutors and the same bookable catalogue learners see (name, headline, languages, rate), and Remove asks for confirmation. A group name is edited in place (Rename, then Save). Retirement is hidden on the public organization |
+| `components/organization/OrganizationConsole.tsx` | `/organization`, organization administrators only. Tabs: People, Groups, Invitations, Tutors, Progress. Tutors is absent on the public organization. It lists allowed tutors and the same bookable catalogue learners see (name, headline, languages, rate), and Remove asks for confirmation. A group name is edited in place (Rename, then Save). Retirement asks for confirmation, and is hidden on the public organization. The last administrator's Retire control stays disabled, with the note to appoint another administrator first |
 | `components/organization/InvitationsPanel.tsx` | `/organization/invitations`, any signed-in learner. Accept moves them; decline leaves them where they are |
 | `components/organization/OrganizationCard.tsx` | Settings card: current organization name, group names, and a link when an invitation is waiting |
 

@@ -1112,6 +1112,10 @@ Home's Recent Sessions "View Full History" is always shown and opens `/sessions?
 
 Removing a learner from a group writes a `group_removal` notification (bell, link to Settings). Nothing is sent when they were not actually in the group.
 
+## 2026-09-25 (retire confirmation)
+
+People → Retire asks for confirmation before the member leaves the organization. The last administrator's button stays disabled, with the same sentence the API already returns: appoint another administrator first. The server check in `retireLearner` is unchanged.
+
 ## 2026-09-28 (organization tutor permissions)
 
 Private organizations choose which tutors their members may start a new booking, live lesson or assessment with. The table is `organization_tutor_permissions`. Zero rows means nobody, and the Tutors menu stays hidden even when `TUTORS_ENABLED` is on. The public organization `ai-dojo` has no rows and no tutor tab: its learners can start with any verified tutor who is accepting bookings and whose account is active. Tutors are still not organization members.
