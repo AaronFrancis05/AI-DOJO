@@ -18,6 +18,12 @@ export interface UserContextValue {
   /** Display only. Absent for tutors and anyone with no membership. */
   organizationName?: string | null;
   groupNames?: string[];
+  /**
+   * Learner catalogue. False when a private organization has no bookable
+   * tutor, and when the public organization has none at all. Admins stay
+   * true. Hiding the link is convenience — the tutor routes re-check.
+   */
+  canBrowseTutors?: boolean;
   /** `tutors.verification_status` for a tutor account, null for anyone else.
    *  Display only — what a pending tutor is allowed to do is decided by the
    *  routes that read the column themselves. */

@@ -3,6 +3,7 @@ import { tutors, users } from '@/src/schema';
 import { and, eq } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
 import { tutorLanguageSets } from '@/lib/tutors/languages';
+import { loadTutorAccess } from '@/lib/organizations/tutor-access';
 
 /**
  * Lists bookable tutors, optionally filtered to one target language.
@@ -17,6 +18,10 @@ export async function GET(req: Request) {
   }
 
   const lang = new URL(req.url).searchParams.get('lang');
+  const access = await loadTutorAccess(user.id);
+  if (!access.unrestricted && access.isDefault == null) {
+    return Response.json({ success: true, tutors: [] });
+  }
 
   const rows = await db
     .select({
@@ -37,6 +42,7 @@ export async function GET(req: Request) {
     .where(and(
       eq(tutors.verificationStatus, 'verified'),
       eq(tutors.isAcceptingBookings, true),
+      eq(users.status, 'active'),
     ))
     .orderBy(tutors.id);
 
@@ -49,7 +55,10 @@ export async function GET(req: Request) {
     return { ...t, languages: teaches, instructionLanguages: explainsIn };
   });
 
-  const filtered = lang ? parsed.filter((t) => t.languages.includes(lang)) : parsed;
+  const permitted = access.isDefault === false
+    ? parsed.filter((t) => access.permittedIds?.has(t.id))
+    : parsed;
+  const filtered = lang ? permitted.filter((t) => t.languages.includes(lang)) : permitted;
 
   return Response.json({ success: true, tutors: filtered });
 }

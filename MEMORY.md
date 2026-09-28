@@ -1107,3 +1107,9 @@ Home's Recent Sessions "View Full History" is always shown and opens `/sessions?
 ## 2026-09-25 (profile email)
 
 `/profile` shows the signed-in address and whether Neon Auth has verified it. An unverified address can be confirmed with the same email OTP used at sign-up. `authClient.changeEmail` sends a confirmation before the address changes. `syncUser` and `resolveDbId` match the auth id first and then the email, and write the new address onto the existing row — an email-only lookup would miss that row and insert a second account.
+
+## 2026-09-28 (organization tutor permissions)
+
+Private organizations choose which tutors their members may start a new booking, live lesson or assessment with. The table is `organization_tutor_permissions`. Zero rows means nobody, and the Tutors menu stays hidden even when `TUTORS_ENABLED` is on. The public organization `ai-dojo` has no rows and no tutor tab: its learners can start with any verified tutor who is accepting bookings and whose account is active. Tutors are still not organization members.
+
+Permission is checked only when something new starts. Joining a booking, an existing live-lesson seat, or an assessment queue place does not read the table again. A suspended, deleted or unverified tutor account can still refuse that join. Turning off `isAcceptingBookings` does not.

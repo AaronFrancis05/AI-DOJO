@@ -93,10 +93,13 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   // consoles appended, because admin satisfies every role (see satisfiesRole
   // in lib/auth/roles.ts) and moderating learner surfaces means reaching them.
   const isTutor = TUTORS_ENABLED && user?.role === 'tutor';
+  const learnerNav = user?.canBrowseTutors
+    ? navItems
+    : navItems.filter((item) => item.href !== '/tutors');
   const items = isTutor
     ? tutorNavItems
     : [
-        ...navItems,
+        ...learnerNav,
         ...(TUTORS_ENABLED && user?.role === 'admin' ? [tutorNavItem] : []),
         ...(user?.role === 'admin' ? [adminNavItem] : []),
         ...(user?.organizationAdmin ? [organizationNavItem] : []),

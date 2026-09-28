@@ -563,7 +563,10 @@ export const srsCards = pgTable('srs_cards', {
 //
 // A learner belongs to exactly one organization. Groups are named subsets of
 // that organization's members and never cross an organization. Tutors are not
-// members: a `tutors` row stays independent of this tree.
+// members: a `tutors` row stays independent of this tree. A private
+// organization may name which tutors its learners can start something new
+// with (`organization_tutor_permissions`). The default organization does not
+// use that table. Removing a row does not cancel a booking already made.
 //
 // The default organization (slug `ai-dojo`, `isDefault`) is where sign-up and
 // retirement land. Another organization can invite only a learner who is
@@ -928,6 +931,21 @@ export const tutors = pgTable('tutors', {
   isAcceptingBookings: boolean('is_accepting_bookings').default(true).notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
+
+// Which tutors a private organization's learners may start a new booking,
+// live lesson or assessment with. The default organization has no rows:
+// its learners may start with any verified tutor who is accepting bookings.
+// A row is not a membership, and deleting one does not touch bookings that
+// already exist.
+export const organizationTutorPermissions = pgTable('organization_tutor_permissions', {
+  id:             serial('id').primaryKey(),
+  organizationId: integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  tutorId:        integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqTutor: uniqueIndex('uq_organization_tutor_permissions').on(t.organizationId, t.tutorId),
+  idxTutor: index('idx_organization_tutor_permissions_tutor').on(t.tutorId),
+}));
 
 export const tutorAvailability = pgTable('tutor_availability', {
   id:         serial('id').primaryKey(),
@@ -1342,6 +1360,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   memberships: many(organizationMemberships),
   groups:      many(groups),
   invitations: many(organizationInvitations),
+  tutorPermissions: many(organizationTutorPermissions),
 }));
 
 export const organizationMembershipsRelations = relations(organizationMemberships, ({ one }) => ({
@@ -1363,4 +1382,9 @@ export const organizationInvitationsRelations = relations(organizationInvitation
   organization: one(organizations, { fields: [organizationInvitations.organizationId], references: [organizations.id] }),
   user:         one(users,         { fields: [organizationInvitations.userId],         references: [users.id] }),
   invitedBy:    one(users,         { fields: [organizationInvitations.invitedByUserId], references: [users.id] }),
+}));
+
+export const organizationTutorPermissionsRelations = relations(organizationTutorPermissions, ({ one }) => ({
+  organization: one(organizations, { fields: [organizationTutorPermissions.organizationId], references: [organizations.id] }),
+  tutor:        one(tutors,        { fields: [organizationTutorPermissions.tutorId],        references: [tutors.id] }),
 }));

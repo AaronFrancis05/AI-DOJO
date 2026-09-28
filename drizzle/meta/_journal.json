@@ -358,6 +358,13 @@
       "when": 1790226737293,
       "tag": "0051_clear_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790585246875,
+      "tag": "0052_sparkling_vance_astro",
+      "breakpoints": true
     }
   ]
 }

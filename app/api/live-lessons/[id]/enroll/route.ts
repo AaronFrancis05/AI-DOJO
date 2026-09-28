@@ -6,6 +6,7 @@ import { enrolLearner, loadLiveLessonForUser } from '@/lib/tutors/rooms-data';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
+import { learnerMayUseTutor, tutorUnavailableResponse } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -39,6 +40,11 @@ export async function POST(
   }
   if (found.liveLesson.status === 'cancelled') {
     return Response.json({ error: 'This live lesson was cancelled' }, { status: 409 });
+  }
+
+  const seated = found.enrollment != null && found.enrollment.status !== 'cancelled';
+  if (!seated && !(await learnerMayUseTutor(user.id, found.liveLesson.tutorId))) {
+    return tutorUnavailableResponse();
   }
 
   const result = await enrolLearner(lessonId, user.id, found.liveLesson);

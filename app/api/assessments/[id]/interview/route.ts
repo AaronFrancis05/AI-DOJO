@@ -5,6 +5,7 @@ import { getAuthUser } from '@/lib/auth/server';
 import { closeAssessmentIfDrained, loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { learnerMayUseTutor, tutorHoldBlock, tutorUnavailableResponse } from '@/lib/organizations/tutor-access';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
 import { createNotification } from '@/lib/notifications';
@@ -215,6 +216,12 @@ export async function POST(
   if (!decision.allowed) {
     return Response.json({ error: decision.reason }, { status: 403 });
   }
+
+  if (!found.slot && !(await learnerMayUseTutor(user.id, found.assessment.tutorId))) {
+    return tutorUnavailableResponse();
+  }
+  const held = await tutorHoldBlock(found.assessment.tutorId);
+  if (held) return held;
 
   const config = getInterviewConfig();
   if (!config) {

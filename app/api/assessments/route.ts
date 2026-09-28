@@ -11,6 +11,7 @@ import {
 import { tutorLanguageError } from '@/lib/tutors/languages';
 import { announceLive } from '@/lib/tutors/live';
 import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
+import { loadTutorAccess, mayDiscoverWithAccess } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -75,6 +76,9 @@ export async function GET(req: Request) {
           and ${assessmentQueue.learnerId} = ${user.id}
         limit 1
       )`,
+      verificationStatus: tutors.verificationStatus,
+      isAcceptingBookings: tutors.isAcceptingBookings,
+      accountStatus: users.status,
     })
     .from(assessmentSessions)
     .innerJoin(tutors, eq(assessmentSessions.tutorId, tutors.id))
@@ -84,11 +88,17 @@ export async function GET(req: Request) {
     .orderBy(includePast ? desc(assessmentSessions.scheduledAt) : asc(assessmentSessions.scheduledAt))
     .limit(100);
 
-  const visible = mine
+  const access = await loadTutorAccess(user.id);
+  const visible = (mine
     ? rows.filter(
         (r) => (tutorProfile && r.assessment.tutorId === tutorProfile.id) || r.myState != null,
       )
-    : rows;
+    : rows
+  ).filter((r) => {
+    const teaching = Boolean(tutorProfile && r.assessment.tutorId === tutorProfile.id);
+    const bookable = r.verificationStatus === 'verified' && r.isAcceptingBookings && r.accountStatus === 'active';
+    return mayDiscoverWithAccess(access, r.assessment.tutorId, bookable, teaching || r.myState != null);
+  });
 
   return Response.json({
     success: true,

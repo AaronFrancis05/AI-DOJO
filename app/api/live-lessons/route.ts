@@ -21,6 +21,7 @@ import { dbPool } from '@/src/db-pool';
 import { tutorLanguageError } from '@/lib/tutors/languages';
 import { announceLive } from '@/lib/tutors/live';
 import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
+import { loadTutorAccess, mayDiscoverWithAccess } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -90,6 +91,9 @@ export async function GET(req: Request) {
           and ${liveLessonEnrollments.learnerId} = ${user.id}
         limit 1
       )`,
+      verificationStatus: tutors.verificationStatus,
+      isAcceptingBookings: tutors.isAcceptingBookings,
+      accountStatus: users.status,
     })
     .from(liveLessons)
     .innerJoin(tutors, eq(liveLessons.tutorId, tutors.id))
@@ -99,13 +103,20 @@ export async function GET(req: Request) {
     .orderBy(includePast ? desc(liveLessons.scheduledAt) : asc(liveLessons.scheduledAt))
     .limit(100);
 
-  const visible = mine
+  const access = await loadTutorAccess(user.id);
+  const visible = (mine
     ? rows.filter(
         (r) =>
           (tutorProfile && r.liveLesson.tutorId === tutorProfile.id) ||
           r.myEnrollmentStatus != null,
       )
-    : rows;
+    : rows
+  ).filter((r) => {
+    const teaching = Boolean(tutorProfile && r.liveLesson.tutorId === tutorProfile.id);
+    const seated = r.myEnrollmentStatus != null && r.myEnrollmentStatus !== 'cancelled';
+    const bookable = r.verificationStatus === 'verified' && r.isAcceptingBookings && r.accountStatus === 'active';
+    return mayDiscoverWithAccess(access, r.liveLesson.tutorId, bookable, teaching || seated);
+  });
 
   return Response.json({
     success: true,

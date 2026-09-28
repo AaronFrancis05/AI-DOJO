@@ -662,7 +662,7 @@ export default function CourseDetailPage() {
                               )}
                             </Link>
                           ) : (
-                            unitComplete && TUTORS_ENABLED && (
+                            unitComplete && TUTORS_ENABLED && user?.canBrowseTutors && (
                               <Link
                                 href="/tutors"
                                 className="inline-flex items-center gap-2 rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"

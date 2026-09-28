@@ -9,6 +9,7 @@ import { createNotifications } from '@/lib/notifications';
 import { announceLive } from '@/lib/tutors/live';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
+import { learnerMayUseTutor } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -32,6 +33,11 @@ export async function GET(
 
   const found = await loadLiveLessonForUser(lessonId, user.id);
   if (!found) return Response.json({ error: 'Live lesson not found' }, { status: 404 });
+
+  const seated = found.enrollment != null && found.enrollment.status !== 'cancelled';
+  if (!found.isTutor && !seated && !(await learnerMayUseTutor(user.id, found.liveLesson.tutorId))) {
+    return Response.json({ error: 'Live lesson not found' }, { status: 404 });
+  }
 
   const roster = await loadLiveLessonRoster(lessonId);
   const decision = canJoinBooking({

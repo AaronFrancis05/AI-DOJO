@@ -290,6 +290,15 @@ export default function TutorsPage() {
         </section>
       )}
 
+      {!loading && !user?.canBrowseTutors && upcoming.length === 0 && liveLessons.length === 0 && assessments.length === 0 && (
+        <Card className="py-12 text-center">
+          <p className="text-sm text-dojo-text-muted">
+            Tutoring isn&apos;t available for your organization yet.
+          </p>
+        </Card>
+      )}
+
+      {user?.canBrowseTutors && (
       <section>
         <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
           Available tutors
@@ -365,6 +374,7 @@ export default function TutorsPage() {
           </div>
         )}
       </section>
+      )}
 
       {user == null && (
         <p className="mt-6 text-xs text-dojo-text-muted">Sign in to book a session.</p>

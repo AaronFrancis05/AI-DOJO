@@ -8,6 +8,7 @@ import { buildJoinPayload } from '@/lib/tutors/join';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
+import { learnerMayUseTutor, tutorHoldBlock, tutorUnavailableResponse } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -50,6 +51,9 @@ export async function POST(
     return Response.json({ error: decision.reason }, { status: 403 });
   }
 
+  const held = await tutorHoldBlock(found.liveLesson.tutorId);
+  if (held) return held;
+
   // A learner arriving without a seat takes one here rather than being turned
   // away. An instant live lesson has no roster by definition — the tutor opened it
   // and their cohort was notified — so demanding a prior enrolment would make
@@ -60,6 +64,9 @@ export async function POST(
   // is over, should not quietly gain members.
   if (!found.isTutor) {
     if (!found.enrollment || found.enrollment.status === 'cancelled') {
+      if (!(await learnerMayUseTutor(user.id, found.liveLesson.tutorId))) {
+        return tutorUnavailableResponse();
+      }
       const enrolled = await enrolLearner(lessonId, user.id, found.liveLesson);
       if (!enrolled.ok) {
         return Response.json({ error: enrolled.reason }, { status: 403 });

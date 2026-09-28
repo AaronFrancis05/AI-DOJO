@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { adminFetch, adminInputClass, EmptyState, Loading } from '@/components/admin/shared';
+import { getNativeLangName, getTargetLangConfig } from '@/lib/language';
 
 interface Member {
   id: string;
@@ -49,6 +50,22 @@ const TABS = [
   { id: 'progress', label: 'Progress' },
 ];
 
+interface OrgTutor {
+  id: number;
+  name: string;
+  headline: string;
+  languages: string[];
+  instructionLanguages: string[];
+  hourlyRateCents: number;
+  currency: string;
+  bookable: boolean;
+}
+
+function formatTutorMoney(cents: number, currency: string): string {
+  if (cents === 0) return 'Free';
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(cents / 100);
+}
+
 export function OrganizationConsole() {
   usePageTitle('Organization');
   const [tab, setTab] = useState('people');
@@ -65,6 +82,9 @@ export function OrganizationConsole() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [groupFilter, setGroupFilter] = useState('');
   const [busy, setBusy] = useState(false);
+  const [orgLoaded, setOrgLoaded] = useState(false);
+  const [allowedTutors, setAllowedTutors] = useState<OrgTutor[]>([]);
+  const [availableTutors, setAvailableTutors] = useState<OrgTutor[]>([]);
 
   const loadRoster = useCallback(() => {
     return adminFetch<{ organization: { name: string; isDefault: boolean }; members: Member[] }>('/api/organization/roster')
@@ -72,6 +92,7 @@ export function OrganizationConsole() {
         setOrgName(data.organization.name);
         setIsDefault(data.organization.isDefault);
         setMembers(data.members ?? []);
+        setOrgLoaded(true);
       });
   }, []);
 
@@ -94,6 +115,14 @@ export function OrganizationConsole() {
       });
   }, []);
 
+  const loadTutors = useCallback(() => {
+    return adminFetch<{ allowed: OrgTutor[]; available: OrgTutor[] }>('/api/organization/tutors')
+      .then((data) => {
+        setAllowedTutors(data.allowed ?? []);
+        setAvailableTutors(data.available ?? []);
+      });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const job = tab === 'groups'
@@ -102,12 +131,14 @@ export function OrganizationConsole() {
         ? Promise.all([loadRoster(), loadInvitations()])
         : tab === 'progress'
           ? Promise.all([loadRoster(), loadProgress(groupFilter)])
-          : loadRoster();
+          : tab === 'tutors'
+            ? Promise.all([loadRoster(), loadTutors()])
+            : loadRoster();
     job
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tab, groupFilter, loadGroups, loadInvitations, loadProgress, loadRoster]);
+  }, [tab, groupFilter, loadGroups, loadInvitations, loadProgress, loadRoster, loadTutors]);
 
   async function run(task: () => Promise<void>) {
     setBusy(true);
@@ -141,7 +172,9 @@ export function OrganizationConsole() {
       )}
 
       <Tabs
-        tabs={TABS}
+        tabs={orgLoaded && !isDefault
+          ? [TABS[0], TABS[1], TABS[2], { id: 'tutors', label: 'Tutors' }, TABS[3]]
+          : TABS}
         defaultTab="people"
         onChange={(next) => { setError(''); setLoading(true); setTab(next); }}
         renderPanel={(panel) => (
@@ -196,6 +229,20 @@ export function OrganizationConsole() {
                   await loadInvitations();
                 })}
               />
+            ) : panel === 'tutors' ? (
+              <TutorsTab
+                allowed={allowedTutors}
+                available={availableTutors}
+                busy={busy}
+                onAllow={(tutorId) => run(async () => {
+                  await adminFetch('/api/organization/tutors', { method: 'POST', body: { tutorId } });
+                  await loadTutors();
+                })}
+                onRemove={(tutorId) => run(async () => {
+                  await adminFetch(`/api/organization/tutors/${tutorId}`, { method: 'DELETE' });
+                  await loadTutors();
+                })}
+              />
             ) : (
               <ProgressTab
                 rows={progress}
@@ -207,6 +254,83 @@ export function OrganizationConsole() {
           </div>
         )}
       />
+    </div>
+  );
+}
+
+function TutorLine({ tutor }: { tutor: OrgTutor }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-sm font-semibold text-dojo-text-primary">{tutor.name}</p>
+      <p className="mt-1 text-xs leading-relaxed text-dojo-text-muted">{tutor.headline}</p>
+      <p className="mt-1 text-xs text-dojo-text-muted">
+        {tutor.languages.map((code) => getTargetLangConfig(code).name).join(', ') || 'No languages'}
+        {tutor.instructionLanguages.length > 0 && (
+          <> · Explains in {tutor.instructionLanguages.map((code) => getNativeLangName(code)).join(', ')}</>
+        )}
+        {' · '}
+        {formatTutorMoney(tutor.hourlyRateCents, tutor.currency)}
+        {tutor.hourlyRateCents > 0 && ' / hr'}
+      </p>
+    </div>
+  );
+}
+
+function TutorsTab({
+  allowed,
+  available,
+  busy,
+  onAllow,
+  onRemove,
+}: {
+  allowed: OrgTutor[];
+  available: OrgTutor[];
+  busy: boolean;
+  onAllow: (tutorId: number) => void;
+  onRemove: (tutorId: number) => void;
+}) {
+  return (
+    <div className="space-y-8">
+      <p className="text-sm leading-relaxed text-dojo-text-muted">
+        Members can start a new session only with the tutors you allow. Removing someone leaves bookings that are already made in place.
+      </p>
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Allowed</h2>
+        {allowed.length === 0 ? (
+          <EmptyState>No tutors are allowed yet. Members cannot book one until you add one.</EmptyState>
+        ) : allowed.map((tutor) => (
+          <Card key={tutor.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TutorLine tutor={tutor} />
+            <div className="flex items-center gap-2">
+              {!tutor.bookable && <Badge variant="outline">Unavailable</Badge>}
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={busy}
+                onClick={() => {
+                  if (!confirm(`Remove ${tutor.name}? Existing bookings stay in place. Members will not be able to start a new one.`)) return;
+                  onRemove(tutor.id);
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Available</h2>
+        {available.length === 0 ? (
+          <EmptyState>No other tutors are taking bookings right now.</EmptyState>
+        ) : available.map((tutor) => (
+          <Card key={tutor.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TutorLine tutor={tutor} />
+            <Button size="sm" disabled={busy} onClick={() => onAllow(tutor.id)}>Allow</Button>
+          </Card>
+        ))}
+      </section>
     </div>
   );
 }
@@ -223,13 +347,17 @@ function PeopleTab({
   onRetire: (userId: string) => void;
 }) {
   if (members.length === 0) return <EmptyState>No one is in this organization yet.</EmptyState>;
+  const adminCount = members.filter((member) => member.membershipRole === 'admin').length;
   return (
     <div className="space-y-3">
-      {members.map((member) => (
+      {members.map((member) => {
+        const lastAdmin = member.membershipRole === 'admin' && adminCount <= 1;
+        const label = member.name || member.email;
+        return (
         <Card key={member.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-sm font-semibold text-dojo-text-primary">{member.name || member.email}</p>
+              <p className="truncate text-sm font-semibold text-dojo-text-primary">{label}</p>
               {member.membershipRole === 'admin' && <Badge variant="accent">Admin</Badge>}
               {member.status !== 'active' && <Badge variant="outline">{member.status}</Badge>}
             </div>
@@ -239,12 +367,28 @@ function PeopleTab({
             )}
           </div>
           {!isDefault && (
-            <Button size="sm" variant="danger" disabled={busy} onClick={() => onRetire(member.id)}>
-              Retire
-            </Button>
+            <div className="flex flex-col items-start gap-1 sm:items-end">
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={busy || lastAdmin}
+                onClick={() => {
+                  if (!confirm(`Retire ${label}? They leave this organization and can be invited elsewhere.`)) return;
+                  onRetire(member.id);
+                }}
+              >
+                Retire
+              </Button>
+              {lastAdmin && (
+                <p className="max-w-xs text-xs leading-relaxed text-dojo-text-muted sm:text-right">
+                  Appoint another administrator before removing this one.
+                </p>
+              )}
+            </div>
           )}
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -304,9 +448,9 @@ function GroupsTab({
                   <p className="mt-1 text-xs text-dojo-text-muted">{group.memberCount} {group.memberCount === 1 ? 'person' : 'people'}</p>
                 </div>
               )}
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 flex-col items-end gap-1">
                 {editingId === group.id ? (
-                  <>
+                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       disabled={busy || !draft.trim()}
@@ -322,18 +466,35 @@ function GroupsTab({
                       Save
                     </Button>
                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditingId(null)}>Cancel</Button>
-                  </>
+                  </div>
                 ) : (
                   <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => { setEditingId(group.id); setDraft(group.name); }}
-                    >
-                      Rename
-                    </Button>
-                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDelete(group.id)}>Remove</Button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => { setEditingId(group.id); setDraft(group.name); }}
+                      >
+                        Rename
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy || group.memberCount > 0}
+                        onClick={() => {
+                          if (!confirm(`Delete ${group.name}? This cannot be undone.`)) return;
+                          onDelete(group.id);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                    {group.memberCount > 0 && (
+                      <p className="max-w-xs text-right text-xs leading-relaxed text-dojo-text-muted">
+                        Remove everyone from this group before deleting it.
+                      </p>
+                    )}
                   </>
                 )}
               </div>
@@ -342,7 +503,18 @@ function GroupsTab({
               {members.filter((member) => inGroup.has(member.id)).map((member) => (
                 <li key={member.id} className="flex items-center justify-between gap-3 text-sm">
                   <span className="truncate text-dojo-text-primary">{member.name || member.email}</span>
-                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRemove(group.id, member.id)}>Remove</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      const label = member.name || member.email;
+                      if (!confirm(`Remove ${label} from ${group.name}? They leave this group.`)) return;
+                      onRemove(group.id, member.id);
+                    }}
+                  >
+                    Remove
+                  </Button>
                 </li>
               ))}
             </ul>
