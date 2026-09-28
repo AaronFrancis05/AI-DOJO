@@ -21,6 +21,7 @@ export type NotificationType =
   // The ones a human writes rather than a completed action producing them.
   | 'announcement'
   | 'organization_invite'
+  | 'group_assignment'
   | 'group_removal';
 
 export interface CreateNotificationInput {

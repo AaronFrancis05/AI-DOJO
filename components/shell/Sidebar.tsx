@@ -178,9 +178,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             </p>
             {user?.organizationName && (
               <p className="truncate text-xs text-dojo-text-muted">
-                {user.groupNames && user.groupNames.length > 0
-                  ? `${user.organizationName} · ${user.groupNames.join(', ')}`
-                  : user.organizationName}
+                {user.organizationName}
               </p>
             )}
           </div>

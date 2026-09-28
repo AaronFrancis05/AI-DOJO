@@ -576,12 +576,25 @@ export async function deleteGroup(organizationId: number, groupId: number): Prom
     .where(and(eq(groups.id, groupId), eq(groups.organizationId, organizationId)))
     .limit(1);
   if (!row) throw new OrganizationError(404, 'Not found');
+
+  const [countRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(groupMemberships)
+    .where(eq(groupMemberships.groupId, groupId));
+  if (Number(countRow?.n ?? 0) > 0) {
+    throw new OrganizationError(400, 'Remove everyone from this group before deleting it.');
+  }
+
   await db.delete(groups).where(eq(groups.id, groupId));
 }
 
-export async function addGroupMember(organizationId: number, groupId: number, userId: string): Promise<void> {
+export async function addGroupMember(
+  organizationId: number,
+  groupId: number,
+  userId: string,
+): Promise<{ groupName: string; organizationName: string }> {
   const [group] = await db
-    .select({ id: groups.id })
+    .select({ id: groups.id, name: groups.name })
     .from(groups)
     .where(and(eq(groups.id, groupId), eq(groups.organizationId, organizationId)))
     .limit(1);
@@ -598,6 +611,8 @@ export async function addGroupMember(organizationId: number, groupId: number, us
     if (isUniqueViolation(err)) throw new OrganizationError(409, 'That learner is already in this group.');
     throw err;
   }
+
+  return { groupName: group.name, organizationName: membership.organizationName };
 }
 
 export async function removeGroupMember(

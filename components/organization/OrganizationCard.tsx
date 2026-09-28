@@ -27,12 +27,25 @@ export function OrganizationCard() {
 
   return (
     <Card className="mb-6">
-      <p className="text-sm font-semibold text-dojo-text-primary">Organization</p>
       {data?.organization && (
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          {data.organization.name}
-          {data.groups.length > 0 ? ` · ${data.groups.map((group) => group.name).join(', ')}` : ''}
-        </p>
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-medium text-dojo-text-muted">Organization</p>
+            <p className="mt-1 text-sm font-semibold text-dojo-text-primary">{data.organization.name}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-dojo-text-muted">Groups</p>
+            {data.groups.length > 0 ? (
+              <ul className="mt-1 space-y-1">
+                {data.groups.map((group) => (
+                  <li key={group.id} className="text-sm font-semibold text-dojo-text-primary">{group.name}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-sm text-dojo-text-muted">None</p>
+            )}
+          </div>
+        </div>
       )}
       {data && data.invitations.length > 0 && (
         <Link href="/organization/invitations" className="mt-3 inline-block text-sm font-medium text-dojo-accent">

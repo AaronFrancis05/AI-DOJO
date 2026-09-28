@@ -17,7 +17,6 @@ export interface UserContextValue {
   organizationAdmin?: boolean;
   /** Display only. Absent for tutors and anyone with no membership. */
   organizationName?: string | null;
-  groupNames?: string[];
   /**
    * Learner catalogue. False when a private organization has no bookable
    * tutor, and when the public organization has none at all. Admins stay

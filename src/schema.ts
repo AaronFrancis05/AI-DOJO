@@ -1274,7 +1274,7 @@ export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' |
-  // 'organization_invite' | 'group_removal' — what produced it.
+  // 'organization_invite' | 'group_assignment' | 'group_removal' — what produced it.
   type:      varchar('type', { length: 40 }).notNull(),
   title:     varchar('title', { length: 160 }).notNull(),
   body:      text('body'),

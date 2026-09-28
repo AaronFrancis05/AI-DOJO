@@ -1120,6 +1120,10 @@ People → Retire asks for confirmation before the member leaves the organizatio
 
 Accepting an organization invitation moves the learner and clears their groups, but the sidebar reads `organizationName` / `groupNames` from the server layout. The invitations page only refetched its own list, so the default organization stayed on screen. Accept now calls `router.refresh()`.
 
+## 2026-09-25 (group assignment notice)
+
+Adding a learner to a group writes a `group_assignment` notification (bell, link to Settings). Removing them asks for confirmation. Deleting a group asks for confirmation and is allowed only when it has no members; otherwise the button stays disabled. Both membership changes are assignments, not invitations they accept. The sidebar shows the organization name only. Settings lists Organization and Groups as separate rows. `groupNames` is no longer on the layout user.
+
 ## 2026-09-28 (organization tutor permissions)
 
 Private organizations choose which tutors their members may start a new booking, live lesson or assessment with. The table is `organization_tutor_permissions`. Zero rows means nobody, and the Tutors menu stays hidden even when `TUTORS_ENABLED` is on. The public organization `ai-dojo` has no rows and no tutor tab: its learners can start with any verified tutor who is accepting bookings and whose account is active. Tutors are still not organization members.

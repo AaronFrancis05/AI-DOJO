@@ -13,7 +13,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json().catch(() => null);
     const userId = body && typeof body.userId === 'string' ? body.userId : '';
     if (!userId) return Response.json({ error: 'A learner is required.' }, { status: 400 });
-    await addGroupMember(admin.organizationId, groupId, userId);
+    const added = await addGroupMember(admin.organizationId, groupId, userId);
+    await createNotification({
+      userId,
+      type: 'group_assignment',
+      title: `Added to ${added.groupName}`,
+      body: `You are now in the ${added.groupName} group at ${added.organizationName}.`,
+      href: '/settings',
+    });
     return Response.json({ success: true }, { status: 201 });
   } catch (err) {
     return organizationErrorResponse(err);
