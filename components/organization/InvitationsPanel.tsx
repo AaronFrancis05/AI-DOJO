@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
@@ -14,6 +15,7 @@ interface Invitation {
 
 export function InvitationsPanel() {
   usePageTitle('Invitations');
+  const router = useRouter();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,6 +53,9 @@ export function InvitationsPanel() {
       await adminFetch(`/api/organization/invitations/${id}`, { method: 'POST', body: { action } });
       setLoading(true);
       await load();
+      // The sidebar's organization and groups come from the app layout, which
+      // does not re-read membership unless the server render runs again.
+      if (action === 'accept') router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not update the invitation');
     } finally {
