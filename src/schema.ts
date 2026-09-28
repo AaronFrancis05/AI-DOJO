@@ -1274,9 +1274,7 @@ export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' |
-  // 'organization_invite' — what produced it. 'announcement' and
-  // 'organization_invite' are the ones a human authors; the rest fall out of
-  // an action that already succeeded.
+  // 'organization_invite' | 'group_removal' — what produced it.
   type:      varchar('type', { length: 40 }).notNull(),
   title:     varchar('title', { length: 160 }).notNull(),
   body:      text('body'),

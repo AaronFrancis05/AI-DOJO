@@ -600,17 +600,25 @@ export async function addGroupMember(organizationId: number, groupId: number, us
   }
 }
 
-export async function removeGroupMember(organizationId: number, groupId: number, userId: string): Promise<void> {
+export async function removeGroupMember(
+  organizationId: number,
+  groupId: number,
+  userId: string,
+): Promise<{ groupName: string; organizationName: string } | null> {
   const [group] = await db
-    .select({ id: groups.id })
+    .select({ id: groups.id, name: groups.name, organizationName: organizations.name })
     .from(groups)
+    .innerJoin(organizations, eq(groups.organizationId, organizations.id))
     .where(and(eq(groups.id, groupId), eq(groups.organizationId, organizationId)))
     .limit(1);
   if (!group) throw new OrganizationError(404, 'Not found');
 
-  await db
+  const removed = await db
     .delete(groupMemberships)
-    .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)));
+    .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)))
+    .returning({ id: groupMemberships.id });
+  if (removed.length === 0) return null;
+  return { groupName: group.name, organizationName: group.organizationName };
 }
 
 export async function listProgress(organizationId: number, groupId?: number) {

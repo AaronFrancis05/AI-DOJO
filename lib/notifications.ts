@@ -20,7 +20,8 @@ export type NotificationType =
   | 'assessment'
   // The ones a human writes rather than a completed action producing them.
   | 'announcement'
-  | 'organization_invite';
+  | 'organization_invite'
+  | 'group_removal';
 
 export interface CreateNotificationInput {
   userId: string;
