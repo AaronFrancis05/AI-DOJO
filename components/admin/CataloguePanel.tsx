@@ -3,7 +3,7 @@
 /* ───────────────────────────────────────────────
    The roleplay catalogue: domains → situations → scenarios.
 
-   Separate from the Curriculum tab because the foreign keys behave differently
+   Separate from the Courses tab because the foreign keys behave differently
    and the difference is the whole risk — see the header of
    `app/api/admin/catalogue/[entity]/route.ts`. Deleting a domain orphans the
    scenarios beneath it rather than removing them, and a scenario someone has

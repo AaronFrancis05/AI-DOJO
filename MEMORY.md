@@ -1130,6 +1130,10 @@ Private organizations choose which tutors their members may start a new booking,
 
 Permission is checked only when something new starts. Joining a booking, an existing live-lesson seat, or an assessment queue place does not read the table again. A suspended, deleted or unverified tutor account can still refuse that join. Turning off `isAcceptingBookings` does not.
 
+## 2026-09-29 (admin Courses absorbs Curriculum)
+
+The admin console no longer has a Curriculum tab. Courses is the tree (`courses → levels → units → lessons → phases`), and publishing a course is the Published toggle on the course row — the same control Catalogue already uses. `courses.isActive` is written only by `PATCH /api/admin/curriculum/courses`. The publish board (`CoursesPanel`, `GET`/`PATCH /api/admin/courses`) is gone, so the two writers noted on 2026-08-27 are one.
+
 ## 2026-09-30 (skip CI on draft PRs)
 
 `lint.yml` and `test.yml` skip their work while a pull request is draft. `pull_request` includes `ready_for_review`, so marking the PR ready runs lint and test without another push. Push events do not include draft state, so a short `draft-check` job lists open PRs for that head branch and skips lint/test when every open PR is a draft. Branch pushes with no PR still run. `image.yml` stays push-to-`main` only.

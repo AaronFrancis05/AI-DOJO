@@ -1,11 +1,11 @@
 'use client';
 
 /* ───────────────────────────────────────────────
-   The course tree: courses → levels → units → lessons → phases.
+   The Courses tab: courses → levels → units → lessons → phases.
 
-   Structure only. Whether a course is *visible to learners* is the Courses
-   tab's job — the publish toggle lives there so there is one place to look for
-   it, and archiving here would be a second control over the same column.
+   Publishing a course is the Published toggle on the course row — the same
+   control Catalogue uses — and it is the only place `courses.isActive` is
+   written. `PATCH /api/admin/curriculum/courses` already accepts that column.
 
    Field lists mirror `ENTITY_SPECS` in `lib/admin/curriculum.ts`, which is
    server-only (it holds table references) and is the authority on what may be
@@ -25,6 +25,7 @@ const LEVELS: TreeLevel[] = [
     entity: 'courses',
     label: 'course',
     plural: 'Courses',
+    archivable: true,
     fields: [
       { key: 'title', label: 'Title', required: true },
       { key: 'slug', label: 'Slug', required: true, hint: 'The URL segment: /courses/<slug>. Changing it breaks existing links.' },
@@ -96,9 +97,9 @@ export function CurriculumPanel({ onError }: { onError: (msg: string) => void })
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm leading-relaxed text-dojo-text-muted">
-        Deleting a node takes everything beneath it — including every learner&apos;s progress
-        through those lessons. The console counts what would go first and asks; archive a level or
-        lesson instead when the content still matters.
+        Published on a course is what learners see. Deleting a node takes everything beneath it —
+        including every learner&apos;s progress through those lessons. The console counts what would
+        go first and asks; archive a level or lesson instead when the content still matters.
       </p>
       <EntityTree basePath="/api/admin/curriculum" levels={LEVELS} onError={onError} />
     </div>
