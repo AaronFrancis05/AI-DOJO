@@ -41,7 +41,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 ## UI Primitives (`/components/ui/`)
 | Component | Props | Usage Notes |
 |-----------|-------|-------------|
-| `Badge` | `variant: beginner\|intermediate\|advanced\|accent\|default` | Skill level badges, status labels |
+| `Badge` | `variant: beginner\|intermediate\|advanced\|accent\|default\|premium\|outline\|success\|warning` | Skill level badges and status labels. `success` and `warning` are a rounded-full border with a light fill (`bg-dojo-success/10`, `bg-dojo-warning/10`) |
 | `Pill` | `variant: standard\|trouble\|default`, `active`, `onClick` | Outlined toggle pills, practice focus tags |
 | `Card` | `raised`, `hoverable`, `onClick`, `id` | Surface container with border; raised uses `surface-raised` bg. `id` is for link/scroll anchors (e.g. the `#unit-{id}` a finished lesson lands on) |
 | `Button` | `variant: primary\|secondary\|ghost\|danger`, `size`, `loading` | Primary uses accent, secondary uses border+surface |
@@ -81,9 +81,22 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Component | Notes |
 |-----------|-------|
 | `AppShell` | Wraps every (app) route; sidebar + UserCard + content |
-| `Sidebar` | **Two navs, chosen by `users.role`.** Learner: Home, Tutors, Hub, Courses, Review, Sessions, Progress, Leaderboard, Messages, Calendar, Settings. Tutor: Teaching, Messages, Calendar, Settings — the learner entries are all surfaces of someone's own practice, which a tutor has none of. `admin` keeps the learner nav with `Teaching` and `Admin` appended (admin satisfies every role). The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. Hiding a link is convenience only — `/tutor` and `/admin` re-check the role server-side |
+| `Sidebar` | **Two navs, chosen by `users.role`.** Learner: Home, Tutors, Hub, Courses, Review, Sessions, Progress, Leaderboard, Messages, Calendar, Settings. Tutors is omitted unless `user.canBrowseTutors` (a private organization with no bookable tutor, or a public organization with nobody accepting). Tutor: Teaching, Messages, Calendar, Settings — the learner entries are all surfaces of someone's own practice, which a tutor has none of. `admin` keeps the learner nav with `Teaching` and `Admin` appended (admin satisfies every role) and keeps Tutors. A learner whose organization membership role is `admin` also gets `Organization` (`user.organizationAdmin`). Under the display name, a learner sees their organization name only (`text-xs text-dojo-text-muted`, truncated). Groups are listed on Settings. The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. The identity row (avatar, name, organization) links to `/profile`, which renders inside this shell (display name, email, and password, `Card` + `Button`, same page padding as Settings). The level/XP bar and the tutor badge stay static — that page does not show them. Sign Out stays a separate control. `/auth/profile` redirects to `/profile`. Hiding a link is convenience only — `/tutor`, `/admin`, `/organization` and the tutor catalogue re-check server-side |
 | `NotificationBell` | Unread badge + dropdown above the user card. Subscribes to the signed-in user's own realtime topic; opens upward so the panel clears the sidebar's bottom edge |
 | `UserCard` | Avatar + name + tier badge + level/XP bar — rendered at sidebar bottom |
+
+## Organizations
+
+A learner belongs to exactly one organization. Groups are subsets inside that organization. Tutors are not members. The default organization (`slug` `ai-dojo`) is where sign-up and retirement land. Another organization invites only someone who is currently there; acceptance is what moves them. A private organization allows specific tutors for new sessions (`organization_tutor_permissions`). With none allowed, members do not see Tutors. The public organization does not use that table. Removing an allowance does not cancel a booking already made.
+
+| Surface | Notes |
+|---------|-------|
+| `components/admin/OrganizationsPanel.tsx` | Admin console tab. Creates an organization and appoints its first administrator by email. Same shell as the other admin panels: `max-w-7xl` page, `Card`, `Button`, `adminInputClass` |
+| `components/organization/OrganizationConsole.tsx` | `/organization`, organization administrators only. Tabs: People, Groups, Invitations, Tutors, Progress. Tutors is absent on the public organization. It lists allowed tutors and the same bookable catalogue learners see (name, headline, languages, rate), and Remove asks for confirmation. A group name is edited in place (Rename, then Save). Retirement asks for confirmation, and is hidden on the public organization. Removing someone from a group also asks for confirmation. Deleting the group itself asks for confirmation and is refused while anyone is still in it; the button stays disabled with that reason. The last administrator's Retire control stays disabled, with the note to appoint another administrator first |
+| `components/organization/InvitationsPanel.tsx` | `/organization/invitations`, any signed-in learner. Accept moves them and refreshes the app shell so the sidebar shows the new organization; decline leaves them where they are |
+| `components/organization/OrganizationCard.tsx` | Settings card. The frame is visible immediately; Organization and Groups show "Loading…" until `/api/organization/me` returns, then separate labeled rows (an empty group list reads "None"). A link appears when an invitation is waiting |
+
+Membership changes live in `lib/organizations/membership.ts`. Invite refusals that would name another organization collapse to one sentence in `lib/organizations/rules.ts`.
 
 ## Roleplay Components (`/components/roleplay/`)
 | Component | Notes |

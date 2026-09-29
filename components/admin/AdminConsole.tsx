@@ -1,5 +1,5 @@
 /* ───────────────────────────────────────────────
-   Admin console — the seven surfaces an operator runs the product from.
+   Admin console — the surfaces an operator runs the product from.
 
    The console is a shell and nothing else: it owns the tab set and the one
    error banner every panel reports into, and each panel talks to its own
@@ -20,10 +20,12 @@ import { CoursesPanel } from '@/components/admin/CoursesPanel';
 import { CurriculumPanel } from '@/components/admin/CurriculumPanel';
 import { CataloguePanel } from '@/components/admin/CataloguePanel';
 import { LanguagesPanel } from '@/components/admin/LanguagesPanel';
+import { OrganizationsPanel } from '@/components/admin/OrganizationsPanel';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'users', label: 'Users' },
+  { id: 'organizations', label: 'Organizations' },
   { id: 'tutors', label: 'Tutors' },
   { id: 'courses', label: 'Courses' },
   { id: 'curriculum', label: 'Curriculum' },
@@ -42,7 +44,7 @@ export function AdminConsole() {
           Admin
         </h1>
         <p className="mt-2 text-base leading-relaxed text-dojo-text-muted">
-          Accounts and access, tutor verification, and every piece of content learners can reach.
+          Accounts, organizations, tutor verification, and every piece of content learners can reach.
         </p>
       </div>
 
@@ -65,6 +67,7 @@ export function AdminConsole() {
           <div className="pt-6">
             {tab === 'overview' && <OverviewPanel onError={setError} />}
             {tab === 'users' && <UsersPanel onError={setError} />}
+            {tab === 'organizations' && <OrganizationsPanel onError={setError} />}
             {tab === 'tutors' && <TutorsPanel onError={setError} />}
             {tab === 'courses' && <CoursesPanel onError={setError} />}
             {tab === 'curriculum' && <CurriculumPanel onError={setError} />}

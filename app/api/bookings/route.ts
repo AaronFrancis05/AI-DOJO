@@ -12,8 +12,9 @@ import { and, desc, eq, gte, ne, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getAuthUser } from '@/lib/auth/server';
 import { generateCallId } from '@/lib/tutors/rooms';
-import { BOOKING_DURATIONS_MINUTES, DEFAULT_CALL_TYPE } from '@/lib/tutors/config';
+import { BOOKING_DURATIONS_MINUTES, DEFAULT_CALL_TYPE, TUTORS_ENABLED } from '@/lib/tutors/config';
 import { createNotification } from '@/lib/notifications';
+import { learnerMayUseTutor, TUTOR_NOT_AVAILABLE } from '@/lib/organizations/tutor-access';
 
 /** Rolls the booking transaction back and maps to the 409 response. */
 class SlotTakenError extends Error {}
@@ -80,6 +81,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!TUTORS_ENABLED) {
+    return Response.json({ error: 'Live tutoring is not enabled.' }, { status: 404 });
+  }
+
   const user = await getAuthUser();
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -116,11 +121,16 @@ export async function POST(req: Request) {
   }
 
   const [tutor] = await db.select().from(tutors).where(eq(tutors.id, tutorId));
-  if (!tutor || tutor.verificationStatus !== 'verified' || !tutor.isAcceptingBookings) {
-    return Response.json({ error: 'Tutor is not available for booking' }, { status: 404 });
+  if (!tutor || tutor.userId === user.id) {
+    return Response.json(
+      { error: tutor ? 'You cannot book yourself' : TUTOR_NOT_AVAILABLE },
+      { status: tutor ? 400 : 404 },
+    );
   }
-  if (tutor.userId === user.id) {
-    return Response.json({ error: 'You cannot book yourself' }, { status: 400 });
+  // Organization permission is decided here, when the booking is created.
+  // Joining it later does not ask again.
+  if (!(await learnerMayUseTutor(user.id, tutorId))) {
+    return Response.json({ error: TUTOR_NOT_AVAILABLE }, { status: 404 });
   }
 
   // An evaluation booking must reference a session the learner actually owns —

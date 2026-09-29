@@ -18,6 +18,7 @@ import { sessionHistory } from '@/lib/data/sessions';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { computeCompositeScore, PASSING_SCORE_THRESHOLD } from '@/lib/roleplay/phase-engine';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { useUser } from '@/lib/auth/user-context';
 import {
   isRecord,
   isSessionDetailResponse,
@@ -55,6 +56,7 @@ interface DataRecord {
 
 export default function SessionReportPage() {
   const params = useParams();
+  const user = useUser();
   const sessionId = Number(params.id);
 
   const [data, setData] = useState<DataRecord | null>(null);
@@ -242,7 +244,7 @@ export default function SessionReportPage() {
                   </Link>
                 )}
                 {/* A human second opinion on what the AI just assessed. */}
-                {TUTORS_ENABLED && (
+                {TUTORS_ENABLED && user?.canBrowseTutors && (
                   <Link
                     href={`/tutors?session=${session.id}`}
                     className="inline-flex items-center gap-2 rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-4 py-2 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"

@@ -20,6 +20,7 @@ import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { AvatarSettingsDialog } from '@/components/settings/AvatarSettingsDialog';
 import { BillingDialog } from '@/components/settings/BillingDialog';
+import { OrganizationCard } from '@/components/organization/OrganizationCard';
 
 const tabs: Tab[] = [
   { id: 'preferences', label: 'Preferences' },
@@ -81,6 +82,8 @@ export default function SettingsPage() {
           Manage your preferences, account, and subscription
         </p>
       </div>
+
+      <OrganizationCard />
 
       {/* Links to sub-sections (opened as dialogue sections) */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">

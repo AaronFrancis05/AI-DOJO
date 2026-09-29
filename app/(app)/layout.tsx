@@ -6,6 +6,8 @@ import { UserProvider } from '@/lib/auth/user-context';
 import { LanguageCatalogProvider } from '@/lib/language-context';
 import { loadLanguageCatalog } from '@/lib/language-registry';
 import { toUserRole } from '@/lib/auth/roles';
+import { loadMembership } from '@/lib/organizations/membership';
+import { learnerHasBookableTutor } from '@/lib/organizations/tutor-access';
 import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
@@ -121,12 +123,32 @@ export default async function AppLayout({
       }
     }
 
+    let organizationAdmin = false;
+    let organizationName: string | null = null;
+    let canBrowseTutors = role === 'admin';
+    if (role === 'learner') {
+      try {
+        const membership = await loadMembership(authId);
+        if (membership) {
+          organizationAdmin = membership.role === 'admin';
+          organizationName = membership.organizationName;
+        }
+        canBrowseTutors = await learnerHasBookableTutor(authId);
+      } catch (err) {
+        console.error('[app-layout] organization membership read failed', err);
+        canBrowseTutors = false;
+      }
+    }
+
     user = {
       id: authId,
       name: dbUser?.name || providerName || '',
       email: dbUser?.email || u.email || '',
       level: dbUser?.level ?? 'beginner',
       role,
+      organizationAdmin,
+      organizationName,
+      canBrowseTutors,
       tutorStatus,
       tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,

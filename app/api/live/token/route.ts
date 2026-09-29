@@ -3,6 +3,7 @@ import { loadBookingForUser } from '@/lib/tutors/bookings';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { buildJoinPayload } from '@/lib/tutors/join';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { tutorHoldBlock } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -45,6 +46,9 @@ export async function POST(req: Request) {
   if (!decision.allowed) {
     return Response.json({ error: decision.reason }, { status: 403 });
   }
+
+  const held = await tutorHoldBlock(found.booking.tutorId);
+  if (held) return held;
 
   const payload = await buildJoinPayload({
     callId: found.booking.callId,

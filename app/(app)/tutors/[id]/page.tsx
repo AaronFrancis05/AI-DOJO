@@ -55,7 +55,7 @@ export default function TutorDetailPage() {
   const targetLanguage = user?.preferredTargetLanguage ?? 'ja';
 
   useEffect(() => {
-    if (!TUTORS_ENABLED) return;
+    if (!TUTORS_ENABLED || !user?.canBrowseTutors) return;
     fetch(`/api/tutors/${params.id}/availability`, { credentials: 'include' })
       .then((r) => r.json())
       .then((body) => {
@@ -65,7 +65,7 @@ export default function TutorDetailPage() {
       })
       .catch(() => setError('Could not load availability.'))
       .finally(() => setLoading(false));
-  }, [params.id]);
+  }, [params.id, user?.canBrowseTutors]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, Slot[]>();
@@ -110,6 +110,16 @@ export default function TutorDetailPage() {
       <div className="mx-auto w-full max-w-2xl p-6">
         <Card className="py-12 text-center">
           <p className="text-sm text-dojo-text-muted">Live tutoring is not available yet.</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (user && !user.canBrowseTutors) {
+    return (
+      <div className="mx-auto w-full max-w-2xl p-6">
+        <Card className="py-12 text-center">
+          <p className="text-sm text-dojo-text-muted">Tutoring isn&apos;t available for your organization yet.</p>
         </Card>
       </div>
     );

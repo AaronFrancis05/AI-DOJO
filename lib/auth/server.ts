@@ -3,7 +3,7 @@ import { createNeonAuth } from '@neondatabase/auth/next/server';
 import { jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { syncUser } from './sync-user';
 import { SESSION_DATA_COOKIE, SESSION_TOKEN_COOKIE } from './cookies';
 import { satisfiesRole, toUserRole, type UserRole } from './roles';
@@ -72,14 +72,26 @@ export async function isAccountBlocked(userId: string): Promise<boolean> {
 }
 
 async function resolveDbId(user: { id: string; email?: string } | null) {
-  if (!user?.email) return user;
+  if (!user?.id && !user?.email) return user;
   try {
-    const [dbUser] = await db
+    // Identity first, then email. After a confirmed address change the row
+    // still has the old address until syncUser writes the new one, so an
+    // email-only lookup would miss it and treat the person as new.
+    if (user?.id) {
+      const [byIdentity] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(or(eq(users.authUserId, user.id), eq(users.id, user.id))!)
+        .limit(1);
+      if (byIdentity) return { ...user, id: byIdentity.id };
+    }
+    if (!user?.email) return user;
+    const [byEmail] = await db
       .select({ id: users.id })
       .from(users)
       .where(eq(users.email, user.email))
       .limit(1);
-    return dbUser ? { ...user, id: dbUser.id } : user;
+    return byEmail ? { ...user, id: byEmail.id } : user;
   } catch (err) {
     console.error('[resolveDbId] DB query failed:', err instanceof Error ? err.message : String(err));
     return null;

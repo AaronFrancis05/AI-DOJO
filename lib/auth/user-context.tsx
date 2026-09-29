@@ -12,6 +12,17 @@ export interface UserContextValue {
    *  Never the authority for access: every tutor/admin route re-checks it
    *  server-side through requireRole(). */
   role: UserRole;
+  /** True when this account's organization membership role is admin.
+   *  Display only — `/organization` re-checks the membership. */
+  organizationAdmin?: boolean;
+  /** Display only. Absent for tutors and anyone with no membership. */
+  organizationName?: string | null;
+  /**
+   * Learner catalogue. False when a private organization has no bookable
+   * tutor, and when the public organization has none at all. Admins stay
+   * true. Hiding the link is convenience — the tutor routes re-check.
+   */
+  canBrowseTutors?: boolean;
   /** `tutors.verification_status` for a tutor account, null for anyone else.
    *  Display only — what a pending tutor is allowed to do is decided by the
    *  routes that read the column themselves. */
