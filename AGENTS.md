@@ -138,4 +138,8 @@ All tokens are CSS variables defined in `app/globals.css` (`:root` = light, `.da
 
 ## 7. When in doubt
 
-Default to matching what's already here. If the existing pattern seems wrong, name the concern and ask or propose an alternative — don't quietly diverge. This file, `ui-registry.md`, `lib/design-tokens.ts`, and `PRODUCT.md` are the sources of truth; if code and docs disagree, flag the discrepancy rather than trusting one silently.
+Default to matching what's already here. If the existing pattern seems wrong, name the concern and ask or propose an alternative — don't quietly diverge.
+
+When I explicitly make a decision about naming, treat that decision as final. You may raise a naming concern if it causes a concrete problem, such as a compile/type error, symbol collision, clear contradiction with an established project-wide convention, materially misleading semantics, or a compatibility/security/correctness issue. Otherwise, accept the chosen name and proceed without further debate.
+
+This file, `ui-registry.md`, `lib/design-tokens.ts`, and `PRODUCT.md` are the sources of truth; if code and docs disagree, flag the discrepancy rather than trusting one silently.
