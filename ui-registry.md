@@ -81,9 +81,24 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Component | Notes |
 |-----------|-------|
 | `AppShell` | Wraps every (app) route; sidebar + UserCard + content |
-| `Sidebar` | **Two navs, chosen by `users.role`.** Learner: Home, Tutors, Library, Courses, Review, Sessions, Progress, Leaderboard, Messages, Calendar, Settings. Tutors is omitted unless `user.canBrowseTutors` (a private organization with no bookable tutor, or a public organization with nobody accepting). Tutor: Teaching, Messages, Calendar, Settings — the learner entries are all surfaces of someone's own practice, which a tutor has none of. `admin` keeps the learner nav with `Teaching` and `Admin` appended (admin satisfies every role) and keeps Tutors. A learner whose organization membership role is `admin` also gets `Organization` (`user.organizationAdmin`). Under the display name, a learner sees their organization name only (`text-xs text-dojo-text-muted`, truncated). Groups are listed on Settings. The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. The identity row (avatar, name, organization) links to `/profile`, which renders inside this shell (display name, email, and password, `Card` + `Button`, same page padding as Settings). The level/XP bar and the tutor badge stay static — that page does not show them. Sign Out stays a separate control. `/auth/profile` redirects to `/profile`. Hiding a link is convenience only — `/tutor`, `/admin`, `/organization` and the tutor catalogue re-check server-side |
+| `Sidebar` | **Two navs, chosen by `users.role`.** Learner items grouped under section headings (not collapsible): unlabeled Home; **Practice** (Library, Courses, Tutors, Review); **Results** (Sessions, Progress, Leaderboard); unlabeled Messages, Calendar, then role-gated Teaching / Admin / Organization, then **Settings always last**. Tutors is omitted unless `user.canBrowseTutors` (a private organization with no bookable tutor, or a public organization with nobody accepting). Tutor: Teaching, Messages, Calendar, Settings — still a flat list; four items do not need headings. `admin` keeps the learner nav (admin satisfies every role; they moderate learner surfaces) and inserts `Teaching` and `Admin` *before* Settings, not after. A learner whose organization membership role is `admin` also gets `Organization` (`user.organizationAdmin`) in that same slot. Under the display name, a learner sees their organization name only (`text-xs text-dojo-text-muted`, truncated). Groups are listed on Settings. The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. The identity row (avatar, name, organization) links to `/profile`, which renders inside this shell (display name, email, and password, `Card` + `Button`, same page padding as Settings). The level/XP bar and the tutor badge stay static — that page does not show them. Sign Out stays a separate control. `/auth/profile` redirects to `/profile`. Hiding a link is convenience only — `/tutor`, `/admin`, `/organization` and the tutor catalogue re-check server-side |
 | `NotificationBell` | Unread badge + dropdown above the user card. Subscribes to the signed-in user's own realtime topic; opens upward so the panel clears the sidebar's bottom edge |
 | `UserCard` | Avatar + name + tier badge + level/XP bar — rendered at sidebar bottom |
+
+### Sidebar nav section heading
+
+File: `components/shell/Sidebar.tsx`
+Last updated: 2026-09-30
+
+| Property | Class |
+| -------- | ----- |
+| Size / weight | `text-xs font-semibold` |
+| Transform / tracking | `uppercase tracking-wide` |
+| Color | `text-dojo-text-muted` |
+| Inset | `px-3 pb-1` — same horizontal inset as the nav links, so the label shares the icon column's left edge |
+| Group gap | `space-y-4` between sections, `space-y-1` inside a section (same as the old flat list) |
+
+**Pattern notes:** Headings are labels only — they are not links and not collapsible. Match `RoomDetailsPanel` section titles (`text-xs font-semibold uppercase tracking-wide text-dojo-text-muted`). Do not add a divider between groups; the 16px gap is the separator. Tutor nav omits headings. Groups with a label use `role="group"` + `aria-labelledby`.
 
 ### Page heading (app-shell destinations)
 

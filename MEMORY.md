@@ -1162,5 +1162,13 @@ The same destinations also disagreed on page padding: Courses / Admin / Home use
 
 Page width was a third drift: each destination had its own `max-w-*` (`2xl`–`7xl`) and `mx-auto`, so the heading's left edge jumped when switching pages. Outer wrappers are now all `mx-auto w-full max-w-7xl`. Settings, Profile, Invitations keep an inner `max-w-3xl`; Review (and the Tutors coming-soon card) keep an inner `max-w-2xl` — no `mx-auto` on the inner, so the column sits under the heading. Messages is a split-pane and was left alone.
 
+## 2026-09-30 (learner sidebar grouped under Practice / Results)
+
+The learner sidebar is no longer a flat list. Destinations are unchanged; unlabeled Home sits above **Practice** (Library, Courses, Tutors, Review) and **Results** (Sessions, Progress, Leaderboard), then unlabeled Messages, Calendar, role-gated Teaching / Admin / Organization, and Settings last. Headings are labels only (`text-xs font-semibold uppercase tracking-wide text-dojo-text-muted`, same as `RoomDetailsPanel`), not collapsible. Tutor nav stays a flat four-item list. Tutors lives in Practice (another way to start practice), not grouped with Messages/Calendar.
+
+## 2026-09-30 (Settings is always last in the learner sidebar)
+
+Role-gated Teaching / Admin / Organization used to append after Settings because admin kept the learner nav and bolted consoles onto the end. Settings is account chrome, so those consoles now insert *before* it. Tutor-only nav was already Teaching → Messages → Calendar → Settings and is unchanged.
+
 
 
