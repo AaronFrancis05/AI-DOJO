@@ -229,8 +229,8 @@ export default function ProfilePage() {
           Back
         </button>
         <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Profile</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          The name and email on your account.
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Your display name, email, and password on this account.
         </p>
       </div>
 

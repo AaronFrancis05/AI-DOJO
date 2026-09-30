@@ -61,8 +61,9 @@ export default function LibraryPage() {
     <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Library</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Select a real-world setting for your roleplay practice
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Pick a real-world setting and start a conversation with an AI
+          character — restaurants, travel, work, and daily life.
         </p>
       </div>
 

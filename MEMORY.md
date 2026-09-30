@@ -1170,5 +1170,29 @@ The learner sidebar is no longer a flat list. Destinations are unchanged; unlabe
 
 Role-gated Teaching / Admin / Organization used to append after Settings because admin kept the learner nav and bolted consoles onto the end. Settings is account chrome, so those consoles now insert *before* it. Tutor-only nav was already Teaching → Messages → Calendar → Settings and is unchanged.
 
+## 2026-09-30 (Review heading on every state)
+
+`/review` only rendered the page `h1` during an in-progress drill. Loading, error, empty, and complete returned early without it. The heading is now in the shared page wrapper so every state matches the app-shell destination pattern.
+
+## 2026-09-30 (Practice heading descriptions)
+
+Library's blurb was `mt-1 text-sm`; Courses used `mt-2 text-base leading-relaxed`. Library, Tutors, and Review now match Courses. Tutors: "Book a live tutor, join a group lesson, or sit an assessment." Review: "Revisit words from your sessions. Rate how well you knew each one and they will come back when it is time."
+
+## 2026-09-30 (heading blurbs on Progress, Leaderboard, Settings)
+
+Those three still used `mt-1 text-sm`. They now match Courses (`mt-2 text-base leading-relaxed`). Sessions stays a `text-sm` live count, not a feature blurb. Profile matched on the same pass.
+
+## 2026-09-30 (heading blurbs rewritten)
+
+Page blurbs now match Courses' register (one or two full sentences) rather than the shorter drafts. Calendar gained one. Sessions heading is a blurb; the `N total · M in progress` count sits above the list.
+
+## 2026-09-30 (Calendar above Messages)
+
+Learner chrome and the tutor nav now list Calendar before Messages. Settings is still last.
+
+## 2026-09-30 (admin nav leads with Admin, Teaching, Home)
+
+An admin still sees the learner destinations, but Admin then Teaching now sit above Home instead of before Settings. Organization stays before Settings. `/tutor` no longer matches `/tutors` as active.
+
 
 

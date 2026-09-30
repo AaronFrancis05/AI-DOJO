@@ -91,8 +91,9 @@ export default function ProgressPage() {
     <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Progress</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Track your learning journey across all domains
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          See how you have been scoring — fluency, grammar, vocabulary, and
+          the rest — across skills and over time.
         </p>
       </div>
 

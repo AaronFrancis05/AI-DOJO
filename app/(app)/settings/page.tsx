@@ -79,8 +79,9 @@ export default function SettingsPage() {
       <div className="max-w-3xl">
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Settings</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Manage your preferences, account, and subscription
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Languages, notifications, privacy, avatar, and billing — the
+          preferences for how you practise.
         </p>
       </div>
 

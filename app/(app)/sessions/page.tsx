@@ -87,20 +87,21 @@ export default function SessionsPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
-      <div className="mb-6">
+      <div className="mb-8">
         {fromHome && (
-          <Link href="/home" className="inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary mb-4">
+          <Link href="/home" className="mb-4 inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" /> Back to Home
           </Link>
         )}
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
             <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">All Sessions</h1>
-            <p className="text-sm text-dojo-text-muted mt-1">
-              {loading ? 'Loading...' : `${sessions.length} total · ${activeSessions.length} in progress`}
+            <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+              Every conversation you have started. Resume one still in progress,
+              or open a finished report.
             </p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => router.push('/library')}>
+          <Button variant="primary" size="sm" className="shrink-0" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> New Practice
           </Button>
         </div>
@@ -126,7 +127,11 @@ export default function SessionsPage() {
           </Button>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <>
+          <p className="mb-4 text-sm text-dojo-text-muted">
+            {sessions.length} total · {activeSessions.length} in progress
+          </p>
+          <div className="space-y-2">
           {/* Active sessions first */}
           {activeSessions.map(session => (
             <SessionCard key={session.id} session={session}
@@ -147,7 +152,8 @@ export default function SessionsPage() {
               isActive={false}
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

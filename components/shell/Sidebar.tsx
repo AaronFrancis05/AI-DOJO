@@ -44,7 +44,7 @@ interface NavItem {
 
 interface NavSection {
   id: string;
-  /** Section heading. `null` = ungrouped cluster (Home, or Messages/Calendar/Settings). */
+  /** Section heading. `null` = ungrouped cluster (Home, or Calendar/Messages/Settings). */
   label: string | null;
   items: NavItem[];
 }
@@ -62,8 +62,8 @@ const resultsItems: NavItem[] = [
 ];
 
 const connectItems: NavItem[] = [
-  { label: 'Messages', href: '/messages', icon: MessageSquare },
   { label: 'Calendar', href: '/calendar', icon: Calendar },
+  { label: 'Messages', href: '/messages', icon: MessageSquare },
 ];
 const settingsItem: NavItem = { label: 'Settings', href: '/settings', icon: Settings };
 
@@ -78,14 +78,14 @@ const settingsItem: NavItem = { label: 'Settings', href: '/settings', icon: Sett
  */
 const tutorNavItems: NavItem[] = [
   { label: 'Teaching',  href: '/tutor',    icon: GraduationCap },
-  { label: 'Messages',  href: '/messages', icon: MessageSquare },
   { label: 'Calendar',  href: '/calendar', icon: Calendar },
+  { label: 'Messages',  href: '/messages', icon: MessageSquare },
   { label: 'Settings',  href: '/settings', icon: Settings },
 ];
 
-/** Role-gated consoles. Inserted before Settings on the learner/admin nav.
- *  Hiding the link is convenience only — /admin and /tutor re-check the
- *  role server-side. */
+/** Role-gated consoles. Admin / Teaching sit above Home; Organization
+ *  stays before Settings. Hiding the link is convenience only — /admin
+ *  and /tutor re-check the role server-side. */
 const adminNavItem: NavItem = { label: 'Admin', href: '/admin', icon: ShieldCheck };
 const tutorNavItem: NavItem = { label: 'Teaching', href: '/tutor', icon: GraduationCap };
 const organizationNavItem: NavItem = { label: 'Organization', href: '/organization', icon: Building2 };
@@ -101,36 +101,39 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   // Honest identity: stored name → email local-part → "You" (never a fake
   // placeholder name like 'Learner').
   const displayName = resolveDisplayName(user);
-  // A tutor gets the teaching nav. An admin keeps the learner one (they
-  // moderate those surfaces) with Teaching / Admin / Organization inserted
-  // before Settings — Settings is always last. admin satisfies every role
-  // (see satisfiesRole in lib/auth/roles.ts) but the nav is not the tutor
-  // one: Teaching at the top would hide the learner destinations.
+  // A tutor gets the teaching nav. An admin keeps the learner destinations
+  // (they moderate those surfaces) but leads with Admin then Teaching, then
+  // Home — Settings is always last. admin satisfies every role (see
+  // satisfiesRole in lib/auth/roles.ts) but the nav is not the tutor one.
   const isTutor = TUTORS_ENABLED && user?.role === 'tutor';
+  const isAdmin = user?.role === 'admin';
   const practiceItems: NavItem[] = [
     libraryItem,
     coursesItem,
     ...(TUTORS_ENABLED && user?.canBrowseTutors ? [tutorsItem] : []),
     reviewItem,
   ];
-  const roleItems = isTutor
+  const consoles: NavItem[] = isTutor
     ? []
     : [
-        ...(TUTORS_ENABLED && user?.role === 'admin' ? [tutorNavItem] : []),
-        ...(user?.role === 'admin' ? [adminNavItem] : []),
-        ...(user?.organizationAdmin ? [organizationNavItem] : []),
+        ...(isAdmin ? [adminNavItem] : []),
+        ...(TUTORS_ENABLED && isAdmin ? [tutorNavItem] : []),
       ];
+  const organizationItems =
+    !isTutor && user?.organizationAdmin ? [organizationNavItem] : [];
   const sections: NavSection[] = isTutor
     ? [{ id: 'tutor', label: null, items: tutorNavItems }]
     : [
-        { id: 'top', label: null, items: [homeItem] },
+        { id: 'top', label: null, items: [...consoles, homeItem] },
         { id: 'practice', label: 'Practice', items: practiceItems },
         { id: 'results', label: 'Results', items: resultsItems },
-        { id: 'chrome', label: null, items: [...connectItems, ...roleItems, settingsItem] },
+        { id: 'chrome', label: null, items: [...connectItems, ...organizationItems, settingsItem] },
       ];
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
+    // `/tutor` must not light up on `/tutors` (the learner catalogue).
+    if (href === '/tutor') return pathname === '/tutor' || pathname.startsWith('/tutor/');
     return pathname.startsWith(href);
   };
 

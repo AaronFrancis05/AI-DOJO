@@ -92,6 +92,9 @@ function liveFirst<T extends { status: string }>(rows: T[]): T[] {
   ];
 }
 
+const TUTORS_BLURB =
+  'Book a live tutor, join a group lesson, or sit an assessment — human practice alongside the AI.';
+
 const STATUS_VARIANT: Record<string, 'accent' | 'success' | 'default' | 'outline'> = {
   requested: 'outline',
   confirmed: 'accent',
@@ -146,6 +149,14 @@ export default function TutorsPage() {
   if (!TUTORS_ENABLED) {
     return (
       <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="mb-8">
+          <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
+            Tutors
+          </h1>
+          <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+            {TUTORS_BLURB}
+          </p>
+        </div>
         <div className="max-w-2xl">
         <Card className="py-12 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent/10">
@@ -166,9 +177,14 @@ export default function TutorsPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
-      <h1 className="mb-8 hidden text-3xl font-bold tracking-tight leading-none text-dojo-text-primary md:block">
-        Tutors
-      </h1>
+      <div className="mb-8">
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
+          Tutors
+        </h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          {TUTORS_BLURB}
+        </p>
+      </div>
 
       {upcoming.length > 0 && (
         <section className="mb-10">
