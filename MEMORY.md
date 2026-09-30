@@ -1129,3 +1129,11 @@ Adding a learner to a group writes a `group_assignment` notification (bell, link
 Private organizations choose which tutors their members may start a new booking, live lesson or assessment with. The table is `organization_tutor_permissions`. Zero rows means nobody, and the Tutors menu stays hidden even when `TUTORS_ENABLED` is on. The public organization `ai-dojo` has no rows and no tutor tab: its learners can start with any verified tutor who is accepting bookings and whose account is active. Tutors are still not organization members.
 
 Permission is checked only when something new starts. Joining a booking, an existing live-lesson seat, or an assessment queue place does not read the table again. A suspended, deleted or unverified tutor account can still refuse that join. Turning off `isAcceptingBookings` does not.
+
+## 2026-09-30 (skip CI on draft PRs)
+
+`lint.yml` and `test.yml` skip their work while a pull request is draft. `pull_request` includes `ready_for_review`, so marking the PR ready runs lint and test without another push. Push events do not include draft state, so a short `draft-check` job lists open PRs for that head branch and skips lint/test when every open PR is a draft. Branch pushes with no PR still run. `image.yml` stays push-to-`main` only.
+
+## 2026-09-30 (CI is pull_request only)
+
+Replaced the push trigger and `draft-check` job. `lint.yml` and `test.yml` run only on `pull_request` (`opened`, `synchronize`, `reopened`, `ready_for_review`) when `github.event.pull_request.draft` is false. A branch push runs them only when it updates a non-draft PR (`synchronize`). Pushes with no PR, and pushes that only update a draft PR, do not start a runner. `image.yml` is unchanged and still runs on push to `main`.
