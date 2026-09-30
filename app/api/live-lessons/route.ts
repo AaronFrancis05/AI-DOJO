@@ -20,7 +20,7 @@ import {
 import { dbPool } from '@/src/db-pool';
 import { tutorLanguageError } from '@/lib/tutors/languages';
 import { announceLive } from '@/lib/tutors/live';
-import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
+import { resolveRoomAnchor } from '@/lib/courses/room-anchor';
 import { loadTutorAccess, mayDiscoverWithAccess } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
@@ -33,7 +33,7 @@ export const runtime = 'nodejs';
  * for this unit?" are the same query with different filters:
  *
  *   ?mine=1      only live lessons I teach or am enrolled in
- *   ?unitId=N    only live lessons pinned to that curriculum unit
+ *   ?unitId=N    only live lessons pinned to that course unit
  *   ?past=1      include live lessons that have already finished
  */
 export async function GET(req: Request) {

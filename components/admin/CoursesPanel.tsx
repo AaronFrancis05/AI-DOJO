@@ -5,9 +5,9 @@
 
    Publishing a course is the Published toggle on the course row — the same
    control Library uses — and it is the only place `courses.isActive` is
-   written. `PATCH /api/admin/curriculum/courses` already accepts that column.
+   written. `PATCH /api/admin/courses/courses` already accepts that column.
 
-   Field lists mirror `ENTITY_SPECS` in `lib/admin/curriculum.ts`, which is
+   Field lists mirror `ENTITY_SPECS` in `lib/admin/courses.ts`, which is
    server-only (it holds table references) and is the authority on what may be
    written. These are the labels and widgets for the same columns.
    ─────────────────────────────────────────────── */
@@ -93,7 +93,7 @@ const LEVELS: TreeLevel[] = [
   },
 ];
 
-export function CurriculumPanel({ onError }: { onError: (msg: string) => void }) {
+export function CoursesPanel({ onError }: { onError: (msg: string) => void }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm leading-relaxed text-dojo-text-muted">
@@ -101,7 +101,7 @@ export function CurriculumPanel({ onError }: { onError: (msg: string) => void })
         including every learner&apos;s progress through those lessons. The console counts what would
         go first and asks; archive a level or lesson instead when the content still matters.
       </p>
-      <EntityTree basePath="/api/admin/curriculum" levels={LEVELS} onError={onError} />
+      <EntityTree basePath="/api/admin/courses" levels={LEVELS} onError={onError} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import type { NextLessonTarget } from '@/lib/roleplay/api-types';
  * Kept pure and separate from lesson-progress.ts, which imports the database
  * client and so cannot be pulled into a client component. Every session view
  * calls this rather than routing itself, because all three used to hardcode
- * `/home` — a learner who finished a curriculum lesson was dropped on the
+ * `/home` — a learner who finished a course lesson was dropped on the
  * dashboard with no route back to the lesson they had just unlocked.
  */
 export function continueHref(

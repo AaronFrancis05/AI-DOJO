@@ -3,7 +3,7 @@ import { courses, courseLevels, lessons, studentProgress, units } from '@/src/sc
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 /**
- * Enrolling a freshly-onboarded learner into the course curriculum.
+ * Enrolling a freshly-onboarded learner into the course.
  *
  * Onboarding already wrote the learner's preferences onto `users`, but
  * nothing ever created the `student_progress` row those preferences imply, so

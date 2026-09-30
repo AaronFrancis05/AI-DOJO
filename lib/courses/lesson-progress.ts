@@ -5,7 +5,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 export const LESSON_COMPLETION_XP = 50;
 
 /**
- * Where a learner goes after finishing a curriculum lesson.
+ * Where a learner goes after finishing a course lesson.
  *
  * The course page walks levels → units → lessons into one linear list and
  * locks everything after the first lesson that isn't `completed`. Session

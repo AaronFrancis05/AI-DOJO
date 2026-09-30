@@ -129,7 +129,7 @@ A push to `main` that passes lint, test, and `next build` publishes the producti
 | `npm test` | Node test runner (`lib/**/*.test.ts`) |
 | `npm run db:generate` | Generate a Drizzle migration from `src/schema.ts` |
 | `npm run db:migrate` | Apply migrations |
-| `npm run db:seed` | Idempotent seed (scenarios, vocab, users, curriculum, localizations) |
+| `npm run db:seed` | Idempotent seed (scenarios, vocab, users, courses, localizations) |
 | `npm run db:localize` | Generate scenario localizations |
 | `npm run db:check-localization` | Localization coverage check |
 
@@ -140,7 +140,7 @@ A push to `main` that passes lint, test, and `next build` publishes the producti
 ```
 app/                 Routes (authenticated shell, marketing, auth, onboarding, API)
 components/          UI primitives and feature components
-lib/                 Auth, AI, cache, curriculum, roleplay, language packs
+lib/                 Auth, AI, cache, courses, roleplay, language packs
 src/schema.ts        Database schema (source of truth)
 src/seed.ts          Idempotent seed
 drizzle/             Generated SQL migrations

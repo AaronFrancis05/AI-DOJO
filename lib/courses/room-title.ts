@@ -1,5 +1,5 @@
 /**
- * The default title for a live room pinned to a curriculum unit.
+ * The default title for a live room pinned to a course unit.
  *
  * Pure and free of the database client on purpose, the same way
  * `lib/auth/roles.ts` is: the tutor console prefills the title field with this

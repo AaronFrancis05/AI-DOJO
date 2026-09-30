@@ -10,7 +10,7 @@
    already practised cannot be deleted at all. Both refusals arrive as a 409
    with the count in them.
 
-   There is no reorder here: unlike the curriculum tables these rows carry a
+   There is no reorder here: unlike the course tables these rows carry a
    plain `displayOrder` with no unique constraint, so position is just a field
    to edit.
    ─────────────────────────────────────────────── */

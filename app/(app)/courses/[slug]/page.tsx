@@ -489,7 +489,7 @@ export default function CourseDetailPage() {
               <div className="space-y-4">
                 {level.units.map((unit, unitIdx) => (
                   // `id` is the anchor a finished session lands on — see
-                  // continueHref in lib/curriculum/continue-href.ts. scroll-mt
+                  // continueHref in lib/courses/continue-href.ts. scroll-mt
                   // keeps the heading clear of the sticky app header.
                   <Card key={unit.id} id={`unit-${unit.id}`} className="!p-5 scroll-mt-24">
                     <div className="mb-3">

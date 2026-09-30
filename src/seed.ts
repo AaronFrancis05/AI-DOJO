@@ -1492,11 +1492,11 @@ const [s1Row] = await db.insert(sessions).values({
     ]).onConflictDoNothing();
 
     // ================================================================
-    // 8. CURRICULUM (single language-agnostic course template)
+    // 8. COURSES (single language-agnostic course template)
     //    A course is a template, not a language: the learner picks the
     //    target + native language when they enrol, so we seed ONE course.
     // ================================================================
-    console.log('Inserting sample curriculum...');
+    console.log('Inserting sample course...');
     const [courseRow] = await db.insert(courses).values({
       slug: 'survival-uganda',
       title: 'Survival Course for Uganda',

@@ -20,7 +20,7 @@ interface SeedLessonPlanInput {
 /**
  * Seeds `calendar_tasks` with the learner's personalized lesson plan right
  * after onboarding enrolls them in a course. Walks the same
- * levels → units → lessons order `lib/curriculum/enroll.ts` uses to pick the
+ * levels → units → lessons order `lib/courses/enroll.ts` uses to pick the
  * first lesson, starting from the unit onboarding already landed them on.
  *
  * Safe to call more than once: `onConflictDoNothing` on
@@ -56,7 +56,7 @@ export async function seedLessonPlan({ userId, courseId, currentUnitId }: SeedLe
   if (lessonRows.length === 0) return;
 
   // Preserve unit order, then lesson order within each unit — matching how
-  // the course page walks the curriculum.
+  // the course page walks the course.
   const unitOrder = new Map(unitIdsFromStart.map((id, i) => [id, i]));
   const ordered = [...lessonRows].sort((a, b) => (unitOrder.get(a.unitId)! - unitOrder.get(b.unitId)!));
 

@@ -10,7 +10,7 @@ import {
 } from '@/lib/interview/persona';
 import { tutorLanguageError } from '@/lib/tutors/languages';
 import { announceLive } from '@/lib/tutors/live';
-import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
+import { resolveRoomAnchor } from '@/lib/courses/room-anchor';
 import { loadTutorAccess, mayDiscoverWithAccess } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';

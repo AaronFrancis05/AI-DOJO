@@ -88,11 +88,11 @@ const COPY: Record<UserRole, {
     signupTitle: 'Create an admin account',
     signupSubtitle: 'Only pre-authorised addresses can complete this.',
     showcaseTitle: 'Operations Console',
-    showcaseBody: 'The library, the curriculum, tutor verification and account administration.',
+    showcaseBody: 'The library, the courses, tutor verification and account administration.',
     showcasePoints: [
       { icon: <ShieldCheck className="h-4 w-4 text-dojo-accent" />, text: 'Tutor verification' },
       { icon: <Users className="h-4 w-4 text-dojo-accent" />, text: 'Account administration' },
-      { icon: <ClipboardList className="h-4 w-4 text-dojo-accent" />, text: 'Library and curriculum' },
+      { icon: <ClipboardList className="h-4 w-4 text-dojo-accent" />, text: 'Library and courses' },
       { icon: <BarChart3 className="h-4 w-4 text-dojo-accent" />, text: 'Platform statistics' },
     ],
   },

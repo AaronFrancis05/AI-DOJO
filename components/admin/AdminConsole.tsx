@@ -16,7 +16,7 @@ import { AlertCircleIcon } from '@/components/Icons';
 import { OverviewPanel } from '@/components/admin/OverviewPanel';
 import { UsersPanel } from '@/components/admin/UsersPanel';
 import { TutorsPanel } from '@/components/admin/TutorsPanel';
-import { CurriculumPanel } from '@/components/admin/CurriculumPanel';
+import { CoursesPanel } from '@/components/admin/CoursesPanel';
 import { LibraryPanel } from '@/components/admin/LibraryPanel';
 import { LanguagesPanel } from '@/components/admin/LanguagesPanel';
 import { OrganizationsPanel } from '@/components/admin/OrganizationsPanel';
@@ -67,7 +67,7 @@ export function AdminConsole() {
             {tab === 'users' && <UsersPanel onError={setError} />}
             {tab === 'organizations' && <OrganizationsPanel onError={setError} />}
             {tab === 'tutors' && <TutorsPanel onError={setError} />}
-            {tab === 'courses' && <CurriculumPanel onError={setError} />}
+            {tab === 'courses' && <CoursesPanel onError={setError} />}
             {tab === 'library' && <LibraryPanel onError={setError} />}
             {tab === 'languages' && <LanguagesPanel onError={setError} />}
           </div>

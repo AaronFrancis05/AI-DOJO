@@ -1,5 +1,5 @@
 import { getAuthUser } from '@/lib/auth/server';
-import { recordLessonActivity } from '@/lib/curriculum/lesson-progress';
+import { recordLessonActivity } from '@/lib/courses/lesson-progress';
 import { lessons } from '@/src/schema';
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';

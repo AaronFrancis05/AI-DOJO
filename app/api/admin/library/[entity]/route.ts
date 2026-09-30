@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
  * The role-play library: domains, their situations, and the scenarios a
  * session actually runs.
  *
- * Separate from `/api/admin/curriculum/*` because the foreign keys behave
+ * Separate from `/api/admin/courses/*` because the foreign keys behave
  * differently, and that difference is the whole risk here:
  *
  *   domains → situations        ON DELETE cascade
@@ -55,7 +55,7 @@ function specFor(entity: string) {
 }
 
 /**
- * See the note in `/api/admin/curriculum/[entity]`: three tables in a union
+ * See the note in `/api/admin/courses/[entity]`: three tables in a union
  * narrow to their shared columns, and the real protection is the field
  * whitelist below, which is applied before anything reaches here.
  */

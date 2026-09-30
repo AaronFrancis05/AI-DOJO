@@ -203,8 +203,8 @@ import a Stream chat client.
 | `lib/tutors/bookings.ts` | `loadBookingForUser()` — collapses "not found" and "not yours" into one null so booking ids cannot be probed. |
 | `lib/tutors/rooms-data.ts` | The same for live lessons and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for live lessons so a live-lesson id cannot collide with a session id). `closeAssessmentIfDrained()` runs the AI examiner's auto-close — drain check and status update in one transaction under the same advisory lock `startInterview` takes. |
 | `lib/tutors/live.ts` | `announceLive()` — the go-live fan-out for both room types. Resolves recipients through `resolveAudience()` (the pinned course's cohort, else all this tutor's learners) and never throws. |
-| `lib/curriculum/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
-| `lib/curriculum/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
+| `lib/courses/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
+| `lib/courses/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
 | `components/tutors/CallStage.tsx` | The Stream video surface, shared by all three rooms. Token fetch, connect, participants + controls. Always tears the call down on unmount. |
 | `components/tutors/LiveLessonRoom.tsx` | Grid layout, tutor mute-all and `pinForEveryone` spotlight, roster, chat sidebar. |
 | `components/tutors/AssessmentRoom.tsx` | Speaker layout + `WaitingQueue` + the tutor's grading form for whoever is admitted. |
@@ -400,8 +400,8 @@ the role before anything renders and sends a non-admin to `/home`, matching
 | Overview | `OverviewPanel` | `GET /api/admin/stats` | Ten counts in **one** round trip — every figure is a scalar subquery on a single row, because eight `count(*)` queries over an HTTP driver is eight requests. Figures that want acting on carry a hint naming the tab that acts on them; `pendingTutors` turns `text-dojo-warning-strong` when non-zero |
 | Users | `UsersPanel` | `/api/admin/users`, `/api/admin/users/create`, `/api/admin/users/[id]/purge`, `/api/admin/users/reconcile` | Search + role/status filters, role change, suspend with a reason, soft-delete, guarded purge. Self-protection is re-applied server-side; the disabled buttons are a courtesy. **Add account pre-provisions the `users` row only** — Neon Auth owns credentials, so no invitation is sent and the person claims it by signing up with that email. The form says so rather than implying an invite |
 | Tutors | `TutorsPanel` | `/api/admin/tutors`, `/api/admin/tutors/[id]` | Verify/reject, accepting-bookings toggle, and full profile editing. Both language sets matter: every scheduling route validates against them, so a wrong one silently blocks the tutor from working. Edited through the same `LanguagePillGroup` the tutor's own form uses |
-| Courses | `CurriculumPanel` → `EntityTree` | `/api/admin/curriculum/[entity]` | `courses → levels → units → lessons → phases`. Publishing a course is the Published toggle on the course row, and **the only place `courses.isActive` is written** |
-| Catalogue | `CataloguePanel` → `EntityTree` | `/api/admin/catalogue/[entity]` | `domains → situations → scenarios` |
+| Courses | `CoursesPanel` → `EntityTree` | `/api/admin/courses/[entity]` | `courses → levels → units → lessons → phases`. Publishing a course is the Published toggle on the course row, and **the only place `courses.isActive` is written** |
+| Library | `LibraryPanel` → `EntityTree` | `/api/admin/library/[entity]` | `domains → situations → scenarios` |
 | Languages | `LanguagesPanel` | `/api/admin/languages` | Not an `EntityTree`: keyed by `code`, no parent, and its real content is the BCP47 tags and Azure voice ids |
 
 ### `EntityTree` — one drill-down editor, two content tabs
@@ -419,10 +419,10 @@ matches that shape instead of eight near-identical panels that would drift.
   through `Number()`, so an empty string would arrive as `0` and silently
   rewrite a sequence position. `nullable: true` is the opt-in for "blank clears
   the column" (a lesson detached from its scenario).
-- **Reorder is curriculum-only.** `sequenceOrder` is half of a unique index
+- **Reorder is course-tree-only.** `sequenceOrder` is half of a unique index
   there, so a swap is a transaction through a free slot — hence the route's
   `{ move: 'up' | 'down' }`, which the tree sends instead of writing positions.
-  Catalogue rows carry a plain `displayOrder` with no constraint, so position is
+  Library rows carry a plain `displayOrder` with no constraint, so position is
   just a field to edit.
 - **Delete escalates only when the route offers it.** `AdminApiError`
   (`components/admin/shared.tsx`) keeps the 409 body alive through the throw; a
@@ -435,10 +435,10 @@ matches that shape instead of eight near-identical panels that would drift.
 
 ### `/api/domains/create-custom` is admin-only
 
-It writes `domains` + `situations` + `scenarios` — the **shared** catalogue
-every learner's hub lists — so a learner inventing a scenario for themselves
+It writes `domains` + `situations` + `scenarios` — the **shared** library
+every learner's Library page lists — so a learner inventing a scenario for themselves
 was publishing it to everyone, with an LLM-generated vocabulary list and no
-review. `displayOrder = 999` only kept it last, not out of sight. The hub's
+review. `displayOrder = 999` only kept it last, not out of sight. The Library page's
 "Create Custom" card is hidden for non-admins so the button does not 404, but
 the gate is `requireRole('admin')` in the route. Per-learner custom practice, if
 it returns, needs an owned-and-private shape rather than this endpoint reopened.
@@ -456,7 +456,7 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | Route | Panel | Status |
 |-------|-------|--------|
 | `/home` | Home Dashboard | Learner dashboard. `app/(app)/home/layout.tsx` redirects `role === 'tutor'` to `/tutor` — `/home` is `roleHome('learner')`, the fallback for any account whose role does not name a console, and a tutor's XP/streak/session history are permanently empty |
-| `/hub` | Domain Grid | Listicle of 8 domain cards |
+| `/library` | Domain Grid | Listicle of 8 domain cards |
 | `/dojo/[domainSlug]` | Domain Detail | Hero + situation list |
 | `/dojo/[domainSlug]/[situationId]` | Situation Picker | Focus pills + mode toggle |
 | `/dojo/[...]/character` | Character Selection | Grid + preview panel |
@@ -468,10 +468,10 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/live/lesson/[lessonId]` | Live lesson | `LiveLessonRoom` — grid, roster, tutor mute-all/spotlight, translated chat sidebar |
 | `/live/assessment/[assessmentId]` | Assessment Room | `AssessmentRoom` — one learner at a time, `WaitingQueue`, per-learner grading |
 | `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, live-lesson/assessment creation, availability editor |
-| `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Tutors, Courses, Curriculum, Catalogue, Languages |
+| `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Organizations, Tutors, Courses, Library, Languages |
 | `/courses/[slug]/grades` | Grades | The AI's verdict per lesson beside the human tutor verdicts |
 | `/sessions/[id]/report` | Session Summary | Verdict card + score breakdown + transcript |
-| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished curriculum lesson lands — see `continueHref()` in `lib/curriculum/continue-href.ts`; free-form sessions still exit to `/home`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live lesson or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
+| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished course lesson lands — see `continueHref()` in `lib/courses/continue-href.ts`; free-form sessions still exit to `/home`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live lesson or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
 | `/progress` | Progress Analytics | Radar chart + activity tabs |
 | `/leaderboard` | Leaderboard | Global/Friends/School tabs |
 | `/messages` | Messages | Thread list + message view |
@@ -531,7 +531,7 @@ Two rules the flow depends on:
 - **The teaching profile is not re-collected.** Headline, bio, languages taught, timezone and rate are written once by `POST /api/tutors/apply` at application time. The wizard asks only for what that form does not cover.
 - **`ready` must not navigate on failure.** The gate reads `onboardingCompletedAt`, so pushing to `/tutor` without it lands straight back in the wizard. It shows the error with a retry instead.
 
-`POST /api/user/onboarding` skips `enrollInCourse` + `seedLessonPlan` for `role === 'tutor'` — a tutor has no course to be enrolled in, and seeding one would put a curriculum they never chose on their calendar. `admin` keeps the learner path.
+`POST /api/user/onboarding` skips `enrollInCourse` + `seedLessonPlan` for `role === 'tutor'` — a tutor has no course to be enrolled in, and seeding one would put a course they never chose on their calendar. `admin` keeps the learner path.
 
 `OnboardingShell` takes the wizard it is rendering (`steps`, `basePath`, `exitHref`), defaulting to the learner one — the progress bar, the back button and the interstitial layout all derive from `StepConfig`, so a wizard declares its steps in exactly one place.
 

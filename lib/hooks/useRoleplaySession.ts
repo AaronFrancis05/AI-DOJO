@@ -83,7 +83,7 @@ export interface RecapEvent {
 }
 
 /**
- * Where the learner goes after a curriculum lesson. Null for free practice,
+ * Where the learner goes after a course lesson. Null for free practice,
  * which keeps its /home exit — resolved server-side so the completion screen
  * and the course page can't disagree about which lesson is unlocked next.
  */

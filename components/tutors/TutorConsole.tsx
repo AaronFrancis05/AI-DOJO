@@ -23,7 +23,7 @@ import { useLanguageCatalog } from '@/lib/language-context';
 import { useTutorProfile, type TutorProfile } from '@/lib/hooks/useTutorProfile';
 import { LIVE_LESSON_DURATIONS_MINUTES, MAX_LIVE_LESSON_CAPACITY } from '@/lib/tutors/config';
 import { interviewerChoices } from '@/lib/interview/persona';
-import { composeRoomTitle } from '@/lib/curriculum/room-title';
+import { composeRoomTitle } from '@/lib/courses/room-title';
 import { cn } from '@/lib/design-tokens';
 import { Bot, Calendar, Check, ClipboardCheck, Plus, Radio, Users, Video, X } from 'lucide-react';
 
@@ -174,7 +174,7 @@ function CreateRoomForm({
   const [startNow, setStartNow] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
 
-  // Where in the curriculum this room sits. All three optional: a standalone
+  // Where in the course this room sits. All three optional: a standalone
   // conversation hour belongs to no unit.
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [levels, setLevels] = useState<LevelOption[]>([]);
@@ -323,7 +323,7 @@ function CreateRoomForm({
       </p>
 
       <div className="mt-4 space-y-4">
-        {/* Where in the curriculum this sits. Above the title because it names
+        {/* Where in the course this sits. Above the title because it names
             the title — and because a room pinned to a unit is the one that
             reaches learners where they finished it, on the course page. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
