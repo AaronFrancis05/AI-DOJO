@@ -372,7 +372,7 @@ export default function CourseDetailPage() {
       <div className="mx-auto max-w-5xl p-6 lg:p-10">
         <h1 className="text-2xl font-bold text-dojo-text-primary">Course not found</h1>
         <Link href="/courses" className="text-dojo-accent mt-2 inline-block text-sm hover:underline">
-          Back to Learning Paths
+          Back to Courses
         </Link>
       </div>
     );
@@ -386,7 +386,7 @@ export default function CourseDetailPage() {
           className="inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Learning Paths
+          Back to Courses
         </Link>
         <Link
           href={`/courses/${slug}/grades?target=${encodeURIComponent(targetLanguage)}`}

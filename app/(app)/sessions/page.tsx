@@ -86,7 +86,7 @@ export default function SessionsPage() {
   const completedSessions = sessions.filter(s => s.status === 'completed');
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-6">
         {fromHome && (
           <Link href="/home" className="inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary mb-4">
@@ -95,7 +95,7 @@ export default function SessionsPage() {
         )}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">All Sessions</h1>
+            <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">All Sessions</h1>
             <p className="text-sm text-dojo-text-muted mt-1">
               {loading ? 'Loading...' : `${sessions.length} total · ${activeSessions.length} in progress`}
             </p>

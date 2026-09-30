@@ -88,9 +88,9 @@ export default function ProgressPage() {
   const displayStreak = stats?.streak ?? stats?.currentStreak ?? user?.streak ?? 0;
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Progress</h1>
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Progress</h1>
         <p className="mt-1 text-sm text-dojo-text-muted">
           Track your learning journey across all domains
         </p>

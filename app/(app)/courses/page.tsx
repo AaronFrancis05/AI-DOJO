@@ -43,7 +43,7 @@ const DIFFICULTY_LABEL: Record<string, string> = {
 };
 
 export default function CoursesPage() {
-  usePageTitle('Learning Paths');
+  usePageTitle('Courses');
   const user = useUser();
   const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,10 +85,10 @@ export default function CoursesPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-6 lg:p-10">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight leading-none">
-          Learning Paths
+          Courses
         </h1>
         <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
           Pick a course, choose your languages, and follow a structured path from

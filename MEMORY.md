@@ -1153,3 +1153,14 @@ The learner sidebar's Hub and the admin console's Catalogue tab were the same tr
 ## 2026-09-30 (curriculum becomes courses)
 
 "Curriculum" is gone from the code and docs; the course tree (`courses → levels → units → lessons → phases`) is now just Courses, matching the learner nav and the admin tab. Renamed with no redirects: `lib/curriculum/` → `lib/courses/`, `lib/admin/curriculum.ts` → `lib/admin/courses.ts` (`CURRICULUM_ENTITIES` / `CurriculumEntity` / `isCurriculumEntity` → `COURSE_TREE_ENTITIES` / `CourseTreeEntity` / `isCourseTreeEntity`), `CurriculumPanel` → `CoursesPanel`, `/api/admin/curriculum/[entity]` → `/api/admin/courses/[entity]`. The API path now reads `/api/admin/courses/courses` for the root node; that is the accepted cost of one name. `/api/admin/courses` here is not the publish board removed on 2026-09-29. `drizzle/0024_curriculum.sql` and its journal tag keep their name: applied migrations are history. Earlier entries above still say Curriculum.
+
+## 2026-09-30 (app-shell page titles are text-3xl)
+
+Sidebar destination headings are `h1` everywhere, but size comes from Tailwind. Courses, Admin, Home, Organization used `text-3xl font-bold tracking-tight leading-none`; Tutors, Library, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Teaching, and Profile had drifted to `text-2xl`. Aligned the drifted pages to the `text-3xl` scale. Nested pages (course detail, live rooms, reports) are unchanged.
+
+The same destinations also disagreed on page padding: Courses / Admin / Home used `p-6 lg:p-10` (40px top inset at `lg`), the rest used `p-6` (24px). Aligned those wrappers to `p-6 lg:p-10` so the heading sits at the same distance from the top when walking the sidebar.
+
+Page width was a third drift: each destination had its own `max-w-*` (`2xl`–`7xl`) and `mx-auto`, so the heading's left edge jumped when switching pages. Outer wrappers are now all `mx-auto w-full max-w-7xl`. Settings, Profile, Invitations keep an inner `max-w-3xl`; Review (and the Tutors coming-soon card) keep an inner `max-w-2xl` — no `mx-auto` on the inner, so the column sits under the heading. Messages is a split-pane and was left alone.
+
+
+

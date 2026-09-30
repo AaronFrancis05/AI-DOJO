@@ -124,25 +124,29 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="max-w-2xl">
         <Card className="animate-pulse">
           <div className="h-4 w-24 rounded bg-dojo-surface-raised" />
           <div className="mt-6 h-10 w-2/3 rounded bg-dojo-surface-raised" />
           <div className="mt-4 h-4 w-1/3 rounded bg-dojo-surface-raised" />
         </Card>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="mx-auto w-full max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="max-w-2xl">
         <Card className="text-center py-12">
           <p className="text-sm text-dojo-text-muted">{error}</p>
           <Button variant="secondary" className="mt-6" onClick={() => router.refresh()}>
             Try again
           </Button>
         </Card>
+        </div>
       </div>
     );
   }
@@ -150,7 +154,8 @@ export default function ReviewPage() {
   // Nothing due is a good outcome, not an empty state to apologise for.
   if (total === 0) {
     return (
-      <div className="mx-auto w-full max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="max-w-2xl">
         <Card className="text-center py-12">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-success/10">
             <Check className="h-6 w-6 text-dojo-success" />
@@ -165,6 +170,7 @@ export default function ReviewPage() {
             <ArrowRight className="h-4 w-4" /> Start a session
           </Button>
         </Card>
+        </div>
       </div>
     );
   }
@@ -172,7 +178,8 @@ export default function ReviewPage() {
   if (isDone) {
     const recalled = graded - lapsed;
     return (
-      <div className="mx-auto w-full max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="max-w-2xl">
         <Card className="text-center py-12">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent/10">
             <Sparkles className="h-6 w-6 text-dojo-accent" />
@@ -193,15 +200,17 @@ export default function ReviewPage() {
             </Button>
           </div>
         </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="max-w-2xl">
       <div className="mb-6">
         <div className="mb-2 flex items-center justify-between">
-          <h1 className="hidden text-2xl font-bold tracking-tight text-dojo-text-primary md:block">
+          <h1 className="hidden text-3xl font-bold tracking-tight leading-none text-dojo-text-primary md:block">
             Review
           </h1>
           <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
@@ -294,6 +303,7 @@ export default function ReviewPage() {
           </div>
         )}
       </Card>
+      </div>
     </div>
   );
 }

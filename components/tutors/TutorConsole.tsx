@@ -740,8 +740,8 @@ export function TutorConsole() {
   const emptyClass = 'rounded-(--radius-md) border border-dashed border-dojo-border px-4 py-8 text-center text-sm text-dojo-text-muted';
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <h1 className="mb-8 hidden text-2xl font-bold leading-none tracking-tight text-dojo-text-primary md:block">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <h1 className="mb-8 hidden text-3xl font-bold leading-none tracking-tight text-dojo-text-primary md:block">
         Teaching
       </h1>
 

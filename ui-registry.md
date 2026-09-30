@@ -85,6 +85,24 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `NotificationBell` | Unread badge + dropdown above the user card. Subscribes to the signed-in user's own realtime topic; opens upward so the panel clears the sidebar's bottom edge |
 | `UserCard` | Avatar + name + tier badge + level/XP bar — rendered at sidebar bottom |
 
+### Page heading (app-shell destinations)
+
+File: any `(app)` route whose title is also in the sidebar (Home, Tutors, Library, Courses, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Teaching, Admin, Organization, Profile)
+Last updated: 2026-09-30
+
+| Property | Class |
+| -------- | ----- |
+| Size | `text-3xl` |
+| Weight | `font-bold` |
+| Tracking | `tracking-tight` |
+| Leading | `leading-none` |
+| Color | `text-dojo-text-primary` |
+| Desktop visibility | `hidden md:block` — mobile title is the `AppShell` top bar (`text-base font-semibold`) |
+| Page padding | `p-6 lg:p-10` on the page wrapper — this is the heading's top inset. Do not use `p-6` alone |
+| Page width | Outer wrapper is always `mx-auto w-full max-w-7xl`. Headings share one left edge. Pages that need a narrower reading measure wrap only the body in `max-w-3xl` or `max-w-2xl` with **no** `mx-auto` (left-aligned under the heading) |
+
+**Pattern notes:** The HTML tag is always `h1`; size comes from Tailwind, not the tag. Nested pages (course detail, session report, live rooms, not-found states) are not this pattern — leave those as they are. Messages is a split-pane and does not use this wrapper.
+
 ## Organizations
 
 A learner belongs to exactly one organization. Groups are subsets inside that organization. Tutors are not members. The default organization (`slug` `ai-dojo`) is where sign-up and retirement land. Another organization invites only someone who is currently there; acceptance is what moves them. A private organization allows specific tutors for new sessions (`organization_tutor_permissions`). With none allowed, members do not see Tutors. The public organization does not use that table. Removing an allowance does not cancel a booking already made.

@@ -145,7 +145,8 @@ export default function TutorsPage() {
   // flow that cannot connect would be worse than showing nothing.
   if (!TUTORS_ENABLED) {
     return (
-      <div className="mx-auto w-full max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="max-w-2xl">
         <Card className="py-12 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent/10">
             <GraduationCap className="h-6 w-6 text-dojo-accent" />
@@ -158,13 +159,14 @@ export default function TutorsPage() {
             teaching you. Not available on this deployment yet.
           </p>
         </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <h1 className="mb-8 hidden text-2xl font-bold tracking-tight text-dojo-text-primary md:block">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <h1 className="mb-8 hidden text-3xl font-bold tracking-tight leading-none text-dojo-text-primary md:block">
         Tutors
       </h1>
 
