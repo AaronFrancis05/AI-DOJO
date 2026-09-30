@@ -102,6 +102,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ entity:
     return Response.json({ error: 'A title is required' }, { status: 400 });
   }
 
+  // The form omits a blank optional field. `courses.description` is NOT NULL
+  // and has no column default, so leaving it out inserts SQL DEFAULT (null)
+  // and Postgres rejects the row. An empty description is a draft, not a
+  // missing column. Levels and units are nullable, so they stay omitted.
+  if (entity === 'courses' && !values.description) {
+    values.description = '';
+  }
+
   // `sequenceOrder` is half of a unique index with the parent, so an omitted
   // one has to be computed rather than defaulted to 0 — which would collide
   // with the first sibling and fail on the second insert.

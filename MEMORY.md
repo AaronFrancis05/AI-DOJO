@@ -1141,3 +1141,7 @@ The admin console no longer has a Curriculum tab. Courses is the tree (`courses 
 ## 2026-09-30 (CI is pull_request only)
 
 Replaced the push trigger and `draft-check` job. `lint.yml` and `test.yml` run only on `pull_request` (`opened`, `synchronize`, `reopened`, `ready_for_review`) when `github.event.pull_request.draft` is false. A branch push runs them only when it updates a non-draft PR (`synchronize`). Pushes with no PR, and pushes that only update a draft PR, do not start a runner. `image.yml` is unchanged and still runs on push to `main`.
+
+## 2026-09-30 (course create with a blank description)
+
+Creating a course with title and slug only 500'd. The form omits a blank optional field, and `courses.description` is NOT NULL with no column default, so the insert sent SQL DEFAULT (null). `POST /api/admin/curriculum/courses` now stores `''` when description is omitted. Levels and units stay nullable and still omit a blank description.
