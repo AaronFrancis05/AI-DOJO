@@ -31,7 +31,7 @@ export const adminInputClass =
 /**
  * A failed admin call, carrying the body the route answered with.
  *
- * The delete guards in `/api/admin/curriculum/*` and `/api/admin/catalogue/*`
+ * The delete guards in `/api/admin/curriculum/*` and `/api/admin/library/*`
  * answer 409 with more than a message — `childCount` / `situationCount` say how
  * much would go with the node, and `archivable` says whether a `force` retry is
  * even on offer. `EntityTree` needs those to decide between "explain the

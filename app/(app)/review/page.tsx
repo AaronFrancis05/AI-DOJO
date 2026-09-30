@@ -161,7 +161,7 @@ export default function ReviewPage() {
           <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
             Words you practise in a session show up here when it&apos;s time to see them again.
           </p>
-          <Button variant="primary" className="mt-6" onClick={() => router.push('/hub')}>
+          <Button variant="primary" className="mt-6" onClick={() => router.push('/library')}>
             <ArrowRight className="h-4 w-4" /> Start a session
           </Button>
         </Card>
@@ -188,7 +188,7 @@ export default function ReviewPage() {
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <Button variant="secondary" onClick={() => router.push('/home')}>Back to home</Button>
-            <Button variant="primary" onClick={() => router.push('/hub')}>
+            <Button variant="primary" onClick={() => router.push('/library')}>
               <ArrowRight className="h-4 w-4" /> Practise a scenario
             </Button>
           </div>

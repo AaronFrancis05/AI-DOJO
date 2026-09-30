@@ -568,11 +568,11 @@ export default function HomePage() {
               : 'Start a roleplay session to build your daily practice streak.'}
           </p>
           {/* Pick up the conversation already in progress rather than
-              dropping the learner back at the catalogue to find it. */}
+              dropping the learner back at the Library to find it. */}
           <Button
             variant="primary"
             className="mt-6 w-full shadow-lg shadow-dojo-accent/20"
-            onClick={() => router.push(activeSession ? `/session/${activeSession.id}` : '/hub')}
+            onClick={() => router.push(activeSession ? `/session/${activeSession.id}` : '/library')}
           >
             <Play className="h-4 w-4 fill-current" />
             {activeSession ? 'Resume Session' : 'Continue Practice'}
@@ -671,8 +671,8 @@ export default function HomePage() {
             <Card className="!p-5">
               <p className="text-[10px] font-black uppercase tracking-widest text-dojo-text-muted">No live session</p>
               <p className="mt-2 text-lg font-bold text-dojo-text-primary">Pick a scenario</p>
-              <p className="text-xs text-dojo-text-muted">Nothing is in progress — start one from the Hub.</p>
-              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
+              <p className="text-xs text-dojo-text-muted">Nothing is in progress — start one from the Library.</p>
+              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/library')}>
                 Browse Scenarios <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </Card>
@@ -753,7 +753,7 @@ export default function HomePage() {
                 <Globe className="mx-auto mb-2 h-8 w-8 text-dojo-border" />
                 <p className="mb-1 text-sm font-bold text-dojo-text-primary">Your learning journey starts here</p>
                 <p className="mx-auto max-w-sm text-xs leading-relaxed text-dojo-text-muted">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
-                <Button variant="primary" size="sm" className="mt-5" onClick={() => router.push('/hub')}>
+                <Button variant="primary" size="sm" className="mt-5" onClick={() => router.push('/library')}>
                   Explore Scenarios <ArrowRight className="ml-1 h-3 w-3" />
                 </Button>
               </div>
@@ -886,7 +886,7 @@ export default function HomePage() {
             </div>
             <p className="mb-1 font-bold text-dojo-text-primary">No practice sessions found</p>
             <p className="mx-auto mb-6 max-w-xs text-xs text-dojo-text-muted">Start your first role-play in the Dojo to build your history and track your progress.</p>
-            <Button variant="primary" size="lg" onClick={() => router.push('/hub')}>
+            <Button variant="primary" size="lg" onClick={() => router.push('/library')}>
               <Sparkles className="h-4 w-4" /> Start Your First Session
             </Button>
           </div>

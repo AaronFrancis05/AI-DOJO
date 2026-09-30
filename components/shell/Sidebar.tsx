@@ -45,7 +45,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Home',      href: '/home',        icon: LayoutDashboard },
   ...(TUTORS_ENABLED ? [{ label: 'Tutors', href: '/tutors', icon: Users }] : []),
-  { label: 'Hub',       href: '/hub',         icon: Compass },
+  { label: 'Library',   href: '/library',     icon: Compass },
   { label: 'Courses',   href: '/courses',     icon: GraduationCap },
   { label: 'Review',    href: '/review',      icon: Repeat2 },
   { label: 'Sessions',  href: '/sessions',    icon: History },
@@ -59,7 +59,7 @@ const navItems: NavItem[] = [
 /**
  * What a tutor sees instead.
  *
- * Not the learner nav with Teaching bolted on: Hub, Courses, Review,
+ * Not the learner nav with Teaching bolted on: Library, Courses, Review,
  * Sessions, Progress and Leaderboard are all surfaces of someone's own
  * practice, and a tutor has none — the XP and streak they were being offered
  * were permanently zero. Teaching is their home, and Calendar carries the

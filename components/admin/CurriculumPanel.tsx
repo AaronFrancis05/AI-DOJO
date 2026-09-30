@@ -4,7 +4,7 @@
    The Courses tab: courses → levels → units → lessons → phases.
 
    Publishing a course is the Published toggle on the course row — the same
-   control Catalogue uses — and it is the only place `courses.isActive` is
+   control Library uses — and it is the only place `courses.isActive` is
    written. `PATCH /api/admin/curriculum/courses` already accepts that column.
 
    Field lists mirror `ENTITY_SPECS` in `lib/admin/curriculum.ts`, which is
@@ -74,7 +74,7 @@ const LEVELS: TreeLevel[] = [
         label: 'Scenario id',
         widget: 'number',
         nullable: true,
-        hint: 'The roleplay this lesson runs, from the Catalogue tab. Leave blank to detach it.',
+        hint: 'The roleplay this lesson runs, from the Library tab. Leave blank to detach it.',
       },
       { key: 'estimatedMinutes', label: 'Minutes', widget: 'number' },
     ],

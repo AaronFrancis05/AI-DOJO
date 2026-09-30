@@ -100,7 +100,7 @@ export default function SessionsPage() {
               {loading ? 'Loading...' : `${sessions.length} total · ${activeSessions.length} in progress`}
             </p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => router.push('/hub')}>
+          <Button variant="primary" size="sm" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> New Practice
           </Button>
         </div>
@@ -120,8 +120,8 @@ export default function SessionsPage() {
       ) : sessions.length === 0 ? (
         <Card className="text-center py-12">
           <p className="text-dojo-text-muted mb-2">No sessions yet</p>
-          <p className="text-xs text-dojo-text-muted">Start your first role-play from the Hub</p>
-          <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
+          <p className="text-xs text-dojo-text-muted">Start your first role-play from the Library</p>
+          <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> Start Practicing
           </Button>
         </Card>

@@ -1,11 +1,11 @@
 'use client';
 
 /* ───────────────────────────────────────────────
-   The roleplay catalogue: domains → situations → scenarios.
+   The roleplay library: domains → situations → scenarios.
 
    Separate from the Courses tab because the foreign keys behave differently
    and the difference is the whole risk — see the header of
-   `app/api/admin/catalogue/[entity]/route.ts`. Deleting a domain orphans the
+   `app/api/admin/library/[entity]/route.ts`. Deleting a domain orphans the
    scenarios beneath it rather than removing them, and a scenario someone has
    already practised cannot be deleted at all. Both refusals arrive as a 409
    with the count in them.
@@ -31,7 +31,7 @@ const LEVELS: TreeLevel[] = [
       { key: 'name', label: 'Name', required: true },
       { key: 'slug', label: 'Slug', required: true, hint: 'The URL segment: /dojo/<slug>.' },
       { key: 'description', label: 'Description', widget: 'textarea' },
-      { key: 'icon', label: 'Icon', hint: 'One of the lucide names the hub maps: UtensilsCrossed, Building2, Plane, HeartPulse, ShoppingBag, Briefcase, Compass, Sun.' },
+      { key: 'icon', label: 'Icon', hint: 'One of the lucide names the Library maps: UtensilsCrossed, Building2, Plane, HeartPulse, ShoppingBag, Briefcase, Compass, Sun.' },
       { key: 'heroGradientFrom', label: 'Hero gradient from', hint: 'Hex, e.g. #6366f1 — a per-domain brand colour, not a design token.' },
       { key: 'heroGradientTo', label: 'Hero gradient to' },
       { key: 'imageUrl', label: 'Hero image URL', nullable: true },
@@ -73,16 +73,16 @@ const LEVELS: TreeLevel[] = [
   },
 ];
 
-export function CataloguePanel({ onError }: { onError: (msg: string) => void }) {
+export function LibraryPanel({ onError }: { onError: (msg: string) => void }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm leading-relaxed text-dojo-text-muted">
         These rows are cached for an hour, so an edit here is invalidated on write rather than
         waiting the TTL out. A scenario that has already been practised cannot be deleted — its
         sessions and reports point at it — and archiving the situation above it is the way to take
-        it off the hub.
+        it off the Library.
       </p>
-      <EntityTree basePath="/api/admin/catalogue" levels={LEVELS} onError={onError} />
+      <EntityTree basePath="/api/admin/library" levels={LEVELS} onError={onError} />
     </div>
   );
 }

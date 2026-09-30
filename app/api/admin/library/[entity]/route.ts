@@ -8,7 +8,7 @@ import { cacheDel, cacheKeys } from '@/lib/cache';
 export const runtime = 'nodejs';
 
 /**
- * The role-play catalogue: domains, their situations, and the scenarios a
+ * The role-play library: domains, their situations, and the scenarios a
  * session actually runs.
  *
  * Separate from `/api/admin/curriculum/*` because the foreign keys behave
@@ -81,7 +81,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ entity: 
   }
 
   const spec = specFor((await params).entity);
-  if (!spec) return Response.json({ error: 'Unknown catalogue entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown library entity' }, { status: 404 });
 
   const parentId = new URL(req.url).searchParams.get('parentId');
   const table = spec.table as unknown as Record<string, never>;
@@ -101,7 +101,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ entity:
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown catalogue entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown library entity' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -122,13 +122,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ entity:
     const [created] = await db.insert(spec.table).values(writable(values)).returning();
     await invalidate(entity as EntityKey, Number((created as Record<string, unknown>).id));
 
-    // `domains.situationCount` is denormalised and read by the hub listing, so
+    // `domains.situationCount` is denormalised and read by the Library listing, so
     // it has to be maintained here — nothing else recomputes it.
     if (entity === 'situations') await refreshSituationCount(Number(values.domainId));
 
     return Response.json({ success: true, row: created }, { status: 201 });
   } catch (err) {
-    return catalogueError(err, spec.label);
+    return libraryError(err, spec.label);
   }
 }
 
@@ -141,7 +141,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown catalogue entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown library entity' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   const id = Number(body?.id);
@@ -164,7 +164,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
       if (!row) return null;
 
       // `scenarios.domain` is a denormalised copy of the parent domain's slug,
-      // and the hub reads it. Renaming the slug without carrying it down left
+      // and the Library reads it. Renaming the slug without carrying it down left
       // every scenario beneath the domain pointing at a slug that no longer
       // exists, so the rename happens with the domain write, not by hand.
       if (entity === 'domains' && typeof updates.slug === 'string') {
@@ -180,7 +180,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
 
     await invalidate(entity as EntityKey, id);
 
-    // Archiving a situation removes it from the hub, so the denormalised
+    // Archiving a situation removes it from the Library, so the denormalised
     // `domains.situationCount` has to follow — the same reason POST and DELETE
     // refresh it. Nothing else recomputes the column.
     if (entity === 'situations') {
@@ -189,12 +189,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
 
     return Response.json({ success: true, row: updated });
   } catch (err) {
-    return catalogueError(err, spec.label);
+    return libraryError(err, spec.label);
   }
 }
 
 /**
- * Deletes a catalogue node — but only when the FK graph makes that safe.
+ * Deletes a library node — but only when the FK graph makes that safe.
  *
  * Every refusal is a 409 that names the count, rather than letting Postgres'
  * own error surface as a 500. `app/api/bookings/route.ts` applies the same
@@ -209,7 +209,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown catalogue entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown library entity' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   const id = Number(body?.id);
@@ -260,7 +260,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
           error:
             `This domain has ${situationCount} situation(s). Deleting it removes them, and the ` +
             `scenarios beneath them are left orphaned rather than deleted — they keep working in ` +
-            `existing sessions but disappear from the hub. Archive it instead, or confirm to delete anyway.`,
+            `existing sessions but disappear from the Library. Archive it instead, or confirm to delete anyway.`,
           situationCount,
           archivable: true,
         },
@@ -274,7 +274,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
   try {
     await db.delete(spec.table).where(eq(table['id'], id));
   } catch (err) {
-    return catalogueError(err, spec.label);
+    return libraryError(err, spec.label);
   }
 
   await invalidate(entity as EntityKey, id);
@@ -290,7 +290,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-/** Keeps `domains.situationCount` — read on every hub listing — truthful. */
+/** Keeps `domains.situationCount` — read on every Library listing — truthful. */
 async function refreshSituationCount(domainId: number) {
   if (!Number.isInteger(domainId)) return;
   await db
@@ -317,7 +317,7 @@ async function invalidate(entity: EntityKey, id: number) {
   else if (entity === 'scenarios') await cacheDel(cacheKeys.scenario(id));
 }
 
-function catalogueError(err: unknown, label: string): Response {
+function libraryError(err: unknown, label: string): Response {
   const code = (err as { code?: string })?.code;
   if (code === '23505') {
     return Response.json({ error: `Another ${label} already uses that slug.` }, { status: 409 });

@@ -190,8 +190,8 @@ export default function CoursesPage() {
       <div className="mt-10 flex items-center gap-2 text-sm text-dojo-text-muted">
         <Sparkles className="h-4 w-4 text-dojo-warning" />
         Prefer freeform practice? Visit the
-        <Link href="/hub" className="font-semibold text-dojo-accent hover:underline">
-          Hub
+        <Link href="/library" className="font-semibold text-dojo-accent hover:underline">
+          Library
         </Link>
         to jump into any scenario directly.
       </div>

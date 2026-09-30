@@ -51,8 +51,8 @@ function slugify(text: string): string {
  *
  * Admin-only, which is a narrowing: it used to accept any signed-in learner.
  * The rows it writes are not private to the caller — `domains`, `situations`
- * and `scenarios` are the *shared* catalogue every learner's hub lists and the
- * Catalogue tab curates. A learner inventing a scenario for themselves was
+ * and `scenarios` are the *shared* library every learner's Library page lists and the
+ * Library tab curates. A learner inventing a scenario for themselves was
  * therefore publishing it to everyone, with an LLM-generated vocabulary list
  * and no review, and `domains.displayOrder = 999` only kept it last rather than
  * out of sight.

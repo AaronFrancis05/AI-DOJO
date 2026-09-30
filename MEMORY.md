@@ -1145,3 +1145,7 @@ Replaced the push trigger and `draft-check` job. `lint.yml` and `test.yml` run o
 ## 2026-09-30 (course create with a blank description)
 
 Creating a course with title and slug only 500'd. The form omits a blank optional field, and `courses.description` is NOT NULL with no column default, so the insert sent SQL DEFAULT (null). `POST /api/admin/curriculum/courses` now stores `''` when description is omitted. Levels and units stay nullable and still omit a blank description.
+
+## 2026-09-30 (Hub and Catalogue become Library)
+
+The learner sidebar's Hub and the admin console's Catalogue tab were the same tree (`domains → situations → scenarios`) under two names, and the Hub page's heading was a third ("Choose a Scenario"). All three are now **Library**. Renamed with no redirects: `/hub` → `/library`, admin tab id `catalogue` → `library`, `CataloguePanel` → `LibraryPanel`, `/api/admin/catalogue/[entity]` → `/api/admin/library/[entity]`. Old links and bookmarks to `/hub` now 404. Earlier entries above still say Hub and Catalogue; they are left as written. "Catalogue" in the language registry (`language-registry.ts`, `LanguageCatalog`, the admin Languages tab) is a different thing and is unchanged, as is the avatar picker's Catalog tab.
