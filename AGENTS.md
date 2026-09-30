@@ -43,7 +43,7 @@ If you believe the existing pattern is actually wrong or harmful, say so and exp
 ```
 app/
   (app)/            Authenticated app shell routes (sidebar layout)
-    home/ hub/ dojo/[domainSlug]/ courses/[slug]/ chat/[id]/
+    home/ library/ dojo/[domainSlug]/ courses/[slug]/ chat/[id]/
     session/[sessionId]/ sessions/[id]/ progress/ leaderboard/
     messages/[roomId]/ calendar/ settings/[avatar|billing]/
   (marketing)/      Public marketing site (logged-out)
@@ -73,7 +73,7 @@ lib/
   ai-providers/      Provider abstraction, circuit breaker, failover
   auth/              Auth helpers
   cache.ts           Redis cache helpers
-  curriculum/        Course/level/unit/lesson progress logic
+  courses/           Course/level/unit/lesson progress logic
   data/              Shared data-access helpers
   design-tokens.ts   Color/radius tokens + cn() utility (source of truth for JS-side tokens)
   hooks/             Client hooks (e.g. useRoleplaySession.ts)
@@ -89,7 +89,7 @@ lib/
 src/
   db.ts / db-pool.ts Drizzle client + pool
   schema.ts          Full Drizzle schema — single source of truth for the DB shape
-  seed.ts            Idempotent seed script (scenarios, vocab, users, curriculum)
+  seed.ts            Idempotent seed script (scenarios, vocab, users, courses)
 
 drizzle/             Generated SQL migrations + meta — never hand-edit; regenerate via db:generate
 scripts/             One-off/maintenance scripts (seeding, migration checks, localization generation, backups)

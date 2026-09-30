@@ -22,7 +22,7 @@ import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
 import { LessonCompleteScreen } from '@/components/roleplay/LessonCompleteScreen';
 import { LessonIncompleteScreen } from '@/components/roleplay/LessonIncompleteScreen';
 import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-metrics';
-import { continueHref } from '@/lib/curriculum/continue-href';
+import { continueHref } from '@/lib/courses/continue-href';
 import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';

@@ -1,10 +1,10 @@
 /**
- * The curriculum tree, as data the admin routes can act on generically.
+ * The course tree, as data the admin routes can act on generically.
  *
  * `courses → course_levels → units → lessons → lesson_phases` are five tables
  * with the same shape of problem: create, rename, reorder, archive or delete a
  * node that has a parent and a `sequenceOrder`. Describing them once here means
- * `/api/admin/curriculum/[entity]` is one implementation instead of five
+ * `/api/admin/courses/[entity]` is one implementation instead of five
  * near-identical route files that would drift.
  *
  * Server-only: it holds table references.
@@ -12,11 +12,11 @@
 
 import { courseLevels, courses, lessonPhases, lessons, units } from '@/src/schema';
 
-export const CURRICULUM_ENTITIES = ['courses', 'levels', 'units', 'lessons', 'phases'] as const;
-export type CurriculumEntity = (typeof CURRICULUM_ENTITIES)[number];
+export const COURSE_TREE_ENTITIES = ['courses', 'levels', 'units', 'lessons', 'phases'] as const;
+export type CourseTreeEntity = (typeof COURSE_TREE_ENTITIES)[number];
 
-export function isCurriculumEntity(value: unknown): value is CurriculumEntity {
-  return typeof value === 'string' && (CURRICULUM_ENTITIES as readonly string[]).includes(value);
+export function isCourseTreeEntity(value: unknown): value is CourseTreeEntity {
+  return typeof value === 'string' && (COURSE_TREE_ENTITIES as readonly string[]).includes(value);
 }
 
 export interface EntitySpec {
@@ -33,11 +33,11 @@ export interface EntitySpec {
   /** True when the table has `isActive`, i.e. archiving is available. */
   archivable: boolean;
   /** Child entity, so a delete can say what it would take with it. */
-  child: CurriculumEntity | null;
+  child: CourseTreeEntity | null;
   label: string;
 }
 
-export const ENTITY_SPECS: Record<CurriculumEntity, EntitySpec> = {
+export const ENTITY_SPECS: Record<CourseTreeEntity, EntitySpec> = {
   courses: {
     table: courses,
     parentColumn: null,

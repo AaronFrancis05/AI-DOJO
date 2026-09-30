@@ -64,7 +64,8 @@ export function InvitationsPanel() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl p-6 lg:p-10">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="max-w-3xl">
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
           Invitations
@@ -111,6 +112,7 @@ export function InvitationsPanel() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

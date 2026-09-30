@@ -4,16 +4,16 @@ import { dbPool } from '@/src/db-pool';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import {
   ENTITY_SPECS,
-  isCurriculumEntity,
+  isCourseTreeEntity,
   readEntityFields,
-  type CurriculumEntity,
-} from '@/lib/admin/curriculum';
+  type CourseTreeEntity,
+} from '@/lib/admin/courses';
 
 export const runtime = 'nodejs';
 
 /**
- * CRUD over the curriculum tree — `courses`, `levels`, `units`, `lessons`,
- * `phases` — driven by `lib/admin/curriculum.ts`.
+ * CRUD over the course tree — `courses`, `levels`, `units`, `lessons`,
+ * `phases` — driven by `lib/admin/courses.ts`.
  *
  * One implementation over a validated path segment rather than five route
  * files: the five tables differ only in their columns and their parent, and
@@ -23,7 +23,7 @@ export const runtime = 'nodejs';
  * the tree a level at a time.
  */
 function specFor(entity: string) {
-  return isCurriculumEntity(entity) ? ENTITY_SPECS[entity as CurriculumEntity] : null;
+  return isCourseTreeEntity(entity) ? ENTITY_SPECS[entity as CourseTreeEntity] : null;
 }
 
 /**
@@ -53,7 +53,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ entity: 
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown curriculum entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown course entity' }, { status: 404 });
 
   const parentId = new URL(req.url).searchParams.get('parentId');
 
@@ -63,7 +63,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ entity: 
       ? eq(table[spec.parentColumn], Number(parentId))
       : undefined;
 
-  // Ordered the way the curriculum is walked: by sequence where there is one,
+  // Ordered the way the course tree is walked: by sequence where there is one,
   // otherwise by display order. The learner-facing pages assume the same order.
   const orderColumn = 'sequenceOrder' in spec.fields ? table['sequenceOrder'] : table['displayOrder'];
 
@@ -81,7 +81,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ entity:
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown curriculum entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown course entity' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
@@ -100,6 +100,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ entity:
 
   if (!values.title && spec.fields.title) {
     return Response.json({ error: 'A title is required' }, { status: 400 });
+  }
+
+  // The form omits a blank optional field. `courses.description` is NOT NULL
+  // and has no column default, so leaving it out inserts SQL DEFAULT (null)
+  // and Postgres rejects the row. An empty description is a draft, not a
+  // missing column. Levels and units are nullable, so they stay omitted.
+  if (entity === 'courses' && !values.description) {
+    values.description = '';
   }
 
   // `sequenceOrder` is half of a unique index with the parent, so an omitted
@@ -126,7 +134,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ entity
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown curriculum entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown course entity' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   const id = Number(body?.id);
@@ -182,7 +190,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
 
   const { entity } = await params;
   const spec = specFor(entity);
-  if (!spec) return Response.json({ error: 'Unknown curriculum entity' }, { status: 404 });
+  if (!spec) return Response.json({ error: 'Unknown course entity' }, { status: 404 });
 
   const body = await req.json().catch(() => null);
   const id = Number(body?.id);
@@ -224,7 +232,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ entit
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-async function nextSequence(spec: (typeof ENTITY_SPECS)[CurriculumEntity], parentId: number) {
+async function nextSequence(spec: (typeof ENTITY_SPECS)[CourseTreeEntity], parentId: number) {
   const table = spec.table as unknown as Record<string, never>;
   const [{ max }] = await db
     .select({ max: sql<number>`coalesce(max(sequence_order), 0)` })
@@ -234,7 +242,7 @@ async function nextSequence(spec: (typeof ENTITY_SPECS)[CurriculumEntity], paren
 }
 
 async function reorder(
-  spec: (typeof ENTITY_SPECS)[CurriculumEntity],
+  spec: (typeof ENTITY_SPECS)[CourseTreeEntity],
   id: number,
   direction: 'up' | 'down',
 ) {

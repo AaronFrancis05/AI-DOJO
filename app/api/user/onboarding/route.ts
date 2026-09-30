@@ -4,7 +4,7 @@ import { toUserRole } from '@/lib/auth/roles';
 import { db } from '@/src/db';
 import { users, countries, studentProgress } from '@/src/schema';
 import { and, eq } from 'drizzle-orm';
-import { enrollInCourse } from '@/lib/curriculum/enroll';
+import { enrollInCourse } from '@/lib/courses/enroll';
 import { seedLessonPlan } from '@/lib/calendar/seed-lesson-plan';
 
 export async function POST(req: NextRequest) {
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   // A tutor finishes onboarding through the tutor wizard, which asks for a
   // language to be taught *in*, not one to learn. Enrolling them in a course
-  // and seeding a lesson plan off it would put a curriculum they never chose
+  // and seeding a lesson plan off it would put a course they never chose
   // on their calendar. Admins keep the learner path — they are learners too.
   const isTutor = toUserRole(saved?.role) === 'tutor';
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       });
 
       // The personalized plan promised at the end of the wizard: turn the
-      // curriculum position enrolment just created into dated reminders on
+      // course position enrolment just created into dated reminders on
       // the learner's calendar. Only for a fresh enrolment — replaying
       // onboarding on an already-enrolled learner has nothing new to plan.
       if (enrollment?.created) {

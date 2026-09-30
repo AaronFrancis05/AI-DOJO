@@ -214,7 +214,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="max-w-3xl">
       <div className="mb-8">
         <button
           type="button"
@@ -227,9 +228,9 @@ export default function ProfilePage() {
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Profile</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          The name and email on your account.
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Profile</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Your display name, email, and password on this account.
         </p>
       </div>
 
@@ -378,6 +379,7 @@ export default function ProfilePage() {
             </Button>
           </form>
         </Card>
+      </div>
       </div>
     </div>
   );

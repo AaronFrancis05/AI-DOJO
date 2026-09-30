@@ -237,7 +237,7 @@ export default function SessionReportPage() {
                 </Link>
                 {!passed && (
                   <Link
-                    href="/hub"
+                    href="/library"
                     className="inline-flex items-center gap-2 rounded-[--radius-md] bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
                   >
                     <RotateCcw className="h-4 w-4" /> Try it again

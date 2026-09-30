@@ -1130,6 +1130,10 @@ Private organizations choose which tutors their members may start a new booking,
 
 Permission is checked only when something new starts. Joining a booking, an existing live-lesson seat, or an assessment queue place does not read the table again. A suspended, deleted or unverified tutor account can still refuse that join. Turning off `isAcceptingBookings` does not.
 
+## 2026-09-29 (admin Courses absorbs Curriculum)
+
+The admin console no longer has a Curriculum tab. Courses is the tree (`courses → levels → units → lessons → phases`), and publishing a course is the Published toggle on the course row — the same control Catalogue already uses. `courses.isActive` is written only by `PATCH /api/admin/curriculum/courses`. The publish board (`CoursesPanel`, `GET`/`PATCH /api/admin/courses`) is gone, so the two writers noted on 2026-08-27 are one.
+
 ## 2026-09-30 (skip CI on draft PRs)
 
 `lint.yml` and `test.yml` skip their work while a pull request is draft. `pull_request` includes `ready_for_review`, so marking the PR ready runs lint and test without another push. Push events do not include draft state, so a short `draft-check` job lists open PRs for that head branch and skips lint/test when every open PR is a draft. Branch pushes with no PR still run. `image.yml` stays push-to-`main` only.
@@ -1137,3 +1141,58 @@ Permission is checked only when something new starts. Joining a booking, an exis
 ## 2026-09-30 (CI is pull_request only)
 
 Replaced the push trigger and `draft-check` job. `lint.yml` and `test.yml` run only on `pull_request` (`opened`, `synchronize`, `reopened`, `ready_for_review`) when `github.event.pull_request.draft` is false. A branch push runs them only when it updates a non-draft PR (`synchronize`). Pushes with no PR, and pushes that only update a draft PR, do not start a runner. `image.yml` is unchanged and still runs on push to `main`.
+
+## 2026-09-30 (course create with a blank description)
+
+Creating a course with title and slug only 500'd. The form omits a blank optional field, and `courses.description` is NOT NULL with no column default, so the insert sent SQL DEFAULT (null). `POST /api/admin/curriculum/courses` now stores `''` when description is omitted. Levels and units stay nullable and still omit a blank description.
+
+## 2026-09-30 (Hub and Catalogue become Library)
+
+The learner sidebar's Hub and the admin console's Catalogue tab were the same tree (`domains → situations → scenarios`) under two names, and the Hub page's heading was a third ("Choose a Scenario"). All three are now **Library**. Renamed with no redirects: `/hub` → `/library`, admin tab id `catalogue` → `library`, `CataloguePanel` → `LibraryPanel`, `/api/admin/catalogue/[entity]` → `/api/admin/library/[entity]`. Old links and bookmarks to `/hub` now 404. Earlier entries above still say Hub and Catalogue; they are left as written. "Catalogue" in the language registry (`language-registry.ts`, `LanguageCatalog`, the admin Languages tab) is a different thing and is unchanged, as is the avatar picker's Catalog tab.
+
+## 2026-09-30 (curriculum becomes courses)
+
+"Curriculum" is gone from the code and docs; the course tree (`courses → levels → units → lessons → phases`) is now just Courses, matching the learner nav and the admin tab. Renamed with no redirects: `lib/curriculum/` → `lib/courses/`, `lib/admin/curriculum.ts` → `lib/admin/courses.ts` (`CURRICULUM_ENTITIES` / `CurriculumEntity` / `isCurriculumEntity` → `COURSE_TREE_ENTITIES` / `CourseTreeEntity` / `isCourseTreeEntity`), `CurriculumPanel` → `CoursesPanel`, `/api/admin/curriculum/[entity]` → `/api/admin/courses/[entity]`. The API path now reads `/api/admin/courses/courses` for the root node; that is the accepted cost of one name. `/api/admin/courses` here is not the publish board removed on 2026-09-29. `drizzle/0024_curriculum.sql` and its journal tag keep their name: applied migrations are history. Earlier entries above still say Curriculum.
+
+## 2026-09-30 (app-shell page titles are text-3xl)
+
+Sidebar destination headings are `h1` everywhere, but size comes from Tailwind. Courses, Admin, Home, Organization used `text-3xl font-bold tracking-tight leading-none`; Tutors, Library, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Teaching, and Profile had drifted to `text-2xl`. Aligned the drifted pages to the `text-3xl` scale. Nested pages (course detail, live rooms, reports) are unchanged.
+
+The same destinations also disagreed on page padding: Courses / Admin / Home used `p-6 lg:p-10` (40px top inset at `lg`), the rest used `p-6` (24px). Aligned those wrappers to `p-6 lg:p-10` so the heading sits at the same distance from the top when walking the sidebar.
+
+Page width was a third drift: each destination had its own `max-w-*` (`2xl`–`7xl`) and `mx-auto`, so the heading's left edge jumped when switching pages. Outer wrappers are now all `mx-auto w-full max-w-7xl`. Settings, Profile, Invitations keep an inner `max-w-3xl`; Review (and the Tutors coming-soon card) keep an inner `max-w-2xl` — no `mx-auto` on the inner, so the column sits under the heading. Messages is a split-pane and was left alone.
+
+## 2026-09-30 (learner sidebar grouped under Practice / Results)
+
+The learner sidebar is no longer a flat list. Destinations are unchanged; unlabeled Home sits above **Practice** (Library, Courses, Tutors, Review) and **Results** (Sessions, Progress, Leaderboard), then unlabeled Messages, Calendar, role-gated Teaching / Admin / Organization, and Settings last. Headings are labels only (`text-xs font-semibold uppercase tracking-wide text-dojo-text-muted`, same as `RoomDetailsPanel`), not collapsible. Tutor nav stays a flat four-item list. Tutors lives in Practice (another way to start practice), not grouped with Messages/Calendar.
+
+## 2026-09-30 (Settings is always last in the learner sidebar)
+
+Role-gated Teaching / Admin / Organization used to append after Settings because admin kept the learner nav and bolted consoles onto the end. Settings is account chrome, so those consoles now insert *before* it. Tutor-only nav was already Teaching → Messages → Calendar → Settings and is unchanged.
+
+## 2026-09-30 (Review heading on every state)
+
+`/review` only rendered the page `h1` during an in-progress drill. Loading, error, empty, and complete returned early without it. The heading is now in the shared page wrapper so every state matches the app-shell destination pattern.
+
+## 2026-09-30 (Practice heading descriptions)
+
+Library's blurb was `mt-1 text-sm`; Courses used `mt-2 text-base leading-relaxed`. Library, Tutors, and Review now match Courses. Tutors: "Book a live tutor, join a group lesson, or sit an assessment." Review: "Revisit words from your sessions. Rate how well you knew each one and they will come back when it is time."
+
+## 2026-09-30 (heading blurbs on Progress, Leaderboard, Settings)
+
+Those three still used `mt-1 text-sm`. They now match Courses (`mt-2 text-base leading-relaxed`). Sessions stays a `text-sm` live count, not a feature blurb. Profile matched on the same pass.
+
+## 2026-09-30 (heading blurbs rewritten)
+
+Page blurbs now match Courses' register (one or two full sentences) rather than the shorter drafts. Calendar gained one. Sessions heading is a blurb; the `N total · M in progress` count sits above the list.
+
+## 2026-09-30 (Calendar above Messages)
+
+Learner chrome and the tutor nav now list Calendar before Messages. Settings is still last.
+
+## 2026-09-30 (admin nav leads with Admin, Teaching, Home)
+
+An admin still sees the learner destinations, but Admin then Teaching now sit above Home instead of before Settings. Organization stays before Settings. `/tutor` no longer matches `/tutors` as active.
+
+
+

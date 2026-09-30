@@ -16,7 +16,7 @@ import {
   type PhaseStep,
 } from '../../../../lib/roleplay/phase-engine';
 import { buildEvaluationSummary } from '../../../../lib/roleplay/evaluation-summary';
-import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
+import { recordLessonActivity } from '../../../../lib/courses/lesson-progress';
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
@@ -869,7 +869,7 @@ export async function POST(req: Request) {
 
               // Every word met in this session enters the spaced-repetition
               // queue. Card seeding previously lived only in
-              // recordLessonActivity, so it fired for curriculum lessons and
+              // recordLessonActivity, so it fired for course lessons and
               // never for a freeform session — meaning most practice produced
               // nothing to review later. onConflictDoNothing keeps an existing
               // card's schedule intact rather than resetting it.
@@ -980,7 +980,7 @@ export async function POST(req: Request) {
             }));
           }
 
-          // A curriculum lesson is only credited here, on a real finish. This
+          // A course lesson is only credited here, on a real finish. This
           // used to run exclusively from PATCH /api/sessions/[id], which the
           // client sends when the learner *leaves* a session — so playing a
           // lesson all the way through never recorded it and never unlocked

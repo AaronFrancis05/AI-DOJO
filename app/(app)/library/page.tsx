@@ -1,5 +1,5 @@
 /* ───────────────────────────────────────────────
-   Hub (Panel 02) — Domain Grid
+   Library (Panel 02) — Domain Grid
    Shows all domains as clickable cards
    ─────────────────────────────────────────────── */
 
@@ -40,12 +40,12 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Sun,
 };
 
-export default function HubPage() {
-  usePageTitle('Choose a Scenario');
+export default function LibraryPage() {
+  usePageTitle('Library');
   const [domains, setDomains] = useState<DomainFixture[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  // A custom scenario writes into the *shared* catalogue, so the endpoint
+  // A custom scenario writes into the *shared* library, so the endpoint
   // behind this card is admin-only. Hiding it is only to avoid offering a
   // button that 404s — `POST /api/domains/create-custom` is the real gate.
   const canCreate = useUser()?.role === 'admin';
@@ -58,11 +58,12 @@ export default function HubPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Choose a Scenario</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Select a real-world setting for your roleplay practice
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Library</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Pick a real-world setting and start a conversation with an AI
+          character — restaurants, travel, work, and daily life.
         </p>
       </div>
 
@@ -148,7 +149,7 @@ export default function HubPage() {
                     Create Custom
                   </h3>
                   <p className="text-xs text-dojo-text-muted/60 text-center leading-relaxed">
-                    Adds a domain to the shared catalogue
+                    Adds a domain to the shared Library
                   </p>
                 </div>
               </Card>

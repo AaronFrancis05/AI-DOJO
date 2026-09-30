@@ -430,7 +430,7 @@ export const quickDrills = pgTable('quick_drills', {
   uniqueDrillKey: uniqueIndex('uq_quick_drills_key').on(table.languageCode, table.domainSlug, table.promptJa),
 }));
 
-// ── Curriculum ────────────────────────────────────────────
+// ── Courses ────────────────────────────────────────────
 // A course is a LANGUAGE-AGNOSTIC pedagogical template (title, structure).
 // Target/ native language are chosen per-enrollment / per-session, never
 // baked onto the course row — so the same template can be learned in any
@@ -997,7 +997,7 @@ export const tutorBookings = pgTable('tutor_bookings', {
 /* ── Live lessons ──────────────────────────────────────────────────────
  *
  * A scheduled lesson one tutor teaches to many learners, optionally pinned
- * to a curriculum unit so the course page can offer "join the live lesson
+ * to a course unit so the course page can offer "join the live lesson
  * for this unit". Distinct from `tutor_bookings`, which is 1:1 and initiated
  * by the learner: a live lesson is created by the tutor and enrolled into.
  */

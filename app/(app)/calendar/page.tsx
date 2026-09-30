@@ -184,9 +184,13 @@ export default function CalendarPage() {
   const selectedEvents = getEventsForDate(selectedDate);
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Calendar</h1>
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="mb-8">
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Calendar</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Lessons, bookings, assessments, and practice — what is coming up and
+          what has passed.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

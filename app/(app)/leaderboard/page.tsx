@@ -34,11 +34,12 @@ export default function LeaderboardPage() {
   const currentUser = globalData.find((e) => e.isCurrentUser);
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Leaderboard</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          See where you stand among learners
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Leaderboard</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          See where you rank against other learners, and how your streak and
+          XP compare.
         </p>
       </div>
 

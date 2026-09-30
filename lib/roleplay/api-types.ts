@@ -1,6 +1,6 @@
 import type { AvatarSource } from '@/lib/avatar/catalog';
 import type { CorrectionItem } from '@/lib/ai-engine';
-import type { NextLessonTarget } from '@/lib/curriculum/lesson-progress';
+import type { NextLessonTarget } from '@/lib/courses/lesson-progress';
 import type {
   characters,
   conversations,
@@ -54,7 +54,7 @@ export interface GoalCompletionDto {
   sequenceOrder: number;
 }
 
-export type { NextLessonTarget } from '@/lib/curriculum/lesson-progress';
+export type { NextLessonTarget } from '@/lib/courses/lesson-progress';
 
 export interface SessionDetailResponse {
   success: true;

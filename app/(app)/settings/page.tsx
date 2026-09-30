@@ -75,11 +75,13 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="max-w-3xl">
       <div className="mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Settings</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Manage your preferences, account, and subscription
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Settings</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Languages, notifications, privacy, avatar, and billing — the
+          preferences for how you practise.
         </p>
       </div>
 
@@ -270,6 +272,7 @@ export default function SettingsPage() {
 
       <AvatarSettingsDialog open={avatarOpen} onClose={() => setAvatarOpen(false)} />
       <BillingDialog open={billingOpen} onClose={() => setBillingOpen(false)} />
+      </div>
     </div>
   );
 }

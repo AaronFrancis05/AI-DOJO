@@ -42,24 +42,35 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const navItems: NavItem[] = [
-  { label: 'Home',      href: '/home',        icon: LayoutDashboard },
-  ...(TUTORS_ENABLED ? [{ label: 'Tutors', href: '/tutors', icon: Users }] : []),
-  { label: 'Hub',       href: '/hub',         icon: Compass },
-  { label: 'Courses',   href: '/courses',     icon: GraduationCap },
-  { label: 'Review',    href: '/review',      icon: Repeat2 },
-  { label: 'Sessions',  href: '/sessions',    icon: History },
-  { label: 'Progress',  href: '/progress',    icon: BarChart3 },
+interface NavSection {
+  id: string;
+  /** Section heading. `null` = ungrouped cluster (Home, or Calendar/Messages/Settings). */
+  label: string | null;
+  items: NavItem[];
+}
+
+const homeItem: NavItem = { label: 'Home', href: '/home', icon: LayoutDashboard };
+const tutorsItem: NavItem = { label: 'Tutors', href: '/tutors', icon: Users };
+const libraryItem: NavItem = { label: 'Library', href: '/library', icon: Compass };
+const coursesItem: NavItem = { label: 'Courses', href: '/courses', icon: GraduationCap };
+const reviewItem: NavItem = { label: 'Review', href: '/review', icon: Repeat2 };
+
+const resultsItems: NavItem[] = [
+  { label: 'Sessions',    href: '/sessions',    icon: History },
+  { label: 'Progress',    href: '/progress',    icon: BarChart3 },
   { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },
-  { label: 'Messages',  href: '/messages',    icon: MessageSquare },
-  { label: 'Calendar',  href: '/calendar',    icon: Calendar },
-  { label: 'Settings',  href: '/settings',    icon: Settings },
 ];
+
+const connectItems: NavItem[] = [
+  { label: 'Calendar', href: '/calendar', icon: Calendar },
+  { label: 'Messages', href: '/messages', icon: MessageSquare },
+];
+const settingsItem: NavItem = { label: 'Settings', href: '/settings', icon: Settings };
 
 /**
  * What a tutor sees instead.
  *
- * Not the learner nav with Teaching bolted on: Hub, Courses, Review,
+ * Not the learner nav with Teaching bolted on: Library, Courses, Review,
  * Sessions, Progress and Leaderboard are all surfaces of someone's own
  * practice, and a tutor has none — the XP and streak they were being offered
  * were permanently zero. Teaching is their home, and Calendar carries the
@@ -67,13 +78,14 @@ const navItems: NavItem[] = [
  */
 const tutorNavItems: NavItem[] = [
   { label: 'Teaching',  href: '/tutor',    icon: GraduationCap },
-  { label: 'Messages',  href: '/messages', icon: MessageSquare },
   { label: 'Calendar',  href: '/calendar', icon: Calendar },
+  { label: 'Messages',  href: '/messages', icon: MessageSquare },
   { label: 'Settings',  href: '/settings', icon: Settings },
 ];
 
-/** Role-gated entries, appended for whoever holds the role. Hiding the link
- *  is convenience only — /admin and /tutor re-check the role server-side. */
+/** Role-gated consoles. Admin / Teaching sit above Home; Organization
+ *  stays before Settings. Hiding the link is convenience only — /admin
+ *  and /tutor re-check the role server-side. */
 const adminNavItem: NavItem = { label: 'Admin', href: '/admin', icon: ShieldCheck };
 const tutorNavItem: NavItem = { label: 'Teaching', href: '/tutor', icon: GraduationCap };
 const organizationNavItem: NavItem = { label: 'Organization', href: '/organization', icon: Building2 };
@@ -89,24 +101,39 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   // Honest identity: stored name → email local-part → "You" (never a fake
   // placeholder name like 'Learner').
   const displayName = resolveDisplayName(user);
-  // A tutor gets the teaching nav; an admin keeps the learner one with both
-  // consoles appended, because admin satisfies every role (see satisfiesRole
-  // in lib/auth/roles.ts) and moderating learner surfaces means reaching them.
+  // A tutor gets the teaching nav. An admin keeps the learner destinations
+  // (they moderate those surfaces) but leads with Admin then Teaching, then
+  // Home — Settings is always last. admin satisfies every role (see
+  // satisfiesRole in lib/auth/roles.ts) but the nav is not the tutor one.
   const isTutor = TUTORS_ENABLED && user?.role === 'tutor';
-  const learnerNav = user?.canBrowseTutors
-    ? navItems
-    : navItems.filter((item) => item.href !== '/tutors');
-  const items = isTutor
-    ? tutorNavItems
+  const isAdmin = user?.role === 'admin';
+  const practiceItems: NavItem[] = [
+    libraryItem,
+    coursesItem,
+    ...(TUTORS_ENABLED && user?.canBrowseTutors ? [tutorsItem] : []),
+    reviewItem,
+  ];
+  const consoles: NavItem[] = isTutor
+    ? []
     : [
-        ...learnerNav,
-        ...(TUTORS_ENABLED && user?.role === 'admin' ? [tutorNavItem] : []),
-        ...(user?.role === 'admin' ? [adminNavItem] : []),
-        ...(user?.organizationAdmin ? [organizationNavItem] : []),
+        ...(isAdmin ? [adminNavItem] : []),
+        ...(TUTORS_ENABLED && isAdmin ? [tutorNavItem] : []),
+      ];
+  const organizationItems =
+    !isTutor && user?.organizationAdmin ? [organizationNavItem] : [];
+  const sections: NavSection[] = isTutor
+    ? [{ id: 'tutor', label: null, items: tutorNavItems }]
+    : [
+        { id: 'top', label: null, items: [...consoles, homeItem] },
+        { id: 'practice', label: 'Practice', items: practiceItems },
+        { id: 'results', label: 'Results', items: resultsItems },
+        { id: 'chrome', label: null, items: [...connectItems, ...organizationItems, settingsItem] },
       ];
 
   const isActive = (href: string) => {
     if (href === '/home') return pathname === '/home';
+    // `/tutor` must not light up on `/tutors` (the learner catalogue).
+    if (href === '/tutor') return pathname === '/tutor' || pathname.startsWith('/tutor/');
     return pathname.startsWith(href);
   };
 
@@ -129,28 +156,47 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </span>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={handleClick}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                active
-                  ? 'bg-dojo-accent text-white'
-                  : 'text-dojo-text-muted hover:bg-dojo-surface hover:text-dojo-text-primary',
-              )}
-            >
-              <Icon className="h-5 w-5 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+      {/* Nav — learner destinations are grouped under Practice / Results
+          headings. Tutor nav stays a flat list (four items, grouping would
+          only add noise). Headings are labels, not collapsible. */}
+      <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+        {sections.map((section) => (
+          <div
+            key={section.id}
+            className="space-y-1"
+            role={section.label ? 'group' : undefined}
+            aria-labelledby={section.label ? `sidebar-nav-${section.id}` : undefined}
+          >
+            {section.label && (
+              <p
+                id={`sidebar-nav-${section.id}`}
+                className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-dojo-text-muted"
+              >
+                {section.label}
+              </p>
+            )}
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={handleClick}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-dojo-accent text-white'
+                      : 'text-dojo-text-muted hover:bg-dojo-surface hover:text-dojo-text-primary',
+                  )}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* Notifications — sits with the nav, opens upward over it */}

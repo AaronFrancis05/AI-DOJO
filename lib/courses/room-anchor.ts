@@ -1,5 +1,5 @@
 /**
- * Validating the curriculum unit a live room is pinned to.
+ * Validating the course unit a live room is pinned to.
  *
  * `live_lessons.unit_id` and `assessment_sessions.unit_id` are what the
  * course page keys its "join the live lesson for this unit" footer on, so a
@@ -8,7 +8,7 @@
  * used to accept any integer that parsed.
  *
  * Server-only: it reads the database. The console's title prefill uses
- * `lib/curriculum/room-title.ts`, which is pure.
+ * `lib/courses/room-title.ts`, which is pure.
  */
 
 import { eq } from 'drizzle-orm';

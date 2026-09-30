@@ -6,8 +6,8 @@
    `courses → levels → units → lessons → phases` and
    `domains → situations → scenarios` are the same interaction: pick a node,
    walk into its children, add/rename/reorder/archive/delete one. The two
-   routes behind them (`/api/admin/curriculum/[entity]`,
-   `/api/admin/catalogue/[entity]`) are already one implementation each over a
+   routes behind them (`/api/admin/courses/[entity]`,
+   `/api/admin/library/[entity]`) are already one implementation each over a
    validated path segment, so the console matches that shape rather than
    growing eight near-identical panels that would drift.
 

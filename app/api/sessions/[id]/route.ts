@@ -4,7 +4,7 @@ import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray, and, isNotNull, sql } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { AVATAR_SOURCES, applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
-import { recordLessonActivity, resolveNextLesson } from '../../../../lib/curriculum/lesson-progress';
+import { recordLessonActivity, resolveNextLesson } from '../../../../lib/courses/lesson-progress';
 import {
   getScenarioLocalization,
   getScenarioVocabLocalizations,
@@ -234,7 +234,7 @@ export async function GET(
     ? applySessionAvatarIdentity(localizedScenario, selectedAvatarId)
     : null;
 
-  // Where "Continue" should go when this session finishes. Only a curriculum
+  // Where "Continue" should go when this session finishes. Only a course
   // lesson has an answer; a free-form session returns null and the completion
   // screen keeps its /home exit.
   const nextLesson = session.lessonId
@@ -352,7 +352,7 @@ export async function PATCH(
 
   await db.update(sessions).set(updateData).where(eq(sessions.id, sessionId));
 
-  // A curriculum lesson is complete when its linked session completes.
+  // A course lesson is complete when its linked session completes.
   if (status === 'completed' && session.lessonId) {
     try {
       await recordLessonActivity({

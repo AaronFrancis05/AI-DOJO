@@ -86,21 +86,22 @@ export default function SessionsPage() {
   const completedSessions = sessions.filter(s => s.status === 'completed');
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="mb-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="mb-8">
         {fromHome && (
-          <Link href="/home" className="inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary mb-4">
+          <Link href="/home" className="mb-4 inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary">
             <ArrowLeft className="h-4 w-4" /> Back to Home
           </Link>
         )}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">All Sessions</h1>
-            <p className="text-sm text-dojo-text-muted mt-1">
-              {loading ? 'Loading...' : `${sessions.length} total · ${activeSessions.length} in progress`}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">All Sessions</h1>
+            <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+              Every conversation you have started. Resume one still in progress,
+              or open a finished report.
             </p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => router.push('/hub')}>
+          <Button variant="primary" size="sm" className="shrink-0" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> New Practice
           </Button>
         </div>
@@ -120,13 +121,17 @@ export default function SessionsPage() {
       ) : sessions.length === 0 ? (
         <Card className="text-center py-12">
           <p className="text-dojo-text-muted mb-2">No sessions yet</p>
-          <p className="text-xs text-dojo-text-muted">Start your first role-play from the Hub</p>
-          <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
+          <p className="text-xs text-dojo-text-muted">Start your first role-play from the Library</p>
+          <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> Start Practicing
           </Button>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <>
+          <p className="mb-4 text-sm text-dojo-text-muted">
+            {sessions.length} total · {activeSessions.length} in progress
+          </p>
+          <div className="space-y-2">
           {/* Active sessions first */}
           {activeSessions.map(session => (
             <SessionCard key={session.id} session={session}
@@ -147,7 +152,8 @@ export default function SessionsPage() {
               isActive={false}
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

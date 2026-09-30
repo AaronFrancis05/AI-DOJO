@@ -17,8 +17,7 @@ import { OverviewPanel } from '@/components/admin/OverviewPanel';
 import { UsersPanel } from '@/components/admin/UsersPanel';
 import { TutorsPanel } from '@/components/admin/TutorsPanel';
 import { CoursesPanel } from '@/components/admin/CoursesPanel';
-import { CurriculumPanel } from '@/components/admin/CurriculumPanel';
-import { CataloguePanel } from '@/components/admin/CataloguePanel';
+import { LibraryPanel } from '@/components/admin/LibraryPanel';
 import { LanguagesPanel } from '@/components/admin/LanguagesPanel';
 import { OrganizationsPanel } from '@/components/admin/OrganizationsPanel';
 
@@ -28,8 +27,7 @@ const TABS = [
   { id: 'organizations', label: 'Organizations' },
   { id: 'tutors', label: 'Tutors' },
   { id: 'courses', label: 'Courses' },
-  { id: 'curriculum', label: 'Curriculum' },
-  { id: 'catalogue', label: 'Catalogue' },
+  { id: 'library', label: 'Library' },
   { id: 'languages', label: 'Languages' },
 ];
 
@@ -70,8 +68,7 @@ export function AdminConsole() {
             {tab === 'organizations' && <OrganizationsPanel onError={setError} />}
             {tab === 'tutors' && <TutorsPanel onError={setError} />}
             {tab === 'courses' && <CoursesPanel onError={setError} />}
-            {tab === 'curriculum' && <CurriculumPanel onError={setError} />}
-            {tab === 'catalogue' && <CataloguePanel onError={setError} />}
+            {tab === 'library' && <LibraryPanel onError={setError} />}
             {tab === 'languages' && <LanguagesPanel onError={setError} />}
           </div>
         )}
