@@ -1194,5 +1194,13 @@ Learner chrome and the tutor nav now list Calendar before Messages. Settings is 
 
 An admin still sees the learner destinations, but Admin then Teaching now sit above Home instead of before Settings. Organization stays before Settings. `/tutor` no longer matches `/tutors` as active.
 
+## 2026-10-01 (Teaching no longer flashes for a non-tutor admin)
+
+Production image inlines `NEXT_PUBLIC_TUTORS_ENABLED` at docker build (usually unset → false) while the Node server reads it at runtime (true). The sidebar used the client constant, so SSR painted Teaching for every admin and hydration removed it. Nav now takes `tutorsEnabled` from `UserProvider` (server-resolved). Teaching is shown for an admin only when they have a `tutors` row.
+
+## 2026-10-01 (bake NEXT_PUBLIC flags into the production image)
+
+The sidebar no longer reads the client-inlined flag, but Tutors pages and Stream still do. Dockerfile / compose / `image.yml` now pass `NEXT_PUBLIC_TUTORS_ENABLED` and `NEXT_PUBLIC_STREAM_API_KEY` as build-args so `next build` inlines the same values the runtime server sees. Changing those flags still requires a rebuild.
+
 
 

@@ -23,9 +23,11 @@ export interface UserContextValue {
    * true. Hiding the link is convenience — the tutor routes re-check.
    */
   canBrowseTutors?: boolean;
-  /** `tutors.verification_status` for a tutor account, null for anyone else.
-   *  Display only — what a pending tutor is allowed to do is decided by the
-   *  routes that read the column themselves. */
+  /**
+   * `tutors.verification_status` when this account has a tutors row.
+   * Null for a learner, and for an admin who has never been a tutor.
+   * Display only — routes that teach re-check the column themselves.
+   */
   tutorStatus?: string | null;
   tier: 'free' | 'premium';
   xp: number;
@@ -42,15 +44,25 @@ export interface UserContextValue {
 interface UserContextType {
   user: UserContextValue | null;
   setAvatarSrc: (src: string | null) => void;
+  /**
+   * Server-resolved copy of TUTORS_ENABLED. The Sidebar must not read
+   * `NEXT_PUBLIC_TUTORS_ENABLED` itself: that flag is inlined into the
+   * client bundle at docker *build* time, while the Node server reads it
+   * at *runtime*, so the two disagree in production and Teaching flashes
+   * in then out on every load.
+   */
+  tutorsEnabled: boolean;
 }
 
 const UserContext = createContext<UserContextType | null>(null);
 
 export function UserProvider({
   value,
+  tutorsEnabled = false,
   children,
 }: {
   value: UserContextValue | null;
+  tutorsEnabled?: boolean;
   children: ReactNode;
 }) {
   const [avatarSrc, setAvatarSrc] = useState<string | null | undefined>(value?.avatarSrc);
@@ -64,7 +76,7 @@ export function UserProvider({
     : null;
 
   return (
-    <UserContext.Provider value={{ user: merged, setAvatarSrc: handleSetAvatarSrc }}>
+    <UserContext.Provider value={{ user: merged, setAvatarSrc: handleSetAvatarSrc, tutorsEnabled }}>
       {children}
     </UserContext.Provider>
   );
@@ -73,6 +85,11 @@ export function UserProvider({
 export function useUser(): UserContextValue | null {
   const ctx = useContext(UserContext);
   return ctx?.user ?? null;
+}
+
+export function useTutorsEnabled(): boolean {
+  const ctx = useContext(UserContext);
+  return ctx?.tutorsEnabled ?? false;
 }
 
 export function useSetAvatarSrc(): (src: string | null) => void {
