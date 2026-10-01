@@ -6,6 +6,7 @@ import { UserProvider } from '@/lib/auth/user-context';
 import { LanguageCatalogProvider } from '@/lib/language-context';
 import { loadLanguageCatalog } from '@/lib/language-registry';
 import { toUserRole } from '@/lib/auth/roles';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { loadMembership } from '@/lib/organizations/membership';
 import { learnerHasBookableTutor } from '@/lib/organizations/tutor-access';
 import { db } from '@/src/db';
@@ -106,11 +107,12 @@ export default async function AppLayout({
       redirect(role === 'tutor' ? '/onboarding/tutor/welcome' : '/onboarding/level');
     }
 
-    // What the sidebar tells a tutor about their own standing. Only fetched
-    // for a tutor: a learner has no row, and an extra round-trip on every
+    // What the sidebar tells a tutor about their own standing. Also fetched
+    // for an admin: Teaching is offered only when they actually have a
+    // tutors row. A learner has none, and an extra round-trip on every
     // authenticated page render is not free.
     let tutorStatus: string | null = null;
-    if (role === 'tutor') {
+    if (role === 'tutor' || role === 'admin') {
       try {
         const [profile] = await db
           .select({ verificationStatus: tutors.verificationStatus })
@@ -164,7 +166,7 @@ export default async function AppLayout({
   }
 
   return (
-    <UserProvider value={user}>
+    <UserProvider value={user} tutorsEnabled={TUTORS_ENABLED}>
       <LanguageCatalogProvider value={languageCatalog}>
         <AppShell>{children}</AppShell>
       </LanguageCatalogProvider>

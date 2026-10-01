@@ -15,10 +15,9 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { NotificationBell } from './NotificationBell';
-import { useUser } from '@/lib/auth/user-context';
+import { useUser, useTutorsEnabled } from '@/lib/auth/user-context';
 import { resolveDisplayName } from '@/lib/auth/display-name';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
-import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import {
   LayoutDashboard,
   Compass,
@@ -97,27 +96,31 @@ interface SidebarProps {
 export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const user = useUser();
+  const tutorsEnabled = useTutorsEnabled();
   const currentAvatarUrl = useCurrentAvatar();
   // Honest identity: stored name → email local-part → "You" (never a fake
   // placeholder name like 'Learner').
   const displayName = resolveDisplayName(user);
   // A tutor gets the teaching nav. An admin keeps the learner destinations
-  // (they moderate those surfaces) but leads with Admin then Teaching, then
-  // Home — Settings is always last. admin satisfies every role (see
-  // satisfiesRole in lib/auth/roles.ts) but the nav is not the tutor one.
-  const isTutor = TUTORS_ENABLED && user?.role === 'tutor';
+  // (they moderate those surfaces) but leads with Admin, then Teaching only
+  // if they have a tutors row, then Home. Settings is always last.
+  // tutorsEnabled comes from the server via UserProvider — never from the
+  // client-inlined NEXT_PUBLIC flag, which disagrees with the runtime env
+  // in the production image and used to flash Teaching on every load.
+  const isTutor = tutorsEnabled && user?.role === 'tutor';
   const isAdmin = user?.role === 'admin';
+  const canTeach = user?.tutorStatus != null;
   const practiceItems: NavItem[] = [
     libraryItem,
     coursesItem,
-    ...(TUTORS_ENABLED && user?.canBrowseTutors ? [tutorsItem] : []),
+    ...(tutorsEnabled && user?.canBrowseTutors ? [tutorsItem] : []),
     reviewItem,
   ];
   const consoles: NavItem[] = isTutor
     ? []
     : [
         ...(isAdmin ? [adminNavItem] : []),
-        ...(TUTORS_ENABLED && isAdmin ? [tutorNavItem] : []),
+        ...(tutorsEnabled && isAdmin && canTeach ? [tutorNavItem] : []),
       ];
   const organizationItems =
     !isTutor && user?.organizationAdmin ? [organizationNavItem] : [];

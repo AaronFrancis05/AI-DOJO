@@ -86,3 +86,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_TUTORS_ENABLED=${{ vars.NEXT_PUBLIC_TUTORS_ENABLED }}
+            NEXT_PUBLIC_STREAM_API_KEY=${{ vars.NEXT_PUBLIC_STREAM_API_KEY }}
