@@ -301,6 +301,13 @@ export const sessions = pgTable('sessions', {
   startedAt:       timestamp('started_at').defaultNow().notNull(),
   lastActiveAt:    timestamp('last_active_at').defaultNow().notNull(),
   completedAt:     timestamp('completed_at'),
+  // Seconds the learner actually spent on the voice/avatar screen with the
+  // tab visible. Wall-clock `startedAt`→now is not this: leaving the page,
+  // backgrounding the tab, or saving must not keep the clock running.
+  activeDurationSeconds: integer('active_duration_seconds').default(0).notNull(),
+  // Preset id from ABANDONMENT_REASONS. Null until they pick one on the
+  // abandoned-session report; cleared if they restore the session to paused.
+  abandonmentReason: varchar('abandonment_reason', { length: 40 }),
 });
 
 export const userPreferences = pgTable('user_preferences', {

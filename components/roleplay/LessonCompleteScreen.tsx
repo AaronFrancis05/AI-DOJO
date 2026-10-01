@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Crown, ShieldCheck, Flame, Target, MessagesSquare, Mic, Star, PartyPopper, RotateCcw } from 'lucide-react';
+import { Crown, ShieldCheck, Flame, Target, MessagesSquare, Mic, Star, PartyPopper, ClipboardList } from 'lucide-react';
 import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
 import { ResultsAvatarBackdrop } from '@/components/roleplay/ResultsAvatarBackdrop';
 import { qualitativeTag, type SessionMetrics } from '@/lib/roleplay/session-metrics';
@@ -12,7 +12,7 @@ interface LessonCompleteScreenProps {
   xpGained?: number;
   newStreak?: number;
   onContinue: () => void;
-  onRepeat: () => void;
+  onViewReport: () => void;
 }
 
 const METRIC_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; iconClass: string; iconBgClass: string }> = [
@@ -22,7 +22,7 @@ const METRIC_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeo
   { key: 'vocabulary', label: 'Vocabulary', icon: Star, iconClass: 'text-dojo-streak', iconBgClass: 'bg-dojo-streak/15' },
 ];
 
-export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStreak, onContinue, onRepeat }: LessonCompleteScreenProps) {
+export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStreak, onContinue, onViewReport }: LessonCompleteScreenProps) {
   const { fireBurst, prefersReducedMotion } = useCelebrationConfetti();
   const reduced = prefersReducedMotion();
 
@@ -133,11 +133,11 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
           </button>
           <button
             type="button"
-            onClick={onRepeat}
+            onClick={onViewReport}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dojo-border bg-dojo-surface-raised/85 py-2.5 text-sm font-semibold text-dojo-text-primary backdrop-blur-md transition-colors hover:bg-dojo-surface-hover"
           >
-            <RotateCcw className="h-4 w-4" />
-            Try Another Lesson
+            <ClipboardList className="h-4 w-4" />
+            View Report
           </button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { sessions } from '../../../../src/schema';
 import { eq } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { loadSessionTurnData, analyzeTurn } from '../../../../lib/roleplay/analyze-turn';
+import { isSessionEnded } from '../../../../lib/roleplay/session-lifecycle';
 
 export const runtime = 'nodejs';
 
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (session.status === 'completed') {
+    if (isSessionEnded(session.status)) {
       return Response.json({ error: 'Session is already completed' }, { status: 400 });
     }
 

@@ -82,7 +82,8 @@ export default function SessionsPage() {
     finally { setDeleting(null); }
   }
 
-  const activeSessions = sessions.filter(s => s.status === 'active');
+  const activeSessions = sessions.filter(s => s.status === 'active' || s.status === 'paused');
+  const abandonedSessions = sessions.filter(s => s.status === 'abandoned');
   const completedSessions = sessions.filter(s => s.status === 'completed');
 
   return (
@@ -139,17 +140,25 @@ export default function SessionsPage() {
               sharing={sharing}
               onShare={handleShare}
               onDelete={handleDelete}
-              isActive
+              kind="playable"
             />
           ))}
-          {/* Completed sessions */}
+          {abandonedSessions.map(session => (
+            <SessionCard key={session.id} session={session}
+              deleting={deleting}
+              sharing={sharing}
+              onShare={handleShare}
+              onDelete={handleDelete}
+              kind="abandoned"
+            />
+          ))}
           {completedSessions.map(session => (
             <SessionCard key={session.id} session={session}
               deleting={deleting}
               sharing={sharing}
               onShare={handleShare}
               onDelete={handleDelete}
-              isActive={false}
+              kind="completed"
             />
           ))}
           </div>
@@ -165,27 +174,30 @@ function SessionCard({
   sharing,
   onShare,
   onDelete,
-  isActive,
+  kind,
 }: {
   session: SessionRecord;
   deleting: number | null;
   sharing: Record<number, string>;
   onShare: (id: number) => void;
   onDelete: (id: number) => void;
-  isActive: boolean;
+  kind: 'playable' | 'abandoned' | 'completed';
 }) {
   const pct = computeTotalPct(session);
+  const isPlayable = kind === 'playable';
 
   return (
     <Card hoverable className={`!p-4 ${deleting === session.id ? 'opacity-50' : ''}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            {isActive ? (
+            {isPlayable ? (
               <>
-                <Badge variant="accent">In Progress</Badge>
-                <LiveBadge />
+                <Badge variant="accent">{session.status === 'paused' ? 'Saved' : 'In Progress'}</Badge>
+                {session.status === 'active' && <LiveBadge />}
               </>
+            ) : kind === 'abandoned' ? (
+              <Badge variant="warning">Ended</Badge>
             ) : (
               <>
                 <Badge variant="default">Completed</Badge>
@@ -201,13 +213,13 @@ function SessionCard({
           </p>
           <p className="text-xs text-dojo-text-muted mt-0.5">
             {new Date(session.startedAt).toLocaleDateString()} · {session.totalTurns} turns
-            {session.completedAt && ` · Completed ${new Date(session.completedAt).toLocaleDateString()}`}
+            {session.completedAt && ` · ${kind === 'abandoned' ? 'Ended' : 'Completed'} ${new Date(session.completedAt).toLocaleDateString()}`}
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {/* Primary action: Continue or View Report */}
-          {isActive ? (
+          {isPlayable ? (
             <Link href={`/session/${session.id}`}>
               <Button variant="primary" size="sm">
                 <Play className="h-4 w-4" /> Continue

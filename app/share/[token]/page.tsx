@@ -137,7 +137,7 @@ export default function SharedSessionPage() {
           </div>
           <p className="text-xs text-dojo-text-muted mt-4 pt-3 border-t border-dojo-border">
             Session #{session.sessionNumber} · {session.totalTurns} turns ·
-            {session.completedAt ? ` Completed ${new Date(session.completedAt).toLocaleDateString()}` : ' In progress'}
+            {session.completedAt ? ` ${session.status === 'abandoned' ? 'Ended' : 'Completed'} ${new Date(session.completedAt).toLocaleDateString()}` : ' In progress'}
           </p>
         </Card>
 

@@ -23,6 +23,7 @@ import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { sanitizeStreamedChunk, createStreamTextSanitizer, parseVocabMarker } from '../../../../lib/roleplay/stream-sanitizer';
 import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
 import { inferGesture } from '../../../../lib/roleplay/gesture';
+import { isSessionEnded } from '../../../../lib/roleplay/session-lifecycle';
 import {
   buildTurnSystemPrompt,
   buildTurnUserMessage,
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (session.status === 'completed') {
+    if (isSessionEnded(session.status)) {
       return Response.json({ error: 'Session is already completed' }, { status: 400 });
     }
 
@@ -412,7 +413,7 @@ export async function POST(req: Request) {
           if (isSessionStart) {
             const { newPhase: sessionStartPhase, phaseChanged } = await withSessionLock(numericSessionId, async (tx) => {
               const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-              if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
+              if (isSessionEnded(freshSession.status)) throw new Error('Session was completed by another request');
 
               const existingGreeting = await tx.select({ id: conversations.id })
                 .from(conversations)
@@ -523,7 +524,7 @@ export async function POST(req: Request) {
               if (validCorrections.length > 0) {
                 await withSessionLock(numericSessionId, async (tx) => {
                   const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-                  if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
+                  if (isSessionEnded(freshSession.status)) throw new Error('Session was completed by another request');
 
                   const existingTurn = await tx.select({ id: conversations.id })
                     .from(conversations)
@@ -641,7 +642,7 @@ export async function POST(req: Request) {
           // ── Wrap all writes in a transaction with session lock ──
           const writeResult = await withSessionLock(numericSessionId, async (tx) => {
             const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-            if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
+            if (isSessionEnded(freshSession.status)) throw new Error('Session was completed by another request');
 
             const existingTurn = await tx.select({ id: conversations.id })
               .from(conversations)

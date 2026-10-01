@@ -1202,5 +1202,14 @@ Production image inlines `NEXT_PUBLIC_TUTORS_ENABLED` at docker build (usually u
 
 The sidebar no longer reads the client-inlined flag, but Tutors pages and Stream still do. Dockerfile / compose / `image.yml` now pass `NEXT_PUBLIC_TUTORS_ENABLED` and `NEXT_PUBLIC_STREAM_API_KEY` as build-args so `next build` inlines the same values the runtime server sees. Changing those flags still requires a rebuild.
 
+## 2026-10-01 (End Session vs Save Session, accumulated clock)
+
+Session Time is no longer `now - startedAt`. `sessions.activeDurationSeconds` accumulates only while the voice/avatar view is mounted and the tab is visible. Header leave is **Save Session** (`paused`); info-panel **End Session** is **abandoned** (not `completed`) and does not credit the lesson. Abandoned sessions open a dedicated report with optional preset reasons and a Save Session restore back to `paused`. Scored finishes stay `completed` + `passed`. Migration: `drizzle/0053_parallel_millenium_guard.sql`.
+
+## 2026-10-01 (unified session-exit buttons)
+
+Complete: **Continue Learning** (`continueHref` → next lesson or `/library`) + **View Report**. Incomplete: **Repeat Lesson** creates a new session (same lesson/avatar/languages) and opens the same Voice/Avatar mode; **Next Lesson** stays even on fail; **View Report** replaces Leave Session. Abandoned report drops **Back to Home**; **Back to Sessions** is the leave-abandoned path. Repeat must not reopen the completed session id.
+
+
 
 

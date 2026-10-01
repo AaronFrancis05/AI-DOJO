@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Frown, Lightbulb, AlertCircle, XCircle, RotateCcw, ArrowRight, LogOut, Target, MessagesSquare, Mic, Star, Heart } from 'lucide-react';
+import { Frown, Lightbulb, AlertCircle, XCircle, RotateCcw, ArrowRight, ClipboardList, Target, MessagesSquare, Mic, Star, Heart } from 'lucide-react';
 import { prefersReducedMotion } from '@/lib/hooks/useCelebrationConfetti';
 import { ResultsAvatarBackdrop } from '@/components/roleplay/ResultsAvatarBackdrop';
 import type { SessionMetrics } from '@/lib/roleplay/session-metrics';
@@ -13,7 +13,7 @@ interface LessonIncompleteScreenProps {
   whatWentWrong: string[];
   onRepeat: () => void;
   onNext: () => void;
-  onLeave: () => void;
+  onViewReport: () => void;
 }
 
 const BAR_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; barClass: string; iconClass: string; iconBgClass: string }> = [
@@ -30,7 +30,7 @@ function scoreTier(score: number): string {
   return score < 40 ? 'Needs Practice' : 'Needs Improvement';
 }
 
-export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics, whatWentWrong, onRepeat, onNext, onLeave }: LessonIncompleteScreenProps) {
+export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics, whatWentWrong, onRepeat, onNext, onViewReport }: LessonIncompleteScreenProps) {
   const reduced = prefersReducedMotion();
   const [filled, setFilled] = useState(reduced);
 
@@ -182,14 +182,14 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
             </button>
             <button
               type="button"
-              onClick={onLeave}
+              onClick={onViewReport}
               className="flex flex-col items-center gap-1 rounded-xl border border-dojo-border bg-dojo-surface-raised/85 px-4 py-3 text-center backdrop-blur-md transition-colors hover:bg-dojo-surface-hover"
             >
               <span className="flex items-center gap-2 font-semibold text-dojo-text-primary">
-                <LogOut className="h-4 w-4" />
-                Leave Session
+                <ClipboardList className="h-4 w-4" />
+                View Report
               </span>
-              <span className="text-[11px] text-dojo-text-muted">End and exit for now</span>
+              <span className="text-[11px] text-dojo-text-muted">See scores and the transcript</span>
             </button>
           </div>
         </div>

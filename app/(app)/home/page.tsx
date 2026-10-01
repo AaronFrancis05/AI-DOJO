@@ -898,10 +898,17 @@ export default function HomePage() {
                 className={`flex items-center gap-3 rounded-[--radius-md] border border-dojo-border bg-dojo-surface/40 p-3 transition-all hover:border-dojo-accent ${deleting === session.id ? 'opacity-50' : ''}`}
               >
                 <Badge
-                  variant={session.status === 'completed' ? 'success' : 'accent'}
+                  variant={
+                    session.status === 'completed' ? 'success'
+                      : session.status === 'abandoned' ? 'warning'
+                        : 'accent'
+                  }
                   className="shrink-0 text-[9px] uppercase tracking-tighter"
                 >
-                  {session.status === 'completed' ? 'Done' : 'Active'}
+                  {session.status === 'completed' ? 'Done'
+                    : session.status === 'abandoned' ? 'Ended'
+                      : session.status === 'paused' ? 'Saved'
+                        : 'Active'}
                 </Badge>
                 <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
                   #{session.sessionNumber}

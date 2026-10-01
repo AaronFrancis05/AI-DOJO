@@ -4,6 +4,7 @@ import { getAuthUser } from '@/lib/auth/server';
 import { getAIProvider } from '@/lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import { eq } from 'drizzle-orm';
+import { isSessionEnded } from '@/lib/roleplay/session-lifecycle';
 
 const RECAP_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -31,7 +32,7 @@ export async function POST(
   }
 
   // If orientation or already completed, no recap is needed
-  if (session.phase === 'orientation' || session.status === 'completed') {
+  if (session.phase === 'orientation' || isSessionEnded(session.status)) {
     return Response.json({ recapNeeded: false, phase: session.phase });
   }
 

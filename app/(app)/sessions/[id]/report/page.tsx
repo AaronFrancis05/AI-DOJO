@@ -6,8 +6,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -29,7 +29,13 @@ import {
   type ScenarioDto,
   type SessionDto,
 } from '@/lib/roleplay/api-types';
-import { ArrowLeft, Trophy, Target, Repeat2, RotateCcw, Users } from 'lucide-react';
+import { ArrowLeft, Trophy, Target, Repeat2, RotateCcw, Users, Flag, Play } from 'lucide-react';
+import {
+  ABANDONMENT_REASONS,
+  formatSessionClock,
+  isAbandonmentReason,
+  type AbandonmentReasonId,
+} from '@/lib/roleplay/session-lifecycle';
 
 type ReportSession = Pick<
   SessionDto,
@@ -43,6 +49,8 @@ type ReportSession = Pick<
   | 'taskScore'
   | 'expressionAppropriatenessScore'
   | 'feedback'
+  | 'activeDurationSeconds'
+  | 'abandonmentReason'
 >> & { scenarioTitle?: string };
 
 interface DataRecord {
@@ -56,12 +64,15 @@ interface DataRecord {
 
 export default function SessionReportPage() {
   const params = useParams();
+  const router = useRouter();
   const user = useUser();
   const sessionId = Number(params.id);
 
   const [data, setData] = useState<DataRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  const [reasonSaving, setReasonSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -94,6 +105,38 @@ export default function SessionReportPage() {
     }
     load();
   }, [sessionId]);
+
+  const pickAbandonmentReason = useCallback(async (id: AbandonmentReasonId) => {
+    setReasonSaving(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ abandonmentReason: id }),
+      });
+      if (res.ok) {
+        setData((prev) => (prev ? { ...prev, session: { ...prev.session, abandonmentReason: id } } : prev));
+      }
+    } finally {
+      setReasonSaving(false);
+    }
+  }, [sessionId]);
+
+  const restoreSavedSession = useCallback(async (href: string) => {
+    setRestoring(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'paused' }),
+      });
+      if (res.ok) router.push(href);
+    } finally {
+      setRestoring(false);
+    }
+  }, [sessionId, router]);
 
   if (loading) {
     return (
@@ -179,7 +222,16 @@ export default function SessionReportPage() {
 
   const feedbackText = evaluation?.feedback ?? session.feedback;
   const scenarioTitle = scenario?.title ?? session.scenarioTitle ?? `Session #${session.id}`;
-  const isActive = session.status === 'active';
+  const isActive = session.status === 'active' || session.status === 'paused';
+  const isAbandoned = session.status === 'abandoned';
+  const statusLabel = session.status === 'paused'
+    ? 'Saved'
+    : session.status === 'abandoned'
+      ? 'Ended'
+      : session.status === 'completed'
+        ? 'Completed'
+        : 'In Progress';
+  const selectedReason = isAbandonmentReason(session.abandonmentReason) ? session.abandonmentReason : null;
 
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
@@ -193,7 +245,7 @@ export default function SessionReportPage() {
             <h1 className="text-2xl font-bold text-dojo-text-primary">{scenarioTitle}</h1>
             <p className="text-sm text-dojo-text-muted mt-1">
               {new Date(session.startedAt).toLocaleDateString()} · {session.totalTurns} turns
-              {isActive ? ' · In Progress' : ' · Completed'}
+              {' · '}{statusLabel}
               {session.completedAt && ` · ${new Date(session.completedAt).toLocaleDateString()}`}
             </p>
           </div>
@@ -203,9 +255,72 @@ export default function SessionReportPage() {
         </div>
       </div>
 
+      {isAbandoned && (
+        <Card className="border-dojo-warning/30">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
+              <Flag className="h-6 w-6 text-dojo-warning" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">Session ended early</h2>
+              <p className="mt-1 text-sm leading-relaxed text-dojo-text-muted">
+                This attempt was stopped before the scenario finished. It does not count as a completed lesson, and it cannot be continued unless you restore it as a saved session.
+              </p>
+              <p className="mt-3 text-sm text-dojo-text-primary">
+                <span className="font-semibold">{formatSessionClock(session.activeDurationSeconds ?? 0)}</span>
+                <span className="text-dojo-text-muted"> session time · {session.totalTurns} turns</span>
+              </p>
+
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-dojo-text-muted">Why did you leave? (optional)</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {ABANDONMENT_REASONS.map((reason) => {
+                    const selected = selectedReason === reason.id;
+                    return (
+                      <button
+                        key={reason.id}
+                        type="button"
+                        disabled={reasonSaving}
+                        onClick={() => { void pickAbandonmentReason(reason.id); }}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'border-dojo-accent bg-dojo-accent/20 text-dojo-accent'
+                            : 'border-dojo-border bg-dojo-surface text-dojo-text-primary hover:bg-dojo-surface-raised'
+                        }`}
+                      >
+                        {reason.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={restoring}
+                  onClick={() => { void restoreSavedSession(`/session/${sessionId}`); }}
+                >
+                  <Play className="h-4 w-4" /> Resume Session
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={restoring}
+                  onClick={() => { void restoreSavedSession('/home'); }}
+                >
+                  Save Session
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Verdict — the answer to "did I actually learn this?", which is the
           question the report exists to settle. */}
-      {pct !== null && !isActive && (
+      {pct !== null && !isActive && !isAbandoned && (
         <Card className={passed ? 'border-dojo-success/30' : 'border-dojo-warning/30'}>
           <div className="flex items-start gap-4">
             <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${passed ? 'bg-dojo-success/10' : 'bg-dojo-warning/10'}`}>
@@ -258,6 +373,8 @@ export default function SessionReportPage() {
         </Card>
       )}
 
+      {!isAbandoned && (
+      <>
       {/* Score Overview */}
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -321,6 +438,8 @@ export default function SessionReportPage() {
           <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">AI Sensei Feedback</h3>
           <p className="text-sm text-dojo-text-primary whitespace-pre-wrap leading-relaxed">{feedbackText}</p>
         </Card>
+      )}
+      </>
       )}
 
       {/* Goal Completions */}
