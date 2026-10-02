@@ -1210,6 +1210,12 @@ Session Time is no longer `now - startedAt`. `sessions.activeDurationSeconds` ac
 
 Complete: **Continue Learning** (`continueHref` → next lesson or `/library`) + **View Report**. Incomplete: **Repeat Lesson** creates a new session (same lesson/avatar/languages) and opens the same Voice/Avatar mode; **Next Lesson** stays even on fail; **View Report** replaces Leave Session. Abandoned report drops **Back to Home**; **Back to Sessions** is the leave-abandoned path. Repeat must not reopen the completed session id.
 
+## 2026-10-02 (Start conversation CTA centering)
+
+Greeting overlay CTA sat left of center for two reasons: the button used `flex` (block-level, so `text-center` on the parent did not center it) and the overlay was `absolute inset-0` on the left stage column only, ignoring the `lg` `w-80` coach panel. CTA is now `inline-flex`; session voice/avatar overlays cover the full main area. Same `inline-flex` change on tryout voice/avatar.
+
+
+
 
 
 

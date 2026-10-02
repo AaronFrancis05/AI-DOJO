@@ -746,6 +746,24 @@ Last updated: 2026-07-25
 - Cards are links via `router.push` — no `<a>` tags
 - Footer shows "View Report" link when session.status === 'completed'
 
+### Greeting overlay (Start conversation)
+
+File: `app/(app)/session/[sessionId]/avatar/page.tsx` (same structure on voice + tryout)
+Last updated: 2026-10-02
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Overlay          | `absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6` |
+| Card             | `text-center max-w-xs`                          |
+| Icon well        | `h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30` |
+| Heading          | `text-lg font-bold leading-none text-dojo-text-primary mb-2` |
+| Body             | `text-sm text-dojo-text-muted mb-6 leading-relaxed` |
+| CTA              | `inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95` |
+
+**Pattern notes:**
+- Overlay is a sibling of the stage column, not inside it — `absolute inset-0` must cover the full main area (stage + `w-80` coach panel) or the CTA sits left of the session viewport center.
+- CTA is `inline-flex`, not `flex`. Parent `text-center` does not center a block-level `display:flex` button; the icon well needs `mx-auto` for the same reason.
+
 ### PhaseIndicator
 
 File: `components/roleplay/PhaseIndicator.tsx`

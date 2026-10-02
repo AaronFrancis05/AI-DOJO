@@ -508,12 +508,8 @@ export default function AvatarModePage() {
 
       {/* ── Main Content Area ── */}
       <div className="flex-1 relative z-10 overflow-hidden flex">
-        {/* Left: 3D Avatar Viewport Stage */}
-        <div className="flex-1 relative flex flex-col">
-          <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
-
-          {/* Greeting overlay */}
-          {isActive && conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
+        {/* Greeting overlay — covers stage + coach panel so the CTA is centered in the session viewport. */}
+        {isActive && conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6">
               <div className="text-center max-w-xs">
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
@@ -551,7 +547,7 @@ export default function AvatarModePage() {
                       })
                       .catch(() => { stopTts(); clearCaption(); setStreamingText(null); setGreetingSent(false); });
                   }}
-                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
+                  className="inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >
                   <Volume2 className="h-5 w-5" />
                   Start conversation
@@ -559,6 +555,10 @@ export default function AvatarModePage() {
               </div>
             </div>
           )}
+
+        {/* Left: 3D Avatar Viewport Stage */}
+        <div className="flex-1 relative flex flex-col">
+          <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
 
           {/* Your Role card (top-left) */}
           <div className="absolute top-4 left-4 z-10 hidden md:block">

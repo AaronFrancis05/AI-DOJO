@@ -194,7 +194,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                       },
                     }).catch(() => setGreetingSent(false));
                   }}
-                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
+                  className="inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
                 >
                   <Volume2 className="h-5 w-5" />
                   Start conversation
