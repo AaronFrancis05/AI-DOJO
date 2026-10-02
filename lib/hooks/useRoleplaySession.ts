@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import type { AvatarSource } from '@/lib/avatar/catalog';
 import { setVoiceGender } from '@/lib/roleplay/tts';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { isSessionEnded, isSessionPlayView, isSessionPlayable } from '@/lib/roleplay/session-lifecycle';
+import { startFollowUpSession } from '@/lib/roleplay/restart-session';
+import { useSessionClock } from '@/lib/hooks/useSessionClock';
 import type { CorrectionItem } from '@/lib/ai-engine';
 import {
   isChatStreamEvent,
@@ -84,8 +88,8 @@ export interface RecapEvent {
 
 /**
  * Where the learner goes after a course lesson. Null for free practice,
- * which keeps its /home exit — resolved server-side so the completion screen
- * and the course page can't disagree about which lesson is unlocked next.
+ * which continues to the Library — resolved server-side so the completion
+ * screen and the course page can't disagree about which lesson is unlocked next.
  */
 export interface SessionState {
   session: SessionDto | null;
@@ -103,6 +107,7 @@ export interface SessionState {
   error: string;
   isActive: boolean;
   isCompleted: boolean;
+  elapsedLabel: string;
   phaseTransition: PhaseTransitionEvent | null;
   recap: RecapEvent | null;
   unacknowledgedCompletion: boolean;
@@ -150,6 +155,9 @@ export interface UseRoleplaySessionReturn extends SessionState {
   dismissPhaseTransition: () => void;
   dismissRecap: () => void;
   acknowledgeCompletion: () => Promise<void>;
+  saveSession: () => Promise<void>;
+  abandonSession: () => Promise<void>;
+  restartSession: () => Promise<number>;
 }
 
 export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn {
@@ -176,6 +184,9 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
   // Read inside submitTurnStream, which callers hold across renders — the
   // `session` state itself would be a stale closure there.
   const sessionStatusRef = useRef<string | null>(null);
+  const leavingRef = useRef(false);
+  const [leaving, setLeaving] = useState(false);
+  const pathname = usePathname();
   const [pendingRetry, setPendingRetry] = useState<PendingRetry | null>(null);
 
   useEffect(() => {
@@ -229,7 +240,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         // Reconnect / Recap gap calculation (> 5 minutes)
         const lastActiveTime = data.session?.lastActiveAt ? new Date(data.session.lastActiveAt).getTime() : 0;
         const gapMs = lastActiveTime ? Date.now() - lastActiveTime : 0;
-        if (gapMs > 5 * 60 * 1000 && data.session?.status === 'active' && data.session?.phase !== 'orientation') {
+        if (gapMs > 5 * 60 * 1000 && isSessionPlayable(data.session?.status) && data.session?.phase !== 'orientation') {
           fetch(`/api/sessions/${sessionId}/recap`, {
             method: 'POST',
             credentials: 'include',
@@ -266,8 +277,45 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     load();
   }, [sessionId]);
 
-  const isActive = session?.status === 'active' || session?.status === 'paused';
+  const isActive = isSessionPlayable(session?.status);
   const isCompleted = session?.status === 'completed';
+  const isPlayView = isSessionPlayView(pathname);
+
+  const flushDuration = useCallback((seconds: number) => {
+    if (leavingRef.current) return;
+    fetch(`/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ activeDurationSeconds: seconds }),
+    }).catch(() => {});
+  }, [sessionId]);
+
+  const { elapsedLabel, commit } = useSessionClock({
+    sessionId,
+    enabled: isPlayView && isActive && !leaving,
+    initialSeconds: session?.activeDurationSeconds ?? 0,
+    onFlush: flushDuration,
+  });
+
+  useEffect(() => {
+    if (!isPlayView || leavingRef.current) return;
+    if (session?.status !== 'paused') return;
+    let cancelled = false;
+    fetch(`/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'active' }),
+    })
+      .then(() => {
+        if (cancelled) return;
+        sessionStatusRef.current = 'active';
+        setSession((p) => (p ? { ...p, status: 'active' } : p));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isPlayView, session?.status, sessionId]);
 
   /**
    * Bring local state in line with a session the server considers finished and
@@ -337,7 +385,7 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     // mic release that lands after the session completed) could still call in
     // here, and the rejection surfaced to the learner as a thrown
     // "Session is already completed" instead of their results screen.
-    if (sessionStatusRef.current === 'completed') return;
+    if (isSessionEnded(sessionStatusRef.current)) return;
 
     let optimisticId: number | null = null;
     if (trimmed !== '__session_start__') {
@@ -584,14 +632,47 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }).catch(() => {});
   }, [sessionId]);
 
+  const patchLifecycle = useCallback(async (status: 'paused' | 'abandoned') => {
+    leavingRef.current = true;
+    const seconds = commit();
+    setLeaving(true);
+    await fetch(`/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status, activeDurationSeconds: seconds }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {});
+    sessionStatusRef.current = status;
+    setSession((p) => (p ? { ...p, status, activeDurationSeconds: seconds } : p));
+  }, [sessionId, commit]);
+
+  const saveSession = useCallback(() => patchLifecycle('paused'), [patchLifecycle]);
+  const abandonSession = useCallback(() => patchLifecycle('abandoned'), [patchLifecycle]);
+
+  const restartSession = useCallback(async () => {
+    if (!session) throw new Error('Session not loaded');
+    return startFollowUpSession({
+      scenarioId: session.scenarioId,
+      situationId: session.situationId,
+      lessonId: session.lessonId,
+      characterId: session.characterId,
+      targetLanguage: session.targetLanguage,
+      nativeLanguage: session.nativeLanguage,
+      selectedAvatarId: session.selectedAvatarId,
+      behaviorMode: session.behaviorMode,
+    });
+  }, [session]);
+
   return {
     session, nextLesson, scenario, situation, domain, character, selectedAvatar,
     goals, conversations, completedGoals, phase,
-    loading, error, isActive, isCompleted,
+    loading, error, isActive, isCompleted, elapsedLabel,
     phaseTransition, recap, unacknowledgedCompletion,
     evaluation, avgPronunciationScore, newWordsCount,
     submitTurn, submitTurnStream, sendGreeting,
     pendingRetry, retryCorrection, dismissRetry,
     dismissPhaseTransition, dismissRecap, acknowledgeCompletion,
+    saveSession, abandonSession, restartSession,
   };
 }

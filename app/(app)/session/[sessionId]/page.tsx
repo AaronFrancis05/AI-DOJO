@@ -79,6 +79,12 @@ export default function SessionChooserPage() {
     load();
   }, [sessionId]);
 
+  useEffect(() => {
+    if (session?.status === 'abandoned') {
+      router.replace(`/sessions/${sessionId}/report`);
+    }
+  }, [session?.status, sessionId, router]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -155,7 +161,7 @@ export default function SessionChooserPage() {
       </div>
 
       {/* Footer link to report if completed */}
-      {session?.status === 'completed' && (
+      {(session?.status === 'completed' || session?.status === 'abandoned') && (
         <div className="shrink-0 px-4 py-3 border-t border-dojo-border text-center">
           <button
             onClick={() => router.push(`/sessions/${sessionId}/report`)}

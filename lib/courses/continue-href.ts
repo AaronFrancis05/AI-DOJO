@@ -1,20 +1,19 @@
 import type { NextLessonTarget } from '@/lib/roleplay/api-types';
 
 /**
- * Where the "Continue" button on a completion screen goes.
+ * Where the "Continue" / "Next Lesson" button on a completion screen goes.
  *
  * Kept pure and separate from lesson-progress.ts, which imports the database
  * client and so cannot be pulled into a client component. Every session view
- * calls this rather than routing itself, because all three used to hardcode
- * `/home` — a learner who finished a course lesson was dropped on the
- * dashboard with no route back to the lesson they had just unlocked.
+ * calls this rather than routing itself.
  */
 export function continueHref(
   nextLesson: NextLessonTarget | null,
   languages: { targetLanguage?: string | null; nativeLanguage?: string | null },
 ): string {
-  // Free practice has no course to return to.
-  if (!nextLesson) return '/home';
+  // Free practice has no course to return to — Library is where the next
+  // scenario is chosen.
+  if (!nextLesson) return '/library';
 
   const params = new URLSearchParams();
   if (languages.targetLanguage) params.set('target', languages.targetLanguage);

@@ -56,6 +56,7 @@ export default function VoiceOnlyPage() {
     phaseTransition, dismissPhaseTransition,
     recap, dismissRecap,
     unacknowledgedCompletion, acknowledgeCompletion,
+    elapsedLabel, saveSession, abandonSession, restartSession,
   } = useRoleplaySessionContext();
 
   const [targetLanguage, setTargetLanguage] = useState('ja');
@@ -73,7 +74,6 @@ export default function VoiceOnlyPage() {
   const [chatInput, setChatInput] = useState('');
   const [tipsOpen, setTipsOpen] = useState(false);
   const [chatTab, setChatTab] = useState<'all' | 'key' | 'notes'>('all');
-  const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
@@ -85,6 +85,7 @@ export default function VoiceOnlyPage() {
   const { caption, showCaption, showLiveCaption, hideCaption, clear: clearCaption } = useAvatarCaptions();
 
   const sendingRef = useRef(false);
+  const exitBusyRef = useRef(false);
   const mutedRef = useRef(false);
   const isActiveRef = useRef(false);
   const targetLangRef = useRef('ja');
@@ -97,26 +98,11 @@ export default function VoiceOnlyPage() {
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
 
-  // Anchored on the session's own start time rather than this page's mount:
-  // avatar and voice are two views of one session, so switching between them
-  // (or reloading) has to carry the clock over instead of restarting at 00:00.
-  const sessionStartTime: number | null = session?.startedAt
-    ? new Date(session.startedAt).getTime()
-    : null;
-
-  // Session timer
   useEffect(() => {
-    if (sessionStartTime === null) return;
-    const tick = () => {
-      const diff = Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000));
-      const m = String(Math.floor(diff / 60)).padStart(2, '0');
-      const s = String(diff % 60).padStart(2, '0');
-      setElapsed(`${m}:${s}`);
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [sessionStartTime]);
+    if (session?.status === 'abandoned') {
+      router.replace(`/sessions/${sessionId}/report`);
+    }
+  }, [session?.status, sessionId, router]);
 
   // Auto-scroll chat panel
   useEffect(() => {
@@ -134,11 +120,46 @@ export default function VoiceOnlyPage() {
 
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
-  const leaveSession = useCallback(async () => {
+  const handleSaveSession = useCallback(async () => {
     stopTts();
-    await fetch(`/api/sessions/${sessionId}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'completed' }) }).catch(() => {});
+    await saveSession();
+    router.push('/home');
+  }, [saveSession, router]);
+
+  const handleEndSession = useCallback(async () => {
+    stopTts();
+    await abandonSession();
     router.push(`/sessions/${sessionId}/report`);
-  }, [sessionId, router]);
+  }, [abandonSession, router, sessionId]);
+
+  const handleContinue = useCallback(() => {
+    setCompletionResult(null);
+    void acknowledgeCompletion();
+    router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage }));
+  }, [acknowledgeCompletion, nativeLanguage, nextLesson, router, targetLanguage]);
+
+  const handleViewReport = useCallback(() => {
+    setCompletionResult(null);
+    void acknowledgeCompletion();
+    stopTts();
+    router.push(`/sessions/${sessionId}/report`);
+  }, [acknowledgeCompletion, router, sessionId]);
+
+  const handleRepeat = useCallback(() => {
+    if (exitBusyRef.current) return;
+    exitBusyRef.current = true;
+    void (async () => {
+      try {
+        const newId = await restartSession();
+        setCompletionResult(null);
+        await acknowledgeCompletion();
+        stopTts();
+        router.push(`/session/${newId}/voice`);
+      } catch {
+        exitBusyRef.current = false;
+      }
+    })();
+  }, [acknowledgeCompletion, restartSession, router]);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
@@ -379,10 +400,19 @@ export default function VoiceOnlyPage() {
       {/* ── Top Header Bar ── */}
       <div className="relative z-20 flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-b border-dojo-border/60 shrink-0 backdrop-blur-md bg-dojo-surface/50">
         <div className="flex items-center gap-2 min-w-0">
-          <button onClick={() => { stopTts(); router.push('/home'); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
+          <button onClick={() => { void handleSaveSession(); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
             <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-medium hidden sm:inline">End Session</span>
+            <span className="text-sm font-medium hidden sm:inline">Save Session</span>
           </button>
+          {isActive && (
+            <button
+              type="button"
+              onClick={() => { void handleEndSession(); }}
+              className="shrink-0 rounded-lg px-2 py-1 text-sm font-medium text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
+            >
+              End Session
+            </button>
+          )}
           <span className="text-sm font-bold text-dojo-text-primary tracking-tight truncate max-w-[10rem] sm:max-w-xs">{scenario?.title ?? 'Voice Session'}</span>
           <PhaseIndicator phase={phase} />
         </div>
@@ -850,7 +880,7 @@ export default function VoiceOnlyPage() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-dojo-text-muted/60" />
-            <span className="text-xs text-dojo-text-primary font-medium">{elapsed}</span>
+            <span className="text-xs text-dojo-text-primary font-medium">{elapsedLabel}</span>
             <span className="text-[10px] text-dojo-text-muted/60">Session Time</span>
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
@@ -895,7 +925,7 @@ export default function VoiceOnlyPage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={leaveSession}
+        onEnd={handleEndSession}
         onViewReport={() => { stopTts(); router.push(`/sessions/${sessionId}/report`); }}
       />
 
@@ -905,11 +935,6 @@ export default function VoiceOnlyPage() {
           onDismiss={() => {
             setCelebration(null);
             acknowledgeCompletion();
-          }}
-          onRepeat={() => {
-            setCelebration(null);
-            acknowledgeCompletion();
-            router.push(`/session/${sessionId}`);
           }}
         />
       )}
@@ -921,8 +946,8 @@ export default function VoiceOnlyPage() {
             metrics={sessionMetrics}
             xpGained={completionResult.xpGained}
             newStreak={completionResult.newStreak}
-            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
-            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
+            onContinue={handleContinue}
+            onViewReport={handleViewReport}
           />
         ) : (
           <LessonIncompleteScreen
@@ -930,9 +955,9 @@ export default function VoiceOnlyPage() {
             compositeScore={completionResult.compositeScore}
             metrics={sessionMetrics}
             whatWentWrong={whatWentWrong}
-            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
-            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
-            onLeave={() => { setCompletionResult(null); acknowledgeCompletion(); leaveSession(); }}
+            onRepeat={handleRepeat}
+            onNext={handleContinue}
+            onViewReport={handleViewReport}
           />
         )
       )}

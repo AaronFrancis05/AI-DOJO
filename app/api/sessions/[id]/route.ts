@@ -6,6 +6,9 @@ import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { AVATAR_SOURCES, applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
 import { recordLessonActivity, resolveNextLesson } from '../../../../lib/courses/lesson-progress';
 import {
+  isAbandonmentReason,
+} from '../../../../lib/roleplay/session-lifecycle';
+import {
   getScenarioLocalization,
   getScenarioVocabLocalizations,
   getTargetVocabLocalizations,
@@ -332,15 +335,49 @@ export async function PATCH(
     updateData.completionAcknowledged = body.completionAcknowledged;
   }
 
+  if (body.activeDurationSeconds !== undefined) {
+    if (typeof body.activeDurationSeconds !== 'number' || !Number.isFinite(body.activeDurationSeconds) || body.activeDurationSeconds < 0) {
+      return Response.json({ error: 'activeDurationSeconds must be a non-negative number' }, { status: 400 });
+    }
+    const incoming = Math.min(Math.floor(body.activeDurationSeconds), 7 * 24 * 3600);
+    updateData.activeDurationSeconds = Math.max(session.activeDurationSeconds ?? 0, incoming);
+  }
+
+  if (body.abandonmentReason !== undefined) {
+    if (body.abandonmentReason !== null && !isAbandonmentReason(body.abandonmentReason)) {
+      return Response.json({ error: 'Invalid abandonmentReason' }, { status: 400 });
+    }
+    if (session.status !== 'abandoned' && status !== 'abandoned') {
+      return Response.json({ error: 'abandonmentReason can only be set on an abandoned session' }, { status: 400 });
+    }
+    updateData.abandonmentReason = body.abandonmentReason;
+  }
+
   if (status) {
-    if (!['active', 'paused', 'completed'].includes(status)) {
+    if (!['active', 'paused', 'completed', 'abandoned'].includes(status)) {
       return Response.json({ error: 'Invalid status value' }, { status: 400 });
     }
+
+    // A scored finish cannot be undone or converted into a quit.
+    if (session.status === 'completed' && status !== 'completed') {
+      return Response.json({ error: 'Completed sessions cannot change status' }, { status: 400 });
+    }
+    // Quit → Save Session is allowed. Quit → scored complete is not.
+    if (session.status === 'abandoned' && status !== 'abandoned' && status !== 'paused') {
+      return Response.json({ error: 'Abandoned sessions can only be restored to paused' }, { status: 400 });
+    }
+    if (status === 'abandoned' && session.status === 'completed') {
+      return Response.json({ error: 'Completed sessions cannot be abandoned' }, { status: 400 });
+    }
+
     updateData.status = status;
-    if (status === 'completed') {
+    if (status === 'completed' || status === 'abandoned') {
       updateData.completedAt = new Date();
     } else if (status === 'active' || status === 'paused') {
       updateData.completedAt = null;
+    }
+    if (status === 'paused' && session.status === 'abandoned') {
+      updateData.abandonmentReason = null;
     }
   }
 
