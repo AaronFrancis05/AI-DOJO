@@ -11,9 +11,12 @@ import {
   checkTryoutGate,
   clientIp,
   consumeTurn,
+  countGuestUserTurns,
+  guestTryoutPhase,
   markTryoutCompleted,
   readSessionCookieValue,
 } from '@/lib/tryout/gate';
+import { TRYOUT_CHARACTER_NAME } from '@/lib/tryout/character';
 import type { ChatTurn } from '@/lib/ai-providers';
 
 export const runtime = 'nodejs';
@@ -40,38 +43,67 @@ function buildSystemInstruction(
   nativeLanguage: string,
   phase: 'icebreaker' | 'roleplay' | 'closing',
   wordIndex: number | null,
+  opts: { isGreeting: boolean; nextWordIndex: number | null },
 ): string {
   const targetLangName = getTargetLangConfig(targetLanguage).name;
   const nativeLangName = getNativeLangName(nativeLanguage);
+  const sameLanguage = targetLanguage === nativeLanguage;
 
-  const base = `The learner's native language is ${nativeLangName}. Always reply in ${targetLangName}, and also provide a ${nativeLangName} translation so the learner can follow along.
+  const base = `The learner's native language is ${nativeLangName}. Always reply in ${targetLangName}.${
+    sameLanguage
+      ? ` Target and native are the same language — set replyNative to an empty string; do not repeat the reply.`
+      : ` Also provide a ${nativeLangName} translation so the learner can follow along.`
+  }
 
 Return strictly a JSON object matching this schema, with no extra commentary:
 {
   "replyTarget": "Your reply in ${targetLangName}",
-  "replyNative": "The same reply translated into ${nativeLangName}"
+  "replyNative": "${sameLanguage ? '' : `The same reply translated into ${nativeLangName}`}"
 }`;
 
   if (phase === 'icebreaker' && wordIndex !== null) {
     const word = ICEBREAKER_WORDS[wordIndex];
-    return `You are a friendly, encouraging ${targetLangName} teacher meeting a brand-new learner for the first time. This is a short icebreaker: you are teaching 5 essential first-meeting phrases, one per turn, in order. Keep every reply short (2-3 sentences), warm, and appropriate for an absolute beginner.
+    const lead = `You are ${TRYOUT_CHARACTER_NAME}, a friendly, encouraging ${targetLangName} teacher meeting a brand-new learner for the first time. Always introduce and refer to yourself as ${TRYOUT_CHARACTER_NAME} — never invent another name (Tanaka, Hana, or a local equivalent). This is a short icebreaker: you are teaching 5 essential first-meeting phrases, in order. Keep every reply short (2-4 sentences), warm, and appropriate for an absolute beginner.
 
-Current word to teach is ${wordIndex + 1} of 5: "${word.gloss}" (${word.hint}).
-Teach it naturally: say the ${targetLangName} phrase, give its ${nativeLangName} meaning, and ask the learner to try saying it. Do NOT teach any other words this turn. Stay on this one word until the next turn.
+The learner cannot take a turn until you ask them to. Never end a reply on feedback alone.`;
 
-After the learner attempts the phrase, give very brief feedback (5 words max) in ${nativeLangName} on their attempt, then you will be asked to teach the next word on the following turn.
+    if (opts.isGreeting) {
+      return `${lead}
+
+Teach phrase 1 of 5: "${word.gloss}" (${word.hint}).
+Say the ${targetLangName} phrase, give its ${nativeLangName} meaning, and ask the learner to try saying it. Do not teach any other phrase yet.
+
+${base}`;
+    }
+
+    const next = opts.nextWordIndex !== null ? ICEBREAKER_WORDS[opts.nextWordIndex] : null;
+    if (next && opts.nextWordIndex !== null) {
+      return `${lead}
+
+The learner just attempted phrase ${wordIndex + 1} of 5: "${word.gloss}".
+Give a very brief bit of feedback on their attempt (one short clause — do not ask them to retry).
+Then immediately teach phrase ${opts.nextWordIndex + 1} of 5: "${next.gloss}" (${next.hint}).
+Say the ${targetLangName} phrase, give its ${nativeLangName} meaning, and ask them to try saying it.
+
+${base}`;
+    }
+
+    return `${lead}
+
+The learner just attempted the last phrase (5 of 5): "${word.gloss}".
+Give a very brief bit of feedback on their attempt (one short clause — do not ask them to retry).
+Then immediately start a short first-meeting roleplay: greet them as ${TRYOUT_CHARACTER_NAME} meeting them for the first time and prompt them to introduce themselves using the phrases they practiced (name, where they are from).
 
 ${base}`;
   }
 
   if (phase === 'roleplay') {
-    return `You are a friendly, encouraging ${targetLangName} conversation partner. The learner has just practiced 5 icebreaker phrases for a first meeting. Now do a short, natural roleplay: greet the learner as if meeting for the first time and guide them through a brief self-introduction using what they learned. Keep your reply to 2-3 sentences, warm and in-character. Prompt them gently to introduce themselves.
+    return `You are ${TRYOUT_CHARACTER_NAME}, a friendly, encouraging ${targetLangName} conversation partner in a short first-meeting roleplay. Stay ${TRYOUT_CHARACTER_NAME} — do not switch to another name. The learner has just practiced 5 icebreaker phrases. Continue the introduction already in progress — do not restart it from scratch. Keep your reply to 2-3 sentences, warm and in-character. If they stall, ask a short question (their name, where they are from). They cannot speak until you ask.
 
 ${base}`;
   }
 
-  // closing — 1-2 sentence warm wrap-up, celebrate that they completed the intro
-  return `You are a friendly, encouraging ${targetLangName} conversation partner wrapping up a short first-meeting preview. The learner has practiced 5 phrases and done a brief self-introduction. Give a warm, celebratory closing (1-2 sentences): acknowledge what they did well and encourage them to keep learning. Keep it short and uplifting.
+  return `You are ${TRYOUT_CHARACTER_NAME}, a friendly, encouraging ${targetLangName} conversation partner wrapping up a short first-meeting preview. Stay ${TRYOUT_CHARACTER_NAME}. The learner has practiced 5 phrases and done a brief self-introduction. Give a warm, celebratory closing (1-2 sentences): acknowledge what they did well and encourage them to keep learning. Keep it short and uplifting.
 
 ${base}`;
 }
@@ -131,11 +163,11 @@ export async function POST(req: Request) {
 
   const safeHistory = Array.isArray(history) ? history : [];
   const isGreeting = !userMessage?.trim();
+  const historyUserTurns = countGuestUserTurns(safeHistory);
 
-  // The turn budget is counted server-side against the issued id. `history`
-  // still shapes the prompt, but it no longer decides how many turns a guest
-  // gets — an empty array used to reset the budget.
-  const budget = await consumeTurn(tryoutId, !isGreeting);
+  // Redis is the budget when it is configured. Without it (local dev), phase
+  // and the turn cap follow historyUserTurns so the icebreaker can advance.
+  const budget = await consumeTurn(tryoutId, !isGreeting, historyUserTurns);
   if (budget.expired) {
     return NextResponse.json({ error: 'This preview has expired.', restart: true }, { status: 400 });
   }
@@ -151,22 +183,7 @@ export async function POST(req: Request) {
     return res;
   }
 
-  // Determine phase: 0-4 = icebreaker words, 5-6 = simple roleplay, 7+ = closing
-  let phase: 'icebreaker' | 'roleplay' | 'closing' = 'icebreaker';
-  let wordIndex: number | null = 0;
-  if (isGreeting) {
-    phase = 'icebreaker';
-    wordIndex = 0;
-  } else if (priorUserTurns < 5) {
-    phase = 'icebreaker';
-    wordIndex = priorUserTurns; // 0..4 → next word after each user attempt
-  } else if (priorUserTurns < 7) {
-    phase = 'roleplay';
-    wordIndex = null;
-  } else {
-    phase = 'closing';
-    wordIndex = null;
-  }
+  const { phase, wordIndex, nextWordIndex } = guestTryoutPhase(priorUserTurns, isGreeting);
 
   const chatHistory = toChatHistory(safeHistory);
   if (userMessage?.trim()) {
@@ -175,7 +192,13 @@ export async function POST(req: Request) {
 
   try {
     const provider = await getAIProvider();
-    const systemInstruction = buildSystemInstruction(targetLanguage, nativeLanguage, phase, wordIndex);
+    const systemInstruction = buildSystemInstruction(
+      targetLanguage,
+      nativeLanguage,
+      phase,
+      wordIndex,
+      { isGreeting, nextWordIndex },
+    );
     const raw = await provider.generateJSON(systemInstruction, chatHistory);
     const parsed = JSON.parse(raw);
 

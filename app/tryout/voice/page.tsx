@@ -14,9 +14,9 @@ import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { TryoutCompleteScreen } from '@/components/marketing/TryoutCompleteScreen';
 import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
 import { loadTryoutParams } from '@/lib/tryout/guest-params';
+import { TRYOUT_CHARACTER_NAME } from '@/lib/tryout/character';
 import { useTryoutGate } from '@/lib/hooks/useTryoutGate';
 
-const CHAR_NAME = 'Sam';
 const CHAR_COLOR = '#2D3BC5';
 const CHAR_ROLE = 'Conversation Partner';
 
@@ -170,7 +170,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
                   <Volume2 className="h-8 w-8 text-dojo-accent" />
                 </div>
-                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {CHAR_NAME}</h2>
+                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {TRYOUT_CHARACTER_NAME}</h2>
                 <p className="text-sm text-dojo-text-muted mb-6 leading-relaxed">
                   A quick preview of what real practice feels like.
                 </p>
@@ -203,7 +203,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
             </div>
           )}
 
-          <VoiceOnlyStage name={CHAR_NAME} accentColor={CHAR_COLOR} mode={avatarMode} role={CHAR_ROLE} volumeLevel={voice.volumeLevel} />
+          <VoiceOnlyStage name={TRYOUT_CHARACTER_NAME} accentColor={CHAR_COLOR} mode={avatarMode} role={CHAR_ROLE} volumeLevel={voice.volumeLevel} />
 
           {voice.partialTranscript && (
             <div className="absolute bottom-44 left-0 right-0 flex justify-center z-10 px-4">
@@ -296,11 +296,11 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: isAi ? CHAR_COLOR : '#6366f1' }}>
-                    {isAi ? CHAR_NAME[0] : 'U'}
+                    {isAi ? TRYOUT_CHARACTER_NAME[0] : 'U'}
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? CHAR_NAME : 'You'}</span>
+                      <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? TRYOUT_CHARACTER_NAME : 'You'}</span>
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
                       <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
@@ -315,7 +315,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
             {streamingText && (
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: CHAR_COLOR }}>
-                  {CHAR_NAME[0]}
+                  {TRYOUT_CHARACTER_NAME[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
                   <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">

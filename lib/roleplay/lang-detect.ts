@@ -61,6 +61,102 @@ export function splitIntoLangSpans(raw: string): LangSpan[] {
   return spans;
 }
 
+export function hasLangSpanDelimiters(raw: string): boolean {
+  return /⟦[^⟧]*⟧/.test(raw);
+}
+
+/**
+ * Voice spans for mixed TTS.
+ *
+ * `splitIntoLangSpans` labels unmarked text as native, which is right when the
+ * session model wraps target lines in ⟦ ⟧. Tryout replies have no markers, so
+ * that rule would send Japanese (the bold target line) to the English voice.
+ *
+ * Undelimited CJK+Latin mixes (e.g. 「Nice to meet you」 inside a Japanese
+ * teaching line) are split by script so the English gloss uses the native
+ * voice instead of a Japanese voice reading English.
+ */
+export function resolveSpeechSpans(
+  raw: string,
+  targetBcp47: string,
+  nativeBcp47: string,
+): LangSpan[] {
+  const text = raw.trim();
+  if (!text) return [];
+  if (targetBcp47 === nativeBcp47) return [{ text, lang: 'target' }];
+  if (hasLangSpanDelimiters(text)) return splitIntoLangSpans(text);
+  if (!hasDetectableScript(targetBcp47)) return [{ text, lang: 'target' }];
+  if (!containsTargetScript(text, targetBcp47)) return [{ text, lang: 'native' }];
+  return splitUndelimitedByScript(text, targetBcp47);
+}
+
+const LATIN_LETTER = /[A-Za-z\u00C0-\u024F]/;
+/** Short Latin tokens ("OK", "AI") stay on the target voice. */
+const MIN_LATIN_NATIVE_LETTERS = 3;
+
+function isTargetScriptChar(ch: string, targetBcp47: string): boolean {
+  if (targetBcp47.startsWith('ja')) {
+    return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(ch);
+  }
+  if (targetBcp47.startsWith('zh')) {
+    return /[\u4e00-\u9fff]/.test(ch);
+  }
+  if (targetBcp47.startsWith('ko')) {
+    return /[\uac00-\ud7af]/.test(ch);
+  }
+  return false;
+}
+
+function latinLetterCount(text: string): number {
+  let n = 0;
+  for (const ch of text) {
+    if (LATIN_LETTER.test(ch)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Walks an undelimited CJK reply and cuts out Latin-letter runs so mixed
+ * teaching lines can switch voice mid-utterance.
+ */
+export function splitUndelimitedByScript(text: string, targetBcp47: string): LangSpan[] {
+  const runs: LangSpan[] = [];
+  let lang: 'target' | 'native' | null = null;
+  let buf = '';
+
+  const flush = () => {
+    if (!buf || !lang) {
+      buf = '';
+      return;
+    }
+    let nextLang = lang;
+    if (nextLang === 'native' && latinLetterCount(buf) < MIN_LATIN_NATIVE_LETTERS) {
+      nextLang = 'target';
+    }
+    const prev = runs[runs.length - 1];
+    if (prev && prev.lang === nextLang) prev.text += buf;
+    else runs.push({ text: buf, lang: nextLang });
+    buf = '';
+  };
+
+  for (const ch of text) {
+    const next: 'target' | 'native' | null = isTargetScriptChar(ch, targetBcp47)
+      ? 'target'
+      : LATIN_LETTER.test(ch)
+        ? 'native'
+        : null;
+    if (next && next !== lang) {
+      flush();
+      lang = next;
+    } else if (lang === null) {
+      lang = next ?? 'target';
+    }
+    buf += ch;
+  }
+  flush();
+  return runs.filter((s) => s.text.trim());
+}
+
 /**
  * Server-side validator: returns corrections for any text that fails to use
  * ⟦ ⟧ delimiters properly. Checks for target-language text outside delimiters
