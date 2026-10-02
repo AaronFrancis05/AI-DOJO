@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useReducer, useRef, type ReactNod
 import { loadTryoutParams } from '@/lib/tryout/guest-params';
 
 const STORAGE_KEY = 'ai-dojo:onboarding';
-const RESUME_KEY = 'ai-dojo:onboarding-resume';
 
 export interface OnboardingState {
   level: string;
@@ -84,12 +83,13 @@ interface OnboardingContextType {
 const OnboardingContext = createContext<OnboardingContextType | null>(null);
 
 /**
- * The language pair a guest already chose, so the target/native steps arrive
- * pre-selected instead of asking a question they have just answered.
+ * The language pair a guest already chose in tryout, so the target/native
+ * steps arrive pre-selected instead of asking a question they have just
+ * answered.
  *
- * Read from the URL first (the tryout completion screen carries the pair) and
- * then from the tryout's own sessionStorage entry, which covers a learner who
- * reached onboarding some other way in the same tab.
+ * Read from the URL first (a shared link can still carry the pair) and then
+ * from the tryout's own sessionStorage entry, which covers a learner who
+ * signed up in the same tab after the preview.
  *
  * `window.location.search` rather than `useSearchParams`, because the
  * provider is rendered from a layout: a `useSearchParams` there opts the
@@ -115,8 +115,7 @@ function prefillFromTryout(): Partial<OnboardingState> {
 }
 
 /**
- * Onboarding answers survived only in memory, so a refresh — or the redirect
- * bounce through an OAuth provider on the very last step — threw away every
+ * Onboarding answers survived only in memory, so a refresh threw away every
  * answer before any of them had been saved.
  */
 function loadPersistedState(): OnboardingState {
@@ -169,37 +168,8 @@ export function clearPersistedOnboarding(): void {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem(STORAGE_KEY);
-    window.sessionStorage.removeItem(RESUME_KEY);
   } catch {
     // nothing to do
-  }
-}
-
-/**
- * Marks that the learner left the wizard for an OAuth provider from its last
- * step. The provider callback can only send a brand-new signup to
- * `/onboarding`, which is the first step — without this flag a learner who
- * signs up with Google on the account step walks the whole wizard a second
- * time, answers pre-filled but every click repeated.
- */
-export function markOnboardingResume(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(RESUME_KEY, '1');
-  } catch {
-    // the learner re-walks the (pre-filled) wizard — degraded, not broken
-  }
-}
-
-/** Reads and consumes the resume flag. */
-export function takeOnboardingResume(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const value = window.sessionStorage.getItem(RESUME_KEY);
-    if (value) window.sessionStorage.removeItem(RESUME_KEY);
-    return Boolean(value);
-  } catch {
-    return false;
   }
 }
 

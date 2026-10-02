@@ -130,15 +130,13 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
   if (gate.state === 'blocked' || blocked) {
     return (
       <TryoutBlockedScreen
-        targetLanguage={targetLanguage}
-        nativeLanguage={nativeLanguage}
         retryAfterMs={gate.state === 'blocked' ? gate.retryAfterMs : blockedRetryAfterMs}
       />
     );
   }
 
   if (completed || limitReached) {
-    return <TryoutCompleteScreen targetLanguage={targetLanguage} nativeLanguage={nativeLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
+    return <TryoutCompleteScreen targetLanguage={targetLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
   }
 
   return (

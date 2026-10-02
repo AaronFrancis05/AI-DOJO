@@ -23,7 +23,7 @@ export default async function TutorOnboardingStepPage({
   // tutor onboarding, so the page they are bounced to should be the one that
   // takes them back.
   if (!role) redirect(`/auth/tutor/signin?next=${encodeURIComponent('/onboarding/tutor/welcome')}`);
-  if (role === 'learner') redirect('/onboarding/level');
+  if (role === 'learner') redirect('/onboarding/welcome');
 
   return <TutorOnboarding step={step} />;
 }

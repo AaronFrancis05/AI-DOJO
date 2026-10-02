@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth/server';
 import { toUserRole } from '@/lib/auth/roles';
 import { db } from '@/src/db';
-import { users, countries, studentProgress } from '@/src/schema';
+import { users, countries, studentProgress, domains } from '@/src/schema';
 import { and, eq } from 'drizzle-orm';
 import { enrollInCourse } from '@/lib/courses/enroll';
 import { seedLessonPlan } from '@/lib/calendar/seed-lesson-plan';
@@ -48,14 +48,15 @@ export async function POST(req: NextRequest) {
 
   // Preferences alone left the learner with nothing to follow. Enrolment is
   // the other half of finishing onboarding: it creates the student_progress
-  // row the course page reads, so the wizard can hand off to a real course
-  // instead of a dashboard. `preferredDomainId` / `preferredMode` keep
-  // driving free-form practice exactly as before.
+  // row the course page reads. The landing itself is the Library domain they
+  // picked as "practice first"; `preferredMode` still drives free-form
+  // practice once they open a situation.
   const [saved] = await db
     .select({
       level: users.level,
       preferredTargetLanguage: users.preferredTargetLanguage,
       nativeLanguage: users.nativeLanguage,
+      preferredDomainId: users.preferredDomainId,
       role: users.role,
     })
     .from(users)
@@ -107,8 +108,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // The wizard asked what to practise first; that is a Library domain, not a
+  // course. Enrolment still happens so Courses and the calendar are not empty,
+  // but the hand-off follows the domain they picked.
+  let domainSlug: string | null = null;
+  if (saved?.preferredDomainId) {
+    const [domain] = await db
+      .select({ slug: domains.slug })
+      .from(domains)
+      .where(eq(domains.id, saved.preferredDomainId))
+      .limit(1);
+    domainSlug = domain?.slug ?? null;
+  }
+
   return NextResponse.json({
     success: true,
+    domainSlug,
     courseSlug: enrollment?.courseSlug ?? null,
     targetLanguage: saved?.preferredTargetLanguage ?? null,
     nativeLanguage: saved?.nativeLanguage ?? null,

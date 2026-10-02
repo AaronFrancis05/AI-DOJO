@@ -7,6 +7,7 @@ export interface StepConfig {
 }
 
 export const ONBOARDING_STEPS: StepConfig[] = [
+  { key: 'welcome', title: 'Welcome to AI DOJO', subtitle: 'Let\'s set up your learning — a few questions so we can match practice to you.', transition: true },
   { key: 'level', title: 'What\'s your current level?', subtitle: 'This helps us match scenarios to your skill.' },
   { key: 'social-proof', title: 'You\'re in good company', subtitle: '', transition: true },
   { key: 'goal', title: 'What are you looking to achieve?', subtitle: 'We\'ll tailor your experience based on your goal.' },
@@ -20,7 +21,6 @@ export const ONBOARDING_STEPS: StepConfig[] = [
   { key: 'frequency', title: 'How often do you want to practice?', subtitle: 'Set your daily practice goal.' },
   { key: 'personalizing', title: 'Personalization in progress', subtitle: '', transition: true },
   { key: 'plan-ready', title: 'Your personalized plan is ready!', subtitle: '', transition: true },
-  { key: 'account', title: 'Almost there!', subtitle: 'Create your account to save your progress.' },
 ];
 
 /**

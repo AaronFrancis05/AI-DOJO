@@ -1234,6 +1234,18 @@ Guest tryout icebreaker/roleplay/closing was keyed only on a Redis turn counter.
 
 The icebreaker prompt told the model to give a 5-word note and wait for the *next* HTTP turn to teach the next phrase. The server advanced, but the learner saw only 「とても上手です！」 and had nothing to say. Feedback and the next phrase (or the roleplay opener after phrase 5) now go in the same reply. Same-language tryouts omit the duplicated native line.
 
+## 2026-10-02 (onboarding is signed-in setup, not a guest questionnaire)
+
+Sign-up used to drop a new learner straight onto "What's your current level?" with no greeting, while tryout's Nice work / used-your-preview screens sent guests into the same wizard and created the account at the end ("Almost there!"). Two doors, two first impressions, and the last step only existed for the guest path.
+
+- Tryout complete and blocked screens now go to `/auth/signup`. The language pair stays in sessionStorage and still prefills the wizard after they have an account.
+- Learner `/onboarding` requires a session (`app/onboarding/[step]/layout.tsx` → `/auth/signup`; tutors still get their own wizard). `/onboarding` and the `(app)` gate land on `/onboarding/welcome`.
+- First step is a welcome interstitial ("Let's set up your learning"). The account-creation step is gone; `plan-ready` POSTs `/api/user/onboarding` and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST. The OAuth resume flag that existed only for Google-from-the-last-step is gone with it.
+
+## 2026-10-02 (onboarding lands on the chosen Library domain)
+
+"What do you want to practice first?" is a Library domain, but finish used to open a course. The POST now returns `domainSlug` and the wizard goes to `/dojo/{slug}`. Enrolment and lesson-plan seeding are unchanged; course is the fallback when the domain row is missing.
+
 
 
 

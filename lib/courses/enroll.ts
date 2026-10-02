@@ -78,9 +78,9 @@ export async function enrollInCourse({
     : null;
   const firstLesson = firstUnit ? lessonRows.find((l) => l.unitId === firstUnit.id) ?? null : null;
 
-  // `onConflictDoNothing`, not an upsert: re-running onboarding (or a second
-  // OAuth bounce through the account step) must never reset a learner who has
-  // already made progress on this course back to lesson one.
+  // `onConflictDoNothing`, not an upsert: re-running onboarding must never
+  // reset a learner who has already made progress on this course back to
+  // lesson one.
   const inserted = await db
     .insert(studentProgress)
     .values({
