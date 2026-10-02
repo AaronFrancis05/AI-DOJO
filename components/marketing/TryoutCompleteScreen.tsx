@@ -8,11 +8,10 @@ import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
 
 interface TryoutCompleteScreenProps {
   targetLanguage: string;
-  nativeLanguage: string;
   turnCount: number;
 }
 
-export function TryoutCompleteScreen({ targetLanguage, nativeLanguage, turnCount }: TryoutCompleteScreenProps) {
+export function TryoutCompleteScreen({ targetLanguage, turnCount }: TryoutCompleteScreenProps) {
   const targetLangName = getTargetLangConfig(targetLanguage).name;
   const { fireBurst } = useCelebrationConfetti();
 
@@ -32,15 +31,17 @@ export function TryoutCompleteScreen({ targetLanguage, nativeLanguage, turnCount
           Create a free account to keep learning with full lessons, corrections, and progress tracking.
         </p>
 
-        {/* Into onboarding, not straight to /auth — the wizard is what sets a
-            level, a goal and a course enrolment, and the old shortcut skipped
-            all of it. The tryout's language pair rides along as a prefill. */}
+        {/* Sign up first. The learner wizard is only for an account that exists
+            but has not been set up yet — sending a guest into it put account
+            creation at the end of a questionnaire, which made both this screen
+            and onboarding harder to read. The tryout language pair stays in
+            sessionStorage and prefills the wizard after they have an account. */}
         <Link
-          href={`/onboarding/level?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`}
+          href="/auth/signup"
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90"
         >
           <Sparkles className="h-4 w-4" />
-          Build my learning plan
+          Create a free account
         </Link>
         <Link
           href="/"

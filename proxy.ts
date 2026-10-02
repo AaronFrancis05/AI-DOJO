@@ -85,7 +85,10 @@ export default async function middleware(request: NextRequest) {
     );
   }
 
-  // Allow unauthenticated access to onboarding
+  // Onboarding stays out of the generic auth middleware so the tutor wizard
+  // can bounce an unsigned visitor to `/auth/tutor/signin` rather than the
+  // learner door. Learner `/onboarding` is gated in
+  // `app/onboarding/[step]/layout.tsx` (no session → `/auth/signup`).
   if (pathname.startsWith('/onboarding')) {
     return NextResponse.next();
   }

@@ -1,8 +1,7 @@
 import {
   containsTargetScript,
   hasDetectableScript,
-  splitIntoLangSpans,
-  detectSpeechLang as detectLang,
+  resolveSpeechSpans,
 } from './lang-detect';
 import { resolveAzureVoice } from '../language';
 import { getToken } from './pronunciation';
@@ -807,20 +806,13 @@ function buildMixedSsml(
   const cleaned = cleanTextForTTS(raw);
   if (!cleaned) return null;
 
-  // Same language on both sides: one voice, no span splitting needed.
-  const spans = targetBcp47 === nativeBcp47 ? [] : splitIntoLangSpans(raw);
-
-  const ssmlSpans = spans.length > 0
-    ? spans.map(span => ({
-        text: cleanTextForTTS(span.text),
-        voice: spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase, span.text),
-      })).filter(s => s.text)
-    : [{
-        text: cleaned,
-        voice: targetBcp47 === nativeBcp47
-          ? targetBcp47
-          : detectLang(raw, targetBcp47, nativeBcp47),
-      }];
+  const spans = resolveSpeechSpans(raw, targetBcp47, nativeBcp47);
+  const ssmlSpans = spans
+    .map((span) => ({
+      text: cleanTextForTTS(span.text),
+      voice: spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase, span.text),
+    }))
+    .filter((s) => s.text);
 
   if (ssmlSpans.length === 0) return null;
 

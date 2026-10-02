@@ -14,9 +14,9 @@ import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { TryoutCompleteScreen } from '@/components/marketing/TryoutCompleteScreen';
 import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
 import { loadTryoutParams } from '@/lib/tryout/guest-params';
+import { TRYOUT_CHARACTER_NAME } from '@/lib/tryout/character';
 import { useTryoutGate } from '@/lib/hooks/useTryoutGate';
 
-const CHAR_NAME = 'Sam';
 const CHAR_COLOR = '#2D3BC5';
 
 export default function TryoutAvatarPage() {
@@ -130,15 +130,13 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
   if (gate.state === 'blocked' || blocked) {
     return (
       <TryoutBlockedScreen
-        targetLanguage={targetLanguage}
-        nativeLanguage={nativeLanguage}
         retryAfterMs={gate.state === 'blocked' ? gate.retryAfterMs : blockedRetryAfterMs}
       />
     );
   }
 
   if (completed || limitReached) {
-    return <TryoutCompleteScreen targetLanguage={targetLanguage} nativeLanguage={nativeLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
+    return <TryoutCompleteScreen targetLanguage={targetLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
   }
 
   return (
@@ -169,7 +167,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
                   <Volume2 className="h-8 w-8 text-dojo-accent" />
                 </div>
-                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {CHAR_NAME}</h2>
+                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {TRYOUT_CHARACTER_NAME}</h2>
                 <p className="text-sm text-dojo-text-muted mb-6 leading-relaxed">
                   A quick preview of what real practice feels like.
                 </p>
@@ -193,7 +191,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                       },
                     }).catch(() => setGreetingSent(false));
                   }}
-                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
+                  className="inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
                 >
                   <Volume2 className="h-5 w-5" />
                   Start conversation
@@ -204,7 +202,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
 
           <div className="flex-1 flex items-center justify-center relative">
             <AvatarViewport3D
-              name={CHAR_NAME}
+              name={TRYOUT_CHARACTER_NAME}
               accentColor={CHAR_COLOR}
               mode={avatarMode}
               modelUrl={DEFAULT_AVATAR_MODEL_URL}
@@ -303,11 +301,11 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: isAi ? CHAR_COLOR : '#6366f1' }}>
-                    {isAi ? CHAR_NAME[0] : 'U'}
+                    {isAi ? TRYOUT_CHARACTER_NAME[0] : 'U'}
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? CHAR_NAME : 'You'}</span>
+                      <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? TRYOUT_CHARACTER_NAME : 'You'}</span>
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
                       <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
@@ -322,7 +320,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
             {streamingText && (
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: CHAR_COLOR }}>
-                  {CHAR_NAME[0]}
+                  {TRYOUT_CHARACTER_NAME[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
                   <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">

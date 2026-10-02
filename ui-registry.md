@@ -63,8 +63,8 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar |
 | `DemoVideoDialog` | — | Fullscreen modal with custom video controls, triggered from the hero |
 | `TryoutPanel` | — | Client-side target/native language picker on the hero; pulls target languages from `lib/language.ts` `TARGET_LANGUAGES` and native languages from `NATIVE_LANGUAGES`. Links to `/tryout?targetLanguage=..&nativeLanguage=..`, which runs a real (unauthenticated) guest roleplay preview — see `app/tryout/`, `app/api/tryout/{start,turn}/route.ts`, `lib/hooks/useGuestRoleplaySession.ts` |
-| `TryoutCompleteScreen` | `targetLanguage`, `nativeLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/onboarding/level?targetLanguage=..&nativeLanguage=..` — **not** `/auth`; the old shortcut skipped the wizard, so the account got preferences but no level, goal or course enrolment |
-| `TryoutBlockedScreen` | `targetLanguage?`, `nativeLanguage?`, `retryAfterMs` | Shown when the 24h tryout gate is closed. Live `HH:MM:SS` countdown driven off `retryAfterMs`, with onboarding as the primary action — signing up doesn't shorten the window, it makes it irrelevant |
+| `TryoutCompleteScreen` | `targetLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/auth/signup`. The wizard is only for a signed-in account that has not been set up; sending a guest into it put account creation at the end of a questionnaire. Tryout's language pair stays in sessionStorage and prefills the wizard after they have an account |
+| `TryoutBlockedScreen` | `retryAfterMs` | Shown when the 24h tryout gate is closed. Live `HH:MM:SS` countdown driven off `retryAfterMs`, with sign-up as the primary action — signing up doesn't shorten the window, it makes it irrelevant |
 | `FooterNewsletter` | — | "Stay in the loop" email capture in the marketing footer's 6th column. **No backend**: there is no newsletter route under `app/api/`, so submit only flips to a local acknowledgement — wire the handler when an endpoint exists |
 | `PartnerBadge` (local to `app/(marketing)/page.tsx`) | `name`, `logo?` | Marquee tile in the Partners section. Tile is `h-16 w-24 / sm:h-20 sm:w-28` — deliberately wider than tall, because the assets in `public/brands/` range from a 4:1 wordmark to detailed university crests that were unreadable in the old 56px square. Uses **hardcoded `bg-white`** (documented exception): every logo file has a baked-in white background, so a themed surface only framed a white rectangle in dark mode. Partners with no `logo` fall back to an initial badge |
 
@@ -528,8 +528,8 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/auth/reset` | Set a new password | Landing page for the emailed reset link |
 | `/auth/suspended` | Account access paused | Where a suspended or closed account lands. The `(app)` layout sends them here rather than to `/auth`, because bouncing someone to a sign-in page they *can* sign into is a loop with no explanation in it — `getAuthUser()` is what refuses them, not their credentials. Reads `users.status` / `suspendedReason` through `getAuthUserReadOnly`, since `getAuthUser()` returns null for exactly the accounts this page serves |
 | `/auth/verify-email` | Verify your email | The shared step between creating an account and being let in. `?email=` (required), `?sent=1` (a code was already mailed — do not auto-send), `?next=` (where to land) |
-| `/onboarding/[step]` | Learner wizard | Level → goal → domain → mode → age → languages → frequency → account |
-| `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/level`). welcome → native-language → availability → ready |
+| `/onboarding/[step]` | Learner wizard | Session required (guest → `/auth/signup`). welcome → level → goal → domain → mode → age → languages → frequency → plan-ready |
+| `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/welcome`). welcome → native-language → availability → ready |
 
 ### Email verification is not optional
 
@@ -553,9 +553,17 @@ The profile stays in component state the whole way, so verification never costs 
 
 **Do not post the profile straight after sign-up.** That was the original shape and it 401'd every first-time applicant, leaving an account behind with no `tutors` row.
 
+### Learner onboarding (`/onboarding/[step]`)
+
+The learner wizard is only for a **signed-in account that has not finished setup**. `app/onboarding/[step]/layout.tsx` sends a guest to `/auth/signup` and a tutor to `/onboarding/tutor/welcome`. `/onboarding` redirects to `/onboarding/welcome`.
+
+Tryout does not enter the wizard. `TryoutCompleteScreen` and `TryoutBlockedScreen` go to `/auth/signup`. After the account exists (and the email is verified), sign-up lands on `/onboarding` like any other new learner. The tryout language pair stays in sessionStorage and prefills the language steps.
+
+Steps are defined once in `ONBOARDING_STEPS` (`lib/onboarding/steps.ts`). The first is `welcome` (the account is ready; let's set up learning). The last is `plan-ready`, which `POST`s `/api/user/onboarding` and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST so Courses and the calendar are populated; it is only the fallback landing when the domain cannot be resolved. There is no account-creation step in the wizard — that used to sit at the end so a guest could walk the questions first.
+
 ### Tutor onboarding (`/onboarding/tutor/[step]`)
 
-**A tutor does not walk the learner wizard.** The `(app)` gate in `app/(app)/layout.tsx` redirects any account with `onboardingCompletedAt === null`, and it branches on the role: `tutor` → `/onboarding/tutor/welcome`, everyone else → `/onboarding/level`. Before this branch existed, every new tutor was asked for a level, a learning goal, a domain to practise, a practice mode and a daily practice target — none of which any teaching surface reads.
+**A tutor does not walk the learner wizard.** The `(app)` gate in `app/(app)/layout.tsx` redirects any account with `onboardingCompletedAt === null`, and it branches on the role: `tutor` → `/onboarding/tutor/welcome`, everyone else → `/onboarding/welcome`. Before this branch existed, every new tutor was asked for a level, a learning goal, a domain to practise, a practice mode and a daily practice target — none of which any teaching surface reads.
 
 Four steps, defined once in `TUTOR_ONBOARDING_STEPS` (`lib/onboarding/steps.ts`):
 
@@ -745,6 +753,24 @@ Last updated: 2026-07-25
 - Each mode card has a distinct accent color: Chat=accent, Voice=#3FB27F, Avatar=#8B5CF6
 - Cards are links via `router.push` — no `<a>` tags
 - Footer shows "View Report" link when session.status === 'completed'
+
+### Greeting overlay (Start conversation)
+
+File: `app/(app)/session/[sessionId]/avatar/page.tsx` (same structure on voice + tryout)
+Last updated: 2026-10-02
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Overlay          | `absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6` |
+| Card             | `text-center max-w-xs`                          |
+| Icon well        | `h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30` |
+| Heading          | `text-lg font-bold leading-none text-dojo-text-primary mb-2` |
+| Body             | `text-sm text-dojo-text-muted mb-6 leading-relaxed` |
+| CTA              | `inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95` |
+
+**Pattern notes:**
+- Overlay is a sibling of the stage column, not inside it — `absolute inset-0` must cover the full main area (stage + `w-80` coach panel) or the CTA sits left of the session viewport center.
+- CTA is `inline-flex`, not `flex`. Parent `text-center` does not center a block-level `display:flex` button; the icon well needs `mx-auto` for the same reason.
 
 ### PhaseIndicator
 

@@ -1,4 +1,9 @@
 import { redirect } from 'next/navigation';
-export default function OnboardingPage() {
-  redirect('/onboarding/level');
+import { getUserRoleReadOnly } from '@/lib/auth/server';
+
+export default async function OnboardingPage() {
+  const role = await getUserRoleReadOnly();
+  if (!role) redirect('/auth/signup');
+  if (role === 'tutor') redirect('/onboarding/tutor/welcome');
+  redirect('/onboarding/welcome');
 }

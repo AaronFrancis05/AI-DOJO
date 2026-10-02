@@ -102,9 +102,9 @@ export default async function AppLayout({
     // An admin skips it entirely. Neither wizard collects anything the console
     // reads, and an operator pre-provisioned by another admin (which leaves
     // `onboardingCompletedAt` null — see /api/admin/users/create) would
-    // otherwise be held at a learner level-picker on the way to /admin.
+    // otherwise be held at the learner wizard on the way to /admin.
     if (dbUser && dbUser.onboardingCompletedAt === null && role !== 'admin') {
-      redirect(role === 'tutor' ? '/onboarding/tutor/welcome' : '/onboarding/level');
+      redirect(role === 'tutor' ? '/onboarding/tutor/welcome' : '/onboarding/welcome');
     }
 
     // What the sidebar tells a tutor about their own standing. Also fetched

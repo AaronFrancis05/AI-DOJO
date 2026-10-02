@@ -1210,6 +1210,44 @@ Session Time is no longer `now - startedAt`. `sessions.activeDurationSeconds` ac
 
 Complete: **Continue Learning** (`continueHref` → next lesson or `/library`) + **View Report**. Incomplete: **Repeat Lesson** creates a new session (same lesson/avatar/languages) and opens the same Voice/Avatar mode; **Next Lesson** stays even on fail; **View Report** replaces Leave Session. Abandoned report drops **Back to Home**; **Back to Sessions** is the leave-abandoned path. Repeat must not reopen the completed session id.
 
+## 2026-10-02 (Start conversation CTA centering)
+
+Greeting overlay CTA sat left of center for two reasons: the button used `flex` (block-level, so `text-center` on the parent did not center it) and the overlay was `absolute inset-0` on the left stage column only, ignoring the `lg` `w-80` coach panel. CTA is now `inline-flex`; session voice/avatar overlays cover the full main area. Same `inline-flex` change on tryout voice/avatar.
+
+## 2026-10-02 (tryout character is Sam, not Tanaka)
+
+The preview chrome already said Sam; the roleplay prompt did not name the partner, so the model often introduced itself as Tanaka. UI and turn prompt now share `TRYOUT_CHARACTER_NAME` (`Sam`) and the model is told not to invent a local name.
+
+## 2026-10-02 (tryout TTS switches voice for English glosses)
+
+Undelimited CJK replies were one target span, so 「Nice to meet you」 inside a Japanese line was read by the Japanese voice. Latin-letter runs of 3+ letters now use the native voice; short tokens like OK stay on the target voice. Session ⟦ ⟧ lines are unchanged.
+
+## 2026-10-02 (tryout TTS follows the target line)
+
+Tryout replies have no ⟦ ⟧ markers. Mixed TTS treated unmarked text as native, so a Japanese target line with an English native gloss was synthesized with the English voice and mangled. Undelimited speech now uses the target voice unless a CJK target's script is absent from the line.
+
+## 2026-10-02 (tryout phase advances without Redis)
+
+Guest tryout icebreaker/roleplay/closing was keyed only on a Redis turn counter. Local `.env` has Upstash commented out, so every turn looked like phrase 1, the roleplay prompt never ran, and Nice work! never fired. Redis remains the budget when configured; without it, phase and the 8-turn cap follow the posted history's user-turn count. Advancement is still by attempt, not by whether the phrase was correct.
+
+## 2026-10-02 (tryout icebreaker no longer ends on feedback)
+
+The icebreaker prompt told the model to give a 5-word note and wait for the *next* HTTP turn to teach the next phrase. The server advanced, but the learner saw only 「とても上手です！」 and had nothing to say. Feedback and the next phrase (or the roleplay opener after phrase 5) now go in the same reply. Same-language tryouts omit the duplicated native line.
+
+## 2026-10-02 (onboarding is signed-in setup, not a guest questionnaire)
+
+Sign-up used to drop a new learner straight onto "What's your current level?" with no greeting, while tryout's Nice work / used-your-preview screens sent guests into the same wizard and created the account at the end ("Almost there!"). Two doors, two first impressions, and the last step only existed for the guest path.
+
+- Tryout complete and blocked screens now go to `/auth/signup`. The language pair stays in sessionStorage and still prefills the wizard after they have an account.
+- Learner `/onboarding` requires a session (`app/onboarding/[step]/layout.tsx` → `/auth/signup`; tutors still get their own wizard). `/onboarding` and the `(app)` gate land on `/onboarding/welcome`.
+- First step is a welcome interstitial ("Let's set up your learning"). The account-creation step is gone; `plan-ready` POSTs `/api/user/onboarding` and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST. The OAuth resume flag that existed only for Google-from-the-last-step is gone with it.
+
+## 2026-10-02 (onboarding lands on the chosen Library domain)
+
+"What do you want to practice first?" is a Library domain, but finish used to open a course. The POST now returns `domainSlug` and the wizard goes to `/dojo/{slug}`. Enrolment and lesson-plan seeding are unchanged; course is the fallback when the domain row is missing.
+
+
+
 
 
 
