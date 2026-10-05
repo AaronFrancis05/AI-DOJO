@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useReducer, useRef, type ReactNode, type Dispatch } from 'react';
-import { loadTryoutParams } from '@/lib/tryout/guest-params';
+import { loadTryoutParams, sanitizeLanguageCode } from '@/lib/tryout/guest-params';
 
 const STORAGE_KEY = 'ai-dojo:onboarding';
 
@@ -105,8 +105,8 @@ function prefillFromTryout(): Partial<OnboardingState> {
   };
   const saved = loadTryoutParams();
 
-  const targetLanguage = fromQuery.targetLanguage ?? saved?.targetLanguage;
-  const nativeLanguage = fromQuery.nativeLanguage ?? saved?.nativeLanguage;
+  const targetLanguage = sanitizeLanguageCode(fromQuery.targetLanguage) ?? sanitizeLanguageCode(saved?.targetLanguage);
+  const nativeLanguage = sanitizeLanguageCode(fromQuery.nativeLanguage) ?? sanitizeLanguageCode(saved?.nativeLanguage);
 
   return {
     ...(targetLanguage ? { targetLanguage } : {}),

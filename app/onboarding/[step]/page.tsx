@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   useOnboarding,
@@ -9,27 +9,27 @@ import {
 import {
   ONBOARDING_STEPS, LEVEL_OPTIONS, GOAL_OPTIONS,
   MODE_OPTIONS, AGE_OPTIONS, FREQUENCY_OPTIONS,
+  onboardingStepPath,
 } from '@/lib/onboarding/steps';
-import { SingleSelectStep, InterstitialStep, OnboardingShell } from '@/components/onboarding';
+import { SingleSelectStep, InterstitialStep, OnboardingShell, OnboardingPractice } from '@/components/onboarding';
 import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
 import { useLanguageCatalog } from '@/lib/language-context';
 import { Sparkles, MessageSquare, BookOpen, CheckCircle2, LoaderIcon } from 'lucide-react';
 
 const [
   WELCOME,
+  TARGET_LANGUAGE,
+  NATIVE_LANGUAGE,
   LEVEL,
   SOCIAL_PROOF,
   GOAL,
-  TRANSITION_1,
-  DOMAIN,
+  FREQUENCY,
   MODE,
   TRANSITION_2,
+  DOMAIN,
   AGE,
-  TARGET_LANGUAGE,
-  NATIVE_LANGUAGE,
-  FREQUENCY,
-  PERSONALIZING,
-  PLAN_READY,
+  TRANSITION_1,
+  PRACTICE,
 ] = ONBOARDING_STEPS;
 
 type StepComponent = React.ReactNode;
@@ -37,14 +37,15 @@ type StepComponent = React.ReactNode;
 export default function OnboardingStepPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isPreview = searchParams.get('preview') === '1';
   const step = params.step as string;
   const { state, dispatch } = useOnboarding();
   const catalog = useLanguageCatalog();
   const [saving, setSaving] = useState(false);
   const [dbDomains, setDbDomains] = useState<{ id: number; name: string; icon: string; description: string }[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
-  // The completing POST is fired from an effect, and an effect runs twice in
-  // development. One attempt per mount of the last step.
+  // One completion POST per sitting — the finish button and skip share this.
   const completing = useRef(false);
 
   useEffect(() => {
@@ -81,6 +82,14 @@ export default function OnboardingStepPage() {
    * and is the fallback when the domain cannot be resolved. /home is last.
    */
   const submitOnboarding = useCallback(async () => {
+    // A dry run never writes. Loop to welcome so the screens can be walked
+    // again without minting an account or overwriting a real profile.
+    if (isPreview) {
+      clearPersistedOnboarding();
+      router.push(onboardingStepPath('/onboarding', WELCOME.key, true));
+      return;
+    }
+
     const onboardingPayload: Record<string, unknown> = {};
     if (state.level) onboardingPayload.level = state.level;
     if (state.learningGoal) onboardingPayload.learningGoal = state.learningGoal;
@@ -99,6 +108,11 @@ export default function OnboardingStepPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingPayload),
       });
+      if (res.status === 401) {
+        clearPersistedOnboarding();
+        router.push(onboardingStepPath('/onboarding', WELCOME.key));
+        return;
+      }
       const data = await res.json().catch(() => null);
       if (data?.domainSlug) {
         destination = `/dojo/${data.domainSlug}`;
@@ -112,29 +126,18 @@ export default function OnboardingStepPage() {
 
     clearPersistedOnboarding();
     router.push(destination);
-  }, [state, router]);
+  }, [state, router, isPreview]);
 
-  useEffect(() => {
-    if (step === PERSONALIZING.key) {
-      const t = setTimeout(() => router.push(`/onboarding/${PLAN_READY.key}`), 2000);
-      return () => clearTimeout(t);
-    }
-  }, [step, router]);
-
-  useEffect(() => {
-    if (step !== PLAN_READY.key) return;
-    const t = setTimeout(() => {
-      if (completing.current) return;
-      completing.current = true;
-      setSaving(true);
-      void submitOnboarding();
-    }, 2500);
-    return () => clearTimeout(t);
-  }, [step, submitOnboarding]);
+  const finishPractice = useCallback(() => {
+    if (completing.current) return;
+    completing.current = true;
+    setSaving(true);
+    void submitOnboarding();
+  }, [submitOnboarding]);
 
   const goToStep = useCallback((key: string) => {
-    router.push(`/onboarding/${key}`);
-  }, [router]);
+    router.push(onboardingStepPath('/onboarding', key, isPreview));
+  }, [router, isPreview]);
 
   const selectAndAdvance = useCallback((type: string, payload: unknown, nextStep: string) => {
     dispatch({ type: type as never, payload: payload as never });
@@ -147,7 +150,7 @@ export default function OnboardingStepPage() {
       <InterstitialStep
         title={WELCOME.title}
         subtitle={WELCOME.subtitle}
-        onContinue={() => goToStep(LEVEL.key)}
+        onContinue={() => goToStep(TARGET_LANGUAGE.key)}
       />
     ),
     [LEVEL.key]: (
@@ -187,7 +190,7 @@ export default function OnboardingStepPage() {
       <SingleSelectStep
         options={GOAL_OPTIONS}
         value={state.learningGoal}
-        onChange={(v) => selectAndAdvance('SET_LEARNING_GOAL', v, TRANSITION_1.key)}
+        onChange={(v) => selectAndAdvance('SET_LEARNING_GOAL', v, FREQUENCY.key)}
         title={GOAL.title}
         subtitle={GOAL.subtitle}
       />
@@ -195,7 +198,7 @@ export default function OnboardingStepPage() {
     [TRANSITION_1.key]: (
       <InterstitialStep
         title="Great! Let's get you started!"
-        onContinue={() => goToStep(DOMAIN.key)}
+        onContinue={() => goToStep(PRACTICE.key)}
       />
     ),
     [DOMAIN.key]: (
@@ -218,8 +221,8 @@ export default function OnboardingStepPage() {
                   type="button"
                   onClick={() => {
                     dispatch({ type: 'SET_PREFERRED_DOMAIN', payload: { id: d.id, name: d.name } });
-                    dispatch({ type: 'COMPLETE_STEP', payload: MODE.key });
-                    goToStep(MODE.key);
+                    dispatch({ type: 'COMPLETE_STEP', payload: AGE.key });
+                    goToStep(AGE.key);
                   }}
                   className={`flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all ${
                     selected
@@ -251,18 +254,18 @@ export default function OnboardingStepPage() {
     [TRANSITION_2.key]: (
       <InterstitialStep
         title="You're almost set up!"
-        onContinue={() => goToStep(AGE.key)}
+        onContinue={() => goToStep(DOMAIN.key)}
       />
     ),
     [AGE.key]: (
       <SingleSelectStep
         options={AGE_OPTIONS}
         value={state.ageRange}
-        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, TARGET_LANGUAGE.key)}
+        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, TRANSITION_1.key)}
         title={AGE.title}
         subtitle={AGE.subtitle}
         skippable={true}
-        onSkip={() => goToStep(TARGET_LANGUAGE.key)}
+        onSkip={() => goToStep(TRANSITION_1.key)}
       />
     ),
     [TARGET_LANGUAGE.key]: (
@@ -293,8 +296,8 @@ export default function OnboardingStepPage() {
           searchPlaceholder="Search your native language..."
           onSelect={(code) => {
             dispatch({ type: 'SET_NATIVE_LANGUAGE', payload: code });
-            dispatch({ type: 'COMPLETE_STEP', payload: FREQUENCY.key });
-            goToStep(FREQUENCY.key);
+            dispatch({ type: 'COMPLETE_STEP', payload: LEVEL.key });
+            goToStep(LEVEL.key);
           }}
         />
       </div>
@@ -314,8 +317,8 @@ export default function OnboardingStepPage() {
                 type="button"
                 onClick={() => {
                   dispatch({ type: 'SET_DAILY_GOAL_MINUTES', payload: opt.value });
-                  dispatch({ type: 'COMPLETE_STEP', payload: PERSONALIZING.key });
-                  goToStep(PERSONALIZING.key);
+                  dispatch({ type: 'COMPLETE_STEP', payload: MODE.key });
+                  goToStep(MODE.key);
                 }}
                 className={`flex items-center gap-4 rounded-xl border p-4 text-left transition-all ${
                   selected
@@ -340,32 +343,24 @@ export default function OnboardingStepPage() {
         </div>
       </div>
     ),
-    [PERSONALIZING.key]: (
-      <InterstitialStep
-        title="Personalization in progress"
-        loading={true}
-        autoAdvance={true}
-      />
-    ),
-    [PLAN_READY.key]: (
-      <InterstitialStep
-        title="Your personalized plan is ready!"
-        autoAdvance={true}
-        loading={saving}
-      >
-        <div className="flex flex-col items-center gap-2 text-sm text-dojo-text-muted">
-          <p>Scenarios chosen for your level</p>
-          <p>Preferred mode: {state.preferredMode || 'no preference'}</p>
-          <p>Daily goal: {state.dailyGoalMinutes} minutes</p>
-        </div>
-      </InterstitialStep>
-    ),
   };
 
   if (!step) return null;
 
+  if (step === PRACTICE.key) {
+    return (
+      <OnboardingPractice
+        state={state}
+        preview={isPreview}
+        finishing={saving}
+        onBack={() => goToStep(TRANSITION_1.key)}
+        onFinish={finishPractice}
+      />
+    );
+  }
+
   return (
-    <OnboardingShell currentStep={step} exitHref="/">
+    <OnboardingShell currentStep={step} exitHref="/" preview={isPreview}>
       {stepContent[step] ?? (
         <div className="py-12 text-center">
           <p className="text-dojo-text-muted">Step not found</p>

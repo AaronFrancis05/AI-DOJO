@@ -1246,6 +1246,20 @@ Sign-up used to drop a new learner straight onto "What's your current level?" wi
 
 "What do you want to practice first?" is a Library domain, but finish used to open a course. The POST now returns `domainSlug` and the wizard goes to `/dojo/{slug}`. Enrolment and lesson-plan seeding are unchanged; course is the fallback when the domain row is missing.
 
+## 2026-10-05 (onboarding ends in a first practice)
+
+- Dropped the fake `personalizing` / `plan-ready` screens. After "Great! Let's get you started!" the learner does a 5-phrase icebreaker on `/onboarding/practice` against `/api/onboarding/turn` (JSON, native gloss, Tryout-like rate limit). Chat mode = Voice with the transcript open. Situation = chosen domain + `skillLevel`, else first active row. The sitting teaches that scenario's vocabulary one phrase at a time and does not open the scene.
+- Finish (or skip) is the only `POST /api/user/onboarding`; landing is still `/dojo/{slug}` else course else `/home`. Preview never writes. Back remounts the sample.
+- Tryout signup carries `targetLanguage` / `nativeLanguage` on `/auth/signup` and through to `/onboarding`; context prefills from the query then sessionStorage.
+
+## 2026-10-05 (tryout/onboarding wait for last TTS)
+
+Nice work used to replace the stage as soon as the last turn JSON arrived, which unmounted TTS before the closing line was shown or heard. Both hooks now paint the last AI bubble and await `speaker.finish()` before setting `completed` / `limitReached`. Mid-sitting turns still fire-and-forget speech so barge-in keeps working.
+
+## 2026-10-05 (onboarding DATABASE_URL client throw)
+
+`OnboardingPractice` (client) imported `lib/onboarding/practice.ts`, which loads `src/db.ts`. Next inlines non-`NEXT_PUBLIC_` env as `undefined` in the client bundle, so every onboarding step threw `DATABASE_URL is not defined` even with `.env` set. UI helpers/types live in `lib/onboarding/practice-shared.ts`; DB/cache stay in `practice.ts`.
+
 
 
 

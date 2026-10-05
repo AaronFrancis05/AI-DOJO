@@ -101,7 +101,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
         // sentences so the first one starts without waiting for the rest.
         onTextDone: (t: string) => {
           setStreamingText(null);
-          speaker.finish(cleanDisplay(t)).catch(() => {});
+          return speaker.finish(cleanDisplay(t)).catch(() => {});
         },
       });
     } catch (e) {
@@ -136,7 +136,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
   }
 
   if (completed || limitReached) {
-    return <TryoutCompleteScreen targetLanguage={targetLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
+    return <TryoutCompleteScreen targetLanguage={targetLanguage} nativeLanguage={nativeLanguage} turnCount={conversations.filter(c => c.speaker === 'user').length} />;
   }
 
   return (
@@ -187,7 +187,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                       onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t) => {
                         setStreamingText(null);
-                        speaker.finish(cleanDisplay(t)).catch(() => {});
+                        return speaker.finish(cleanDisplay(t)).catch(() => {});
                       },
                     }).catch(() => setGreetingSent(false));
                   }}

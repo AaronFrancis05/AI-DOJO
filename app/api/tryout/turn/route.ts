@@ -17,21 +17,12 @@ import {
   readSessionCookieValue,
 } from '@/lib/tryout/gate';
 import { TRYOUT_CHARACTER_NAME } from '@/lib/tryout/character';
+import { TRYOUT_ICEBREAKER_PHRASES } from '@/lib/tryout/icebreaker-phrases';
 import type { ChatTurn } from '@/lib/ai-providers';
 
 export const runtime = 'nodejs';
 
-// Hardcoded 5 icebreaker words for the first-time introduction — the same set
-// for every target language; the LLM translates them per language in its reply.
-// These mirror src/seed.ts Scenario 1 (First Meeting) but as complete, natural
-// example sentences (no "___" templates).
-const ICEBREAKER_WORDS: Array<{ gloss: string; hint: string }> = [
-  { gloss: 'Nice to meet you', hint: 'first-meeting greeting' },
-  { gloss: 'My name is Alex', hint: 'self-introduction with your name' },
-  { gloss: 'What is your name?', hint: 'asking the other person\'s name' },
-  { gloss: 'I am from Uganda', hint: 'stating where you are from' },
-  { gloss: 'I look forward to knowing you', hint: 'warm closing after introduction' },
-];
+const ICEBREAKER_WORDS = TRYOUT_ICEBREAKER_PHRASES;
 
 interface GuestTurn {
   speaker: 'user' | 'ai';
