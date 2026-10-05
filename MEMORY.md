@@ -1256,6 +1256,10 @@ Sign-up used to drop a new learner straight onto "What's your current level?" wi
 
 Nice work used to replace the stage as soon as the last turn JSON arrived, which unmounted TTS before the closing line was shown or heard. Both hooks now paint the last AI bubble and await `speaker.finish()` before setting `completed` / `limitReached`. Mid-sitting turns still fire-and-forget speech so barge-in keeps working.
 
+## 2026-10-05 (Google OAuth lands like email)
+
+Google's callback used to skip `syncUser` for new learners and send them to `/onboarding` with no `users` row. The wizard's stamp then had nothing to write, so they saw onboarding again next visit. The exchange now always `syncUser()`s, then `roleHome` (`/home` for learners, `/admin` after allowlist promotion). The `(app)` layout still sends `onboardingCompletedAt === null` to the wizard.
+
 ## 2026-10-05 (onboarding DATABASE_URL client throw)
 
 `OnboardingPractice` (client) imported `lib/onboarding/practice.ts`, which loads `src/db.ts`. Next inlines non-`NEXT_PUBLIC_` env as `undefined` in the client bundle, so every onboarding step threw `DATABASE_URL is not defined` even with `.env` set. UI helpers/types live in `lib/onboarding/practice-shared.ts`; DB/cache stay in `practice.ts`.

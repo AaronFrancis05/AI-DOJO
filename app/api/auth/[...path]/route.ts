@@ -8,7 +8,6 @@ import { appendSetCookies } from '@/lib/auth/cookies';
 import { auth, getConfig } from '@/lib/auth/server';
 import { roleHome } from '@/lib/auth/destinations';
 import { toUserRole } from '@/lib/auth/roles';
-import { isAdminEmail } from '@/lib/auth/admin-allowlist';
 import { promoteAllowlistedAdmin } from '@/lib/auth/claim-admin';
 import { syncUser } from '@/lib/auth/sync-user';
 import { NextRequest, NextResponse } from 'next/server';
@@ -199,39 +198,34 @@ async function handleOAuthExchange(request: NextRequest) {
     return NextResponse.redirect(appUrl('/auth/signin?error=exchange_failed'));
   }
 
-  // Onboarding is only for brand-new *learner* signups. If this account
-  // already exists, the user is returning and should go straight to *their*
-  // part of the app. A tutor who signs in with Google is still a tutor.
+  // Email sign-in lands on roleHome and lets `(app)/layout` send incomplete
+  // learners to the wizard. Google used to skip `syncUser` for new learners
+  // and send them to `/onboarding` with no `users` row, so the stamp never
+  // stuck and they saw the wizard again. Create the row here, then land the
+  // same way. A tutor who signs in with Google is still a tutor.
   //
   // Admin is different: the password door claims via POST /api/auth/admin/claim,
   // but Google never returns to that form. The allowlist is the gate, so an
   // allowlisted address is promoted here — otherwise the admin Google button
   // would sign them in as a learner.
-  let redirectTarget = '/onboarding';
+  let redirectTarget = roleHome('learner');
   try {
     const sessionData = await builtinResponse.clone().json();
     const email = sessionData?.user?.email as string | undefined;
     const authId = sessionData?.user?.id as string | undefined;
     const name = sessionData?.user?.name as string | undefined;
-    if (email) {
-      const [existing] = await db
-        .select({ id: users.id, role: users.role })
+    if (authId && email) {
+      const dbUserId = await syncUser({ id: authId, email, name });
+      await promoteAllowlistedAdmin(dbUserId, email);
+      const [row] = await db
+        .select({ role: users.role })
         .from(users)
-        .where(eq(users.email, email))
+        .where(eq(users.id, dbUserId))
         .limit(1);
-
-      if (existing) {
-        const promoted = await promoteAllowlistedAdmin(existing.id, email);
-        redirectTarget =
-          promoted === 'claimed' ? roleHome('admin') : roleHome(toUserRole(existing.role));
-      } else if (authId && isAdminEmail(email)) {
-        const dbUserId = await syncUser({ id: authId, email, name });
-        const promoted = await promoteAllowlistedAdmin(dbUserId, email);
-        if (promoted === 'claimed') redirectTarget = roleHome('admin');
-      }
+      redirectTarget = roleHome(toUserRole(row?.role));
     }
   } catch (err) {
-    console.error('[oauth] failed to resolve existing user', err instanceof Error ? err.message : String(err));
+    console.error('[oauth] failed to resolve user after exchange', err instanceof Error ? err.message : String(err));
   }
 
   const response = NextResponse.redirect(appUrl(redirectTarget));
