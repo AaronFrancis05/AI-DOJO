@@ -86,7 +86,7 @@ export function PhaseTransitionCard({ transition, onDismiss, autoDismissMs = 300
             return (
               <div key={key} className="flex flex-1 items-center last:flex-none">
                 <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold"
                   style={
                     isCurrent
                       ? { backgroundColor: meta.hex, borderColor: 'transparent', color: '#fff', boxShadow: `0 0 16px ${meta.hex}` }

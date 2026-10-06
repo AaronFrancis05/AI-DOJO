@@ -194,7 +194,7 @@ export function VoiceOnlyStage({ name, accentColor, mode, role, volumeLevel = 0 
         {role && (
           <span className="text-sm text-dojo-text-muted tracking-wide">{role}</span>
         )}
-        <span className="flex items-center gap-1.5 rounded-full border border-dojo-border/60 bg-dojo-surface/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-dojo-text-muted">
+        <span className="flex items-center gap-1.5 rounded-full border border-dojo-border/60 bg-dojo-surface/70 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-dojo-text-muted">
           {mode === 'listening' ? (
             <>
               <span className="h-1.5 w-1.5 rounded-full bg-dojo-warning animate-pulse" />

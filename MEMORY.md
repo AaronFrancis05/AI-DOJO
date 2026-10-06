@@ -1260,6 +1260,14 @@ Nice work used to replace the stage as soon as the last turn JSON arrived, which
 
 Google's callback used to skip `syncUser` for new learners and send them to `/onboarding` with no `users` row. The wizard's stamp then had nothing to write, so they saw onboarding again next visit. The exchange now always `syncUser()`s, then `roleHome` (`/home` for learners, `/admin` after allowlist promotion). The `(app)` layout still sends `onboardingCompletedAt === null` to the wizard.
 
+## 2026-10-06 (signed-in dark mode lives in Settings)
+
+The marketing navbar had the only theme toggle. Signed-in chrome now uses Settings → Preferences (`Toggle`, same `ThemeProvider` / `ai-dojo-theme` key). Not a sidebar row — the learner nav already overflows on short laptops.
+
+## 2026-10-05 (readable floor on learning surfaces)
+
+Muted and border tokens were lifted (light muted `#584F44`, dark `#B8AB9A`; borders `#D4C5A8` / `#524033`) so secondary copy and cards separate without changing the warm palette. Learning speech in sitting bubbles is `text-base`; gloss and home body copy are `text-sm`; nothing in session/tryout/onboarding/home goes below `text-xs`, and `text-dojo-text-muted/60` restacks are gone. Marketing and admin were left for a later pass.
+
 ## 2026-10-05 (onboarding DATABASE_URL client throw)
 
 `OnboardingPractice` (client) imported `lib/onboarding/practice.ts`, which loads `src/db.ts`. Next inlines non-`NEXT_PUBLIC_` env as `undefined` in the client bundle, so every onboarding step threw `DATABASE_URL is not defined` even with `.env` set. UI helpers/types live in `lib/onboarding/practice-shared.ts`; DB/cache stay in `practice.ts`.

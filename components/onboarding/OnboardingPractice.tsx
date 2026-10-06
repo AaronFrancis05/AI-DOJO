@@ -344,7 +344,7 @@ function OnboardingPracticeSession({
                 >
                   {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                 </button>
-                <span className={`text-[10px] font-medium ${surface === 'avatar' ? 'text-white/70 drop-shadow-sm' : 'text-dojo-text-muted/60'}`}>Mute</span>
+                <span className={`text-xs font-medium ${surface === 'avatar' ? 'text-white/70 drop-shadow-sm' : 'text-dojo-text-muted'}`}>Mute</span>
               </div>
 
               <div className="flex flex-col items-center gap-2">
@@ -363,8 +363,8 @@ function OnboardingPracticeSession({
                 >
                   <Mic className="h-7 w-7 text-white" />
                 </button>
-                <span className={`text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
-                  voice.isListening ? 'animate-pulse text-dojo-warning' : surface === 'avatar' ? 'text-white/70 drop-shadow-sm' : 'text-dojo-text-muted/60'
+                <span className={`text-xs font-bold uppercase tracking-widest transition-all duration-300 ${
+                  voice.isListening ? 'animate-pulse text-dojo-warning' : surface === 'avatar' ? 'text-white/70 drop-shadow-sm' : 'text-dojo-text-muted'
                 }`}>
                   {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
@@ -383,7 +383,7 @@ function OnboardingPracticeSession({
                 >
                   <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className={`text-[10px] font-medium ${surface === 'avatar' ? 'text-white/70 drop-shadow-sm' : 'text-dojo-text-muted/60'}`}>Chat</span>
+                <span className={`text-xs font-medium ${surface === 'avatar' ? 'text-white/70 drop-shadow-sm' : 'text-dojo-text-muted'}`}>Chat</span>
               </div>
             </div>
           </div>
@@ -406,14 +406,14 @@ function OnboardingPracticeSession({
 
           <div className="no-scrollbar flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
             {conversations.length === 0 && (
-              <p className="py-8 text-center text-xs text-dojo-text-muted/60">No messages yet</p>
+              <p className="py-8 text-center text-sm text-dojo-text-muted">No messages yet</p>
             )}
             {conversations.map((turn) => {
               const isAi = turn.speaker === 'ai';
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${isAi ? 'flex-row' : 'flex-row-reverse'}`}>
                   <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10"
                     style={{ backgroundColor: isAi ? colors.accent : colors.idle }}
                   >
                     {isAi ? characterName[0] : 'U'}
@@ -421,9 +421,9 @@ function OnboardingPracticeSession({
                   <div className={`flex max-w-[80%] flex-col ${isAi ? 'items-start' : 'items-end'}`}>
                     <span className="mb-1 px-1 text-xs font-semibold text-dojo-text-primary">{isAi ? characterName : 'You'}</span>
                     <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90' : 'rounded-2xl rounded-tr-sm border border-dojo-accent/20 bg-dojo-accent/15'}`}>
-                      <p className="text-sm leading-relaxed text-dojo-text-primary">{turn.messageTarget}</p>
+                      <p className="text-base leading-relaxed text-dojo-text-primary">{turn.messageTarget}</p>
                       {isAi && turn.messageNative && (
-                        <p className="mt-1 text-[11px] italic text-dojo-text-muted">{turn.messageNative}</p>
+                        <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}
                     </div>
                   </div>
@@ -432,11 +432,11 @@ function OnboardingPracticeSession({
             })}
             {streamingText && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: colors.accent }}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: colors.accent }}>
                   {characterName[0]}
                 </div>
                 <div className="rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90 px-4 py-3 shadow-sm">
-                  <p className="text-sm leading-relaxed text-dojo-text-primary">
+                  <p className="text-base leading-relaxed text-dojo-text-primary">
                     {streamingText}
                     <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-dojo-accent align-middle" />
                   </p>
@@ -455,7 +455,7 @@ function OnboardingPracticeSession({
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
                 placeholder="Type a message..."
                 disabled={sending || !greetingSent}
-                className="flex-1 border-none bg-transparent px-1 py-2 text-sm text-dojo-text-primary outline-none placeholder:text-dojo-text-muted/50"
+                className="flex-1 border-none bg-transparent px-1 py-2 text-sm text-dojo-text-primary outline-none placeholder:text-dojo-text-muted"
               />
               <button
                 type="button"

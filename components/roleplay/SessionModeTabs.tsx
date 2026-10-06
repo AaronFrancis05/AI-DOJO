@@ -28,7 +28,7 @@ export function SessionModeTabs({ sessionId, active }: SessionModeTabsProps) {
             key={key}
             type="button"
             onClick={() => { stopTts(); router.push(`/session/${sessionId}/${key}`); }}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-all ${
               isActive
                 ? 'bg-dojo-accent text-white shadow-sm'
                 : 'text-dojo-text-muted hover:text-dojo-text-primary'

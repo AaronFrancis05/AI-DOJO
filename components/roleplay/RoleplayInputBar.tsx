@@ -174,7 +174,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               disabled={disabled}
-              className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+              className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none"
             />
             <button
               onClick={handleSend}
@@ -205,7 +205,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
               >
                 <VolumeX className="h-5 w-5" />
               </button>
-              <span className="text-[10px] text-dojo-text-muted/60 font-medium">Mute</span>
+              <span className="text-xs text-dojo-text-muted font-medium">Mute</span>
             </div>
 
             {/* Mic button */}
@@ -231,8 +231,8 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
                 </button>
               </div>
               <p className={cn(
-                "text-[10px] font-bold tracking-widest uppercase transition-all duration-300",
-                isListening ? "text-dojo-warning animate-pulse" : "text-dojo-text-muted/60"
+                "text-xs font-bold tracking-widest uppercase transition-all duration-300",
+                isListening ? "text-dojo-warning animate-pulse" : "text-dojo-text-muted"
               )}>
                 {isListening ? "Listening..." : micReady ? "Tap to Speak" : "Allow Mic"}
               </p>
@@ -246,7 +246,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
               >
                 <Keyboard className="h-5 w-5" />
               </button>
-              <span className="text-[10px] text-dojo-text-muted/60 font-medium">Type</span>
+              <span className="text-xs text-dojo-text-muted font-medium">Type</span>
             </div>
           </div>
         )}
@@ -269,7 +269,7 @@ export function RoleplayInputBar({ onSend, onPause, disabled, showTextInput, onT
           </button>
           <button
             onClick={onToggleTextInput}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-dojo-text-muted hover:text-dojo-text-primary text-[10px] font-bold tracking-widest uppercase transition-all duration-200"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-dojo-text-muted hover:text-dojo-text-primary text-xs font-bold tracking-widest uppercase transition-all duration-200"
           >
             <Mic className="h-3 w-3" />
             <span className="hidden xs:inline">Voice</span>

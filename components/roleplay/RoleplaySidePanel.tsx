@@ -94,14 +94,14 @@ export function RoleplaySidePanel({
             <span className="text-dojo-text-muted">Characters</span>
             <span className="flex items-center gap-1.5">
               <span
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[8px] font-bold text-white"
+                className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
                 style={{ backgroundColor: charColor ?? '#2D3BC5' }}
               >
                 {(charName ?? 'A')[0]}
               </span>
               <span className="text-dojo-text-primary font-medium">{charName ?? 'AI'}</span>
               <span className="text-dojo-text-muted mx-0.5">+</span>
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-[8px] text-dojo-text-muted">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-xs text-dojo-text-muted">
                 U
               </span>
             </span>
@@ -109,7 +109,7 @@ export function RoleplaySidePanel({
           {session?.behaviorMode && (
             <div className="flex items-center justify-between">
               <span className="text-dojo-text-muted">Difficulty</span>
-              <span className={`px-2 py-0.5 rounded-[--radius-pill] text-[10px] border ${
+              <span className={`px-2 py-0.5 rounded-[--radius-pill] text-xs border ${
                 behaviorModeClass[session.behaviorMode as keyof typeof behaviorModeClass] ?? behaviorModeClass.standard
               }`}>
                 {session.behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
@@ -150,13 +150,13 @@ export function RoleplaySidePanel({
               return (
                 <li key={goal.id} className="flex items-start gap-2">
                   <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       done ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'
                     }`}
                   >
                     {done ? '✓' : goal.sequenceOrder}
                   </span>
-                  <span className={`text-xs ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
+                  <span className={`text-sm leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
                     {goal.goalText}
                   </span>
                 </li>

@@ -10,7 +10,7 @@ export const colors = {
   sidebar:       '#130F0C',
   surface:       '#241C17',
   surfaceRaised: '#2C2119',
-  border:        '#3C2E24',
+  border:        '#524033',
   accent:        '#DD5B47',
   accentSoft:    '#472922',
   success:       '#2FAE66',
@@ -18,7 +18,7 @@ export const colors = {
   danger:        '#D14343',
   streak:        '#F0A93B',
   textPrimary:   '#F5F0E6',
-  textMuted:     '#A99C8B',
+  textMuted:     '#B8AB9A',
   /* Voice interface tokens — one accent per active party */
   listening:     '#F2A93B',
   aiSpeaking:    '#4FD1C5',

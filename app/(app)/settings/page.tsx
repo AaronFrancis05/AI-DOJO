@@ -18,6 +18,7 @@ import { type BehaviorMode } from '@/lib/design-tokens';
 import { ChevronRight, User, CreditCard, Check, LoaderIcon } from 'lucide-react';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
+import { useTheme } from '@/components/theme/ThemeProvider';
 import { AvatarSettingsDialog } from '@/components/settings/AvatarSettingsDialog';
 import { BillingDialog } from '@/components/settings/BillingDialog';
 import { OrganizationCard } from '@/components/organization/OrganizationCard';
@@ -31,6 +32,7 @@ const tabs: Tab[] = [
 export default function SettingsPage() {
   usePageTitle('Settings');
   const user = useUser();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
@@ -80,8 +82,8 @@ export default function SettingsPage() {
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Settings</h1>
         <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
-          Languages, notifications, privacy, avatar, and billing — the
-          preferences for how you practise.
+          Appearance, languages, notifications, privacy, avatar, and billing —
+          the preferences for how you practise.
         </p>
       </div>
 
@@ -138,6 +140,18 @@ export default function SettingsPage() {
             case 'preferences':
               return (
                 <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Appearance</h4>
+                    <Toggle
+                      label="Dark mode"
+                      description="Stays on this device. The marketing site uses the same preference."
+                      enabled={theme === 'dark'}
+                      onChange={(enabled) => {
+                        if (enabled !== (theme === 'dark')) toggleTheme();
+                      }}
+                    />
+                  </div>
+
                   <div>
                     <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Language</h4>
                     <div className="rounded-2xl border border-dojo-border bg-dojo-surface/60 p-5">

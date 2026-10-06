@@ -12,7 +12,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Sidebar bg | `--color-sidebar` | `bg-dojo-sidebar` | `#EFE8D8` | `#130F0C` |
 | Surface bg | `--color-surface` | `bg-dojo-surface` | `#FAF6EE` | `#241C17` |
 | Surface raised | `--color-surface-raised` | `bg-dojo-surface-raised` | `#FFFFFF` | `#2C2119` |
-| Border | `--color-border` | `border-dojo-border` | `#E3D9C4` | `#3C2E24` |
+| Border | `--color-border` | `border-dojo-border` | `#D4C5A8` | `#524033` |
 | Accent (primary) | `--color-accent` | `bg-dojo-accent` | `#C1392B` | `#DD5B47` |
 | Accent soft | `--color-accent-soft` | `bg-dojo-accent-soft` | `#F5DAD3` | `#472922` |
 | Success | `--color-success` | `bg-dojo-success` | `#16A34A` | `#2FAE66` |
@@ -22,14 +22,14 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Evaluation | `--color-evaluation` | `bg-dojo-evaluation` | `#8B5CF6` | `#8B5CF6` |
 | Icebreaker | `--color-icebreaker` | `bg-dojo-icebreaker` | `#D946EF` | `#D946EF` |
 | Text primary | `--color-text-primary` | `text-dojo-text-primary` | `#221A14` | `#F5F0E6` |
-| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#6B6153` | `#A99C8B` |
+| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#584F44` | `#B8AB9A` |
 
 **Text-safe (`-strong`) status variants.** The status/phase hues above are tuned for fills, dots and borders. Used as small text they fall under 4.5:1 on the light canvas (and read dim on the dark one), so every *label* rendered in a status colour uses the `-strong` variant instead. Fills, dots and borders keep the base token.
 
 | Token | CSS Variable | Tailwind Class | Hex (light) | Hex (dark) |
 |-------|-------------|----------------|-----|-----|
 | Success text | `--color-success-strong` | `text-dojo-success-strong` | `#15803D` | `#4ADE80` |
-| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#B45309` | `#FBBF24` |
+| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#A14008` | `#FBBF24` |
 | Danger text | `--color-danger-strong` | `text-dojo-danger-strong` | `#B91C1C` | `#F87171` |
 | Streak text | `--color-streak-strong` | `text-dojo-streak-strong` | `#C2410C` | `#F5B65C` |
 | Icebreaker text | `--color-icebreaker-strong` | `text-dojo-icebreaker-strong` | `#A21CAF` | `#E879F9` |
@@ -37,6 +37,15 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 **Radius:** `--radius-sm: 8px`, `--radius-md: 12px`, `--radius-lg: 16px`
 
 **Fonts:** `--font-sans` (Inter, body/UI), `--font-mono` (Geist Mono), `--font-display` (Playfair Display, `font-display` utility) — used for hero/section headings on the marketing site.
+
+**Type scale (readable floor).** Copy never goes below `text-xs` (12px). Do not use `text-[9px]`, `text-[10px]`, `text-[11px]`. Do not restack `text-dojo-text-muted` with `/50` `/60` `/70` `/80` or `opacity-*` — muted is already the secondary colour.
+
+| Role | Class | Use for |
+|------|-------|---------|
+| Learning speech | `text-base leading-relaxed text-dojo-text-primary` | Target-language line in a sitting bubble |
+| Sentence / gloss | `text-sm leading-relaxed` | Native gloss, phonetic, coach explanation, home body copy |
+| Caption / kicker | `text-xs` | Uppercase section labels, timestamps, Mute/Chat, badges |
+| Chrome on 3D | `text-xs text-white/70 drop-shadow-sm` | Avatar overlay labels only — the backdrop is a photo, not a token surface |
 
 ## UI Primitives (`/components/ui/`)
 | Component | Props | Usage Notes |
@@ -60,7 +69,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 ## Marketing Components (`/components/marketing/`)
 | Component | Props | Notes |
 |-----------|-------|-------|
-| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar |
+| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar. Signed-in appearance is Settings → Preferences (`Toggle` "Dark mode"), not a sidebar item — the nav already scrolls on short laptops. Both write `ai-dojo-theme` in localStorage via `ThemeProvider`. |
 | `DemoVideoDialog` | — | Fullscreen modal with custom video controls, triggered from the hero |
 | `TryoutPanel` | — | Client-side target/native language picker on the hero; pulls target languages from `lib/language.ts` `TARGET_LANGUAGES` and native languages from `NATIVE_LANGUAGES`. Links to `/tryout?targetLanguage=..&nativeLanguage=..`, which runs a real (unauthenticated) guest roleplay preview — see `app/tryout/`, `app/api/tryout/{start,turn}/route.ts`, `lib/hooks/useGuestRoleplaySession.ts` |
 | `TryoutCompleteScreen` | `targetLanguage`, `nativeLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/auth/signup?targetLanguage=&nativeLanguage=` so the wizard prefills even if sessionStorage is gone. The wizard is only for a signed-in account that has not been set up; sending a guest into it put account creation at the end of a questionnaire |
@@ -581,7 +590,8 @@ Last updated: 2026-10-05
 | Chat panel       | `w-80 max-w-[85vw] sm:w-96 border-r border-dojo-border/60 bg-dojo-surface/95` |
 | AI bubble        | `rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90` |
 | User bubble      | `rounded-2xl rounded-tr-sm border border-dojo-accent/20 bg-dojo-accent/15` |
-| Native gloss     | `text-[11px] italic text-dojo-text-muted` |
+| Target speech    | `text-base leading-relaxed text-dojo-text-primary` |
+| Native gloss     | `text-sm italic leading-relaxed text-dojo-text-muted` |
 | Mic well         | Voice: `border-dojo-border/60 bg-dojo-surface/80 shadow-2xl backdrop-blur-xl`; Avatar: `border-white/10 bg-black/10 backdrop-blur-[2px]` (matches tryout avatar chrome) |
 
 **Pattern notes:**

@@ -516,13 +516,13 @@ export default function VoiceOnlyPage() {
                   <span className="text-xs text-dojo-text-muted">👤</span>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-dojo-text-muted/60 font-medium">Your Role</p>
+                  <p className="text-xs uppercase tracking-wider text-dojo-text-muted font-medium">Your Role</p>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{scenario?.userCharacterRole ?? 'Learner'}</p>
                 </div>
               </div>
               {primaryGoal && (
                 <div className="border-t border-dojo-border/30 pt-2">
-                  <p className="text-[10px] uppercase tracking-wider text-dojo-text-muted/60 font-medium mb-1">Goal</p>
+                  <p className="text-xs uppercase tracking-wider text-dojo-text-muted font-medium mb-1">Goal</p>
                   <p className="text-xs text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
                 </div>
               )}
@@ -565,7 +565,7 @@ export default function VoiceOnlyPage() {
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold text-dojo-text-primary">Session Progress</p>
-                <span className="text-[10px] text-dojo-text-muted font-medium">{completedGoals?.length ?? 0} / {goals?.length ?? 0} Goals</span>
+                <span className="text-xs text-dojo-text-muted font-medium">{completedGoals?.length ?? 0} / {goals?.length ?? 0} Goals</span>
               </div>
               {/* Progress bar */}
               <div className="flex gap-1 mb-3">
@@ -588,7 +588,7 @@ export default function VoiceOnlyPage() {
                       ) : (
                         <Circle className="h-3.5 w-3.5 text-dojo-text-muted/40 shrink-0" />
                       )}
-                      <span className={`text-[11px] leading-tight ${done ? 'text-dojo-text-muted line-through' : 'text-dojo-text-primary'}`}>
+                      <span className={`text-sm leading-relaxed ${done ? 'text-dojo-text-muted line-through' : 'text-dojo-text-primary'}`}>
                         {goal.goalText}
                       </span>
                     </div>
@@ -610,13 +610,13 @@ export default function VoiceOnlyPage() {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{charName}</p>
-                  {charRole && <p className="text-[11px] text-dojo-text-muted mt-0.5">{charRole}</p>}
+                  {charRole && <p className="text-sm text-dojo-text-muted mt-0.5">{charRole}</p>}
                 </div>
               </div>
               {character?.personalityTraits && character.personalityTraits.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {character.personalityTraits.slice(0, 3).map((trait, i) => (
-                    <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-0.5 text-[10px] text-dojo-text-muted font-medium">
+                    <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-0.5 text-xs text-dojo-text-muted font-medium">
                       {trait}
                     </span>
                   ))}
@@ -641,7 +641,7 @@ export default function VoiceOnlyPage() {
                 >
                   {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                 </button>
-                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Mute</span>
+                <span className="text-xs text-dojo-text-muted font-medium">Mute</span>
               </div>
 
               <div className="flex flex-col items-center gap-2">
@@ -671,8 +671,8 @@ export default function VoiceOnlyPage() {
                     <Mic className="h-7 w-7 text-white" />
                   </button>
                 </div>
-                <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 ${
-                  voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted/60'
+                <span className={`text-xs font-bold tracking-widest uppercase transition-all duration-300 ${
+                  voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted'
                 }`}>
                   {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
@@ -687,7 +687,7 @@ export default function VoiceOnlyPage() {
                 >
                   <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Chat</span>
+                <span className="text-xs text-dojo-text-muted font-medium">Chat</span>
               </div>
             </div>
           </div>
@@ -721,7 +721,7 @@ export default function VoiceOnlyPage() {
                 key={key}
                 type="button"
                 onClick={() => setChatTab(key)}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                   chatTab === key
                     ? 'bg-dojo-accent text-white'
                     : 'text-dojo-text-muted hover:text-dojo-text-primary hover:bg-dojo-border/20'
@@ -735,7 +735,7 @@ export default function VoiceOnlyPage() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4 space-y-4 overscroll-contain">
             {chatTurns.length === 0 && (
-              <p className="text-center text-xs text-dojo-text-muted/60 py-8">
+              <p className="text-center text-sm text-dojo-text-muted py-8">
                 {chatTab === 'notes' ? 'No corrections yet — keep speaking!' : 'No messages yet'}
               </p>
             )}
@@ -747,7 +747,7 @@ export default function VoiceOnlyPage() {
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                   <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10"
                     style={{ backgroundColor: isAi ? charColor : '#6366f1' }}
                   >
                     {isAi ? (
@@ -759,21 +759,21 @@ export default function VoiceOnlyPage() {
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
                       <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? charName : 'You'}</span>
-                      {ts && <span className="text-[10px] text-dojo-text-muted/60">{ts}</span>}
+                      {ts && <span className="text-xs text-dojo-text-muted">{ts}</span>}
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${
                       isAi
                         ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60'
                         : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'
                     }`}>
-                      <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                      <p className="text-base text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
                       {turn.messagePhonetic && (
-                        <p className="mt-1 text-[11px] text-dojo-text-muted italic">{turn.messagePhonetic}</p>
+                        <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messagePhonetic}</p>
                       )}
                       {!isAi && turn.corrections && turn.corrections.length > 0 && chatTab !== 'notes' && (
                         <div className="mt-2 border-t border-dojo-border/30 pt-2 space-y-1">
                           {turn.corrections.map((c, i) => (
-                            <p key={i} className="text-[11px] text-dojo-text-muted leading-relaxed">
+                            <p key={i} className="text-sm text-dojo-text-muted leading-relaxed">
                               <span className="line-through">{c.originalText}</span>
                               {' → '}
                               <span className="font-medium text-dojo-text-primary">{c.correctedText}</span>
@@ -784,14 +784,14 @@ export default function VoiceOnlyPage() {
                     </div>
                     {isAi && (
                       <div className="flex items-center gap-2 mt-1 px-1">
-                        <button onClick={() => handleReplay(turn)} className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors">
+                        <button onClick={() => handleReplay(turn)} className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors">
                           <Volume2 className="h-3 w-3" />
                         </button>
                       </div>
                     )}
                     {!isAi && (
                       <div className="flex items-center gap-1 mt-0.5 px-1">
-                        <span className="text-[10px] text-dojo-accent">✓ Delivered</span>
+                        <span className="text-xs text-dojo-accent">✓ Delivered</span>
                       </div>
                     )}
                   </div>
@@ -800,7 +800,7 @@ export default function VoiceOnlyPage() {
             })}
             {streamingText && chatTab !== 'notes' && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
                   {charName[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
@@ -808,7 +808,7 @@ export default function VoiceOnlyPage() {
                     <span className="text-xs font-semibold text-dojo-text-primary">{charName}</span>
                   </div>
                   <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
-                    <p className="text-sm text-dojo-text-primary leading-relaxed">
+                    <p className="text-base text-dojo-text-primary leading-relaxed">
                       {streamingText}
                       <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
                     </p>
@@ -829,7 +829,7 @@ export default function VoiceOnlyPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
                 placeholder="Type a message..."
                 disabled={!isActive || sending}
-                className="flex-1 bg-transparent border-none px-1 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+                className="flex-1 bg-transparent border-none px-1 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none"
               />
               <button
                 onClick={handleChatSend}
@@ -841,7 +841,7 @@ export default function VoiceOnlyPage() {
             </div>
             {suggestedReplies.length > 0 && chatTab !== 'notes' && (
               <div className="mt-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted mb-1.5">You could say</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-dojo-text-muted mb-1.5">You could say</p>
                 <div className="flex flex-wrap gap-1.5">
                   {suggestedReplies.map((r, i) => (
                     <button
@@ -849,7 +849,7 @@ export default function VoiceOnlyPage() {
                       type="button"
                       disabled={!isActive || sending}
                       onClick={() => handleUserUtterance(r)}
-                      className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-3 py-1.5 text-[11px] font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 active:scale-95 disabled:opacity-40 transition-all duration-200"
+                      className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-3 py-1.5 text-sm font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 active:scale-95 disabled:opacity-40 transition-all duration-200"
                     >
                       {r}
                     </button>
@@ -880,18 +880,18 @@ export default function VoiceOnlyPage() {
       <div className="relative z-20 flex items-center justify-between px-4 sm:px-6 py-2 border-t border-dojo-border/40 bg-dojo-surface/60 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-dojo-text-muted/60" />
+            <Clock className="h-3.5 w-3.5 text-dojo-text-muted" />
             <span className="text-xs text-dojo-text-primary font-medium">{elapsedLabel}</span>
-            <span className="text-[10px] text-dojo-text-muted/60">Session Time</span>
+            <span className="text-xs text-dojo-text-muted">Session Time</span>
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
             <span className="text-xs text-dojo-text-primary font-medium">{skillLevelLabel ?? '—'}</span>
-            <span className="text-[10px] text-dojo-text-muted/60">Your Level</span>
+            <span className="text-xs text-dojo-text-muted">Your Level</span>
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
-            <Globe className="h-3.5 w-3.5 text-dojo-text-muted/60" />
+            <Globe className="h-3.5 w-3.5 text-dojo-text-muted" />
             <span className="text-xs text-dojo-text-primary font-medium">{langLabel}</span>
-            <span className="text-[10px] text-dojo-text-muted/60">Target Language</span>
+            <span className="text-xs text-dojo-text-muted">Target Language</span>
           </div>
         </div>
         <button

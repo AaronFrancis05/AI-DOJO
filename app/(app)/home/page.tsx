@@ -480,13 +480,13 @@ export default function HomePage() {
             </RadialProgress>
 
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">Level</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Level</p>
               <div className="mt-1 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
                 <span className="text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
                   {levelLabel(user?.level)}
                 </span>
                 {nextLevel && (
-                  <Badge variant={nextLevel as 'intermediate' | 'advanced'} className="text-[10px]">
+                  <Badge variant={nextLevel as 'intermediate' | 'advanced'} className="text-xs">
                     Next: {levelLabel(nextLevel)}
                   </Badge>
                 )}
@@ -496,7 +496,7 @@ export default function HomePage() {
               </p>
 
               <div className="mt-4 w-full max-w-md">
-                <div className="mb-1 flex justify-between text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted">
+                <div className="mb-1 flex justify-between text-xs font-bold uppercase tracking-wider text-dojo-text-muted">
                   <span>{nextLevel ? `Progress to ${levelLabel(nextLevel)}` : 'Top level reached'}</span>
                   <span>{xp.toLocaleString()} / {xpToNext.toLocaleString()} XP</span>
                 </div>
@@ -504,7 +504,7 @@ export default function HomePage() {
               </div>
 
               {globalRank != null && (
-                <p className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-dojo-accent sm:justify-start">
+                <p className="mt-3 flex items-center justify-center gap-1.5 text-sm font-semibold text-dojo-accent sm:justify-start">
                   <TrendingUp className="h-3.5 w-3.5" />
                   {globalRank <= 3
                     ? "You're in the global top 3 — keep it up!"
@@ -518,22 +518,22 @@ export default function HomePage() {
             <Card className="!bg-dojo-surface/60 border-dojo-border/60 !p-4 text-center backdrop-blur-sm">
               <Flame className="mx-auto mb-2 h-6 w-6 text-dojo-streak" />
               <p className="text-2xl font-black text-dojo-text-primary">{user?.streak ?? 0}</p>
-              <p className="text-[10px] font-bold uppercase tracking-tight text-dojo-text-muted">Day Streak</p>
-              <p className="mt-1 text-[10px] text-dojo-text-muted">Keep it up!</p>
+              <p className="text-xs font-bold uppercase tracking-tight text-dojo-text-muted">Day Streak</p>
+              <p className="mt-1 text-xs text-dojo-text-muted">Keep it up!</p>
             </Card>
             <Card className="!bg-dojo-surface/60 border-dojo-border/60 !p-4 text-center backdrop-blur-sm">
               <Target className="mx-auto mb-2 h-6 w-6 text-dojo-accent" />
               <p className="text-2xl font-black text-dojo-text-primary">{avgScore ?? 0}%</p>
-              <p className="text-[10px] font-bold uppercase tracking-tight text-dojo-text-muted">Accuracy</p>
-              <p className="mt-1 text-[10px] text-dojo-text-muted">
+              <p className="text-xs font-bold uppercase tracking-tight text-dojo-text-muted">Accuracy</p>
+              <p className="mt-1 text-xs text-dojo-text-muted">
                 {completedSessions.length > 0 ? `Across ${completedSessions.length} sessions` : 'No sessions yet'}
               </p>
             </Card>
             <Card className="!bg-dojo-surface/60 border-dojo-border/60 !p-4 text-center backdrop-blur-sm">
               <Zap className="mx-auto mb-2 h-6 w-6 text-dojo-warning" />
               <p className="text-2xl font-black text-dojo-text-primary">{xp.toLocaleString()}</p>
-              <p className="text-[10px] font-bold uppercase tracking-tight text-dojo-text-muted">Total XP</p>
-              <p className="mt-1 text-[10px] text-dojo-text-muted">Keep learning!</p>
+              <p className="text-xs font-bold uppercase tracking-tight text-dojo-text-muted">Total XP</p>
+              <p className="mt-1 text-xs text-dojo-text-muted">Keep learning!</p>
             </Card>
           </div>
         </div>
@@ -555,14 +555,14 @@ export default function HomePage() {
               <span className="text-2xl font-black leading-none text-dojo-text-primary">
                 {todayMinutes}/{dailyGoal}
               </span>
-              <span className="mt-1 text-[11px] font-medium text-dojo-text-muted">mins</span>
+              <span className="mt-1 text-xs font-medium text-dojo-text-muted">mins</span>
             </RadialProgress>
             <div className="text-right">
               <p className="text-xl font-black text-dojo-accent">{dailyGoalPct}%</p>
-              <p className="text-[11px] font-medium text-dojo-text-muted">completed</p>
+              <p className="text-xs font-medium text-dojo-text-muted">completed</p>
             </div>
           </div>
-          <p className="mt-4 text-xs leading-relaxed text-dojo-text-muted">
+          <p className="mt-4 text-sm leading-relaxed text-dojo-text-muted">
             {completedSessions.length > 0
               ? 'Great progress! Keep practicing to reach your daily goal.'
               : 'Start a roleplay session to build your daily practice streak.'}
@@ -648,7 +648,7 @@ export default function HomePage() {
             <Link href={`/session/${activeSession.id}`} className="block" suppressHydrationWarning>
               <div className={`group relative cursor-pointer overflow-hidden rounded-[--radius-lg] p-5 transition-all hover:shadow-xl ${activeSession.status === 'paused' ? 'border border-dojo-accent/30 bg-gradient-to-r from-dojo-accent/20 to-dojo-success/10' : 'border border-dojo-danger/30 bg-gradient-to-r from-dojo-danger/20 to-dojo-accent/10'}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${activeSession.status === 'paused' ? 'text-dojo-accent' : 'text-dojo-danger'}`}>
+                  <span className={`text-xs font-black uppercase tracking-widest ${activeSession.status === 'paused' ? 'text-dojo-accent' : 'text-dojo-danger'}`}>
                     {activeSession.status === 'paused' ? 'Resume Training' : 'Live Session'}
                   </span>
                   {activeSession.status !== 'paused' && <LiveBadge />}
@@ -656,7 +656,7 @@ export default function HomePage() {
                 <p className="mt-2 text-lg font-bold text-dojo-text-primary">
                   {activeSession.scenarioTitle ?? `Session #${activeSession.sessionNumber}`}
                 </p>
-                <p className="text-xs text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation</p>
+                <p className="text-sm text-dojo-text-muted">Turn {activeSession.totalTurns} • Continue your conversation</p>
                 <Button
                   variant="primary"
                   size="sm"
@@ -669,9 +669,9 @@ export default function HomePage() {
             </Link>
           ) : (
             <Card className="!p-5">
-              <p className="text-[10px] font-black uppercase tracking-widest text-dojo-text-muted">No live session</p>
+              <p className="text-xs font-black uppercase tracking-widest text-dojo-text-muted">No live session</p>
               <p className="mt-2 text-lg font-bold text-dojo-text-primary">Pick a scenario</p>
-              <p className="text-xs text-dojo-text-muted">Nothing is in progress — start one from the Library.</p>
+              <p className="text-sm text-dojo-text-muted">Nothing is in progress — start one from the Library.</p>
               <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/library')}>
                 Browse Scenarios <ArrowRight className="h-3.5 w-3.5" />
               </Button>
@@ -692,7 +692,7 @@ export default function HomePage() {
                   <p className="mt-3 text-sm font-semibold text-dojo-text-primary">
                     {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
                   </p>
-                  <p className="text-[10px] text-dojo-text-muted">Ready to see again</p>
+                  <p className="text-xs text-dojo-text-muted">Ready to see again</p>
                 </Card>
               </Link>
             ) : (
@@ -701,7 +701,7 @@ export default function HomePage() {
                   <Repeat2 className="h-4 w-4 text-dojo-success-strong" />
                 </div>
                 <p className="mt-3 text-sm font-semibold text-dojo-text-primary">Nothing due</p>
-                <p className="text-[10px] text-dojo-text-muted">Your review queue is clear</p>
+                <p className="text-xs text-dojo-text-muted">Your review queue is clear</p>
               </Card>
             )}
 
@@ -716,7 +716,7 @@ export default function HomePage() {
               <p className="mt-3 text-lg font-black text-dojo-text-primary">
                 {globalRank != null ? `#${globalRank}` : '--'}
               </p>
-              <p className="text-[10px] font-bold uppercase text-dojo-text-muted">Global Rank</p>
+              <p className="text-xs font-bold uppercase text-dojo-text-muted">Global Rank</p>
             </Card>
 
             <Card
@@ -730,7 +730,7 @@ export default function HomePage() {
               <p className="mt-3 text-lg font-black text-dojo-text-primary">
                 {xpRemaining.toLocaleString()} <span className="text-xs font-semibold text-dojo-text-muted">XP</span>
               </p>
-              <p className="text-[10px] font-bold uppercase text-dojo-text-muted">To Next Level</p>
+              <p className="text-xs font-bold uppercase text-dojo-text-muted">To Next Level</p>
             </Card>
           </div>
         </div>
@@ -752,7 +752,7 @@ export default function HomePage() {
               <div className="rounded-[--radius-md] border border-dashed border-dojo-border/60 bg-dojo-surface/40 p-6 text-center md:col-span-2">
                 <Globe className="mx-auto mb-2 h-8 w-8 text-dojo-border" />
                 <p className="mb-1 text-sm font-bold text-dojo-text-primary">Your learning journey starts here</p>
-                <p className="mx-auto max-w-sm text-xs leading-relaxed text-dojo-text-muted">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
+                <p className="mx-auto max-w-sm text-sm leading-relaxed text-dojo-text-muted">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
                 <Button variant="primary" size="sm" className="mt-5" onClick={() => router.push('/library')}>
                   Explore Scenarios <ArrowRight className="ml-1 h-3 w-3" />
                 </Button>
@@ -770,10 +770,10 @@ export default function HomePage() {
                         <Icon className="h-4 w-4" />
                       </div>
                       <p className="text-sm font-bold text-dojo-text-primary">{item.name}</p>
-                      <Badge variant={completed ? 'success' : 'accent'} className="ml-auto text-[9px]">{completed ? 'Completed' : 'In Progress'}</Badge>
+                      <Badge variant={completed ? 'success' : 'accent'} className="ml-auto text-xs">{completed ? 'Completed' : 'In Progress'}</Badge>
                     </div>
-                    <p className="mb-3 text-[11px] leading-relaxed text-dojo-text-muted">{item.completed} of {item.total} scenarios practiced in this domain.</p>
-                    <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-dojo-text-muted">
+                    <p className="mb-3 text-sm leading-relaxed text-dojo-text-muted">{item.completed} of {item.total} scenarios practiced in this domain.</p>
+                    <div className="mb-1 flex items-center justify-between text-xs font-bold text-dojo-text-muted">
                       <span>{item.completed} / {item.total} Situations</span>
                       <span>{item.pct}%</span>
                     </div>
@@ -791,7 +791,7 @@ export default function HomePage() {
               return (
                 <li key={stage.title} className="flex flex-1 items-center gap-3">
                   <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       reached
                         ? 'bg-dojo-accent text-white'
                         : 'border border-dojo-border bg-dojo-surface text-dojo-text-muted'
@@ -803,7 +803,7 @@ export default function HomePage() {
                     <span className={`block text-xs font-bold ${reached ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}`}>
                       {stage.title}
                     </span>
-                    <span className="block text-[10px] text-dojo-text-muted">{stage.caption}</span>
+                    <span className="block text-xs text-dojo-text-muted">{stage.caption}</span>
                   </span>
                   {i < JOURNEY_STAGES.length - 1 && (
                     <span
@@ -831,10 +831,10 @@ export default function HomePage() {
               return (
                 <div key={a.id} className="flex flex-col items-center text-center">
                   <HexBadge icon={Icon} label={a.label} unlocked={a.unlocked} size={48} />
-                  <span className={`mt-2 px-1 text-[9px] font-bold uppercase leading-tight tracking-tight ${a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}`}>
+                  <span className={`mt-2 px-1 text-xs font-bold uppercase leading-tight tracking-tight ${a.unlocked ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}`}>
                     {a.label}
                   </span>
-                  <span className="mt-0.5 text-[9px] text-dojo-text-muted">
+                  <span className="mt-0.5 text-xs text-dojo-text-muted">
                     {a.unlockedAt ? formatBadgeDate(a.unlockedAt) : 'Locked'}
                   </span>
                 </div>
@@ -843,7 +843,7 @@ export default function HomePage() {
           </div>
           <div className="mt-6 flex items-center gap-3 border-t border-dojo-border/50 pt-4">
             <Trophy className="h-4 w-4 shrink-0 text-dojo-warning" />
-            <p className="shrink-0 text-[11px] font-semibold text-dojo-text-muted">
+            <p className="shrink-0 text-sm font-semibold text-dojo-text-muted">
               You have unlocked {unlockedCount} of {achievements.length} badges
             </p>
             <ProgressBar
@@ -885,7 +885,7 @@ export default function HomePage() {
               <Play className="h-8 w-8 fill-current text-dojo-border" />
             </div>
             <p className="mb-1 font-bold text-dojo-text-primary">No practice sessions found</p>
-            <p className="mx-auto mb-6 max-w-xs text-xs text-dojo-text-muted">Start your first role-play in the Dojo to build your history and track your progress.</p>
+            <p className="mx-auto mb-6 max-w-xs text-sm text-dojo-text-muted">Start your first role-play in the Dojo to build your history and track your progress.</p>
             <Button variant="primary" size="lg" onClick={() => router.push('/library')}>
               <Sparkles className="h-4 w-4" /> Start Your First Session
             </Button>
@@ -903,21 +903,21 @@ export default function HomePage() {
                       : session.status === 'abandoned' ? 'warning'
                         : 'accent'
                   }
-                  className="shrink-0 text-[9px] uppercase tracking-tighter"
+                  className="shrink-0 text-xs uppercase tracking-tighter"
                 >
                   {session.status === 'completed' ? 'Done'
                     : session.status === 'abandoned' ? 'Ended'
                       : session.status === 'paused' ? 'Saved'
                         : 'Active'}
                 </Badge>
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
+                <span className="shrink-0 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
                   #{session.sessionNumber}
                 </span>
                 <Link href={`/sessions/${session.id}/report`} className="min-w-0 flex-1 group">
                   <p className="truncate text-sm font-bold text-dojo-text-primary group-hover:text-dojo-accent">
                     {session.scenarioTitle ?? `Session #${session.id}`}
                   </p>
-                  <p className="truncate text-[11px] font-medium text-dojo-text-muted">
+                  <p className="truncate text-xs font-medium text-dojo-text-muted">
                     {formatDate(session.startedAt)} • {session.totalTurns} Turns
                   </p>
                 </Link>

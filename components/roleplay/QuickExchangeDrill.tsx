@@ -169,11 +169,11 @@ export function QuickExchangeDrill({
           </div>
 
           <div className="rounded-xl bg-dojo-surface p-4 mb-6 text-left">
-            <p className="text-sm text-dojo-text-primary">{currentDrill.promptJa}</p>
+            <p className="text-base text-dojo-text-primary leading-relaxed">{currentDrill.promptJa}</p>
             {currentDrill.promptPhonetic && (
-              <p className="text-xs text-dojo-text-muted italic mt-1">{currentDrill.promptPhonetic}</p>
+              <p className="text-sm text-dojo-text-muted italic mt-1 leading-relaxed">{currentDrill.promptPhonetic}</p>
             )}
-            <p className="text-xs text-dojo-text-muted mt-1">{currentDrill.promptEn}</p>
+            <p className="text-sm text-dojo-text-muted mt-1 leading-relaxed">{currentDrill.promptEn}</p>
           </div>
 
           {phase === 'listening' && (
@@ -199,7 +199,7 @@ export function QuickExchangeDrill({
                 >
                   <Mic className="h-8 w-8 text-white" />
                 </button>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
+                <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
                   {busy ? 'Processing...' : 'Respond'}
                 </span>
               </div>

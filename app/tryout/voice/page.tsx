@@ -233,7 +233,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 >
                   {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                 </button>
-                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Mute</span>
+                <span className="text-xs text-dojo-text-muted font-medium">Mute</span>
               </div>
 
               <div className="flex flex-col items-center gap-2">
@@ -252,8 +252,8 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 >
                   <Mic className="h-7 w-7 text-white" />
                 </button>
-                <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 ${
-                  voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted/60'
+                <span className={`text-xs font-bold tracking-widest uppercase transition-all duration-300 ${
+                  voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-dojo-text-muted'
                 }`}>
                   {voice.isListening ? 'Listening...' : 'Hold to Speak'}
                 </span>
@@ -268,7 +268,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 >
                   <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className="text-[10px] text-dojo-text-muted/60 font-medium">Chat</span>
+                <span className="text-xs text-dojo-text-muted font-medium">Chat</span>
               </div>
             </div>
           </div>
@@ -287,13 +287,13 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
 
           <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4 space-y-4 overscroll-contain">
             {conversations.length === 0 && (
-              <p className="text-center text-xs text-dojo-text-muted/60 py-8">No messages yet</p>
+              <p className="text-center text-sm text-dojo-text-muted py-8">No messages yet</p>
             )}
             {conversations.map((turn) => {
               const isAi = turn.speaker === 'ai';
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: isAi ? CHAR_COLOR : '#6366f1' }}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: isAi ? CHAR_COLOR : '#6366f1' }}>
                     {isAi ? TRYOUT_CHARACTER_NAME[0] : 'U'}
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
@@ -301,9 +301,9 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                       <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? TRYOUT_CHARACTER_NAME : 'You'}</span>
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
-                      <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                      <p className="text-base text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
                       {isAi && turn.messageNative && (
-                        <p className="mt-1 text-[11px] text-dojo-text-muted italic">{turn.messageNative}</p>
+                        <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}
                     </div>
                   </div>
@@ -312,12 +312,12 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
             })}
             {streamingText && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: CHAR_COLOR }}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: CHAR_COLOR }}>
                   {TRYOUT_CHARACTER_NAME[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
                   <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
-                    <p className="text-sm text-dojo-text-primary leading-relaxed">
+                    <p className="text-base text-dojo-text-primary leading-relaxed">
                       {streamingText}
                       <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
                     </p>
@@ -337,7 +337,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
                 placeholder="Type a message..."
                 disabled={sending || !greetingSent}
-                className="flex-1 bg-transparent border-none px-1 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+                className="flex-1 bg-transparent border-none px-1 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none"
               />
               <button
                 onClick={handleChatSend}
