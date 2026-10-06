@@ -47,11 +47,11 @@ export function ConversationBubble({
       )}>
         {/* Name / Metadata Label */}
         <div className="flex items-center gap-2 px-1 mb-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted opacity-80">
+          <span className="text-xs font-bold uppercase tracking-wider text-dojo-text-muted">
             {isUser ? 'You' : name}
           </span>
           {!isUser && emotionTone && (
-            <span className="rounded-full bg-dojo-accent/10 px-1.5 py-0.5 text-[9px] font-medium text-dojo-accent capitalize border border-dojo-accent/20">
+            <span className="rounded-full bg-dojo-accent/10 px-1.5 py-0.5 text-xs font-medium text-dojo-accent capitalize border border-dojo-accent/20">
               {emotionTone}
             </span>
           )}
@@ -66,7 +66,7 @@ export function ConversationBubble({
               : 'rounded-2xl rounded-tl-none border border-dojo-border bg-dojo-surface-raised/90 backdrop-blur-md text-dojo-text-primary hover:border-dojo-accent/40'
           )}
         >
-          <p className="text-sm font-medium leading-relaxed tracking-wide">
+          <p className="text-base font-medium leading-relaxed tracking-wide">
             {messageJp}
           </p>
           
@@ -77,7 +77,7 @@ export function ConversationBubble({
             )}>
               {messagePhonetic && (
                 <p className={cn(
-                  'text-[11px] italic leading-tight',
+                  'text-sm italic leading-relaxed',
                   isUser ? 'text-white/80' : 'text-dojo-text-muted'
                 )}>
                   {messagePhonetic}
@@ -85,8 +85,8 @@ export function ConversationBubble({
               )}
               {messageEn && (
                 <p className={cn(
-                  'text-[11px] leading-tight',
-                  isUser ? 'text-white/70' : 'text-dojo-text-muted'
+                  'text-sm leading-relaxed',
+                  isUser ? 'text-white/80' : 'text-dojo-text-muted'
                 )}>
                   {messageEn}
                 </p>
@@ -100,7 +100,7 @@ export function ConversationBubble({
 
         {/* Gesture Hint */}
         {gestureHint && (
-          <span className="mt-1.5 flex items-center gap-1 px-1 text-[10px] font-medium italic text-dojo-text-muted opacity-60">
+          <span className="mt-1.5 flex items-center gap-1 px-1 text-xs font-medium italic text-dojo-text-muted">
              🎭 {gestureHint}
           </span>
         )}

@@ -113,7 +113,7 @@ export function SessionInfoPanel({
                   className="h-full w-full object-cover"
                 />
               </span>
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-[9px] font-medium text-dojo-text-muted">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-xs font-medium text-dojo-text-muted">
                 U
               </span>
             </div>
@@ -123,7 +123,7 @@ export function SessionInfoPanel({
             <div className="flex items-center justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Difficulty</span>
               <span
-                className={`px-2.5 py-0.5 rounded-[--radius-pill] text-[11px] font-medium border ${
+                className={`px-2.5 py-0.5 rounded-[--radius-pill] text-xs font-medium border ${
                   behaviorModeClass[behaviorMode]
                 }`}
               >
@@ -144,7 +144,7 @@ export function SessionInfoPanel({
           <div className="mt-4 pt-4 border-t border-dojo-border">
             <div className="flex items-start gap-2">
               <Flag className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
-              <p className="text-xs text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
+              <p className="text-sm text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
             </div>
           </div>
         )}
@@ -156,13 +156,13 @@ export function SessionInfoPanel({
               return (
                 <div key={goal.id} className="flex items-start gap-2">
                   <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       done ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'
                     }`}
                   >
                     {done ? '✓' : goal.sequenceOrder}
                   </span>
-                  <span className={`text-[11px] leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
+                  <span className={`text-sm leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
                     {goal.goalText}
                   </span>
                 </div>
@@ -174,8 +174,8 @@ export function SessionInfoPanel({
         {correctionCount !== undefined && correctionCount > 0 && (
           <div className="mt-4 pt-4 border-t border-dojo-border">
             <div className="flex items-center gap-2">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-dojo-warning/20 text-[9px] font-bold text-dojo-warning">!</span>
-              <span className="text-[11px] text-dojo-text-muted">{correctionCount} tip{correctionCount !== 1 ? 's' : ''} this session</span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-dojo-warning/20 text-xs font-bold text-dojo-warning">!</span>
+              <span className="text-sm text-dojo-text-muted">{correctionCount} tip{correctionCount !== 1 ? 's' : ''} this session</span>
             </div>
           </div>
         )}

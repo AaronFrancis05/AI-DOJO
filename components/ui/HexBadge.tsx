@@ -72,7 +72,7 @@ export function HexBadge({
         </foreignObject>
       </svg>
       {label && (
-        <span className="text-[10px] text-dojo-text-muted text-center leading-tight max-w-[60px]">
+        <span className="text-xs text-dojo-text-muted text-center leading-tight max-w-[60px]">
           {label}
         </span>
       )}

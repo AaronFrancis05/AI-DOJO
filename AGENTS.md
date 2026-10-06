@@ -111,9 +111,9 @@ All tokens are CSS variables defined in `app/globals.css` (`:root` = light, `.da
 - **Both light and dark themes are supported** via the `.dark` class — never assume dark-only. Test/verify both when touching shared surfaces.
 - **Spatial grid:** every spacing/padding/margin/height/width utility uses the 4px/8px Tailwind scale (`p-1`, `p-2`, `p-4`, `p-8`, `space-y-4`, `gap-6`, ...). No arbitrary values (`p-[13px]`, `h-[450px]`) unless matching a genuinely fixed asset dimension.
 - **Component rhythm:** form controls keep matching horizontal/vertical inner rhythm (e.g. `px-4 py-2`); button/input/badge heights align to the same spatial increments across the app.
-- **Typographic scale:** pair headings with correct leading/tracking (e.g. `text-3xl font-bold tracking-tight leading-none`; body copy `text-base leading-relaxed`).
+- **Typographic scale:** pair headings with correct leading/tracking (e.g. `text-3xl font-bold tracking-tight leading-none`; body copy `text-base leading-relaxed`). Readable copy never goes below `text-xs` (12px) — no `text-[9px]` / `text-[10px]` / `text-[11px]`. Learning speech in a sitting bubble is `text-base`; gloss, phonetic and coach copy are `text-sm`.
 - **Responsive container logic:** full-width layouts declare explicit bounds mobile-first (`w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`).
-- **Contrast & accessibility:** use `text-dojo-text-primary` for headings and `text-dojo-text-muted` for secondary text — never low-contrast gray-on-white/near-black-on-black combinations. Respect `prefers-reduced-motion` rules already defined in `globals.css`.
+- **Contrast & accessibility:** use `text-dojo-text-primary` for headings and `text-dojo-text-muted` for secondary text — never low-contrast gray-on-white/near-black-on-black combinations, and never restack muted with `/50` `/60` `/70` `/80` or `opacity-*`. Respect `prefers-reduced-motion` rules already defined in `globals.css`.
 - **Reuse before you build:** check `components/ui/` and `ui-registry.md` for an existing primitive before creating a new one. If you build a new reusable primitive or pattern, add it to `ui-registry.md` in the same change.
 - **Icons:** use `lucide-react` (already a dependency) and the existing `components/Icons.tsx` wrapper conventions — don't pull in a second icon set.
 

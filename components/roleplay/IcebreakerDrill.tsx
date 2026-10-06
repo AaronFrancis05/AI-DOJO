@@ -155,7 +155,7 @@ export function IcebreakerDrill({
               </div>
 
               {word.usageTip && (
-                <p className="text-xs text-dojo-text-muted/70 bg-dojo-surface rounded-lg px-3 py-2">
+                <p className="text-sm text-dojo-text-muted bg-dojo-surface rounded-lg px-3 py-2">
                   {word.usageTip}
                 </p>
               )}
@@ -180,9 +180,9 @@ export function IcebreakerDrill({
               <div className="space-y-2">
                 <p className="text-2xl font-bold text-dojo-text-primary">{word.japanese}</p>
                 <p className="text-sm text-dojo-text-muted italic">{word.phonetic}</p>
-                <p className="text-xs text-dojo-text-muted">({word.english})</p>
+                <p className="text-sm text-dojo-text-muted">({word.english})</p>
                 {word.usageTip && (
-                  <p className="text-xs text-dojo-text-muted/70 mt-2">{word.usageTip}</p>
+                  <p className="text-sm text-dojo-text-muted mt-2">{word.usageTip}</p>
                 )}
               </div>
 
@@ -209,7 +209,7 @@ export function IcebreakerDrill({
                 >
                   <Mic className="h-8 w-8 text-white" />
                 </button>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
+                <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
                   {busy ? 'Listening...' : phase === 'retry' ? 'Try Again' : 'Tap & Say the Word'}
                 </span>
               </div>

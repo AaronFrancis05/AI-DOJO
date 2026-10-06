@@ -16,7 +16,7 @@ export function CorrectionRetryBar({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-dojo-border/60 bg-dojo-surface/95 backdrop-blur-md safe-bottom">
       <div className="flex-1 min-w-0">
-        <p className="text-[11px] font-medium text-dojo-text-muted mb-1">Try this instead:</p>
+        <p className="text-xs font-medium text-dojo-text-muted mb-1">Try this instead:</p>
         <p className="text-sm font-medium text-dojo-text-primary leading-relaxed truncate">
           {retry.correctedText}
           {retry.correctedPhonetic ? (

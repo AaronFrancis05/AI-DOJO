@@ -13,6 +13,7 @@ SESSION: 60,         // 1 min (session state changes often)
   TRYOUT_RATE_LIMIT: 3600, // 1 hr window for guest tryout throttling
   TRYOUT_DAILY: 86400, // 24 hr window for the one-completed-tryout-per-guest gate
   TRYOUT_SESSION: 3600, // 1 hr — a preview is 2-3 min; this only has to outlive one sitting
+  ONBOARDING_PRACTICE: 3600, // 1 hr — the in-wizard sample is one sitting
   SPEECH_TOKEN: 540,   // 9 min (Azure issueToken lifetime is 10 min)
   PROFICIENCY: 300,    // 5 min (only changes when a session completes)
   LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
@@ -120,6 +121,8 @@ export const cacheKeys = {
   tryoutDailyGate: (ip: string) => key('tryout-daily', ip),
   /** Server-side turn budget for one issued tryout id. */
   tryoutTurns: (tryoutId: string) => key('tryout-turns', tryoutId),
+  onboardingTurns: (budgetId: string) => key('onboarding-turns', budgetId),
+  onboardingPracticeRateLimit: (id: string) => key('onboarding-practice-rate', id),
   speechToken: (region: string) => key('speech-token', region),
   /** The whole `languages` table — one key, because it is always read whole. */
   languageCatalog: () => key('language-catalog', 'v1'),

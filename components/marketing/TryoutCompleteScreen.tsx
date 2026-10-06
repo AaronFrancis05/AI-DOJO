@@ -5,13 +5,15 @@ import Link from 'next/link';
 import { PartyPopper, Sparkles } from 'lucide-react';
 import { getTargetLangConfig } from '@/lib/language';
 import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
+import { languagePairQuery } from '@/lib/tryout/guest-params';
 
 interface TryoutCompleteScreenProps {
   targetLanguage: string;
+  nativeLanguage: string;
   turnCount: number;
 }
 
-export function TryoutCompleteScreen({ targetLanguage, turnCount }: TryoutCompleteScreenProps) {
+export function TryoutCompleteScreen({ targetLanguage, nativeLanguage, turnCount }: TryoutCompleteScreenProps) {
   const targetLangName = getTargetLangConfig(targetLanguage).name;
   const { fireBurst } = useCelebrationConfetti();
 
@@ -34,10 +36,11 @@ export function TryoutCompleteScreen({ targetLanguage, turnCount }: TryoutComple
         {/* Sign up first. The learner wizard is only for an account that exists
             but has not been set up yet — sending a guest into it put account
             creation at the end of a questionnaire, which made both this screen
-            and onboarding harder to read. The tryout language pair stays in
-            sessionStorage and prefills the wizard after they have an account. */}
+            and onboarding harder to read. The tryout language pair is on this
+            URL and in sessionStorage so the wizard can prefill after they have
+            an account. */}
         <Link
-          href="/auth/signup"
+          href={`/auth/signup${languagePairQuery({ targetLanguage, nativeLanguage })}`}
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90"
         >
           <Sparkles className="h-4 w-4" />

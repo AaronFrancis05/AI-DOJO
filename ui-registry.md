@@ -12,7 +12,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Sidebar bg | `--color-sidebar` | `bg-dojo-sidebar` | `#EFE8D8` | `#130F0C` |
 | Surface bg | `--color-surface` | `bg-dojo-surface` | `#FAF6EE` | `#241C17` |
 | Surface raised | `--color-surface-raised` | `bg-dojo-surface-raised` | `#FFFFFF` | `#2C2119` |
-| Border | `--color-border` | `border-dojo-border` | `#E3D9C4` | `#3C2E24` |
+| Border | `--color-border` | `border-dojo-border` | `#D4C5A8` | `#524033` |
 | Accent (primary) | `--color-accent` | `bg-dojo-accent` | `#C1392B` | `#DD5B47` |
 | Accent soft | `--color-accent-soft` | `bg-dojo-accent-soft` | `#F5DAD3` | `#472922` |
 | Success | `--color-success` | `bg-dojo-success` | `#16A34A` | `#2FAE66` |
@@ -22,14 +22,14 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Evaluation | `--color-evaluation` | `bg-dojo-evaluation` | `#8B5CF6` | `#8B5CF6` |
 | Icebreaker | `--color-icebreaker` | `bg-dojo-icebreaker` | `#D946EF` | `#D946EF` |
 | Text primary | `--color-text-primary` | `text-dojo-text-primary` | `#221A14` | `#F5F0E6` |
-| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#6B6153` | `#A99C8B` |
+| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#584F44` | `#B8AB9A` |
 
 **Text-safe (`-strong`) status variants.** The status/phase hues above are tuned for fills, dots and borders. Used as small text they fall under 4.5:1 on the light canvas (and read dim on the dark one), so every *label* rendered in a status colour uses the `-strong` variant instead. Fills, dots and borders keep the base token.
 
 | Token | CSS Variable | Tailwind Class | Hex (light) | Hex (dark) |
 |-------|-------------|----------------|-----|-----|
 | Success text | `--color-success-strong` | `text-dojo-success-strong` | `#15803D` | `#4ADE80` |
-| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#B45309` | `#FBBF24` |
+| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#A14008` | `#FBBF24` |
 | Danger text | `--color-danger-strong` | `text-dojo-danger-strong` | `#B91C1C` | `#F87171` |
 | Streak text | `--color-streak-strong` | `text-dojo-streak-strong` | `#C2410C` | `#F5B65C` |
 | Icebreaker text | `--color-icebreaker-strong` | `text-dojo-icebreaker-strong` | `#A21CAF` | `#E879F9` |
@@ -37,6 +37,15 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 **Radius:** `--radius-sm: 8px`, `--radius-md: 12px`, `--radius-lg: 16px`
 
 **Fonts:** `--font-sans` (Inter, body/UI), `--font-mono` (Geist Mono), `--font-display` (Playfair Display, `font-display` utility) — used for hero/section headings on the marketing site.
+
+**Type scale (readable floor).** Copy never goes below `text-xs` (12px). Do not use `text-[9px]`, `text-[10px]`, `text-[11px]`. Do not restack `text-dojo-text-muted` with `/50` `/60` `/70` `/80` or `opacity-*` — muted is already the secondary colour.
+
+| Role | Class | Use for |
+|------|-------|---------|
+| Learning speech | `text-base leading-relaxed text-dojo-text-primary` | Target-language line in a sitting bubble |
+| Sentence / gloss | `text-sm leading-relaxed` | Native gloss, phonetic, coach explanation, home body copy |
+| Caption / kicker | `text-xs` | Uppercase section labels, timestamps, Mute/Chat, badges |
+| Chrome on 3D | `text-xs text-white/70 drop-shadow-sm` | Avatar overlay labels only — the backdrop is a photo, not a token surface |
 
 ## UI Primitives (`/components/ui/`)
 | Component | Props | Usage Notes |
@@ -60,10 +69,10 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 ## Marketing Components (`/components/marketing/`)
 | Component | Props | Notes |
 |-----------|-------|-------|
-| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar |
+| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar. Signed-in appearance is Settings → Preferences (`Toggle` "Dark mode"), not a sidebar item — the nav already scrolls on short laptops. Both write `ai-dojo-theme` in localStorage via `ThemeProvider`. |
 | `DemoVideoDialog` | — | Fullscreen modal with custom video controls, triggered from the hero |
 | `TryoutPanel` | — | Client-side target/native language picker on the hero; pulls target languages from `lib/language.ts` `TARGET_LANGUAGES` and native languages from `NATIVE_LANGUAGES`. Links to `/tryout?targetLanguage=..&nativeLanguage=..`, which runs a real (unauthenticated) guest roleplay preview — see `app/tryout/`, `app/api/tryout/{start,turn}/route.ts`, `lib/hooks/useGuestRoleplaySession.ts` |
-| `TryoutCompleteScreen` | `targetLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/auth/signup`. The wizard is only for a signed-in account that has not been set up; sending a guest into it put account creation at the end of a questionnaire. Tryout's language pair stays in sessionStorage and prefills the wizard after they have an account |
+| `TryoutCompleteScreen` | `targetLanguage`, `nativeLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/auth/signup?targetLanguage=&nativeLanguage=` so the wizard prefills even if sessionStorage is gone. The wizard is only for a signed-in account that has not been set up; sending a guest into it put account creation at the end of a questionnaire |
 | `TryoutBlockedScreen` | `retryAfterMs` | Shown when the 24h tryout gate is closed. Live `HH:MM:SS` countdown driven off `retryAfterMs`, with sign-up as the primary action — signing up doesn't shorten the window, it makes it irrelevant |
 | `FooterNewsletter` | — | "Stay in the loop" email capture in the marketing footer's 6th column. **No backend**: there is no newsletter route under `app/api/`, so submit only flips to a local acknowledgement — wire the handler when an endpoint exists |
 | `PartnerBadge` (local to `app/(marketing)/page.tsx`) | `name`, `logo?` | Marquee tile in the Partners section. Tile is `h-16 w-24 / sm:h-20 sm:w-28` — deliberately wider than tall, because the assets in `public/brands/` range from a 4:1 wordmark to detailed university crests that were unreadable in the old 56px square. Uses **hardcoded `bg-white`** (documented exception): every logo file has a baked-in white background, so a themed surface only framed a white rectangle in dark mode. Partners with no `logo` fall back to an initial badge |
@@ -528,7 +537,7 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/auth/reset` | Set a new password | Landing page for the emailed reset link |
 | `/auth/suspended` | Account access paused | Where a suspended or closed account lands. The `(app)` layout sends them here rather than to `/auth`, because bouncing someone to a sign-in page they *can* sign into is a loop with no explanation in it — `getAuthUser()` is what refuses them, not their credentials. Reads `users.status` / `suspendedReason` through `getAuthUserReadOnly`, since `getAuthUser()` returns null for exactly the accounts this page serves |
 | `/auth/verify-email` | Verify your email | The shared step between creating an account and being let in. `?email=` (required), `?sent=1` (a code was already mailed — do not auto-send), `?next=` (where to land) |
-| `/onboarding/[step]` | Learner wizard | Session required (guest → `/auth/signup`). welcome → level → goal → domain → mode → age → languages → frequency → plan-ready |
+| `/onboarding/[step]` | Learner wizard | Session required (guest → `/auth/signup`), or `?preview=1` dry run. welcome → languages → level → social-proof → goal → frequency → mode → almost-set-up → domain → age → let’s-get-started → **practice** (icebreaker only). Finish POSTs `/api/user/onboarding` |
 | `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/welcome`). welcome → native-language → availability → ready |
 
 ### Email verification is not optional
@@ -555,11 +564,41 @@ The profile stays in component state the whole way, so verification never costs 
 
 ### Learner onboarding (`/onboarding/[step]`)
 
-The learner wizard is only for a **signed-in account that has not finished setup**. `app/onboarding/[step]/layout.tsx` sends a guest to `/auth/signup` and a tutor to `/onboarding/tutor/welcome`. `/onboarding` redirects to `/onboarding/welcome`.
+The learner wizard is for a **signed-in account that has not finished setup**. `app/onboarding/[step]/layout.tsx` sends a guest to `/auth/signup` and a tutor to `/onboarding/tutor/welcome`. `/onboarding` redirects to `/onboarding/welcome`, carrying `?preview=1` and `targetLanguage` / `nativeLanguage` when present.
 
-Tryout does not enter the wizard. `TryoutCompleteScreen` and `TryoutBlockedScreen` go to `/auth/signup`. After the account exists (and the email is verified), sign-up lands on `/onboarding` like any other new learner. The tryout language pair stays in sessionStorage and prefills the language steps.
+`?preview=1` is a dry run of the same screens: the gate lets a guest (or a signed-in reviewer) through, every step keeps the query, and finish does **not** `POST /api/user/onboarding` — it loops back to welcome. Local `next dev` also lets a guest in without the query so the flow can be reviewed without minting an account. A real sign-up in development still POSTs as usual.
 
-Steps are defined once in `ONBOARDING_STEPS` (`lib/onboarding/steps.ts`). The first is `welcome` (the account is ready; let's set up learning). The last is `plan-ready`, which `POST`s `/api/user/onboarding` and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST so Courses and the calendar are populated; it is only the fallback landing when the domain cannot be resolved. There is no account-creation step in the wizard — that used to sit at the end so a guest could walk the questions first.
+Tryout does not skip the wizard. `TryoutCompleteScreen` and `TryoutBlockedScreen` go to `/auth/signup` (complete carries the language pair on the URL). After the account exists (and the email is verified), sign-up lands on `/onboarding?targetLanguage=&nativeLanguage=` like any other new learner. `lib/onboarding/context.tsx` prefills from that query first, then from tryout sessionStorage.
+
+Steps are defined once in `ONBOARDING_STEPS` (`lib/onboarding/steps.ts`). The first is `welcome`. Question order: target language → native language → level → goal → daily minutes → interface mode → first domain → age. Interstitials sit where the copy matches the moment: `social-proof` ("You're in good company") after level, `transition-2` ("You're almost set up!") after interface mode, `transition-1` ("Great! Let's get you started!") after age. The last is `practice`: a 5-phrase **icebreaker** in the chosen domain on `/api/onboarding/turn` (Tryout-sibling JSON, not `/api/chat/stream`). It teaches vocabulary from that scenario one phrase per turn and does **not** open the scene. Chat mode is Voice with the transcript panel open. The sample is rewindable — back / "Change setup" remounts it; nothing is written until finish. Finish `POST`s `/api/user/onboarding` (unless preview) and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST so Courses and the calendar are populated; it is only the fallback landing when the domain cannot be resolved. There is no account-creation step in the wizard — that used to sit at the end so a guest could walk the questions first.
+
+### OnboardingPractice
+
+File: `components/onboarding/OnboardingPractice.tsx`
+Last updated: 2026-10-05
+
+| Property         | Class           |
+| ---------------- | --------------- |
+| Background       | `bg-dojo-canvas` |
+| Header           | `border-b border-dojo-border/60 bg-dojo-surface/50 px-4 py-3 backdrop-blur-md sm:px-6` |
+| Header title     | `text-sm font-bold tracking-tight text-dojo-text-primary` |
+| Back / change    | `text-dojo-text-muted hover:text-dojo-text-primary` |
+| Chat toggle      | `rounded-lg border border-dojo-border/60 bg-dojo-surface-raised/80 px-3 py-2 text-xs font-semibold` |
+| Complete card    | `rounded-2xl border border-dojo-border bg-dojo-surface-raised p-8 shadow-2xl` (same as `TryoutCompleteScreen`) |
+| Complete CTA     | `rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white hover:bg-dojo-accent/90` |
+| Greeting overlay | Same as session/tryout greeting overlay (`bg-dojo-canvas/90`, icon well `h-16 w-16 rounded-full bg-dojo-accent/20 ring-1 ring-dojo-accent/30`, CTA `rounded-xl bg-dojo-accent px-8 py-4`) |
+| Chat panel       | `w-80 max-w-[85vw] sm:w-96 border-r border-dojo-border/60 bg-dojo-surface/95` |
+| AI bubble        | `rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90` |
+| User bubble      | `rounded-2xl rounded-tr-sm border border-dojo-accent/20 bg-dojo-accent/15` |
+| Target speech    | `text-base leading-relaxed text-dojo-text-primary` |
+| Native gloss     | `text-sm italic leading-relaxed text-dojo-text-muted` |
+| Mic well         | Voice: `border-dojo-border/60 bg-dojo-surface/80 shadow-2xl backdrop-blur-xl`; Avatar: `border-white/10 bg-black/10 backdrop-blur-[2px]` (matches tryout avatar chrome) |
+
+**Pattern notes:**
+- Full-bleed, no `OnboardingShell` — the sample is a sitting, not a questionnaire card.
+- `preferredMode === 'chat'` starts with the transcript open (`practiceChatStartsOpen`); the stage is still Voice (or Avatar).
+- Situation is the domain's `skillLevel` match, else first active row. The sitting is that scenario's icebreaker (up to 5 vocab phrases), not the scene.
+- Preview shows a "Preview" label in the header; finish loops to welcome without writing.
 
 ### Tutor onboarding (`/onboarding/tutor/[step]`)
 
@@ -579,13 +618,13 @@ Two rules the flow depends on:
 
 `POST /api/user/onboarding` skips `enrollInCourse` + `seedLessonPlan` for `role === 'tutor'` — a tutor has no course to be enrolled in, and seeding one would put a course they never chose on their calendar. `admin` keeps the learner path.
 
-`OnboardingShell` takes the wizard it is rendering (`steps`, `basePath`, `exitHref`), defaulting to the learner one — the progress bar, the back button and the interstitial layout all derive from `StepConfig`, so a wizard declares its steps in exactly one place.
+`OnboardingShell` takes the wizard it is rendering (`steps`, `basePath`, `exitHref`, `preview`), defaulting to the learner one — the progress bar, the back button and the interstitial layout all derive from `StepConfig`, so a wizard declares its steps in exactly one place. `preview` keeps `?preview=1` on back navigation and shows a "answers are not saved" banner.
 
 ### One account system, three doors
 
 There is one set of credentials and one `users` table. `users.role` decides what an account opens. What is split is the **door**, not the identity: `/auth/signin`, `/auth/tutor/signin` and `/auth/admin/signin` (plus their `signup` twins) render the same `components/auth/AuthScreen` with different copy, showcase and defaults.
 
-**The role of the door never decides the landing.** After a successful sign-in the page asks the server (`GET /api/user/role`) and routes through `roleHome()` in `lib/auth/destinations.ts` — `admin` → `/admin`, `tutor` → `/tutor`, everyone else → `/home`. This is the whole point of the split: a tutor who signs in on the learner form is still a tutor, and the old behaviour (always `/home`, plus an in-component `isLogin` toggle that no URL described) is what made the app disagree with itself about who was signing in. The Google callback in `app/api/auth/[...path]/route.ts` routes the same way, off the `users.role` it already reads.
+**The role of the door never decides the landing.** After a successful sign-in the page asks the server (`GET /api/user/role`) and routes through `roleHome()` in `lib/auth/destinations.ts` — `admin` → `/admin`, `tutor` → `/tutor`, everyone else → `/home`. This is the whole point of the split: a tutor who signs in on the learner form is still a tutor, and the old behaviour (always `/home`, plus an in-component `isLogin` toggle that no URL described) is what made the app disagree with itself about who was signing in. The Google callback in `app/api/auth/[...path]/route.ts` does the same: it `syncUser()`s the session (so a first Google visit has a `users` row), promotes an allowlisted admin, then lands on `roleHome`. Incomplete learners still reach the wizard because `(app)/layout` gates on `onboardingCompletedAt === null` — the callback itself must not send them to `/onboarding` without a row.
 
 `lib/auth/destinations.ts` is the single source for all of it — `roleHome`, `roleSignInPath`, `roleSignUpPath`, `safeNext`, `fetchUserRole` — and it is client-safe (no Drizzle). **Do not add a second copy of `safeNext`**; `/auth/verify-email` used to carry one.
 
@@ -600,7 +639,7 @@ Unlinked, `noindex` (`app/auth/admin/layout.tsx`), and reachable only by typing 
 - `POST /api/auth/admin/claim` promotes the signed-in account to `role: 'admin'` only if its address is on the list. It **fails closed**: an unset or empty `ADMIN_EMAILS` allows nobody, because a missing env var must not turn the sign-up into an open door.
 - Both the admin sign-in and sign-up call it, and it is idempotent. That is not redundancy — the Neon project will not issue a session until the email is verified, so a fresh admin's first *session* is often their second visit, by which time the sign-up call is long gone.
 - It also stamps `onboardingCompletedAt`, and `app/(app)/layout.tsx` skips the onboarding gate for `admin`. Neither wizard collects anything the console reads.
-- No Google button on the admin pages: the OAuth callback has nowhere to carry an allowlist decision, so promotion stays on the password path where the claim route can answer for it.
+- No Google button on the admin pages: the claim UX lives on the password path. An allowlisted address that signs in with Google on another door is still promoted in the OAuth callback (`promoteAllowlistedAdmin`) so they land on `/admin` instead of the learner wizard.
 
 Admins can still be created the other way, by an existing admin via `POST /api/admin/users/create` — that writes a `users` row which `syncUser()` picks up by email on first sign-in.
 
