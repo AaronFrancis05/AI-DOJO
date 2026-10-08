@@ -40,7 +40,7 @@ export default function OnboardingStepPage() {
   const searchParams = useSearchParams();
   const isPreview = searchParams.get('preview') === '1';
   const step = params.step as string;
-  const { state, dispatch } = useOnboarding();
+  const { state, dispatch, hydrated } = useOnboarding();
   const catalog = useLanguageCatalog();
   const [saving, setSaving] = useState(false);
   const [dbDomains, setDbDomains] = useState<{ id: number; name: string; icon: string; description: string }[]>([]);
@@ -220,7 +220,7 @@ export default function OnboardingStepPage() {
                   key={d.id}
                   type="button"
                   onClick={() => {
-                    dispatch({ type: 'SET_PREFERRED_DOMAIN', payload: { id: d.id, name: d.name } });
+                    dispatch({ type: 'SET_PREFERRED_DOMAIN', payload: { id: Number(d.id), name: d.name } });
                     dispatch({ type: 'COMPLETE_STEP', payload: AGE.key });
                     goToStep(AGE.key);
                   }}
@@ -351,6 +351,7 @@ export default function OnboardingStepPage() {
     return (
       <OnboardingPractice
         state={state}
+        hydrated={hydrated}
         preview={isPreview}
         finishing={saving}
         onBack={() => goToStep(TRANSITION_1.key)}

@@ -1,9 +1,19 @@
 'use client';
 
-import { createContext, useContext, useEffect, useReducer, useRef, type ReactNode, type Dispatch } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+  type Dispatch,
+} from 'react';
 import { loadTryoutParams, sanitizeLanguageCode } from '@/lib/tryout/guest-params';
 
-const STORAGE_KEY = 'ai-dojo:onboarding';
+export const ONBOARDING_STORAGE_KEY = 'ai-dojo:onboarding';
 
 export interface OnboardingState {
   level: string;
@@ -18,7 +28,7 @@ export interface OnboardingState {
   completedSteps: string[];
 }
 
-type Action =
+export type OnboardingAction =
   | { type: 'SET_LEVEL'; payload: string }
   | { type: 'SET_LEARNING_GOAL'; payload: string }
   | { type: 'SET_PREFERRED_DOMAIN'; payload: { id: number; name: string } }
@@ -30,7 +40,7 @@ type Action =
   | { type: 'COMPLETE_STEP'; payload: string }
   | { type: 'HYDRATE'; payload: OnboardingState };
 
-const initialState: OnboardingState = {
+export const initialOnboardingState: OnboardingState = {
   level: '',
   learningGoal: '',
   preferredDomainId: null,
@@ -43,14 +53,48 @@ const initialState: OnboardingState = {
   completedSteps: [],
 };
 
-function onboardingReducer(state: OnboardingState, action: Action): OnboardingState {
+/** Domain ids must be positive numbers — JSON and form values sometimes arrive as strings. */
+export function coerceDomainId(value: unknown): number | null {
+  const id = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/**
+ * Restore fills blanks left by a remount. In-memory answers from this sitting
+ * win, so a HYDRATE that lands after the learner has already clicked does not
+ * wipe the domain they just picked.
+ */
+export function mergeOnboardingState(
+  restored: OnboardingState,
+  current: OnboardingState,
+): OnboardingState {
+  const initial = initialOnboardingState;
+  return {
+    level: current.level || restored.level,
+    learningGoal: current.learningGoal || restored.learningGoal,
+    preferredDomainId: current.preferredDomainId ?? restored.preferredDomainId,
+    preferredDomainName: current.preferredDomainName || restored.preferredDomainName,
+    preferredMode: current.preferredMode !== initial.preferredMode ? current.preferredMode : restored.preferredMode,
+    ageRange: current.ageRange || restored.ageRange,
+    targetLanguage: current.targetLanguage !== initial.targetLanguage ? current.targetLanguage : restored.targetLanguage,
+    nativeLanguage: current.nativeLanguage !== initial.nativeLanguage ? current.nativeLanguage : restored.nativeLanguage,
+    dailyGoalMinutes: current.dailyGoalMinutes !== initial.dailyGoalMinutes ? current.dailyGoalMinutes : restored.dailyGoalMinutes,
+    completedSteps: [...new Set([...restored.completedSteps, ...current.completedSteps])],
+  };
+}
+
+export function onboardingReducer(state: OnboardingState, action: OnboardingAction): OnboardingState {
   switch (action.type) {
     case 'SET_LEVEL':
       return { ...state, level: action.payload };
     case 'SET_LEARNING_GOAL':
       return { ...state, learningGoal: action.payload };
     case 'SET_PREFERRED_DOMAIN':
-      return { ...state, preferredDomainId: action.payload.id, preferredDomainName: action.payload.name };
+      return {
+        ...state,
+        preferredDomainId: coerceDomainId(action.payload.id),
+        preferredDomainName: action.payload.name,
+      };
     case 'SET_PREFERRED_MODE':
       return { ...state, preferredMode: action.payload };
     case 'SET_AGE_RANGE':
@@ -62,7 +106,7 @@ function onboardingReducer(state: OnboardingState, action: Action): OnboardingSt
     case 'SET_DAILY_GOAL_MINUTES':
       return { ...state, dailyGoalMinutes: action.payload };
     case 'HYDRATE':
-      return action.payload;
+      return mergeOnboardingState(action.payload, state);
     case 'COMPLETE_STEP':
       return {
         ...state,
@@ -77,7 +121,9 @@ function onboardingReducer(state: OnboardingState, action: Action): OnboardingSt
 
 interface OnboardingContextType {
   state: OnboardingState;
-  dispatch: Dispatch<Action>;
+  dispatch: Dispatch<OnboardingAction>;
+  /** False until sessionStorage (or its absence) has been applied. */
+  hydrated: boolean;
 }
 
 const OnboardingContext = createContext<OnboardingContextType | null>(null);
@@ -114,50 +160,76 @@ function prefillFromTryout(): Partial<OnboardingState> {
   };
 }
 
+function normalizeLoadedState(parsed: Partial<OnboardingState>): OnboardingState {
+  return {
+    ...initialOnboardingState,
+    ...parsed,
+    preferredDomainId: coerceDomainId(parsed.preferredDomainId),
+    completedSteps: Array.isArray(parsed.completedSteps) ? parsed.completedSteps.filter((s) => typeof s === 'string') : [],
+    ...prefillFromTryout(),
+  };
+}
+
 /**
  * Onboarding answers survived only in memory, so a refresh threw away every
  * answer before any of them had been saved.
  */
-function loadPersistedState(): OnboardingState {
-  const base = { ...initialState, ...prefillFromTryout() };
+export function loadPersistedOnboardingState(): OnboardingState {
+  const base = normalizeLoadedState({});
   if (typeof window === 'undefined') return base;
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(ONBOARDING_STORAGE_KEY);
     if (!raw) return base;
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
     // Spread order matters: a pair carried on the URL is the learner's most
     // recent choice and outranks whatever an earlier pass persisted.
-    return { ...initialState, ...parsed, ...prefillFromTryout() };
+    return normalizeLoadedState(parsed);
   } catch {
     return base;
   }
 }
 
+export function persistOnboardingState(state: OnboardingState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // sessionStorage unavailable — answers stay in memory, as before
+  }
+}
+
 export function OnboardingProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(onboardingReducer, initialState);
-  const hydrated = useRef(false);
+  const [state, rawDispatch] = useReducer(onboardingReducer, initialOnboardingState);
+  const [hydrated, setHydrated] = useState(false);
+  const stateRef = useRef(initialOnboardingState);
+  const readyToPersist = useRef(false);
+
+  // Persist inside dispatch so a click + router.push cannot beat a useEffect
+  // and lose the domain on the next layout remount.
+  const dispatch = useCallback((action: OnboardingAction) => {
+    const next = onboardingReducer(stateRef.current, action);
+    stateRef.current = next;
+    rawDispatch(action);
+    if (action.type === 'HYDRATE' || readyToPersist.current) {
+      persistOnboardingState(next);
+    }
+  }, []);
 
   // Restored after mount rather than in a lazy initializer: the server render
   // has no sessionStorage, so seeding the first client render from it would
   // be a hydration mismatch on every already-answered step.
   useEffect(() => {
-    dispatch({ type: 'HYDRATE', payload: loadPersistedState() });
-    hydrated.current = true;
-  }, []);
-
-  useEffect(() => {
-    // Writing before the restore lands would overwrite the saved answers
-    // with the empty initial state.
-    if (!hydrated.current) return;
-    try {
-      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // sessionStorage unavailable — answers stay in memory, as before
-    }
-  }, [state]);
+    const restored = loadPersistedOnboardingState();
+    readyToPersist.current = true;
+    dispatch({ type: 'HYDRATE', payload: restored });
+    // External store the server cannot see — same one-shot restore as
+    // OnboardingShell's mounted flag, not a reaction to other React state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHydrated(true);
+  }, [dispatch]);
 
   return (
-    <OnboardingContext.Provider value={{ state, dispatch }}>
+    <OnboardingContext.Provider value={{ state, dispatch, hydrated }}>
       {children}
     </OnboardingContext.Provider>
   );
@@ -167,7 +239,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 export function clearPersistedOnboarding(): void {
   if (typeof window === 'undefined') return;
   try {
-    window.sessionStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
   } catch {
     // nothing to do
   }

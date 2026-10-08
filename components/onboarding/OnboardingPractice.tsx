@@ -20,13 +20,15 @@ import type { OnboardingState } from '@/lib/onboarding/context';
 
 interface OnboardingPracticeProps {
   state: OnboardingState;
+  /** False until wizard answers have been read from sessionStorage. */
+  hydrated: boolean;
   preview: boolean;
   finishing: boolean;
   onBack: () => void;
   onFinish: () => void;
 }
 
-export function OnboardingPractice({ state, preview, finishing, onBack, onFinish }: OnboardingPracticeProps) {
+export function OnboardingPractice({ state, hydrated, preview, finishing, onBack, onFinish }: OnboardingPracticeProps) {
   const domainId = state.preferredDomainId;
   const surface = practiceSurface(state.preferredMode);
   const [situation, setSituation] = useState<PracticeSituation | null>(null);
@@ -50,6 +52,14 @@ export function OnboardingPractice({ state, preview, finishing, onBack, onFinish
       });
     return () => { cancelled = true; };
   }, [domainId, state.level, state.targetLanguage]);
+
+  if (!hydrated && !domainId) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-dojo-canvas">
+        <LoaderIcon className="h-6 w-6 animate-spin text-dojo-accent" />
+      </div>
+    );
+  }
 
   if (!domainId) {
     return (

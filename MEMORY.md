@@ -1272,6 +1272,10 @@ Muted and border tokens were lifted (light muted `#584F44`, dark `#B8AB9A`; bord
 
 `OnboardingPractice` (client) imported `lib/onboarding/practice.ts`, which loads `src/db.ts`. Next inlines non-`NEXT_PUBLIC_` env as `undefined` in the client bundle, so every onboarding step threw `DATABASE_URL is not defined` even with `.env` set. UI helpers/types live in `lib/onboarding/practice-shared.ts`; DB/cache stay in `practice.ts`.
 
+## 2026-10-08 (onboarding practice lost the picked domain)
+
+Practice showed "Pick a domain first so we know what to practise" even after a domain click. Two causes: (1) a persist `useEffect` wrote the empty initial state to sessionStorage as soon as a ref flipped to hydrated, so Strict Mode / layout remounts restored a blank wizard; (2) practice skips `OnboardingShell`'s mount gate, so the first paint always saw `preferredDomainId: null`. Answers now persist synchronously inside `dispatch`, HYDRATE merges instead of replacing, and practice waits for hydration before treating a missing domain as an error.
+
 
 
 
