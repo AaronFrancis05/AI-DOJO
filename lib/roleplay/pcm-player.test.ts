@@ -5,6 +5,7 @@ import {
   decodePcm16,
   resetCursor,
   isDraining,
+  stopAllSinks,
   PCM_SAMPLE_RATE,
   type PcmContext,
 } from './pcm-player';
@@ -18,14 +19,16 @@ import {
 const EMPTY = new Uint8Array(0);
 
 /** Minimal stand-in for AudioContext; records what was scheduled and when. */
-function stubContext(): PcmContext & { now: number; starts: number[]; durations: number[] } {
+function stubContext(): PcmContext & { now: number; starts: number[]; durations: number[]; sourceStops: number } {
   const starts: number[] = [];
   const durations: number[] = [];
+  let sourceStops = 0;
 
   const ctx = {
     now: 0,
     starts,
     durations,
+    get sourceStops() { return sourceStops; },
     get currentTime() { return ctx.now; },
     createBuffer(_channels: number, length: number, sampleRate: number) {
       return {
@@ -43,13 +46,14 @@ function stubContext(): PcmContext & { now: number; starts: number[]; durations:
           starts.push(when);
           durations.push(source.buffer!.duration);
         },
-        stop() { /* recorded via live-set removal only */ },
+        stop() { sourceStops++; },
+        disconnect() { /* tests do not inspect the graph */ },
       };
       return source as unknown as AudioBufferSourceNode;
     },
   };
 
-  return ctx as PcmContext & { now: number; starts: number[]; durations: number[] };
+  return ctx as PcmContext & { now: number; starts: number[]; durations: number[]; sourceStops: number };
 }
 
 /** `sampleCount` samples of 16-bit LE PCM, as raw bytes. */
@@ -192,4 +196,20 @@ test('isDraining reports whether audio is still due', () => {
 
   ctx.now = 10;
   assert.equal(isDraining(), false);
+});
+
+test('stopAllSinks silences every live sink, not just the last one', async () => {
+  resetCursor();
+  const ctx = stubContext();
+  const first = createPcmSink(ctx, () => {});
+  first.push(pcmBytes(PCM_SAMPLE_RATE));
+  first.end();
+  const second = createPcmSink(ctx, () => {});
+  second.push(pcmBytes(PCM_SAMPLE_RATE));
+  second.end();
+
+  stopAllSinks();
+  assert.equal(ctx.sourceStops, 2);
+  await first.finished;
+  await second.finished;
 });

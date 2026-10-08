@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
 import {
   isRecord,
@@ -199,8 +200,10 @@ export default function SharedSessionPage() {
               {conversations
                 .sort((a, b) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
                 .map((msg, i) => {
-                  const isUser = msg.speaker === 'user';
-                  return (
+                const isUser = msg.speaker === 'user';
+                const text = displayedUtterance(msg);
+                const native = (msg.messageNative ?? '').trim();
+                return (
                     <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
                       <Avatar name={isUser ? 'You' : scenario.aiCharacterName}
                         color={isUser ? '#2D3BC5' : '#D14343'} size="sm" />
@@ -210,16 +213,16 @@ export default function SharedSessionPage() {
                             ? 'rounded-br-none bg-dojo-accent'
                             : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
                         }`}>
-                          {msg.messageTarget && (
+                          {text && (
                             <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                              {cleanDisplay(msg.messageTarget)}
+                              {cleanDisplay(text)}
                             </p>
                           )}
-                          {(msg.messagePhonetic || msg.messageNative) && (
+                          {(msg.messagePhonetic || (native && native !== text)) && (
                             <div className={`mt-1 text-xs ${isUser ? 'text-white/70' : 'text-dojo-text-muted'}`}>
                               {msg.messagePhonetic && <i>{msg.messagePhonetic}</i>}
-                              {msg.messagePhonetic && msg.messageNative && <br />}
-                              {msg.messageNative}
+                              {msg.messagePhonetic && native && native !== text && <br />}
+                              {native && native !== text ? msg.messageNative : null}
                             </div>
                           )}
                         </div>

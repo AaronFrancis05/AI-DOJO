@@ -3,7 +3,7 @@ import { withSessionLock } from '../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios, situations, users, vocabularyEncounters, countries } from '../../../src/schema';
 import { analyzeAndGenerateTurn } from '../../../lib/ai-engine';
 import { AIProviderError, AIQuotaError, AIModelError } from '../../../lib/ai-providers';
-import { buildConversationHistory } from '../../../lib/roleplay/conversation-history';
+import { buildConversationHistory, persistableUserUtterance } from '../../../lib/roleplay/conversation-history';
 import {
   nextPhase,
   STALL_THRESHOLD,
@@ -155,8 +155,7 @@ export async function POST(req: Request) {
         sessionId: numericSessionId,
         turnNo: currentTurnNo,
         speaker: 'user',
-        messageTarget: mlPipelineOutput.messageTarget,
-        messageNative: mlPipelineOutput.messageNative,
+        ...persistableUserUtterance(mlPipelineOutput, userRawInput),
         messagePhonetic: mlPipelineOutput.messagePhonetic,
         emotionTone: mlPipelineOutput.emotionTone ?? null,
         gestureHint: mlPipelineOutput.gestureHint ?? null,
@@ -417,8 +416,7 @@ export async function POST(req: Request) {
         phase: currentPhase,
         retry: true,
         analysis: {
-          messageTarget: mlPipelineOutput.messageTarget,
-          messageNative: mlPipelineOutput.messageNative,
+          ...persistableUserUtterance(mlPipelineOutput, userRawInput),
           messagePhonetic: mlPipelineOutput.messagePhonetic,
           emotionTone: mlPipelineOutput.emotionTone,
           gestureHint: mlPipelineOutput.gestureHint,

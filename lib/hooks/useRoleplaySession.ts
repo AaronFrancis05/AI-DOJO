@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import type { AvatarSource } from '@/lib/avatar/catalog';
 import { setVoiceGender } from '@/lib/roleplay/tts';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { persistableUserUtterance } from '@/lib/roleplay/conversation-history';
 import { isSessionEnded, isSessionPlayView, isSessionPlayable } from '@/lib/roleplay/session-lifecycle';
 import { startFollowUpSession } from '@/lib/roleplay/restart-session';
 import { useSessionClock } from '@/lib/hooks/useSessionClock';
@@ -529,10 +530,11 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
     }
 
     if (isRetryResponse && finalAnalysis) {
+      const persisted = persistableUserUtterance(finalAnalysis, trimmed);
       const userTurn: TurnData = {
         id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
-        messageTarget: finalAnalysis.messageTarget ?? trimmed,
-        messageNative: finalAnalysis.messageNative ?? '',
+        messageTarget: persisted.messageTarget,
+        messageNative: persisted.messageNative,
         messagePhonetic: finalAnalysis.messagePhonetic ?? null,
         emotionTone: finalAnalysis.emotionTone,
         gestureHint: finalAnalysis.gestureHint,
@@ -556,10 +558,11 @@ export function useRoleplaySession(sessionId: number): UseRoleplaySessionReturn 
         receivedAt: Date.now(),
       }]);
     } else {
+      const persisted = persistableUserUtterance(finalAnalysis ?? {}, trimmed);
       const userTurn: TurnData = {
         id: Date.now(), turnNo: conversations.length + 1, speaker: 'user',
-        messageTarget: finalAnalysis?.messageTarget ?? trimmed,
-        messageNative: finalAnalysis?.messageNative ?? '',
+        messageTarget: persisted.messageTarget,
+        messageNative: persisted.messageNative,
         messagePhonetic: finalAnalysis?.messagePhonetic ?? null,
         emotionTone: finalAnalysis?.emotionTone,
         gestureHint: finalAnalysis?.gestureHint,

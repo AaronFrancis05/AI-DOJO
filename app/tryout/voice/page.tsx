@@ -7,10 +7,11 @@ import { ArrowLeft, Mic, Volume2, VolumeX, MessageSquare, X, Send } from 'lucide
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
 import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useGuestRoleplaySession } from '@/lib/hooks/useGuestRoleplaySession';
-import { stop as stopTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { stop as stopTts, setOnSpeakingChange, unlockAudio, clearTurnCache } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { TryoutCompleteScreen } from '@/components/marketing/TryoutCompleteScreen';
 import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
 import { loadTryoutParams } from '@/lib/tryout/guest-params';
@@ -71,14 +72,17 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const mutedRef = useRef(false);
 
-  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => {
+    mutedRef.current = muted;
+    if (muted) stopTts();
+  }, [muted]);
 
   // Microphone acquisition is handled once by the recognizer prewarm in
   // useVoiceInput, which holds the stream open for the whole session.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => setAvatarMode(speaking ? 'talking' : 'idle'));
-    return () => { setOnSpeakingChange(null); stopTts(); };
+    return () => { setOnSpeakingChange(null); stopTts(); clearTurnCache(); };
   }, []);
 
   useEffect(() => {
@@ -223,7 +227,10 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setMuted(v => !v)}
+                  onClick={() => {
+                    if (!muted) stopTts();
+                    setMuted(v => !v);
+                  }}
                   className={`tap-target flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 ${
                     muted
                       ? 'bg-dojo-danger/20 text-dojo-danger border-dojo-danger/40'
@@ -301,7 +308,7 @@ function TryoutVoiceSession({ targetLanguage, nativeLanguage }: { targetLanguage
                       <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? TRYOUT_CHARACTER_NAME : 'You'}</span>
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
-                      <p className="text-base text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                      <p className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
                       {isAi && turn.messageNative && (
                         <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}

@@ -15,7 +15,7 @@ import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
 import type { CorrectionItem } from '@/lib/ai-engine';
-import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
+import { speakMixedText, replayMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender, startTurnCapture, commitTurnCapture, discardTurnCapture, clearTurnCache } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
@@ -29,6 +29,7 @@ import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { cn } from '@/lib/design-tokens';
 import {
   ArrowLeft, Info, Mic, Volume2, VolumeX,
@@ -132,7 +133,7 @@ export default function AvatarModePage() {
     const t = turn.messageTarget || turn.messageNative;
     if (!t) return;
     const bcp47 = getBCP47(targetLanguage, 'tts');
-    speakMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
+    replayMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
   }, [muted, targetLanguage, nativeLanguage, phase]);
 
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
@@ -212,7 +213,7 @@ export default function AvatarModePage() {
         emotionSystemRef.current?.stopTalking?.();
       }
     });
-    return () => { setOnSpeakingChange(null); stopTts(); };
+    return () => { setOnSpeakingChange(null); stopTts(); clearTurnCache(); };
   }, []);
 
   // Recite the welcome-back recap. It reaches the transcript on its own, so
@@ -229,6 +230,7 @@ export default function AvatarModePage() {
       // gesture was the mute button, the pre-check above is stale by now.
       if (mutedRef.current) { dismissRecap(); return; }
       playCaption(text, Math.max(3000, text.length * 65)).catch(() => {});
+      startTurnCapture();
       speakMixedText(
         text,
         getBCP47(targetLangRef.current, 'tts'),
@@ -236,7 +238,7 @@ export default function AvatarModePage() {
           ? getBCP47(targetLangRef.current, 'tts')
           : getNativeLangBcp47(nativeLangRef.current),
         phaseRef.current,
-      ).catch(() => {});
+      ).then(() => commitTurnCapture(text)).catch(() => discardTurnCapture());
       dismissRecap();
     });
     return cancel;
@@ -684,7 +686,10 @@ export default function AvatarModePage() {
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setMuted(v => !v)}
+                  onClick={() => {
+                    if (!muted) stopTts();
+                    setMuted(v => !v);
+                  }}
                   className={`tap-target flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 ${
                     muted
                       ? 'bg-dojo-danger/30 text-dojo-danger border-dojo-danger/50 backdrop-blur-md'
@@ -816,7 +821,7 @@ export default function AvatarModePage() {
                         ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60'
                         : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'
                     }`}>
-                      <p className="text-base text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                      <p className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
                       {turn.messagePhonetic && (
                         <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messagePhonetic}</p>
                       )}
