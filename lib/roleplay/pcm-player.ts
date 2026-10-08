@@ -82,6 +82,19 @@ export function resetCursor(): void {
   cursor = 0;
 }
 
+/**
+ * Every sink currently holding scheduled audio. `stop()` in tts.ts used to
+ * keep a single callback, which is the LAST utterance queued — and because
+ * synthesis runs ahead of playback, that is almost never the one being
+ * heard. Mute/barge-in have to stop this whole set.
+ */
+const liveSinks = new Set<PcmSink>();
+
+/** Silence every scheduled PCM source. Safe to call when none are playing. */
+export function stopAllSinks(): void {
+  for (const sink of [...liveSinks]) sink.stop();
+}
+
 /** Whether any scheduled audio is still due to play. */
 export function isDraining(): boolean {
   return activeCtx !== null && cursor > activeCtx.currentTime;
@@ -167,29 +180,7 @@ export function createPcmSink(ctx: PcmContext, connect: (source: AudioNode) => v
 
   const finished = new Promise<void>((resolve) => { settle = resolve; });
 
-  const done = () => {
-    if (settled) return;
-    settled = true;
-    // A barge-in resolves the sink long before its audio would have ended, so
-    // the outstanding poll has to be cancelled rather than left to fire against
-    // a sink nobody is waiting on any more.
-    if (finishTimer) { clearTimeout(finishTimer); finishTimer = null; }
-    settle?.();
-  };
-
-  /** Resolves `finished` when the last scheduled sample is due, not before. */
-  const armFinish = () => {
-    finishTimer = null;
-    if (!ended || stopped || settled) return;
-    // A closed context will never advance its clock again, so the audio this
-    // is waiting on can no longer arrive. Polling on would hang the queue.
-    if (ctx.state === 'closed') { done(); return; }
-    const remainingMs = (endsAt - ctx.currentTime) * 1000;
-    if (remainingMs <= 0) { done(); return; }
-    finishTimer = setTimeout(armFinish, Math.max(20, remainingMs));
-  };
-
-  return {
+  const sink: PcmSink = {
     get started() { return startedAt >= 0; },
     finished,
 
@@ -234,6 +225,7 @@ export function createPcmSink(ctx: PcmContext, connect: (source: AudioNode) => v
       stopped = true;
       for (const source of live) {
         try { source.stop(); } catch { /* never started, or already stopped */ }
+        try { source.disconnect(); } catch { /* not connected, or already torn down */ }
       }
       live.clear();
       done();
@@ -244,4 +236,30 @@ export function createPcmSink(ctx: PcmContext, connect: (source: AudioNode) => v
       return (ctx.currentTime - startedAt) * 1000;
     },
   };
+
+  const done = () => {
+    if (settled) return;
+    settled = true;
+    liveSinks.delete(sink);
+    // A barge-in resolves the sink long before its audio would have ended, so
+    // the outstanding poll has to be cancelled rather than left to fire against
+    // a sink nobody is waiting on any more.
+    if (finishTimer) { clearTimeout(finishTimer); finishTimer = null; }
+    settle?.();
+  };
+
+  /** Resolves `finished` when the last scheduled sample is due, not before. */
+  const armFinish = () => {
+    finishTimer = null;
+    if (!ended || stopped || settled) return;
+    // A closed context will never advance its clock again, so the audio this
+    // is waiting on can no longer arrive. Polling on would hang the queue.
+    if (ctx.state === 'closed') { done(); return; }
+    const remainingMs = (endsAt - ctx.currentTime) * 1000;
+    if (remainingMs <= 0) { done(); return; }
+    finishTimer = setTimeout(armFinish, Math.max(20, remainingMs));
+  };
+
+  liveSinks.add(sink);
+  return sink;
 }

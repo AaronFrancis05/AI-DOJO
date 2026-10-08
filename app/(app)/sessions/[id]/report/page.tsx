@@ -16,6 +16,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Avatar } from '@/components/ui/Avatar';
 import { sessionHistory } from '@/lib/data/sessions';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { computeCompositeScore, PASSING_SCORE_THRESHOLD } from '@/lib/roleplay/phase-engine';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { useUser } from '@/lib/auth/user-context';
@@ -474,6 +475,8 @@ export default function SessionReportPage() {
               .sort((a, b) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
               .map((msg, i) => {
                 const isUser = msg.speaker === 'user';
+                const text = displayedUtterance(msg);
+                const native = (msg.messageNative ?? '').trim();
                 return (
                   <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
                     <Avatar name={isUser ? 'You' : (scenario?.aiCharacterName ?? 'AI')}
@@ -490,9 +493,9 @@ export default function SessionReportPage() {
                           ? 'rounded-br-none bg-dojo-accent'
                           : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
                       }`}>
-                        {msg.messageTarget && (
+                        {text && (
                           <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                            {cleanDisplay(msg.messageTarget)}
+                            {cleanDisplay(text)}
                           </p>
                         )}
                         {msg.messagePhonetic && (
@@ -500,7 +503,7 @@ export default function SessionReportPage() {
                             {msg.messagePhonetic}
                           </p>
                         )}
-                        {msg.messageNative && (
+                        {native && native !== text && (
                           <p className={`text-xs ${isUser ? 'text-white/60' : 'text-dojo-text-muted'}`}>
                             {msg.messageNative}
                           </p>

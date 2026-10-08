@@ -24,6 +24,7 @@ import { sanitizeStreamedChunk, createStreamTextSanitizer, parseVocabMarker } fr
 import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
 import { inferGesture } from '../../../../lib/roleplay/gesture';
 import { isSessionEnded } from '../../../../lib/roleplay/session-lifecycle';
+import { persistableUserUtterance } from '../../../../lib/roleplay/conversation-history';
 import {
   buildTurnSystemPrompt,
   buildTurnUserMessage,
@@ -539,8 +540,7 @@ export async function POST(req: Request) {
                     sessionId: numericSessionId,
                     turnNo: currentTurnNo,
                     speaker: 'user',
-                    messageTarget: analysis.messageTarget,
-                    messageNative: analysis.messageNative,
+                    ...persistableUserUtterance(analysis, userRawInput),
                     messagePhonetic: analysis.messagePhonetic,
                     emotionTone: analysis.emotionTone ?? null,
                     gestureHint: analysis.gestureHint ?? null,
@@ -621,8 +621,7 @@ export async function POST(req: Request) {
               send(JSON.stringify({
                 type: 'retry',
                 analysis: {
-                  messageTarget: analysis.messageTarget,
-                  messageNative: analysis.messageNative,
+                  ...persistableUserUtterance(analysis, userRawInput),
                   messagePhonetic: analysis.messagePhonetic,
                   emotionTone: analysis.emotionTone,
                   gestureHint: analysis.gestureHint,
@@ -659,8 +658,7 @@ export async function POST(req: Request) {
               sessionId: numericSessionId,
               turnNo: currentTurnNo,
               speaker: 'user',
-              messageTarget: analysis.messageTarget,
-              messageNative: analysis.messageNative,
+              ...persistableUserUtterance(analysis, userRawInput),
               messagePhonetic: analysis.messagePhonetic,
               emotionTone: analysis.emotionTone ?? null,
               gestureHint: analysis.gestureHint ?? null,
@@ -1023,8 +1021,7 @@ export async function POST(req: Request) {
             xpGained: writeResult.xpGained,
             newStreak: writeResult.newStreak,
             analysis: {
-              messageTarget: analysis.messageTarget,
-              messageNative: analysis.messageNative,
+              ...persistableUserUtterance(analysis, userRawInput),
               messagePhonetic: analysis.messagePhonetic,
               emotionTone: analysis.emotionTone,
               gestureHint: analysis.gestureHint,

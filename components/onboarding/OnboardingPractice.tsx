@@ -6,10 +6,11 @@ import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
 import { AvatarViewport3D, DEFAULT_AVATAR_MODEL_URL } from '@/components/roleplay/AvatarViewport3D';
 import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useOnboardingPracticeSession } from '@/lib/hooks/useOnboardingPracticeSession';
-import { stop as stopTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { stop as stopTts, setOnSpeakingChange, unlockAudio, clearTurnCache } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { colors } from '@/lib/design-tokens';
 import {
   practiceChatStartsOpen,
@@ -147,11 +148,14 @@ function OnboardingPracticeSession({
   const mutedRef = useRef(false);
   const characterName = situation.characterName;
 
-  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => {
+    mutedRef.current = muted;
+    if (muted) stopTts();
+  }, [muted]);
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => setAvatarMode(speaking ? 'talking' : 'idle'));
-    return () => { setOnSpeakingChange(null); stopTts(); };
+    return () => { setOnSpeakingChange(null); stopTts(); clearTurnCache(); };
   }, []);
 
   useEffect(() => {
@@ -342,7 +346,10 @@ function OnboardingPracticeSession({
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setMuted((v) => !v)}
+                  onClick={() => {
+                    if (!muted) stopTts();
+                    setMuted((v) => !v);
+                  }}
                   className={`tap-target flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 ${
                     muted
                       ? 'border-dojo-danger/40 bg-dojo-danger/20 text-dojo-danger'
@@ -431,7 +438,7 @@ function OnboardingPracticeSession({
                   <div className={`flex max-w-[80%] flex-col ${isAi ? 'items-start' : 'items-end'}`}>
                     <span className="mb-1 px-1 text-xs font-semibold text-dojo-text-primary">{isAi ? characterName : 'You'}</span>
                     <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90' : 'rounded-2xl rounded-tr-sm border border-dojo-accent/20 bg-dojo-accent/15'}`}>
-                      <p className="text-base leading-relaxed text-dojo-text-primary">{turn.messageTarget}</p>
+                      <p className="text-base leading-relaxed text-dojo-text-primary">{displayedUtterance(turn)}</p>
                       {isAi && turn.messageNative && (
                         <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}
