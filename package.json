@@ -17,6 +17,8 @@
     "db:backfill-target-localizations": "tsx scripts/backfill-target-localizations.ts",
     "db:export-localizations": "tsx scripts/export-localizations.ts",
     "db:check-localization": "tsx scripts/check-course-localization.ts",
+    "db:backfill-tutor-instruction-languages": "tsx scripts/backfill-tutor-instruction-languages.ts",
+    "db:seed-english-syllabus": "tsx scripts/seed-english-syllabus.ts",
     "i18n:translate": "tsx scripts/translate-ui-messages.ts",
     "avatars:convert": "tsx scripts/convert-avatar-animations.ts",
     "docker:dev": "docker compose -f docker-compose.dev.yml up --build",

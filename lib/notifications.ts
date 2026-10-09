@@ -24,7 +24,10 @@ export type NotificationType =
   | 'group_assignment'
   | 'group_removal'
   // Produced by the post-session job (lib/inngest/functions/generateStudyPack.ts).
-  | 'study_pack';
+  | 'study_pack'
+  // Hybrid tutoring (PLAN.md Phase 4): placement results, reviews, vetting.
+  | 'placement'
+  | 'tutor_review';
 
 export interface CreateNotificationInput {
   userId: string;

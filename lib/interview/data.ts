@@ -20,7 +20,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { dbPool } from '@/src/db-pool';
-import { aiInterviews, assessmentQueue, assessmentSessions, users } from '@/src/schema';
+import { aiInterviews, assessmentQueue, assessmentSessions, countries, users } from '@/src/schema';
 import type { TurnScores } from '@/lib/ai-engine';
 import type { InterviewTurn } from './transcript';
 
@@ -306,4 +306,32 @@ export async function loadInterviewsForAssessment(
     scores: rowScores(interview),
     feedback: interview.feedback,
   }));
+}
+
+/**
+ * The learner facts both the examiner's brief and the marking rubric need.
+ *
+ * Country resolves through `countries` rather than off the raw code, matching
+ * `lib/roleplay/analyze-turn.ts` — the identity guard in the prompt wants a
+ * country a model can name, not "UG".
+ */
+export async function loadInterviewLearnerProfile(userId: string) {
+  const [row] = await db
+    .select({
+      name: users.name,
+      level: users.level,
+      nativeLanguage: users.nativeLanguage,
+      countryName: countries.name,
+    })
+    .from(users)
+    .leftJoin(countries, eq(users.countryCode, countries.code))
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return {
+    name: row?.name ?? '',
+    level: row?.level ?? 'beginner',
+    nativeLanguage: row?.nativeLanguage ?? 'en',
+    countryName: row?.countryName ?? null,
+  };
 }

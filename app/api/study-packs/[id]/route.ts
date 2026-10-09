@@ -33,12 +33,15 @@ export async function GET(_req: Request, { params }: RouteContext) {
       .from(studyPackItems)
       .where(eq(studyPackItems.packId, pack.id))
       .orderBy(asc(studyPackItems.sequenceOrder)),
-    db
-      .select({ id: scenarios.id, title: scenarios.title })
-      .from(sessions)
-      .innerJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
-      .where(eq(sessions.id, pack.sessionId))
-      .limit(1),
+    // A lesson pack (PLAN.md 4.2) has no session, so no scenario to name it by.
+    pack.sessionId !== null
+      ? db
+        .select({ id: scenarios.id, title: scenarios.title })
+        .from(sessions)
+        .innerJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
+        .where(eq(sessions.id, pack.sessionId))
+        .limit(1)
+      : Promise.resolve([]),
     pack.recommendedScenarioId
       ? db
         .select({ id: scenarios.id, title: scenarios.title, difficulty: scenarios.difficulty })
@@ -63,12 +66,13 @@ export async function GET(_req: Request, { params }: RouteContext) {
     pack: {
       id: pack.id,
       sessionId: pack.sessionId,
+      bookingId: pack.bookingId,
       targetLanguage: pack.targetLanguage,
       nativeLanguage: pack.nativeLanguage,
       explanation: pack.explanation,
       status: pack.status === 'ready' ? 'opened' : pack.status,
       createdAt: pack.createdAt,
-      scenarioTitle: source ? await titleFor(source) : null,
+      scenarioTitle: source ? await titleFor(source) : pack.bookingId !== null ? 'Your lesson with your tutor' : null,
       recommendation: recommended
         ? {
           scenarioId: recommended.id,

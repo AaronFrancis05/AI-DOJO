@@ -26,7 +26,7 @@ import type { DialoguePayload, DrillPayload, FocusPayload } from '@/lib/study-pa
 
 interface PackDetail {
   id: number;
-  sessionId: number;
+  sessionId: number | null;
   targetLanguage: string;
   nativeLanguage: string;
   explanation: string;

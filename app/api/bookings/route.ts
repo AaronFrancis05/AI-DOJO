@@ -81,6 +81,8 @@ export async function GET() {
       purpose: booking.purpose,
       learnerNote: booking.learnerNote,
       chatRoomId: booking.chatRoomId,
+      learnerId: booking.learnerId,
+      notesFiled: booking.notesFiledAt != null,
       // The call id is intentionally not exposed here. It is only ever
       // handed out alongside a token from /api/live/token, after the
       // join-window and membership checks have passed.

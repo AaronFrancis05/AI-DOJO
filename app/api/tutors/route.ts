@@ -1,5 +1,9 @@
 import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
+import { HYBRID_ENABLED } from '@/lib/tutors/config';
+import { loadTutorTrust } from '@/lib/tutors/quality';
+import { rankBySharedLanguage, shouldWarnBeforeBooking } from '@/lib/tutors/matching';
+import { isCefrLevel } from '@/lib/interview/cefr';
 import { and, eq } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
 import { tutorLanguageSets } from '@/lib/tutors/languages';
@@ -60,5 +64,39 @@ export async function GET(req: Request) {
     : parsed;
   const filtered = lang ? permitted.filter((t) => t.languages.includes(lang)) : permitted;
 
-  return Response.json({ success: true, tutors: filtered });
+  if (!HYBRID_ENABLED) return Response.json({ success: true, tutors: filtered });
+
+  // Hybrid tutoring (PLAN.md 4.4, 4.8): the trust badge's real stored values,
+  // and beginners see tutors who can explain in their language first.
+  const [[learner], trust] = await Promise.all([
+    db
+      .select({ nativeLanguage: users.nativeLanguage, cefrLevel: users.cefrLevel })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1),
+    loadTutorTrust(filtered.map((t) => t.id)),
+  ]);
+  const level = isCefrLevel(learner?.cefrLevel) ? learner.cefrLevel : null;
+  const ranked = rankBySharedLanguage(filtered, learner?.nativeLanguage ?? 'en', level);
+
+  return Response.json({
+    success: true,
+    learnerLevel: level,
+    warnBeforeBooking: shouldWarnBeforeBooking(level),
+    tutors: ranked.map((t) => {
+      const tr = trust.get(t.id);
+      return {
+        ...t,
+        trust: tr
+          ? {
+              cefrLevel: tr.cefrLevel,
+              clarityScore: tr.clarityScore,
+              averageRating: tr.averageRating,
+              reviewCount: tr.reviewCount,
+              completedLessons: tr.completedLessons,
+            }
+          : null,
+      };
+    }),
+  });
 }

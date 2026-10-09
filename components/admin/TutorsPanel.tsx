@@ -16,6 +16,11 @@ import { LanguagePillGroup } from '@/components/tutors/LanguagePillGroup';
 import { useLanguageCatalog } from '@/lib/language-context';
 import { getNativeLangName, getTargetLangConfig } from '@/lib/language';
 import { EmptyState, Loading, adminFetch, adminInputClass } from '@/components/admin/shared';
+import {
+  TutorVettingSection,
+  type AdminTutorTrust,
+  type AdminTutorVetting,
+} from '@/components/admin/TutorVettingSection';
 import { Check, GraduationCap, Pencil, X } from 'lucide-react';
 
 interface AdminTutor {
@@ -34,6 +39,11 @@ interface AdminTutor {
   name: string;
   email: string;
   accountStatus: string;
+  // Present while vetting is on (NEXT_PUBLIC_HYBRID_ENABLED); null otherwise.
+  vetting: AdminTutorVetting | null;
+  readyForReview: boolean;
+  trust: AdminTutorTrust | null;
+  reviewFlagReason: string | null;
 }
 
 const STATUS_VARIANT: Record<string, 'success' | 'outline' | 'default'> = {
@@ -96,6 +106,12 @@ export function TutorsPanel({ onError }: { onError: (msg: string) => void }) {
                 <Badge variant={STATUS_VARIANT[tutor.verificationStatus] ?? 'default'}>
                   {tutor.verificationStatus}
                 </Badge>
+                {tutor.vetting && tutor.verificationStatus === 'pending' && (
+                  <Badge variant={tutor.readyForReview ? 'accent' : 'outline'}>
+                    {tutor.readyForReview ? 'ready for review' : 'vetting in progress'}
+                  </Badge>
+                )}
+                {tutor.reviewFlagReason && <Badge variant="warning">re-review</Badge>}
                 {tutor.accountStatus !== 'active' && (
                   <Badge variant="default">account {tutor.accountStatus}</Badge>
                 )}
@@ -118,7 +134,7 @@ export function TutorsPanel({ onError }: { onError: (msg: string) => void }) {
                 <Button
                   size="sm"
                   loading={busyId === tutor.id}
-                  disabled={tutor.verificationStatus === 'verified'}
+                  disabled={tutor.verificationStatus === 'verified' || !tutor.readyForReview}
                   onClick={() => patch(tutor.id, { verificationStatus: 'verified' })}
                 >
                   <Check className="h-3.5 w-3.5" />
@@ -150,6 +166,16 @@ export function TutorsPanel({ onError }: { onError: (msg: string) => void }) {
               />
             </div>
           </div>
+
+          {tutor.vetting && (
+            <TutorVettingSection
+              vetting={tutor.vetting}
+              trust={tutor.trust}
+              reviewFlagReason={tutor.reviewFlagReason}
+              saving={busyId === tutor.id}
+              onSave={(body) => patch(tutor.id, body)}
+            />
+          )}
 
           {editingId === tutor.id && (
             <TutorEditor

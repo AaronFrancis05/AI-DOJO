@@ -22,6 +22,7 @@ import { GEMINI_LIVE_API_VERSION } from '@/lib/interview/config';
 import type { InterviewerPersona } from '@/lib/interview/persona';
 import type { InterviewTurn } from '@/lib/interview/transcript';
 import type { TurnScores } from '@/lib/ai-engine';
+import type { CefrVerdict } from '@/lib/interview/cefr';
 
 export type InterviewPhase =
   | 'idle'
@@ -36,6 +37,8 @@ export interface InterviewResult {
   scores: TurnScores | null;
   feedback: string | null;
   learnerTurns: number;
+  /** Present for a placement or vetting interview, which grade on the CEFR rubric. */
+  cefr: CefrVerdict | null;
 }
 
 interface StartResponse {
@@ -66,7 +69,16 @@ export interface UseAiInterview {
   toggleMute: () => void;
 }
 
-export function useAiInterview(assessmentId: number): UseAiInterview {
+/**
+ * `endpoint` is the route that starts (POST) and finishes (PATCH) the
+ * interview: `/api/assessments/[id]/interview` for an assessment room,
+ * `/api/placement` for a placement or vetting interview. Both speak the same
+ * contract; `startBody` is sent with the POST.
+ */
+export function useAiInterview(
+  endpoint: string,
+  startBody?: Record<string, unknown>,
+): UseAiInterview {
   const [phase, setPhase] = useState<InterviewPhase>('idle');
   const [error, setError] = useState('');
   const [transcript, setTranscript] = useState<InterviewTurn[]>([]);
@@ -87,6 +99,11 @@ export function useAiInterview(assessmentId: number): UseAiInterview {
   const pendingRef = useRef<{ examiner: string; learner: string }>({ examiner: '', learner: '' });
   /** Guards the two paths into finish(): the button and the countdown. */
   const finishingRef = useRef(false);
+  // A ref so a caller passing an object literal does not rebuild `start`.
+  const startBodyRef = useRef(startBody);
+  useEffect(() => {
+    startBodyRef.current = startBody;
+  });
 
   /* ── Transcript assembly ─────────────────────────────────────────────
      Live streams transcription in fragments for both sides at once, with no
@@ -158,7 +175,7 @@ export function useAiInterview(assessmentId: number): UseAiInterview {
       }
 
       try {
-        const res = await fetch(`/api/assessments/${assessmentId}/interview`, {
+        const res = await fetch(endpoint, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'content-type': 'application/json' },
@@ -172,6 +189,7 @@ export function useAiInterview(assessmentId: number): UseAiInterview {
           scores: data.scores ?? null,
           feedback: data.feedback ?? null,
           learnerTurns: Number(data.learnerTurns) || 0,
+          cefr: data.cefr ?? null,
         });
         setPhase('complete');
       } catch (e) {
@@ -181,7 +199,7 @@ export function useAiInterview(assessmentId: number): UseAiInterview {
         finishingRef.current = false;
       }
     })();
-  }, [assessmentId, commit, teardown]);
+  }, [endpoint, commit, teardown]);
 
   // Kept in a ref so the message handler and the countdown can call the
   // current `finish` without either being rebuilt when it changes.
@@ -199,11 +217,11 @@ export function useAiInterview(assessmentId: number): UseAiInterview {
 
     void (async () => {
       try {
-        const res = await fetch(`/api/assessments/${assessmentId}/interview`, {
+        const res = await fetch(endpoint, {
           method: 'POST',
           credentials: 'include',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify(startBodyRef.current ?? {}),
         });
         const data = (await res.json().catch(() => ({}))) as StartResponse;
         if (!res.ok) throw new Error(data.error ?? 'The examiner could not be reached.');
@@ -330,7 +348,7 @@ export function useAiInterview(assessmentId: number): UseAiInterview {
         setPhase('error');
       }
     })();
-  }, [assessmentId, append, commit, teardown]);
+  }, [endpoint, append, commit, teardown]);
 
   /* ── The clock ───────────────────────────────────────────────────────
      The budget is the tutor's `minutesPerLearner`. It runs out on its own so

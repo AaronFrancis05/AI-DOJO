@@ -14,6 +14,12 @@ import { Button } from '@/components/ui/Button';
 import { CallStage } from '@/components/tutors/CallStage';
 import { RoomChatPanel } from '@/components/tutors/RoomChatPanel';
 import { EvaluationForm, type EvaluationFormInitial } from '@/components/tutors/EvaluationForm';
+import { BriefingPanel, type BriefingJson } from '@/components/tutors/BriefingPanel';
+import { LessonPanel } from '@/components/tutors/LessonPanel';
+import { LessonPlanEditor } from '@/components/tutors/LessonPlanEditor';
+import { LessonNotesForm, type CanDoUnit } from '@/components/tutors/LessonNotesForm';
+import { LessonReviewForm } from '@/components/tutors/LessonReviewForm';
+import { LiveCaptions } from '@/components/tutors/LiveCaptions';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { ArrowLeft, MessageSquare } from 'lucide-react';
@@ -29,7 +35,10 @@ interface Booking {
   purpose: string;
   learnerNote: string | null;
   chatRoomId: number | null;
+  learnerId: string;
   isTutor: boolean;
+  /** The hybrid lesson tools are on for this learner (PLAN.md Phase 4). */
+  hybrid: boolean;
 }
 
 export default function LiveSessionPage() {
@@ -50,6 +59,14 @@ export default function LiveSessionPage() {
   // sees it rather than a fresh set of sliders. `null` means "still loading";
   // the form is only rendered once it resolves.
   const [initialEval, setInitialEval] = useState<EvaluationFormInitial | null>(null);
+
+  // Hybrid tools: the tutor's latest captioned line feeds "Explain in my
+  // language", and the briefing's syllabus unit feeds can-do marking.
+  const [lastCaption, setLastCaption] = useState<string | null>(null);
+  const [canDoUnit, setCanDoUnit] = useState<CanDoUnit | null>(null);
+  const onBriefing = (b: BriefingJson) => {
+    if (b.syllabus) setCanDoUnit(b.syllabus.unit);
+  };
 
   useEffect(() => {
     if (!TUTORS_ENABLED || !Number.isInteger(bookingId)) return;
@@ -162,6 +179,13 @@ export default function LiveSessionPage() {
         </div>
       </div>
 
+      {booking.hybrid && booking.isTutor && (
+        <div className="mb-6 space-y-4">
+          <BriefingPanel learnerId={booking.learnerId} bookingId={booking.id} onLoaded={onBriefing} />
+          <LessonPlanEditor bookingId={booking.id} />
+        </div>
+      )}
+
       {booking.learnerNote && (
         <Card className="mb-6">
           <p className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
@@ -178,7 +202,15 @@ export default function LiveSessionPage() {
             tokenBody={{ bookingId: booking.id }}
             layout="speaker"
             joinLabel="Join session"
+            tools={booking.hybrid && !booking.isTutor
+              ? () => <LiveCaptions bookingId={booking.id} onLine={(line) => setLastCaption(line.original)} />
+              : undefined}
           />
+          {booking.hybrid && (
+            <div className="mt-4">
+              <LessonPanel bookingId={booking.id} isTutor={booking.isTutor} lastCaption={lastCaption} />
+            </div>
+          )}
         </div>
         {/* The same translated chat the /messages page shows for this booking,
             beside the call instead of a tab away from it. */}
@@ -188,6 +220,18 @@ export default function LiveSessionPage() {
           className="h-[28rem] lg:h-auto lg:max-h-[calc(100dvh-14rem)]"
         />
       </div>
+
+      {booking.hybrid && booking.isTutor && booking.purpose === 'lesson' && (
+        <div className="mt-8">
+          <LessonNotesForm bookingId={booking.id} unit={canDoUnit} />
+        </div>
+      )}
+
+      {booking.hybrid && !booking.isTutor && (
+        <div className="mt-8">
+          <LessonReviewForm bookingId={booking.id} tutorName={booking.tutorName} />
+        </div>
+      )}
 
       {/* Only the tutor grades, and only for an evaluation booking. */}
       {booking.isTutor && booking.purpose === 'evaluation' && initialEval && (

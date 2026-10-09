@@ -35,8 +35,10 @@ import {
   ShieldCheck,
   Building2,
   NotebookPen,
+  Gauge,
 } from 'lucide-react';
 import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
+import { HYBRID_ENABLED } from '@/lib/tutors/config';
 
 interface NavItem {
   /** Message key under `nav.` in messages/en.json. */
@@ -62,6 +64,8 @@ const studyPacksItem: NavItem = { labelKey: 'nav.studyPacks', href: '/study-pack
 const resultsItems: NavItem[] = [
   { labelKey: 'nav.sessions',    href: '/sessions',    icon: History },
   { labelKey: 'nav.progress',    href: '/progress',    icon: BarChart3 },
+  // CEFR placement, re-test and the syllabus progress map (PLAN.md 4.3, 4.7).
+  ...(HYBRID_ENABLED ? [{ labelKey: 'nav.placement', href: '/placement', icon: Gauge }] : []),
   { labelKey: 'nav.leaderboard', href: '/leaderboard', icon: Trophy },
 ];
 

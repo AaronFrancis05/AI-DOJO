@@ -16,16 +16,17 @@ import { Tabs } from '@/components/ui/Tabs';
 import { AvailabilityEditor } from '@/components/tutors/AvailabilityEditor';
 import { AnnouncementsPanel } from '@/components/tutors/AnnouncementsPanel';
 import { LearnersPanel } from '@/components/tutors/LearnersPanel';
+import { BriefingPanel } from '@/components/tutors/BriefingPanel';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import { useLanguageCatalog } from '@/lib/language-context';
 import { useTutorProfile, type TutorProfile } from '@/lib/hooks/useTutorProfile';
-import { LIVE_LESSON_DURATIONS_MINUTES, MAX_LIVE_LESSON_CAPACITY } from '@/lib/tutors/config';
+import { HYBRID_ENABLED, LIVE_LESSON_DURATIONS_MINUTES, MAX_LIVE_LESSON_CAPACITY } from '@/lib/tutors/config';
 import { interviewerChoices } from '@/lib/interview/persona';
 import { composeRoomTitle } from '@/lib/courses/room-title';
 import { cn } from '@/lib/design-tokens';
-import { Bot, Calendar, Check, ClipboardCheck, Plus, Radio, Users, Video, X } from 'lucide-react';
+import { Bot, Calendar, Check, ClipboardCheck, ClipboardList, Plus, Radio, ShieldCheck, Users, Video, X } from 'lucide-react';
 
 const INTERVIEWER_CHOICES = interviewerChoices();
 
@@ -38,6 +39,8 @@ interface BookingRow {
   status: string;
   purpose: string;
   isTutor: boolean;
+  learnerId: string;
+  notesFiled: boolean;
 }
 
 /** What each booking status means to the person reading it, in plain words. */
@@ -657,6 +660,10 @@ export function TutorConsole() {
   usePageTitle('Teaching');
 
   const [bookings, setBookings] = useState<BookingRow[]>([]);
+  // The briefings tab looks back as well as forward: notes are filed after
+  // the lesson, so a booking stays there for a fortnight once it is over.
+  const [briefingBookings, setBriefingBookings] = useState<BookingRow[]>([]);
+  const [openBriefing, setOpenBriefing] = useState<number | null>(null);
   const [liveLessons, setLiveLessons] = useState<LiveLessonRow[]>([]);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -676,6 +683,18 @@ export function TutorConsole() {
           // Filtered here rather than during render: "is this still upcoming?"
           // reads the clock, which is not a pure value to read while rendering.
           const cutoff = Date.now() - 60 * 60 * 1000;
+          const lookback = Date.now() - 14 * 24 * 60 * 60 * 1000;
+          setBriefingBookings(
+            (b.bookings as BookingRow[])
+              .filter(
+                (x) =>
+                  x.isTutor &&
+                  x.purpose === 'lesson' &&
+                  (x.status === 'confirmed' || x.status === 'completed') &&
+                  new Date(x.scheduledAt).getTime() > lookback,
+              )
+              .reverse(),
+          );
           setBookings(
             (b.bookings as BookingRow[]).filter(
               (x) =>
@@ -728,6 +747,7 @@ export function TutorConsole() {
     { id: 'schedule', label: 'Schedule' },
     { id: 'lessons', label: 'Live lessons' },
     { id: 'assessments', label: 'Assessments' },
+    ...(HYBRID_ENABLED ? [{ id: 'briefings', label: 'Briefings' }] : []),
     { id: 'learners', label: 'Learners' },
     { id: 'announcements', label: 'Announcements' },
     { id: 'availability', label: 'Availability' },
@@ -744,6 +764,17 @@ export function TutorConsole() {
       <h1 className="mb-8 hidden text-3xl font-bold leading-none tracking-tight text-dojo-text-primary md:block">
         Teaching
       </h1>
+
+      {HYBRID_ENABLED && profile?.verificationStatus === 'pending' && (
+        <Link href="/tutor/vetting" className="mb-6 block">
+          <Card hoverable className="!p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-dojo-text-primary">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-dojo-accent" />
+              Finish your vetting checklist to be listed for learners
+            </p>
+          </Card>
+        </Link>
+      )}
 
       <Tabs
         tabs={tabs}
@@ -893,6 +924,50 @@ export function TutorConsole() {
                   )}
                 </div>
                 {profile && <CreateRoomForm kind="assessment" onCreated={load} profile={profile} />}
+              </div>
+            );
+          }
+
+          if (tabId === 'briefings') {
+            return (
+              <div className="mt-6 space-y-3">
+                {briefingBookings.length === 0 ? (
+                  <p className={emptyClass}>No confirmed lessons in the last two weeks or coming up.</p>
+                ) : (
+                  briefingBookings.map((b) => (
+                    <div key={b.id} className="space-y-3">
+                      <Card className="!p-4">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
+                            <ClipboardList className="h-5 w-5 text-dojo-accent" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-dojo-text-primary">
+                              {b.learnerName ?? 'A learner'}
+                            </p>
+                            <p className="text-xs text-dojo-text-muted">
+                              {formatWhen(b.scheduledAt)} · {b.durationMinutes} min
+                              {b.notesFiled ? ' · notes filed' : ''}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setOpenBriefing(openBriefing === b.id ? null : b.id)}
+                          >
+                            {openBriefing === b.id ? 'Hide' : 'Briefing'}
+                          </Button>
+                          <Link href={`/live/${b.id}`} className="text-sm text-dojo-accent">
+                            Plan & room
+                          </Link>
+                        </div>
+                      </Card>
+                      {openBriefing === b.id && (
+                        <BriefingPanel learnerId={b.learnerId} bookingId={b.id} />
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             );
           }

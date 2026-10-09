@@ -3,7 +3,7 @@
  * session, and the title a learner reads for a scenario.
  */
 
-import { inngest, type SessionCompletedEvent } from '@/lib/inngest/client';
+import { inngest, type SessionCompletedEvent, type TutorLessonNotesFiledEvent } from '@/lib/inngest/client';
 import { getTargetScenarioLocalization, resolveNativeScenarioLocalization } from '@/lib/localization';
 import { STUDY_PACKS_ENABLED } from './config';
 
@@ -46,4 +46,25 @@ export async function scenarioTitleForLearner(
     resolveNativeScenarioLocalization(scenario.id, targetLanguage, nativeLanguage),
   ]);
   return nativeLoc?.title ?? targetLoc?.title ?? scenario.title;
+}
+
+/**
+ * Announces a tutor's filed lesson notes so generateStudyPack can turn the
+ * lesson into homework (PLAN.md 4.2). Same contract as announceSessionCompleted:
+ * call after the write commits, never throws, a no-op with study packs off.
+ */
+export async function announceLessonNotesFiled(data: TutorLessonNotesFiledEvent['data']): Promise<void> {
+  if (!STUDY_PACKS_ENABLED) return;
+  try {
+    await inngest.send({
+      id: `lesson-notes-filed-${data.bookingId}`,
+      name: 'tutor-lesson/notes-filed',
+      data,
+    });
+  } catch (err) {
+    console.warn('[study-packs] failed to send tutor-lesson/notes-filed', {
+      bookingId: data.bookingId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

@@ -18,6 +18,7 @@ SESSION: 60,         // 1 min (session state changes often)
   PROFICIENCY: 300,    // 5 min (only changes when a session completes)
   LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
   CHAT_TURN_RATE_LIMIT: 600, // 10 min window for the per-user roleplay turn limit
+  LESSON_EXPLAIN_RATE_LIMIT: 600, // 10 min window for in-lesson "explain in my language" (PLAN.md 4.8)
   LEADERBOARD: 60,     // 1 min — rankings move with XP, but every viewer reads the same top 20
   COUNTRY_LANGUAGE: 86400, // 24 hr — a country's default language is reference data
   UI_TRANSLATION: 2592000, // 30 days — a translation of an unchanged text never goes stale; the key is a content hash
@@ -152,6 +153,7 @@ export const cacheKeys = {
   leaderboard: () => key('leaderboard', 'v1'),
   /** Roleplay turns one signed-in user has sent in the current window. */
   chatTurnRateLimit: (userId: string) => key('chat-turn-rate', userId),
+  lessonExplainRateLimit: (userId: string) => key('lesson-explain-rate', userId),
   /** The whole `languages` table — one key, because it is always read whole. */
   languageCatalog: () => key('language-catalog', 'v1'),
   /** users.nativeLanguage, read on every page to pick the UI locale. Deleted when it changes. */

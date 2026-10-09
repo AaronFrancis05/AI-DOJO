@@ -1,12 +1,16 @@
 import { getAuthUser } from '@/lib/auth/server';
 import { db } from '@/src/db';
-import { learnerWeakPoints, scenarios, sessions, studyPacks, users } from '@/src/schema';
+import { learnerWeakPoints, scenarios, sessions, studyPacks, tutorBookings, tutors, users } from '@/src/schema';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
 import { scenarioTitleForLearner } from '@/lib/study-packs/server';
 import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 const LIST_LIMIT = 30;
+
+/** The tutor's account row, for a lesson pack's title (PLAN.md 4.2). */
+const tutorUsers = alias(users, 'tutor_users');
 const WEAK_POINT_LIMIT = 8;
 
 /**
@@ -52,10 +56,16 @@ export async function GET(req: Request) {
         nativeLanguage: studyPacks.nativeLanguage,
         scenarioId: scenarios.id,
         scenarioTitle: scenarios.title,
+        bookingId: studyPacks.bookingId,
+        tutorName: tutorUsers.name,
       })
       .from(studyPacks)
-      .innerJoin(sessions, eq(studyPacks.sessionId, sessions.id))
-      .innerJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
+      // A pack comes from a session or, since Phase 4, from a tutor lesson.
+      .leftJoin(sessions, eq(studyPacks.sessionId, sessions.id))
+      .leftJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
+      .leftJoin(tutorBookings, eq(studyPacks.bookingId, tutorBookings.id))
+      .leftJoin(tutors, eq(tutorBookings.tutorId, tutors.id))
+      .leftJoin(tutorUsers, eq(tutors.userId, tutorUsers.id))
       .where(eq(studyPacks.userId, user.id))
       .orderBy(desc(studyPacks.createdAt))
       .limit(LIST_LIMIT),
@@ -80,13 +90,16 @@ export async function GET(req: Request) {
   const packs = await Promise.all(packRows.map(async (p) => ({
     id: p.id,
     sessionId: p.sessionId,
+    bookingId: p.bookingId,
     status: p.status,
     createdAt: p.createdAt,
-    scenarioTitle: await scenarioTitleForLearner(
-      { id: p.scenarioId, title: p.scenarioTitle },
-      p.targetLanguage,
-      p.nativeLanguage,
-    ),
+    scenarioTitle: p.scenarioId !== null && p.scenarioTitle !== null
+      ? await scenarioTitleForLearner(
+        { id: p.scenarioId, title: p.scenarioTitle },
+        p.targetLanguage,
+        p.nativeLanguage,
+      )
+      : `Lesson with ${p.tutorName ?? 'your tutor'}`,
   })));
 
   return Response.json({ success: true, packs, weakPoints });

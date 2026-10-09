@@ -182,6 +182,8 @@ The building blocks found by the audit are `getAIProvider().generateJSON`, the v
 
 ## Phase 4: Human-tutor hybrid layer
 
+> **Status (2026-10-09):** implemented on `feat/hybrid-tutoring` behind `NEXT_PUBLIC_HYBRID_ENABLED`, plus a per-organization switch for the lesson tools; migration 0059 generated, not applied; English syllabus seed written, not run, and seeded inactive pending teacher review. Not built: AI sessions confirming can-do statements, panel/captions in group live lessons, and recording the trial lesson. Deviations and caveats (the clarity score is client-measured; captions are untested in a real call) are in MEMORY.md and the "Hybrid tutoring" section of ui-registry.md.
+
 - **4.1 Pre-lesson briefing:**
   - A new `app/api/tutor/learners/[id]/briefing` route returns the top weak points, the last 3 session scores with key corrections, CEFR level and the study-pack status.
   - Show it in a TutorConsole tab. Access requires a booking with that tutor (ownership check).

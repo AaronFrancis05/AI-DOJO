@@ -5,6 +5,8 @@ import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { loadBookingForUser } from '@/lib/tutors/bookings';
 import { normalizeScores } from '@/lib/ai-engine';
 import { createNotification } from '@/lib/notifications';
+import { HYBRID_ENABLED } from '@/lib/tutors/config';
+import { evaluateTutorQuality } from '@/lib/tutors/quality';
 
 export const runtime = 'nodejs';
 
@@ -127,6 +129,9 @@ export async function POST(
     body: values.notes ? String(values.notes).slice(0, 200) : null,
     href: '/progress',
   });
+
+  // The AI-agreement rate is one of the two tutor-quality signals (PLAN.md 4.6).
+  if (HYBRID_ENABLED) await evaluateTutorQuality(saved.tutorId);
 
   return Response.json({ success: true, evaluation: saved }, { status: 201 });
 }

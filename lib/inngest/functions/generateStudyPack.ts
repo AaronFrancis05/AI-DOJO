@@ -10,10 +10,16 @@ import {
   srsCards,
   studyPackItems,
   studyPacks,
+  tutorBookings,
+  tutors,
   users,
 } from '@/src/schema';
 import { and, asc, desc, eq, gt, isNotNull, isNull, ne, notInArray, sql } from 'drizzle-orm';
-import { inngest, type SessionCompletedEvent } from '@/lib/inngest/client';
+import {
+  inngest,
+  type SessionCompletedEvent,
+  type TutorLessonNotesFiledEvent,
+} from '@/lib/inngest/client';
 import { getAIProvider } from '@/lib/ai-providers';
 import { hasBatchQuota, usageRecorder } from '@/lib/ai-usage';
 import { createNotification } from '@/lib/notifications';
@@ -40,6 +46,7 @@ import { buildStudyPackPrompt, parseStudyPack, type StudyPackDraft } from '@/lib
 import { cardTypeForItem, grammarCard, sentenceCard } from '@/lib/study-packs/cards';
 import { scenarioTitleForLearner } from '@/lib/study-packs/server';
 import { parseInterests } from '@/lib/study-packs/profile';
+import { parseLessonCorrections } from '@/lib/tutors/lesson-notes';
 
 type StepTools = {
   run: <T>(id: string, fn: () => Promise<T> | T) => Promise<T>;
@@ -53,6 +60,16 @@ const RECENT_SCENARIO_DAYS = 14;
 
 /** How many next-scenario candidates the model chooses from. */
 const CANDIDATE_LIMIT = 12;
+
+/**
+ * The weak-point plan for this source. After a tutor lesson only the hits
+ * apply: the untouched patterns keep their clean-session count, because a
+ * pattern the tutor did not write down was not shown to be fixed.
+ */
+function weakPointPlan(existing: ExistingWeakPoint[], hits: WeakPointHit[], fromLesson: boolean) {
+  const plan = planWeakPointUpdates(existing, hits);
+  return fromLesson ? { ...plan, untouched: [] } : plan;
+}
 
 async function loadWeakPoints(userId: string, targetLanguage: string): Promise<ExistingWeakPoint[]> {
   return db
@@ -69,31 +86,128 @@ async function loadWeakPoints(userId: string, targetLanguage: string): Promise<E
     .where(and(eq(learnerWeakPoints.userId, userId), eq(learnerWeakPoints.targetLanguage, targetLanguage)));
 }
 
+/** Everything the classify and generate steps need, from either source. */
+interface PackSource {
+  targetLanguage: string;
+  nativeLanguage: string;
+  /** The session's scenario; null for a tutor lesson. */
+  scenarioId: number | null;
+  scenarioTitle: string;
+  learnerScenarioTitle: string;
+  difficulty: string;
+  occupation: string | null;
+  interests: string[];
+  hasQuota: boolean;
+  corrections: SessionCorrection[];
+  /** Set for a tutor lesson (PLAN.md 4.2). */
+  lesson: { tutorName: string; notes: string | null } | null;
+}
+
 /**
- * The learner's homework after a completed session (PLAN.md 3.2).
+ * A 1:1 booking whose notes the tutor filed, read as a pack source. The
+ * tutor's corrections stand in for a session's, with synthetic ids: the
+ * classifier only needs them to be unique within one call.
+ */
+async function loadLessonSource(bookingId: number, userId: string): Promise<PackSource | null> {
+  const [row] = await db
+    .select({
+      learnerId: tutorBookings.learnerId,
+      status: tutorBookings.status,
+      targetLanguage: tutorBookings.targetLanguage,
+      notes: tutorBookings.lessonNotes,
+      lessonCorrections: tutorBookings.lessonCorrections,
+      notesFiledAt: tutorBookings.notesFiledAt,
+      tutorUserId: tutors.userId,
+    })
+    .from(tutorBookings)
+    .innerJoin(tutors, eq(tutorBookings.tutorId, tutors.id))
+    .where(eq(tutorBookings.id, bookingId))
+    .limit(1);
+  if (!row || row.learnerId !== userId || row.status === 'cancelled' || !row.notesFiledAt) return null;
+
+  const [[learner], [tutorUser]] = await Promise.all([
+    db
+      .select({
+        nativeLanguage: users.nativeLanguage,
+        level: users.level,
+        tier: users.tier,
+        occupation: users.occupation,
+        interests: users.interests,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
+    db.select({ name: users.name }).from(users).where(eq(users.id, row.tutorUserId)).limit(1),
+  ]);
+  if (!learner) return null;
+
+  const proficiency = await getLearnerProficiency(userId, row.targetLanguage);
+  const tutorName = tutorUser?.name || 'your tutor';
+  const title = `Lesson with ${tutorName}`;
+  return {
+    targetLanguage: row.targetLanguage,
+    nativeLanguage: learner.nativeLanguage,
+    scenarioId: null,
+    scenarioTitle: title,
+    learnerScenarioTitle: title,
+    difficulty: resolveDifficulty(learner.level, proficiency),
+    occupation: learner.occupation,
+    interests: parseInterests(learner.interests),
+    hasQuota: await hasBatchQuota(userId, learner.tier),
+    corrections: parseLessonCorrections(row.lessonCorrections)
+      .slice(0, MAX_CORRECTIONS)
+      .map((c, i) => ({
+        id: i + 1,
+        correctionType: 'grammar',
+        originalText: c.original,
+        correctedText: c.corrected,
+        explanation: c.note,
+      })),
+    lesson: { tutorName, notes: row.notes },
+  };
+}
+
+type PackEvent =
+  | { name: SessionCompletedEvent['name']; data: SessionCompletedEvent['data'] }
+  | { name: TutorLessonNotesFiledEvent['name']; data: TutorLessonNotesFiledEvent['data'] };
+
+/**
+ * The learner's homework after a completed session (PLAN.md 3.2), or after a
+ * lesson with a human tutor whose notes were filed (PLAN.md 4.2).
  *
  * classify → generate → save → notify, each a step so a retry resumes after
  * the last one that succeeded instead of paying for the AI calls again. Both
  * calls run on the cheap `batch` model and are written to the `ai_usage`
- * ledger. The save is one transaction keyed on the session's unique
- * `study_packs` row, so a retried save finds the pack and writes nothing.
+ * ledger. The save is one transaction keyed on the source's unique
+ * `study_packs` column (session_id or booking_id), so a retried save finds the
+ * pack and writes nothing.
  *
- * Only reached when STUDY_PACKS_ENABLED is on: the event is not sent
+ * A lesson pack reads the tutor's corrections and notes instead of a
+ * session's, and has no scenario to exclude from the recommendation. It only
+ * ever ADDS to weak points: a tutor lists a few corrections, not everything
+ * they heard, so a pattern missing from their notes is no evidence it is fixed.
+ *
+ * Only reached when STUDY_PACKS_ENABLED is on: neither event is sent
  * otherwise (lib/study-packs/server.ts).
  */
 export const generateStudyPack = inngest.createFunction(
   {
     id: 'generate-study-pack',
-    triggers: { event: 'session/completed' },
+    triggers: [{ event: 'session/completed' }, { event: 'tutor-lesson/notes-filed' }],
     retries: 3 as const,
-    // One at a time per learner: two sessions finishing together would
+    // One at a time per learner: two sources finishing together would
     // otherwise read and update the same weak-point rows concurrently.
     concurrency: { limit: 1, key: 'event.data.userId' },
   },
-  async ({ event, step }: { event: { data: SessionCompletedEvent['data'] }; step: StepTools }) => {
-    const { sessionId, userId } = event.data;
+  async ({ event, step }: { event: PackEvent; step: StepTools }) => {
+    const { userId } = event.data;
+    const sessionId = event.name === 'session/completed' ? event.data.sessionId : null;
+    const bookingId = event.name === 'tutor-lesson/notes-filed' ? event.data.bookingId : null;
 
-    const context = await step.run('load-session', async () => {
+    const context = await step.run('load-source', async () => {
+      if (bookingId !== null) return loadLessonSource(bookingId, userId);
+      if (sessionId === null) return null;
+
       const [row] = await db
         .select({
           userId: sessions.userId,
@@ -131,7 +245,7 @@ export const generateStudyPack = inngest.createFunction(
         .limit(MAX_CORRECTIONS);
 
       const proficiency = await getLearnerProficiency(userId, row.targetLanguage);
-      return {
+      const source: PackSource = {
         targetLanguage: row.targetLanguage,
         nativeLanguage: row.nativeLanguage,
         scenarioId: row.scenarioId,
@@ -146,11 +260,13 @@ export const generateStudyPack = inngest.createFunction(
         interests: parseInterests(row.interests),
         hasQuota: await hasBatchQuota(userId, row.tier),
         corrections: sessionCorrections,
+        lesson: null,
       };
+      return source;
     });
-    if (!context) return { skipped: 'session is not a completed session of this learner' };
+    if (!context) return { skipped: 'source is not a finished session or lesson of this learner' };
     if (!context.hasQuota) {
-      console.warn('[study-pack] skipped: daily AI quota reached', { userId, sessionId });
+      console.warn('[study-pack] skipped: daily AI quota reached', { userId, sessionId, bookingId });
       return { skipped: 'quota' };
     }
 
@@ -176,7 +292,7 @@ export const generateStudyPack = inngest.createFunction(
     const generated = await step.run('generate-pack', async (): Promise<{ draft: StudyPackDraft } | { draft: null }> => {
       await loadLanguageCatalog();
       const existing = await loadWeakPoints(userId, context.targetLanguage);
-      const plan = planWeakPointUpdates(existing, hits);
+      const plan = weakPointPlan(existing, hits, context.lesson !== null);
 
       // The open weak points as they will stand once this session is saved.
       const resolvedNow = new Set(plan.untouched.filter((u) => u.resolve).map((u) => u.id));
@@ -193,7 +309,11 @@ export const generateStudyPack = inngest.createFunction(
       }
       const hitKeys = new Set(plan.upserts.map((u) => weakPointKey(u.category, u.pattern)));
       const focus = selectFocusWeakPoints(open, hitKeys, PACK_FOCUS_COUNT);
-      if (focus.length === 0 && context.corrections.length === 0) return { draft: null };
+      // A lesson with notes but no corrections still makes homework: the notes
+      // say what was taught.
+      if (focus.length === 0 && context.corrections.length === 0 && !context.lesson?.notes) {
+        return { draft: null };
+      }
 
       const recent = db
         .select({ id: sessions.scenarioId })
@@ -209,7 +329,7 @@ export const generateStudyPack = inngest.createFunction(
         .where(and(
           isNull(scenarios.ownerUserId),
           isNotNull(scenarios.situationId),
-          ne(scenarios.id, context.scenarioId),
+          context.scenarioId !== null ? ne(scenarios.id, context.scenarioId) : undefined,
           notInArray(scenarios.id, recent),
         ))
         .orderBy(desc(sql`${scenarios.difficulty} = ${context.difficulty}`), asc(scenarios.displayOrder))
@@ -228,6 +348,7 @@ export const generateStudyPack = inngest.createFunction(
           candidates,
           occupation: context.occupation,
           interests: context.interests,
+          lesson: context.lesson,
         }),
         [],
         { modelTier: 'batch', maxTokens: PACK_MAX_TOKENS, onUsage: usage.onUsage },
@@ -246,13 +367,14 @@ export const generateStudyPack = inngest.createFunction(
             .values({
               userId,
               sessionId,
+              bookingId,
               targetLanguage: context.targetLanguage,
               nativeLanguage: context.nativeLanguage,
               explanation: draft.explanation,
               recommendedScenarioId: draft.nextScenario?.id ?? null,
               recommendationReason: draft.nextScenario?.reason || null,
             })
-            .onConflictDoNothing({ target: studyPacks.sessionId })
+            .onConflictDoNothing({ target: bookingId !== null ? studyPacks.bookingId : studyPacks.sessionId })
             .returning({ id: studyPacks.id });
           // Already saved by an earlier attempt, weak points included.
           if (!pack) return { packId: null, duplicate: true };
@@ -265,7 +387,7 @@ export const generateStudyPack = inngest.createFunction(
           .select()
           .from(learnerWeakPoints)
           .where(and(eq(learnerWeakPoints.userId, userId), eq(learnerWeakPoints.targetLanguage, context.targetLanguage)));
-        const plan = planWeakPointUpdates(existing, hits);
+        const plan = weakPointPlan(existing, hits, context.lesson !== null);
         const idByKey = new Map(existing.map((p) => [weakPointKey(p.category, p.pattern), p.id]));
         const now = new Date();
         for (const u of plan.upserts) {

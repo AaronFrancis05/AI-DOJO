@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Toggle } from '@/components/ui/Toggle';
+import { HYBRID_ENABLED } from '@/lib/tutors/config';
 import { adminFetch, adminInputClass, EmptyState, Loading } from '@/components/admin/shared';
 
 interface OrgRow {
@@ -13,6 +15,7 @@ interface OrgRow {
   isDefault: boolean;
   status: string;
   memberCount: number;
+  hybridTutoringEnabled: boolean;
 }
 
 export function OrganizationsPanel({ onError }: { onError: (msg: string) => void }) {
@@ -84,6 +87,23 @@ export function OrganizationsPanel({ onError }: { onError: (msg: string) => void
     }
   }
 
+  /** The per-organization pilot switch for hybrid tutoring (PLAN.md 4.5). */
+  async function setHybrid(organizationId: number, enabled: boolean) {
+    setBusy(true);
+    onError('');
+    try {
+      await adminFetch(`/api/admin/organizations/${organizationId}`, {
+        method: 'PATCH',
+        body: { hybridTutoringEnabled: enabled },
+      });
+      await load();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not update the organization');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <Loading />;
 
   return (
@@ -101,6 +121,15 @@ export function OrganizationsPanel({ onError }: { onError: (msg: string) => void
             {org.isDefault && <Badge variant="accent">Public</Badge>}
             <span className="text-xs text-dojo-text-muted">{org.slug}</span>
             <span className="text-xs text-dojo-text-muted">{org.memberCount} {org.memberCount === 1 ? 'member' : 'members'}</span>
+            {HYBRID_ENABLED && (
+              <div className="ms-auto">
+                <Toggle
+                  enabled={org.hybridTutoringEnabled}
+                  onChange={(next) => { void setHybrid(org.id, next); }}
+                  label="Hybrid tutoring"
+                />
+              </div>
+            )}
           </div>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
             <input

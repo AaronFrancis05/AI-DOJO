@@ -7,6 +7,11 @@ export const users = pgTable('users', {
   email:                 varchar('email', { length: 150 }).notNull().unique(),
   passwordHash:          varchar('password_hash', { length: 255 }),
   level:                 varchar('level', { length: 20 }).default('beginner').notNull(),
+  // 'A0' | 'A1' … 'C2', from the latest graded placement interview
+  // (cefr_placements, PLAN.md 4.3). NULL until the learner has taken one.
+  // `level` above is derived from it on each placement (lib/interview/cefr.ts).
+  cefrLevel:             varchar('cefr_level', { length: 2 }),
+  cefrAssessedAt:        timestamp('cefr_assessed_at'),
   // 'learner' | 'tutor' | 'admin'. A `tutors` row describes what a tutor
   // teaches; this column is what authorises them — see requireRole() in
   // lib/auth/server.ts. 'admin' satisfies every other role.
@@ -549,6 +554,11 @@ export const courses = pgTable('courses', {
   slug:          varchar('slug', { length: 60 }).notNull().unique(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description').notNull(),
+  // NULL for a language-agnostic template (the default). Set when the course
+  // teaches one language's grammar, like the English CEFR syllabus (PLAN.md
+  // 4.7): its grammar sequence means nothing to a learner of Japanese, so the
+  // catalogue only offers it to learners of that language.
+  targetLanguage: varchar('target_language', { length: 10 }),
   difficulty:    varchar('difficulty', { length: 20 }).default('beginner').notNull(),
   icon:          varchar('icon', { length: 40 }),
   isActive:      boolean('is_active').default(true).notNull(),
@@ -562,6 +572,9 @@ export const courseLevels = pgTable('course_levels', {
   sequenceOrder: integer('sequence_order').notNull(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description'),
+  // 'A0' … 'C2' when the level maps to a CEFR band (PLAN.md 4.7). NULL for
+  // the older XP-gated levels, which have no CEFR meaning.
+  cefrLevel:     varchar('cefr_level', { length: 2 }),
   requiredXp:    integer('required_xp').default(0).notNull(),
   isActive:      boolean('is_active').default(true).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
@@ -575,6 +588,10 @@ export const units = pgTable('units', {
   sequenceOrder: integer('sequence_order').notNull(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description'),
+  // JSON array of CEFR can-do statements ("Can describe past experiences and
+  // give reasons"), in a text column like `student_progress.acknowledged_unit_ids`.
+  // A learner's progress on each is in `can_do_progress`, keyed by index.
+  canDo:         text('can_do'),
   displayOrder:  integer('display_order').default(0).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
@@ -709,12 +726,15 @@ export const learnerWeakPoints = pgTable('learner_weak_points', {
   idxUserSeen: index('idx_learner_weak_points_user_seen').on(t.userId, t.lastSeenAt),
 }));
 
-// One pack per completed session. The unique sessionId is what makes the
-// Inngest job idempotent: a retried run finds the row and stops.
+// One pack per completed session, or per tutor lesson whose notes were filed
+// (PLAN.md 4.2). Exactly one of sessionId / bookingId is set. Each is unique,
+// and that is what makes the Inngest job idempotent: a retried run finds the
+// row and stops. (Postgres unique indexes admit many NULLs.)
 export const studyPacks = pgTable('study_packs', {
   id:              serial('id').primaryKey(),
   userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  sessionId:       integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull().unique(),
+  sessionId:       integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).unique(),
+  bookingId:       integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).unique(),
   targetLanguage:  varchar('target_language', { length: 10 }).notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).notNull(),
   // Written in the learner's native language.
@@ -752,7 +772,8 @@ export const studyPackItems = pgTable('study_pack_items', {
 export const aiUsage = pgTable('ai_usage', {
   id:           serial('id').primaryKey(),
   userId:       text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  // e.g. 'chat/stream', 'study-pack', 'scenario/personalized'
+  // e.g. 'chat/stream', 'study-pack', 'scenario/personalized', 'lesson/captions'
+  // (AIUsageRoute in lib/ai-usage.ts)
   route:        varchar('route', { length: 60 }).notNull(),
   provider:     varchar('provider', { length: 30 }).notNull(),
   model:        varchar('model', { length: 100 }).notNull(),
@@ -783,6 +804,11 @@ export const organizations = pgTable('organizations', {
   name:      varchar('name', { length: 120 }).notNull(),
   slug:      varchar('slug', { length: 60 }).notNull().unique(),
   isDefault: boolean('is_default').default(false).notNull(),
+  // The per-organization switch for the hybrid tutoring layer (PLAN.md 4.5):
+  // briefings, lesson plans, captions and in-lesson explanations. Off until an
+  // admin turns it on, so the pilot customer gets it first. Only consulted
+  // while NEXT_PUBLIC_HYBRID_ENABLED is on — see lib/tutors/hybrid.ts.
+  hybridTutoringEnabled: boolean('hybrid_tutoring_enabled').default(false).notNull(),
   // 'active' | 'archived'
   status:    varchar('status', { length: 20 }).default('active').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -1137,6 +1163,23 @@ export const tutors = pgTable('tutors', {
   // 'pending' until a human verifies them; only 'verified' tutors are listed.
   verificationStatus: varchar('verification_status', { length: 20 }).default('pending').notNull(),
   isAcceptingBookings: boolean('is_accepting_bookings').default(true).notNull(),
+  // ── Vetting evidence (PLAN.md 4.6) ──
+  // Approval rests on these, not on nationality. Shown to the admin who
+  // verifies, and the stored values are what the learner-side trust badge reads.
+  // The proficiency interview: the tutor's graded `cefr_placements` row.
+  cefrLevel:      varchar('cefr_level', { length: 2 }),
+  vettingPlacementId: integer('vetting_placement_id').references(() => cefrPlacements.id, { onDelete: 'set null' }),
+  // 0-100 Azure pronunciation-assessment accuracy over the read-aloud passages:
+  // intelligibility, not accent. Client-measured — see app/api/tutor/vetting.
+  clarityScore:   integer('clarity_score'),
+  // JSON {correctionQuality, talkTimeBalance, levelAdaptation} on 1-5, entered
+  // by the admin who watched the recorded trial lesson.
+  trialLessonScores: text('trial_lesson_scores'),
+  teachingModuleCompletedAt: timestamp('teaching_module_completed_at'),
+  // Set when ratings or AI agreement fall below threshold (lib/tutors/quality.ts).
+  // Cleared by an admin after re-review. Does not unlist the tutor by itself.
+  reviewFlaggedAt: timestamp('review_flagged_at'),
+  reviewFlagReason: text('review_flag_reason'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -1183,6 +1226,16 @@ export const tutorBookings = pgTable('tutor_bookings', {
   // 'lesson' — ordinary practice; 'evaluation' — verify what the AI taught.
   purpose:     varchar('purpose', { length: 20 }).default('lesson').notNull(),
   learnerNote: text('learner_note'),
+  // The syllabus step this lesson teaches (PLAN.md 4.7). Both nullable: set
+  // when the lesson plan is drafted, from the learner's course progress.
+  unitId:      integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
+  lessonId:    integer('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
+  // The tutor's post-lesson notes (PLAN.md 4.2). Filing them is what turns the
+  // human lesson into AI homework — see generateStudyPack's lesson branch.
+  // `lessonCorrections` is a JSON array of {original, corrected, note}.
+  lessonNotes: text('lesson_notes'),
+  lessonCorrections: text('lesson_corrections'),
+  notesFiledAt: timestamp('notes_filed_at'),
   // The GetStream call this booking meets in. Generated at booking time so
   // both sides resolve the same call without a negotiation step, and never
   // returned except alongside a token — see lib/tutors/rooms.ts.
@@ -1414,6 +1467,107 @@ export const tutorEvaluations = pgTable('tutor_evaluations', {
   notes:       text('notes'),
   createdAt:   timestamp('created_at').defaultNow().notNull(),
 });
+
+/* ── Hybrid tutoring (PLAN.md Phase 4) ────────────────────────────────── */
+
+/**
+ * One spoken CEFR interview outside an assessment room: a learner's placement
+ * (and monthly re-test), or a tutor applicant's proficiency check.
+ *
+ * Separate from `ai_interviews` because that table is anchored to an
+ * assessment's queue slot — a placement has no room, no tutor and no queue.
+ * The shape is otherwise the same on purpose: same status machine, same
+ * client-reported transcript, same six 0-100 dimensions, graded by the same
+ * lib/interview/grade.ts with the CEFR rubric switched on.
+ */
+export const cefrPlacements = pgTable('cefr_placements', {
+  id:            serial('id').primaryKey(),
+  userId:        text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'placement' (learner) | 'tutor_vetting' (applicant)
+  purpose:       varchar('purpose', { length: 20 }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  // The language feedback is written in.
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  model:         varchar('model', { length: 80 }).notNull(),
+  /** 'live' | 'completed' | 'failed' */
+  status:        varchar('status', { length: 20 }).default('live').notNull(),
+  startedAt:     timestamp('started_at').defaultNow().notNull(),
+  endedAt:       timestamp('ended_at'),
+  learnerTurns:  integer('learner_turns').default(0).notNull(),
+  transcript:    text('transcript'),
+  vocabularyScore: integer('vocabulary_score'),
+  grammarScore:    integer('grammar_score'),
+  fluencyScore:    integer('fluency_score'),
+  culturalScore:   integer('cultural_score'),
+  taskScore:       integer('task_score'),
+  expressionAppropriatenessScore: integer('expression_appropriateness_score'),
+  // 'A0' … 'C2'. `dimensionLevels` is JSON {dimension: level} for the floor check.
+  cefrLevel:     varchar('cefr_level', { length: 2 }),
+  dimensionLevels: text('dimension_levels'),
+  feedback:      text('feedback'),
+  summary:       text('summary'),
+  gradedAt:      timestamp('graded_at'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+  updatedAt:     timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxUserPurpose: index('idx_cefr_placements_user_purpose').on(t.userId, t.purpose, t.createdAt),
+}));
+
+/** A learner's rating of one completed 1:1 booking (PLAN.md 4.4). */
+export const tutorReviews = pgTable('tutor_reviews', {
+  id:          serial('id').primaryKey(),
+  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).notNull().unique(),
+  tutorId:     integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:   text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 1-5
+  rating:      integer('rating').notNull(),
+  comment:     text('comment'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxTutor: index('idx_tutor_reviews_tutor').on(t.tutorId),
+}));
+
+/**
+ * The plan for one 1:1 lesson (PLAN.md 4.7): the next syllabus step plus a
+ * personal-fix slot from the learner's weak points. Drafted by the AI, edited
+ * by the tutor. `plan` is JSON (LessonPlan in lib/tutors/lesson-plan.ts).
+ */
+export const lessonPlans = pgTable('lesson_plans', {
+  id:          serial('id').primaryKey(),
+  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).notNull().unique(),
+  unitId:      integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
+  lessonId:    integer('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
+  plan:        text('plan').notNull(),
+  tutorEdited: boolean('tutor_edited').default(false).notNull(),
+  // The slide both sides of the call are on (PLAN.md 4.8 part 3). The tutor
+  // moves it; the learner's panel follows over lib/realtime.
+  currentSlide: integer('current_slide').default(0).notNull(),
+  taughtAt:    timestamp('taught_at'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * A learner's standing on one can-do statement of one unit (PLAN.md 4.7).
+ * `statementIndex` points into `units.can_do`. A tutor marks introduced /
+ * practised / achieved after a lesson; `confirmedAt` is set when an AI
+ * session or the CEFR re-test backs up an 'achieved'.
+ */
+export const canDoProgress = pgTable('can_do_progress', {
+  id:             serial('id').primaryKey(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  unitId:         integer('unit_id').references(() => units.id, { onDelete: 'cascade' }).notNull(),
+  statementIndex: integer('statement_index').notNull(),
+  // 'introduced' | 'practised' | 'achieved'
+  status:         varchar('status', { length: 20 }).notNull(),
+  markedByTutorId: integer('marked_by_tutor_id').references(() => tutors.id, { onDelete: 'set null' }),
+  bookingId:      integer('booking_id').references(() => tutorBookings.id, { onDelete: 'set null' }),
+  confirmedAt:    timestamp('confirmed_at'),
+  updatedAt:      timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  uqStatement: uniqueIndex('uq_can_do_progress_key').on(t.userId, t.unitId, t.statementIndex),
+}));
 
 export const tutorsRelations = relations(tutors, ({ one, many }) => ({
   user:         one(users, { fields: [tutors.userId], references: [users.id] }),

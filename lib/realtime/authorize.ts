@@ -21,6 +21,7 @@ import {
   chatRoomMembers,
   liveLessonEnrollments,
   liveLessons,
+  tutorBookings,
   tutors,
 } from '@/src/schema';
 
@@ -104,6 +105,18 @@ export async function canSubscribe(topic: string, userId: string): Promise<boole
         ))
         .limit(1);
       return Boolean(slot);
+    }
+
+    case 'booking': {
+      const bookingId = Number(rawId);
+      if (!Number.isInteger(bookingId)) return false;
+      const [row] = await db
+        .select({ tutorId: tutorBookings.tutorId, learnerId: tutorBookings.learnerId })
+        .from(tutorBookings)
+        .where(eq(tutorBookings.id, bookingId))
+        .limit(1);
+      if (!row) return false;
+      return row.learnerId === userId || isTutorOf(row.tutorId, userId);
     }
 
     default:

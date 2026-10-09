@@ -20,6 +20,7 @@ import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import { useUiLocale } from '@/lib/language-context';
 import { formatCurrency, formatDate } from '@/lib/i18n/format';
 import { TranslatedText } from '@/components/ui/TranslatedText';
+import { TrustBadge, type TutorTrustBadge } from '@/components/tutors/TrustBadge';
 import { Video, Calendar, ArrowRight, GraduationCap, Users, ClipboardCheck, Bot } from 'lucide-react';
 
 interface TutorRow {
@@ -33,6 +34,9 @@ interface TutorRow {
   currency: string;
   timezone: string;
   avatarSrc: string | null;
+  // Present while hybrid tutoring is on (PLAN.md 4.4, 4.8).
+  trust?: TutorTrustBadge | null;
+  sharesLanguage?: boolean;
 }
 
 interface BookingRow {
@@ -111,6 +115,8 @@ export default function TutorsPage() {
   const router = useRouter();
   const user = useUser();
   const [tutors, setTutors] = useState<TutorRow[]>([]);
+  // An A0 learner is pointed at the AI and the starter unit before booking (PLAN.md 4.8 part 2).
+  const [warnBeforeBooking, setWarnBeforeBooking] = useState(false);
   const [upcoming, setUpcoming] = useState<BookingRow[]>([]);
   const [liveLessons, setLiveLessons] = useState<LiveLessonRow[]>([]);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
@@ -127,6 +133,7 @@ export default function TutorsPage() {
       fetch('/api/assessments', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
     ]).then(([t, b, c, a]) => {
       if (Array.isArray(t.tutors)) setTutors(t.tutors);
+      setWarnBeforeBooking(Boolean(t.warnBeforeBooking));
       // Rooms already running come first. Both lists arrive soonest-first,
       // which is the right order for a diary and the wrong one for a room the
       // learner can only walk into while it is open.
@@ -344,6 +351,15 @@ export default function TutorsPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {warnBeforeBooking && (
+              <Card className="p-5! sm:col-span-2">
+                <p className="text-sm leading-relaxed text-dojo-text-primary">
+                  You are just starting out. Practise with the AI first and finish the Classroom English
+                  starter unit — then a tutor lesson will go much further.{' '}
+                  <Link href="/placement" className="text-dojo-accent">See your level</Link>
+                </p>
+              </Card>
+            )}
             {tutors.map((t) => (
               <Card key={t.id} hoverable className="p-5!">
                 <div className="flex items-start gap-3">
@@ -365,6 +381,16 @@ export default function TutorsPage() {
                     </Badge>
                   ))}
                 </div>
+
+                {t.trust && (
+                  <div className="mt-2">
+                    <TrustBadge trust={t.trust} languageName={getTargetLangConfig(t.languages[0] ?? 'en').name} />
+                  </div>
+                )}
+
+                {t.sharesLanguage && (
+                  <Badge variant="success" className="mt-2">Speaks your language</Badge>
+                )}
 
                 {t.instructionLanguages.length > 0 && (
                   <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">

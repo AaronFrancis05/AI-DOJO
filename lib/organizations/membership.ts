@@ -445,6 +445,7 @@ export async function listOrganizations() {
       slug: organizations.slug,
       isDefault: organizations.isDefault,
       status: organizations.status,
+      hybridTutoringEnabled: organizations.hybridTutoringEnabled,
       createdAt: organizations.createdAt,
       memberCount: sql<number>`count(${organizationMemberships.id})::int`,
     })

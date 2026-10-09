@@ -158,7 +158,7 @@ export function AiInterviewRoom({
 
       {loaded && !alreadyTaken && (
         <AiInterviewStage
-          assessmentId={assessmentId}
+          endpoint={`/api/assessments/${assessmentId}/interview`}
           interviewer={interviewer}
           minutesPerLearner={minutesPerLearner}
           canJoin={canJoin}

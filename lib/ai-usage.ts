@@ -43,7 +43,17 @@ export function costMicros(model: string, inputTokens: number, outputTokens: num
   return Math.round(inputTokens * inPrice + outputTokens * outPrice);
 }
 
-export type AIUsageRoute = 'chat/stream' | 'study-pack' | 'scenario/personalized';
+export type AIUsageRoute =
+  | 'chat/stream'
+  | 'study-pack'
+  | 'scenario/personalized'
+  // Hybrid tutoring (PLAN.md Phase 4). Recorded against the LEARNER the call
+  // serves, so cost-per-learner includes their lessons. Not quota-gated: a
+  // tutor's lesson plan or a learner's mid-lesson question must not fail
+  // because of practice they did earlier that day.
+  | 'lesson-plan'
+  | 'lesson/explain'
+  | 'lesson/captions';
 
 /** The routes the batch quota counts and gates. Live turns are recorded but spend no quota. */
 const BATCH_ROUTES: AIUsageRoute[] = ['study-pack', 'scenario/personalized'];
@@ -116,4 +126,47 @@ export async function batchTokensUsedToday(userId: string): Promise<number> {
 export async function hasBatchQuota(userId: string, tier: string | null | undefined): Promise<boolean> {
   const limit = DAILY_TOKEN_QUOTA[tier ?? 'free'] ?? DAILY_TOKEN_QUOTA.free;
   return (await batchTokensUsedToday(userId)) < limit;
+}
+
+/**
+ * Azure speech translation, USD per audio hour (list price at the time of
+ * writing — verify before any pricing decision). Captions are billed by audio
+ * time, not tokens (PLAN.md 4.8 part 4).
+ */
+const SPEECH_TRANSLATION_USD_PER_HOUR = 2.5;
+
+/**
+ * Records live-caption audio time. Captions have no tokens, so the row carries
+ * the audio SECONDS in `inputTokens` (and 0 output) — read the route, not the
+ * column name, when aggregating. Never throws.
+ */
+export async function recordCaptionSeconds(userId: string, seconds: number): Promise<void> {
+  const whole = Math.max(0, Math.round(seconds));
+  if (whole === 0) return;
+  try {
+    await db.insert(aiUsage).values({
+      userId,
+      route: 'lesson/captions' satisfies AIUsageRoute,
+      provider: 'azure',
+      model: 'speech-translation',
+      inputTokens: whole,
+      outputTokens: 0,
+      costMicros: Math.round((whole / 3600) * SPEECH_TRANSLATION_USD_PER_HOUR * 1_000_000),
+    });
+  } catch (err) {
+    console.warn('[ai-usage] failed to record caption time:', err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** Caption seconds this learner has used on one day (UTC), for the per-level cap. */
+export async function captionSecondsToday(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<number>`coalesce(sum(${aiUsage.inputTokens}), 0)::int` })
+    .from(aiUsage)
+    .where(and(
+      eq(aiUsage.userId, userId),
+      eq(aiUsage.route, 'lesson/captions'),
+      gte(aiUsage.createdAt, startOfTodayUtc()),
+    ));
+  return row?.total ?? 0;
 }

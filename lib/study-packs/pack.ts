@@ -42,6 +42,12 @@ export interface StudyPackPromptInput {
   candidates: PackScenarioCandidate[];
   occupation: string | null;
   interests: string[];
+  /**
+   * Set when the pack follows a lesson with a human tutor rather than an AI
+   * session (PLAN.md 4.2): the tutor's notes become part of the input, so the
+   * AI turns what was taught into the homework.
+   */
+  lesson?: { tutorName: string; notes: string | null } | null;
 }
 
 export interface StudyPackDraft {
@@ -69,12 +75,16 @@ export function buildStudyPackPrompt(input: StudyPackPromptInput): string {
     input.interests.length > 0 ? `interested in: ${input.interests.join(', ')}` : null,
   ].filter(Boolean).join('; ');
 
-  return `You write personal homework for a ${input.difficulty} learner of ${target} whose native language is ${native}. They just finished a role-play session: "${input.scenarioTitle}".${about ? `\nAbout the learner: ${about}. Set dialogues in situations that fit them.` : ''}
+  const source = input.lesson
+    ? `They just had a one-to-one lesson with their tutor, ${input.lesson.tutorName}.${input.lesson.notes ? `\nThe tutor's notes on the lesson (follow them: they say what was taught and what to practise):\n${input.lesson.notes}` : ''}`
+    : `They just finished a role-play session: "${input.scenarioTitle}".`;
+
+  return `You write personal homework for a ${input.difficulty} learner of ${target} whose native language is ${native}. ${source}${about ? `\nAbout the learner: ${about}. Set dialogues in situations that fit them.` : ''}
 
 Weak points to target (most important first):
 ${focus}
 
-Corrections from this session:
+Corrections from this ${input.lesson ? 'lesson' : 'session'}:
 ${corrections}
 
 Scenarios they could practise next:

@@ -25,3 +25,17 @@ export type SessionCompletedEvent = {
     userId: string;
   };
 };
+
+/**
+ * A tutor filed their notes on a 1:1 lesson (PLAN.md 4.2). Consumed by
+ * generateStudyPack, which turns the human lesson into homework. The event id
+ * is derived from the booking, so re-saving the notes does not build a
+ * second pack.
+ */
+export type TutorLessonNotesFiledEvent = {
+  name: 'tutor-lesson/notes-filed';
+  data: {
+    bookingId: number;
+    userId: string;
+  };
+};

@@ -24,7 +24,7 @@ import { WEAK_POINT_CATEGORY_LABELS } from '@/lib/study-packs/labels';
 
 interface PackRow {
   id: number;
-  sessionId: number;
+  sessionId: number | null;
   status: 'ready' | 'opened' | 'completed';
   createdAt: string;
   scenarioTitle: string;

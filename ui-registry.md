@@ -478,6 +478,36 @@ PLAN.md Phase 3, gated by `NEXT_PUBLIC_STUDY_PACKS_ENABLED` (`lib/study-packs/co
 | `PersonalizedScenarioCard` | Optional topic input → `POST /api/scenarios/personalized` → `POST /api/sessions` → `/session/[id]`. Shows the 429 quota message inline. |
 | `DialoguePractice` | Maps each partner→learner line pair to a `QuickDrillItem`; answers checked locally by `checkAnswer()` (token F1 ≥ 0.75, characters for unspaced scripts), so practice costs no AI call. |
 
+## Hybrid tutoring (`lib/tutors/`, `lib/interview/cefr.ts`, `lib/courses/syllabus*.ts`, `components/tutors/`)
+
+PLAN.md Phase 4, gated by `NEXT_PUBLIC_HYBRID_ENABLED` (`HYBRID_ENABLED` in `lib/tutors/config.ts`, same literal-read rule). The learner-facing lesson tools (briefing, plan, panel, captions, explain) are further gated **per organization** by `organizations.hybrid_tutoring_enabled`, read through `hybridEnabledForLearner()` (`lib/tutors/hybrid.ts`). The learner's organization decides, because tutors belong to none. An admin turns it on in Admin → Organizations. Off for every organization by default, including the public one.
+
+| Piece | Notes |
+|-------|-------|
+| `cefr_placements` | A spoken CEFR interview with no assessment room: `purpose` `placement` (learner, monthly re-test) or `tutor_vetting` (applicant). Same examiner, token and grader as `ai_interviews`; the grader runs with `cefr: true` (`CEFR_RUBRIC` in `lib/interview/cefr.ts`, "never on accent"). A graded placement writes `users.cefr_level` and `users.level` (`proficiencyForCefr`) and confirms tutor-marked "achieved" can-dos at or below that level. A vetting interview writes `tutors.cefr_level` and `vetting_placement_id`. Only a GRADED interview starts the 30-day re-test clock. Route: `/api/placement`. `useAiInterview(endpoint, startBody)` and `AiInterviewStage` now take an endpoint, so the same stage serves rooms and placements |
+| Briefing | `GET /api/tutor/learners/[id]/briefing?bookingId=`, `lib/tutors/briefing.ts`. **403 without a non-cancelled booking with that tutor.** Contents: CEFR level, next syllabus step, top 5 open weak points, last 3 completed sessions with scores and the most severe corrections, study-pack status, and this tutor's last filed notes (never another tutor's) |
+| Lesson notes → homework | `PUT /api/bookings/[id]/notes` (tutor, after the lesson start): notes + corrections on `tutor_bookings`. The first filing sends `tutor-lesson/notes-filed` (`announceLessonNotesFiled`), and `generateStudyPack` builds a pack from it (`study_packs.booking_id`, unique; `session_id` is now nullable). A lesson pack only adds to weak points. It never bumps clean-session counts, because a pattern the tutor did not write down was not shown to be fixed |
+| `tutor_reviews` | `PUT /api/bookings/[id]/review`: learner only, once the lesson has happened, one per booking (revisable). Each review and each tutor evaluation runs `evaluateTutorQuality()`, which flags (`tutors.review_flagged_at`) below 4.0★ or 60% AI agreement over ≥5 samples. Never auto-cleared: an admin clears it with `clearReviewFlag` |
+| Vetting | `/tutor/vetting` + `GET/PUT /api/tutor/vetting`: proficiency interview (C1+, no dimension below B2), clarity read-aloud (`assessPronunciation` over `CLARITY_PASSAGES`, ≥80; **client-measured**, shown to the admin as self-measured), teaching module + quiz (checked server-side), trial lesson (admin enters the 1–5 rubric in `TutorVettingSection`). `PATCH /api/admin/tutors/[id]` refuses `verified` while `vettingGaps()` is non-empty |
+| Syllabus | `courses.target_language`, `course_levels.cefr_level`, `units.can_do` (JSON array). `npm run db:seed-english-syllabus` seeds `english-cefr` (A0 Classroom English starter + 2 units per level A1–C1). Each unit has a self-study lesson (adds the `reading_writing` phase) and a tutor lesson whose phases are `TUTOR_LESSON_TEMPLATE`. **Seeded inactive** (draft content, needs teacher review); plans, briefings and the map read it directly. `can_do_progress` is marked by the tutor (`PUT /api/bookings/[id]/can-do`) |
+| `lesson_plans` | `POST/PATCH /api/bookings/[id]/lesson-plan`: the AI drafts from the next syllabus step, top 3 weak points and CEFR level. Phase minutes come from `lessonTimings()` (sum = booked duration, fix share 15/25/35% by level), never from the model. A fix for a pattern the learner does not have is dropped. Redrafting over tutor edits needs `{ replace: true }`. The learner's GET returns only the slides and `currentSlide` |
+| Realtime `booking:{id}` | Tutor and learner of that booking. `booking.plan` (slide moved or plan edited) and `booking.explain` (pointer only; the explanation is never broadcast) |
+| Captions | `GET/POST /api/bookings/[id]/captions`: default mode by level (`translated` A0–A1, `transcript` A2, `off` B1+; the learner can always switch), daily cap 90/60/30 min. Time is recorded in `ai_usage` route `lesson/captions` with SECONDS in `input_tokens` (`recordCaptionSeconds`) |
+| Explain | `POST /api/bookings/[id]/explain` (learner): two sentences in the native language about the last caption line or the current slide. Rate-limited 30 per 10 min, recorded as `lesson/explain` |
+| Matching | `/api/tutors` (flag on): `rankBySharedLanguage` puts tutors who explain in the learner's language first for A0–A1/unplaced learners, and adds `trust` and `sharesLanguage` per tutor plus `warnBeforeBooking` for A0 |
+
+| Component | Notes |
+|-----------|-------|
+| `BriefingPanel` | The briefing card. TutorConsole **Briefings** tab (confirmed/completed lessons in the last 14 days and upcoming) and the tutor's side of `/live/[bookingId]` |
+| `LessonPlanEditor` | Draft/redraft and per-phase activity editing; the template and its timings are fixed |
+| `LessonPanel` | The slide beside the video. The tutor gets Back/Next and the "learner asked for an explanation" cue (20 s). The learner gets the native translation under each phrase and **Explain in my language** |
+| `LiveCaptions` | Renders inside `CallStage`'s `tools` (needs the call state for the tutor's `audioStream`). Azure `TranslationRecognizer` / `SpeechRecognizer` over the remote MediaStream, token from `/api/speech/token`. On the dark call surface it uses `text-white` + italic for partial lines (no opacity restacking) |
+| `LessonNotesForm` | Notes, corrections and can-do marking (introduced / practised / achieved) after the lesson |
+| `LessonReviewForm` | 1–5 stars + comment, shown to the learner once the lesson has happened |
+| `TrustBadge` | "Verified C1 English · clarity 92 · 4.8★ (120 lessons)" from stored values only; parts without data are omitted |
+| `CefrProgressMap` | Units achieved per CEFR level with each can-do statement's standing; on `/placement`. Renders nothing when the language has no syllabus |
+| `TutorVettingChecklist` / `TutorVettingSection` | The applicant's four steps / the admin's evidence, gaps, trial rubric and quality flag |
+
 ## Admin Console (`/app/(app)/admin/`, `components/admin/`, `/app/api/admin/`)
 
 Seven tabs behind one shell. `AdminConsole.tsx` owns the tab set and the single
@@ -559,10 +589,12 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/study-packs/[id]` | Study pack | Explanation, rules, fix-the-sentence drills (reveal), dialogues (read or practise via `DialoguePractice`), recommended next scenario, **Mark as done**. Opening it marks the pack `opened` |
 | `/tutors` | Tutor Discovery | Verified tutor list + upcoming bookings. Gated by `NEXT_PUBLIC_TUTORS_ENABLED` |
 | `/tutors/[id]` | Booking | Slot picker from `/api/tutors/[id]/availability` → `POST /api/bookings` |
-| `/live/[bookingId]` | Live Session (1:1) | `CallStage` video + `RoomChatPanel` + the tutor's `EvaluationForm` |
+| `/live/[bookingId]` | Live Session (1:1) | `CallStage` video + `RoomChatPanel` + the tutor's `EvaluationForm`. With hybrid tutoring on for the learner's organization: tutor gets `BriefingPanel`, `LessonPlanEditor`, `LessonNotesForm`; both get `LessonPanel`; the learner gets `LiveCaptions` in the call and `LessonReviewForm` after |
+| `/placement` | Your level | CEFR placement interview (`AiInterviewStage` on `/api/placement`), monthly re-test, `CefrProgressMap`. Gated by `NEXT_PUBLIC_HYBRID_ENABLED` |
+| `/tutor/vetting` | Tutor vetting | Role-gated (`tutor`\|`admin`), server-checked. `TutorVettingChecklist`. Gated by both tutoring flags |
 | `/live/lesson/[lessonId]` | Live lesson | `LiveLessonRoom` — grid, roster, tutor mute-all/spotlight, translated chat sidebar |
 | `/live/assessment/[assessmentId]` | Assessment Room | `AssessmentRoom` — one learner at a time, `WaitingQueue`, per-learner grading |
-| `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, live-lesson/assessment creation, availability editor |
+| `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, live-lesson/assessment creation, availability editor, **Briefings** tab and a vetting banner for pending tutors (hybrid flag) |
 | `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Organizations, Tutors, Courses, Library, Languages |
 | `/courses/[slug]/grades` | Grades | The AI's verdict per lesson beside the human tutor verdicts |
 | `/sessions/[id]/report` | Session Summary | Verdict card + score breakdown + transcript |

@@ -30,6 +30,8 @@ export const topics = {
   assessment: (assessmentId: number) => `assessment:${assessmentId}`,
   /** Roster/status changes on one live lesson. */
   liveLesson: (lessonId: number) => `lesson:${lessonId}`,
+  /** One 1:1 booking's lesson tools: the slide in view, explain requests. Its tutor + learner. */
+  booking: (bookingId: number) => `booking:${bookingId}`,
 } as const;
 
 export type RealtimeEvent =
@@ -44,7 +46,11 @@ export type RealtimeEvent =
   /** The assessment itself moved between scheduled/live/completed. */
   | { type: 'assessment.status'; assessmentId: number; status: string }
   /** A live lesson changed status or roster. */
-  | { type: 'lesson.updated'; lessonId: number };
+  | { type: 'lesson.updated'; lessonId: number }
+  /** The tutor moved the lesson panel to another slide, or edited the plan. */
+  | { type: 'booking.plan'; bookingId: number }
+  /** The learner asked for an explanation in their own language — the tutor's cue to slow down. */
+  | { type: 'booking.explain'; bookingId: number };
 
 /** A rough guard for values arriving off the wire. */
 export function isRealtimeEvent(value: unknown): value is RealtimeEvent {

@@ -3,6 +3,10 @@ import { tutors, users } from '@/src/schema';
 import { desc, eq } from 'drizzle-orm';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { tutorLanguageSets } from '@/lib/tutors/languages';
+import { HYBRID_ENABLED } from '@/lib/tutors/config';
+import { loadVetting } from '@/lib/tutors/vetting';
+import { loadTutorTrust } from '@/lib/tutors/quality';
+import { parseTrialScores } from '@/lib/tutors/quality-rules';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +37,12 @@ export async function GET() {
       verificationStatus: tutors.verificationStatus,
       isAcceptingBookings: tutors.isAcceptingBookings,
       createdAt: tutors.createdAt,
+      vettingPlacementId: tutors.vettingPlacementId,
+      clarityScore: tutors.clarityScore,
+      trialLessonScores: tutors.trialLessonScores,
+      teachingModuleCompletedAt: tutors.teachingModuleCompletedAt,
+      reviewFlaggedAt: tutors.reviewFlaggedAt,
+      reviewFlagReason: tutors.reviewFlagReason,
       name: users.name,
       email: users.email,
       role: users.role,
@@ -42,11 +52,28 @@ export async function GET() {
     .innerJoin(users, eq(tutors.userId, users.id))
     .orderBy(desc(tutors.createdAt));
 
+  // Vetting evidence and quality signals (PLAN.md 4.6), so the admin approves
+  // on evidence. `readyForReview` is false while any check is outstanding —
+  // an applicant below C1 never reaches the verify button.
+  const [vetting, trust] = HYBRID_ENABLED
+    ? await Promise.all([loadVetting(rows), loadTutorTrust(rows.map((t) => t.id))])
+    : [null, null];
+
   return Response.json({
     success: true,
+    vettingEnabled: HYBRID_ENABLED,
     tutors: rows.map((t) => {
       const { teaches, explainsIn } = tutorLanguageSets(t);
-      return { ...t, languages: teaches, instructionLanguages: explainsIn };
+      const v = vetting?.get(t.id) ?? null;
+      return {
+        ...t,
+        trialLessonScores: parseTrialScores(t.trialLessonScores),
+        languages: teaches,
+        instructionLanguages: explainsIn,
+        vetting: v,
+        readyForReview: v ? v.gaps.length === 0 : true,
+        trust: trust?.get(t.id) ?? null,
+      };
     }),
   });
 }
