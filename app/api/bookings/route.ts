@@ -19,6 +19,9 @@ import { learnerMayUseTutor, TUTOR_NOT_AVAILABLE } from '@/lib/organizations/tut
 /** Rolls the booking transaction back and maps to the 409 response. */
 class SlotTakenError extends Error {}
 
+/** The learner already has a lesson that overlaps the requested slot. */
+class LearnerBusyError extends Error {}
+
 function isExclusionViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23P01';
 }
@@ -166,11 +169,24 @@ export async function POST(req: Request) {
           gte(tutorBookings.scheduledAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
         ));
 
-      const clashes = existing.some((b) => {
+      const overlaps = (b: { scheduledAt: Date; durationMinutes: number }) => {
         const start = b.scheduledAt.getTime();
         return scheduledAt.getTime() < start + b.durationMinutes * 60 * 1000 && requestedEnd > start;
-      });
-      if (clashes) throw new SlotTakenError();
+      };
+      if (existing.some(overlaps)) throw new SlotTakenError();
+
+      // The learner's own calendar too. tutor_bookings_no_overlap only covers
+      // the tutor, so a learner could book two different tutors for the same
+      // half hour and miss one of them.
+      const learnerExisting = await tx
+        .select({ scheduledAt: tutorBookings.scheduledAt, durationMinutes: tutorBookings.durationMinutes })
+        .from(tutorBookings)
+        .where(and(
+          eq(tutorBookings.learnerId, user.id),
+          ne(tutorBookings.status, 'cancelled'),
+          gte(tutorBookings.scheduledAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+        ));
+      if (learnerExisting.some(overlaps)) throw new LearnerBusyError();
 
       // Tutor↔learner chat reuses the existing messaging tables, including their
       // per-member preferredLanguage translation — a good fit when the two people
@@ -208,6 +224,9 @@ export async function POST(req: Request) {
       return booking?.id ?? null;
     });
   } catch (err) {
+    if (err instanceof LearnerBusyError) {
+      return Response.json({ error: 'You already have a lesson booked at that time' }, { status: 409 });
+    }
     // 23P01 = exclusion_violation, raised by tutor_bookings_no_overlap when a
     // concurrent request won the same slot between the check and the insert.
     if (err instanceof SlotTakenError || isExclusionViolation(err)) {

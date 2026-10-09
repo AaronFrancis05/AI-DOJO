@@ -170,7 +170,9 @@ export const vocabulary = pgTable('vocabulary', {
   usageTip:       text('usage_tip'),
   formalityLevel: varchar('formality_level', { length: 20 }).default('polite').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxScenarioLang: index('idx_vocabulary_scenario_lang').on(t.scenarioId, t.languageCode),
+}));
 
 export const vocabularyLocalizations = pgTable('vocabulary_localizations', {
   id:             serial('id').primaryKey(),
@@ -221,7 +223,9 @@ export const scenarioGoals = pgTable('scenario_goals', {
   targetPhrase:   varchar('target_phrase', { length: 200 }),
   languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxScenarioOrder: index('idx_scenario_goals_scenario_order').on(t.scenarioId, t.sequenceOrder),
+}));
 
 export const scenarioGoalLocalizations = pgTable('scenario_goal_localizations', {
   id:             serial('id').primaryKey(),
@@ -308,7 +312,9 @@ export const sessions = pgTable('sessions', {
   // Preset id from ABANDONMENT_REASONS. Null until they pick one on the
   // abandoned-session report; cleared if they restore the session to paused.
   abandonmentReason: varchar('abandonment_reason', { length: 40 }),
-});
+}, (t) => ({
+  idxUserStarted: index('idx_sessions_user_started').on(t.userId, t.startedAt),
+}));
 
 export const userPreferences = pgTable('user_preferences', {
   userId:      text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
@@ -333,7 +339,9 @@ export const conversations = pgTable('conversations', {
   audioUrl:              text('audio_url'),
   responseTimeMs:        integer('response_time_ms'), // Added for P1
   createdAt:             timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxSessionTurn: index('idx_conversations_session_turn').on(t.sessionId, t.turnNo),
+}));
 
 export const audioJobs = pgTable('audio_jobs', {
   id:             serial('id').primaryKey(),
@@ -366,7 +374,9 @@ export const corrections = pgTable('corrections', {
   retryOfCorrectionId: integer('retry_of_correction_id'),
   isFinalAttempt:      boolean('is_final_attempt').default(false).notNull(),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxConversation: index('idx_corrections_conversation').on(t.conversationId),
+}));
 
 export const evaluations = pgTable('evaluations', {
   id:              serial('id').primaryKey(),
@@ -380,7 +390,9 @@ export const evaluations = pgTable('evaluations', {
   expressionAppropriatenessScore: integer('expression_appropriateness_score').default(0).notNull(),
   feedback:        text('feedback'),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxUser: index('idx_evaluations_user').on(t.userId),
+}));
 
 export const goalCompletions = pgTable('goal_completions', {
   id:              serial('id').primaryKey(),
@@ -391,7 +403,9 @@ export const goalCompletions = pgTable('goal_completions', {
   achieved:        boolean('achieved').default(true).notNull(),
   evidenceNote:    text('evidence_note'),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxSession: index('idx_goal_completions_session').on(t.sessionId),
+}));
 
 export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   id:             serial('id').primaryKey(),
@@ -403,7 +417,9 @@ export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   accuracyScore:  integer('accuracy_score'),
   phase:          varchar('phase', { length: 20 }).default('icebreaker').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxSession: index('idx_vocabulary_encounters_session').on(t.sessionId),
+}));
 
 export const shareTokens = pgTable('share_tokens', {
   id:        serial('id').primaryKey(),
@@ -866,7 +882,9 @@ export const chatMessages = pgTable('chat_messages', {
   audioMimeType:     varchar('audio_mime_type', { length: 40 }),       // e.g. audio/webm;codecs=opus
   audioDurationMs:   integer('audio_duration_ms'),                     // recorded clip length, for the player UI
   createdAt:         timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxRoomCreated: index('idx_chat_messages_room_created').on(t.roomId, t.createdAt),
+}));
 
 // Cached per-target-language translations of a message, so a room with
 // several members reading in different languages only pays for each

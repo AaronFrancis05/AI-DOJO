@@ -2,6 +2,7 @@ import { db } from '@/src/db';
 import { users } from '@/src/schema';
 import { eq, or } from 'drizzle-orm';
 import { ensureLearnerMembership } from '@/lib/organizations/membership';
+import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
 
 export type AuthUser = {
   id: string;
@@ -17,10 +18,20 @@ function realName(name: string | null | undefined): string {
   return trimmed;
 }
 
-/** Membership is repaired on every sign-in. A failure here must not block the session. */
+/**
+ * Membership is repaired on every sign-in. A failure here must not block the session.
+ *
+ * syncUser runs on every authenticated request, not only at sign-in, so the
+ * two membership queries are skipped for a few minutes after one succeeds.
+ * A learner removed from an organization is still re-placed in the public
+ * one — at most TTL.USER_PROFILE later rather than on the very next request.
+ */
 async function placeLearner(userId: string): Promise<void> {
+  const key = cacheKeys.membershipChecked(userId);
+  if (await cacheGet<boolean>(key)) return;
   try {
     await ensureLearnerMembership(userId);
+    await cacheSet(key, true, TTL.USER_PROFILE);
   } catch (err) {
     console.error('[sync-user] organization membership failed', err);
   }
@@ -34,6 +45,7 @@ function isUniqueViolation(err: unknown): boolean {
 const identityColumns = {
   id: users.id,
   email: users.email,
+  name: users.name,
   authUserId: users.authUserId,
 };
 
@@ -68,7 +80,10 @@ export async function syncUser(authUser: AuthUser): Promise<string> {
     // Keep the existing id so FK refs from sessions stay intact. Only touch
     // the display name when the provider actually has one — previously this
     // wrote the caller's fallback string (e.g. 'Learner') over real names.
-    const name = realName(authUser.name);
+    // Compared with the stored name: this runs on every authenticated request,
+    // and writing an unchanged name turned each one into an UPDATE.
+    const providerName = realName(authUser.name);
+    const name = providerName && providerName !== existing.name ? providerName : undefined;
     // Stamp the auth identity if it is missing or has moved (a provider key
     // rotation reissues ids). Without it the row looks like an unclaimed
     // invitation to reconcileDeletedAuthUsers() and outlives its own account.

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Mic, Volume2, VolumeX, MessageSquare, X, Send, Sparkles, LoaderIcon } from 'lucide-react';
 import { VoiceOnlyStage } from '@/components/roleplay/VoiceOnlyStage';
-import { AvatarViewport3D, DEFAULT_AVATAR_MODEL_URL } from '@/components/roleplay/AvatarViewport3D';
+import dynamic from 'next/dynamic';
+import { SHARED_FEMALE_MODEL_URL as DEFAULT_AVATAR_MODEL_URL } from '@/lib/avatar/catalog';
 import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useOnboardingPracticeSession } from '@/lib/hooks/useOnboardingPracticeSession';
 import { stop as stopTts, setOnSpeakingChange, unlockAudio, clearTurnCache } from '@/lib/roleplay/tts';
@@ -18,6 +19,17 @@ import {
   type PracticeSituation,
 } from '@/lib/onboarding/practice-shared';
 import type { OnboardingState } from '@/lib/onboarding/context';
+
+// Loaded only when the learner picks the avatar surface: three.js and drei
+// are several hundred KB, and most onboarding runs are voice-only.
+const AvatarViewport3D = dynamic(() => import('@/components/roleplay/AvatarViewport3D').then(m => ({ default: m.AvatarViewport3D })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-dojo-surface animate-pulse rounded-lg">
+      <div className="h-16 w-16 rounded-full bg-dojo-border" />
+    </div>
+  ),
+});
 
 interface OnboardingPracticeProps {
   state: OnboardingState;

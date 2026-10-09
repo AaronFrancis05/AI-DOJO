@@ -18,6 +18,7 @@ SESSION: 60,         // 1 min (session state changes often)
   PROFICIENCY: 300,    // 5 min (only changes when a session completes)
   LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
   CHAT_TURN_RATE_LIMIT: 600, // 10 min window for the per-user roleplay turn limit
+  LEADERBOARD: 60,     // 1 min — rankings move with XP, but every viewer reads the same top 20
 } as const;
 
 let redis: Redis | null = null;
@@ -118,6 +119,8 @@ function key(prefix: string, ...parts: (string | number)[]): string {
 export const cacheKeys = {
   userAvatars: (userId: string) => key('avatars', userId),
   userProfile: (userId: string) => key('user-profile', userId),
+  /** Set after ensureLearnerMembership succeeds, so syncUser skips it on the next requests. */
+  membershipChecked: (userId: string) => key('membership-checked', userId),
   learnerProficiency: (userId: string, lang: string) => key('proficiency', `${userId}:${lang}`),
   session: (sessionId: number) => key('session', sessionId),
   scenario: (scenarioId: number) => key('scenario', scenarioId),
@@ -138,6 +141,8 @@ export const cacheKeys = {
   onboardingTurns: (budgetId: string) => key('onboarding-turns', budgetId),
   onboardingPracticeRateLimit: (id: string) => key('onboarding-practice-rate', id),
   speechToken: (region: string) => key('speech-token', region),
+  /** The global top-20 ranking, shared by every viewer. */
+  leaderboard: () => key('leaderboard', 'v1'),
   /** Roleplay turns one signed-in user has sent in the current window. */
   chatTurnRateLimit: (userId: string) => key('chat-turn-rate', userId),
   /** The whole `languages` table — one key, because it is always read whole. */

@@ -37,6 +37,8 @@ function parseGeneratedVocab(value: unknown): VocabRow | null {
   };
 }
 
+const MAX_SESSIONS_PAGE = 200;
+
 export async function GET(req: Request) {
   const user = await getAuthUser();
   if (!user) {
@@ -49,10 +51,22 @@ export async function GET(req: Request) {
   const lang = url.searchParams.get('lang') ?? '';
 
   const conditions = [eq(sessions.userId, user.id)];
-  if (scenarioIdFilter) conditions.push(eq(sessions.scenarioId, Number(scenarioIdFilter)));
+  if (scenarioIdFilter) {
+    // Number('abc') is NaN, which Postgres rejected as a 500.
+    const scenarioId = Number(scenarioIdFilter);
+    if (!Number.isInteger(scenarioId) || scenarioId <= 0) {
+      return Response.json({ error: 'Invalid scenarioId' }, { status: 400 });
+    }
+    conditions.push(eq(sessions.scenarioId, scenarioId));
+  }
+  // Opt-in page size. Not a default: home, /sessions and lib/data/sessions.ts
+  // derive totals from the full list, and a silent default cap would make
+  // those totals wrong once a learner passed it.
+  const limitParam = url.searchParams.get('limit');
+  const limit = limitParam ? Math.min(MAX_SESSIONS_PAGE, Math.max(1, Math.floor(Number(limitParam)) || 1)) : null;
   if (statusFilter) conditions.push(eq(sessions.status, statusFilter));
 
-  const rows = await db
+  const query = db
     .select({
       session: sessions,
       scenarioTitle: scenarios.title,
@@ -62,7 +76,9 @@ export async function GET(req: Request) {
     .leftJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
     .leftJoin(situations, eq(sessions.situationId, situations.id))
     .where(and(...conditions))
-    .orderBy(desc(sessions.startedAt));
+    .orderBy(desc(sessions.startedAt))
+    .$dynamic();
+  const rows = await (limit ? query.limit(limit) : query);
 
   const localizedTitles = lang && lang !== 'en'
     ? new Map(

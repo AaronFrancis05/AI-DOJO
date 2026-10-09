@@ -186,29 +186,3 @@ export async function getWeeklyActivity(): Promise<{ data: WeeklyActivity[]; sou
   }
   return { data: fixtureWeekly, source: 'fixture' };
 }
-
-/* ── 2b — Needs product decision — returning fixtures with TODO ── */
-
-export async function getRecentAchievements() {
-  return fixtureAchievements;
-}
-
-export async function getLeaderboardFriends() {
-  return fixtureFriends;
-}
-
-/* ── 2c — Calendar now fetches /api/sessions directly in the page ── */
-
-/**
- * getCalendarEvents is no longer used by app/(app)/calendar/page.tsx,
- * which fetches /api/sessions directly and maps sessions into events.
- * This helper remains for any other caller until the fixture path is removed.
- * TODO: Remove this once all callers are confirmed migrated.
- */
-export async function getCalendarEvents() {
-  return fixtureCalendar;
-}
-
-export async function getMessageThreads() {
-  return fixtureMessages;
-}

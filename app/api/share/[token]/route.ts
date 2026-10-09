@@ -1,6 +1,6 @@
 import { db } from '../../../../src/db';
 import { shareTokens, sessions, conversations, corrections, evaluations, scenarioGoals, goalCompletions, scenarios } from '../../../../src/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, inArray } from 'drizzle-orm';
 import { applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
 
 export async function GET(
@@ -38,15 +38,23 @@ export async function GET(
     .where(eq(conversations.sessionId, sessionId))
     .orderBy(asc(conversations.turnNo));
 
-  const conversationWithCorrections = await Promise.all(
-    conversationRows.map(async (conv) => {
-      const corrs = await db
-        .select()
-        .from(corrections)
-        .where(eq(corrections.conversationId, conv.id));
-      return { ...conv, corrections: corrs };
-    })
-  );
+  // One query for every turn's corrections, grouped here — this public route
+  // used to issue a separate query per turn, so a 40-turn transcript was 40
+  // round trips. Same shape as app/api/sessions/[id]/route.ts.
+  const conversationIds = conversationRows.map((conv) => conv.id);
+  const correctionRows = conversationIds.length
+    ? await db.select().from(corrections).where(inArray(corrections.conversationId, conversationIds))
+    : [];
+  const correctionsByConversation = new Map<number, typeof correctionRows>();
+  for (const corr of correctionRows) {
+    const list = correctionsByConversation.get(corr.conversationId) ?? [];
+    list.push(corr);
+    correctionsByConversation.set(corr.conversationId, list);
+  }
+  const conversationWithCorrections = conversationRows.map((conv) => ({
+    ...conv,
+    corrections: correctionsByConversation.get(conv.id) ?? [],
+  }));
 
   const [evaluation] = await db
     .select()
