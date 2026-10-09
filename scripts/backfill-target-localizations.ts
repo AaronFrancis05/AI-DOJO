@@ -32,6 +32,7 @@
       npm run db:backfill-target-localizations -- --only=native
       npm run db:backfill-target-localizations -- --only=native --lang=ja --limit=2 --dry-run
       npm run db:backfill-target-localizations -- --only=native --target=fr --lang=en
+      npm run db:backfill-target-localizations -- --only=native --lang=lg --shard=0/6   # 1 of 6 parallel slices
 
    Idempotent — skips any (id, languageCode) that already has a row, so
    reruns only fill gaps. Failures are logged per id/language and do not
@@ -71,6 +72,16 @@ function parseArg(name: string): string | null {
 function hasFlag(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
+
+/**
+ * --shard=i/n (native mode): handle only rows whose id % n === i, so n
+ * processes can split one slow language without doing the same row twice.
+ */
+const SHARD = (() => {
+  const m = /^(\d+)\/(\d+)$/.exec(parseArg('shard') ?? '');
+  return m && Number(m[2]) > 0 ? { i: Number(m[1]), n: Number(m[2]) } : null;
+})();
+const inShard = (id: number) => !SHARD || id % SHARD.n === SHARD.i;
 
 interface GeneratedScenario {
   title?: string;
@@ -578,7 +589,7 @@ async function backfillNativeScenarios(
   let processed = 0;
   let written = 0;
   for (const sc of scenarioRows) {
-    if (done.has(sc.id)) continue;
+    if (done.has(sc.id) || !inShard(sc.id)) continue;
     if (limit != null && processed >= limit) break;
     processed++;
 
@@ -730,7 +741,7 @@ async function backfillNativeSituations(
   let processed = 0;
   let written = 0;
   for (const st of situationRows) {
-    if (done.has(st.id)) continue;
+    if (done.has(st.id) || !inShard(st.id)) continue;
     if (limit != null && processed >= limit) break;
     processed++;
 
