@@ -26,6 +26,12 @@ function isExclusionViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23P01';
 }
 
+/** Which exclusion constraint fired — the tutor's (0036) or the learner's (0056). */
+function violatedConstraint(err: unknown): string | undefined {
+  const e = err as { constraint?: string; cause?: { constraint?: string } } | null;
+  return e?.constraint ?? e?.cause?.constraint;
+}
+
 /** Bookings the signed-in user is part of, as either learner or tutor. */
 export async function GET() {
   const user = await getAuthUser();
@@ -177,7 +183,8 @@ export async function POST(req: Request) {
 
       // The learner's own calendar too. tutor_bookings_no_overlap only covers
       // the tutor, so a learner could book two different tutors for the same
-      // half hour and miss one of them.
+      // half hour and miss one of them. tutor_bookings_learner_no_overlap
+      // (migration 0056) enforces the same rule under concurrent requests.
       const learnerExisting = await tx
         .select({ scheduledAt: tutorBookings.scheduledAt, durationMinutes: tutorBookings.durationMinutes })
         .from(tutorBookings)
@@ -224,7 +231,10 @@ export async function POST(req: Request) {
       return booking?.id ?? null;
     });
   } catch (err) {
-    if (err instanceof LearnerBusyError) {
+    if (
+      err instanceof LearnerBusyError
+      || (isExclusionViolation(err) && violatedConstraint(err) === 'tutor_bookings_learner_no_overlap')
+    ) {
       return Response.json({ error: 'You already have a lesson booked at that time' }, { status: 409 });
     }
     // 23P01 = exclusion_violation, raised by tutor_bookings_no_overlap when a

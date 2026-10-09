@@ -16,6 +16,9 @@ export async function GET(
   if (!shareRecord) {
     return Response.json({ error: 'Invalid or expired share link' }, { status: 404 });
   }
+  if (shareRecord.expiresAt && shareRecord.expiresAt <= new Date()) {
+    return Response.json({ error: 'This share link has expired' }, { status: 410 });
+  }
 
   const { sessionId } = shareRecord;
 

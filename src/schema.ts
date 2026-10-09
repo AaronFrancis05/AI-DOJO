@@ -426,6 +426,9 @@ export const shareTokens = pgTable('share_tokens', {
   sessionId: integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull().unique(),
   token:     varchar('token', { length: 64 }).notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  // Null = never expires. Links created before expiry existed stay null, so
+  // nothing a learner already sent stops working; new links get SHARE_LINK_TTL_DAYS.
+  expiresAt: timestamp('expires_at'),
 });
 
 export const userAvatars = pgTable('user_avatars', {

@@ -1,0 +1,1 @@
+ALTER TABLE "share_tokens" ADD COLUMN "expires_at" timestamp;

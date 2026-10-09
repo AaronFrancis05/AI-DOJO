@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { thumbnailForModelUrl } from '@/lib/avatar/catalog';
 
 export interface UserAvatarRow {
   id: number;
@@ -115,4 +116,11 @@ export function useCurrentAvatar(): string | null {
 export function useCurrentAvatarModel(): string | null {
   const ctx = useContext(AvatarContext);
   return ctx?.selectedAvatar?.avatarUrl ?? null;
+}
+
+/** The selected avatar's portrait: its stored thumbnail, or the catalog one for its model. */
+export function useCurrentAvatarThumbnail(): string | null {
+  const ctx = useContext(AvatarContext);
+  const selected = ctx?.selectedAvatar;
+  return selected?.thumbnailUrl ?? thumbnailForModelUrl(selected?.avatarUrl) ?? null;
 }

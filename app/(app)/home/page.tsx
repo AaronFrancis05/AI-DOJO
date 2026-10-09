@@ -19,7 +19,7 @@ import { HexBadge } from '@/components/ui/HexBadge';
 import { Button } from '@/components/ui/Button';
 import { useUser } from '@/lib/auth/user-context';
 import { resolveDisplayName } from '@/lib/auth/display-name';
-import { useCurrentAvatarModel } from '@/lib/auth/avatar-context';
+import { useCurrentAvatarModel, useCurrentAvatarThumbnail } from '@/lib/auth/avatar-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { type SessionRecord } from '@/lib/types';
 import { getLeaderboardGlobal } from '@/lib/data/sessions';
@@ -294,6 +294,7 @@ export default function HomePage() {
   const router = useRouter();
   const user = useUser();
   const currentAvatarModelUrl = useCurrentAvatarModel();
+  const currentAvatarThumbnail = useCurrentAvatarThumbnail();
   const greeting = greet(user?.nativeLanguage);
   const displayName = resolveDisplayName(user);
   usePageTitle(displayName ? `${greeting}, ${displayName}!` : `${greeting}!`);
@@ -467,7 +468,7 @@ export default function HomePage() {
             >
               <div className="relative h-32 w-32 overflow-hidden rounded-full border border-dojo-border bg-dojo-surface">
                 {currentAvatarModelUrl ? (
-                  <WelcomeBanner modelUrl={currentAvatarModelUrl} userName={displayName} />
+                  <WelcomeBanner modelUrl={currentAvatarModelUrl} thumbnailUrl={currentAvatarThumbnail} userName={displayName} />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-5xl font-bold text-dojo-accent">
                     {displayName ? displayName[0] : '?'}

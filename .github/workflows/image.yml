@@ -62,6 +62,11 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Models, animations, HDRs and the demo video are Git LFS objects
+          # (.gitattributes). Without this the image ships pointer files and
+          # every avatar 404s. Only this job needs them — lint/test/build don't.
+          lfs: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
