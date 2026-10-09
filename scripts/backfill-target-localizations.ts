@@ -216,7 +216,7 @@ async function backfillScenarios(
 
     try {
       const raw = await provider.generateJSON(buildScenarioPrompt(langName, langCode, sc), []);
-      const parsed = JSON.parse(raw) as GeneratedScenario;
+      const parsed = parseModelJSON<GeneratedScenario>(raw);
 
       if (dryRun) {
         console.log(`  [dry-run] scenario "${sc.title}" (${langCode}):`, JSON.stringify(parsed, null, 2));
@@ -284,7 +284,7 @@ async function backfillSituations(
 
     try {
       const raw = await provider.generateJSON(buildSituationPrompt(langName, langCode, st), []);
-      const parsed = JSON.parse(raw) as GeneratedSituation;
+      const parsed = parseModelJSON<GeneratedSituation>(raw);
 
       if (dryRun) {
         console.log(`  [dry-run] situation "${st.title}" (${langCode}):`, JSON.stringify(parsed, null, 2));
@@ -367,7 +367,7 @@ async function backfillGoals(
         .where(and(eq(scenarioLocalizations.scenarioId, sc.id), eq(scenarioLocalizations.languageCode, langCode)))
         .limit(1);
       const raw = await provider.generateJSON(buildGoalsPrompt(langName, langCode, sc, scLoc ?? null, goals), []);
-      const parsed = JSON.parse(raw) as GeneratedGoal[];
+      const parsed = parseModelJSON<GeneratedGoal[]>(raw);
       if (!Array.isArray(parsed) || parsed.length !== goals.length) {
         throw new Error(`expected JSON array of ${goals.length} goal(s), got ${Array.isArray(parsed) ? parsed.length : typeof parsed}`);
       }
@@ -424,6 +424,44 @@ interface GeneratedNativeScenario {
   vocabularyTips?: Array<{ id?: number; usageTip?: string }>;
 }
 
+/** A full scene explanation is ~2–3k tokens even in long-script languages. */
+const NATIVE_MAX_TOKENS = 8192;
+
+/**
+ * JSON.parse that survives the model's two common slips: a raw newline/tab
+ * inside a string literal ("Bad control character") and a ```json fence.
+ * Control characters are never valid unescaped in JSON, so turning them into
+ * spaces cannot change a value that would have parsed.
+ */
+function parseModelJSON<T>(raw: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '').replace(/[\u0000-\u001f]+/g, ' ');
+    return JSON.parse(cleaned) as T;
+  }
+}
+
+/**
+ * Word tips from a model response, matched by vocabulary id. Some responses
+ * come back as `"id": "256"`, `vocabularyId`, `tip` or a `tips` key; the
+ * strict filter dropped every tip of such a response, so the same scenarios
+ * stayed tip-less on every re-run.
+ */
+function extractTips(parsed: unknown, validIds: Set<number>): Array<{ id: number; usageTip: string }> {
+  const obj = (parsed ?? {}) as Record<string, unknown>;
+  const list = [obj.vocabularyTips, obj.vocabulary_tips, obj.tips, obj.wordTips].find(Array.isArray) as unknown[] | undefined;
+  const out = new Map<number, string>();
+  for (const item of list ?? []) {
+    if (!item || typeof item !== 'object') continue;
+    const t = item as Record<string, unknown>;
+    const id = Number(t.id ?? t.vocabularyId ?? t.vocabulary_id);
+    const tip = [t.usageTip, t.usage_tip, t.tip].find((v) => typeof v === 'string' && v.trim()) as string | undefined;
+    if (Number.isInteger(id) && validIds.has(id) && tip && !out.has(id)) out.set(id, tip);
+  }
+  return [...out].map(([id, usageTip]) => ({ id, usageTip }));
+}
+
 function buildNativeScenarioPrompt(
   targetName: string,
   nativeName: string,
@@ -462,6 +500,24 @@ Return strictly a JSON object (no markdown, no code fences):
   "vocabularyTips": [{"id": 123, "usageTip": "..."}]
 }
 Write every value in ${nativeName}. CRITICAL: never output "___" or bracketed placeholders.`;
+}
+
+function buildNativeTipsPrompt(
+  targetName: string,
+  nativeName: string,
+  nativeCode: string,
+  sceneTitle: string,
+  words: Array<{ id: number; word: string; meaning: string; tip: string | null }>,
+): string {
+  const wordList = words.map((w) => `- id ${w.id}: "${w.word}" = ${w.meaning}${w.tip ? ` (existing English tip: ${w.tip})` : ''}`).join('\n');
+  return `You write usage tips a ${nativeName} (${nativeCode}) speaker reads while learning ${targetName} in a roleplay app. The scene is "${sceneTitle}".
+
+For each word below (exactly ${words.length}), write ONE usage tip in ${nativeName}: when to use it, register/politeness, and the mistake a ${nativeName} speaker typically makes with it. Quote the ${targetName} word itself unchanged.
+${wordList}
+
+Return strictly a JSON object (no markdown, no code fences), one entry per word, using the numeric ids above:
+{"vocabularyTips": [{"id": 123, "usageTip": "..."}]}
+CRITICAL: never output "___" or bracketed placeholders.`;
 }
 
 function buildNativeSituationPrompt(
@@ -573,10 +629,16 @@ async function backfillNativeScenarios(
         };
       });
 
-      const raw = await provider.generateJSON(
-        buildNativeScenarioPrompt(targetName, nativeName, nativeCode, scene, sceneGoals, words), [],
-      );
-      const parsed = JSON.parse(raw) as GeneratedNativeScenario;
+      // The model occasionally loops until its output limit (100k+ characters of
+      // truncated JSON). The cap makes that fail fast; one retry usually lands.
+      const prompt = buildNativeScenarioPrompt(targetName, nativeName, nativeCode, scene, sceneGoals, words);
+      let parsed: GeneratedNativeScenario;
+      try {
+        parsed = parseModelJSON<GeneratedNativeScenario>(await provider.generateJSON(prompt, [], { maxTokens: NATIVE_MAX_TOKENS }));
+      } catch (err) {
+        console.warn(`  [WARN] scenario "${sc.title}": ${err instanceof Error ? err.message.slice(0, 120) : String(err)} — retrying once`);
+        parsed = parseModelJSON<GeneratedNativeScenario>(await provider.generateJSON(prompt, [], { maxTokens: NATIVE_MAX_TOKENS }));
+      }
       if (dryRun) {
         console.log(`  [dry-run] scenario "${sc.title}" (${targetCode}→${nativeCode}):`, JSON.stringify(parsed, null, 2));
         continue;
@@ -609,11 +671,24 @@ async function backfillNativeScenarios(
 
       // Tips are matched by id, so a dropped or reordered tip only loses itself.
       const validIds = new Set(vocabRows.map((v) => v.id));
-      const tips = (Array.isArray(parsed.vocabularyTips) ? parsed.vocabularyTips : [])
-        .filter((t) => typeof t.id === 'number' && validIds.has(t.id) && t.usageTip);
+      const tips = extractTips(parsed, validIds);
+      // The full scene prompt is long and the model sometimes skips the tips
+      // block; one short tips-only request for the missing words recovers them.
+      const missingWords = words.filter((w) => !tips.some((t) => t.id === w.id));
+      if (missingWords.length > 0) {
+        if (tips.length === 0) console.warn(`  [WARN] scenario "${sc.title}": no usable tips (keys: ${Object.keys(parsed ?? {}).join(', ')}) — retrying tips only`);
+        try {
+          const retryRaw = await provider.generateJSON(
+            buildNativeTipsPrompt(targetName, nativeName, nativeCode, scene.title, missingWords), [], { maxTokens: NATIVE_MAX_TOKENS },
+          );
+          tips.push(...extractTips(parseModelJSON(retryRaw), new Set(missingWords.map((w) => w.id))));
+        } catch (err) {
+          console.warn(`  [WARN] scenario "${sc.title}": tips retry failed:`, err instanceof Error ? err.message : String(err));
+        }
+      }
       if (tips.length > 0) {
         await db.insert(vocabularyNativeNotes).values(tips.map((t) => ({
-          vocabularyId: t.id!,
+          vocabularyId: t.id,
           targetLanguage: targetCode,
           nativeLanguage: nativeCode,
           usageTip: sanitizeGeneratedText(t.usageTip) ?? null,
@@ -672,7 +747,7 @@ async function backfillNativeSituations(
         focusPills: stLoc?.focusPills ?? st.focusPills ?? '',
       };
       const raw = await provider.generateJSON(buildNativeSituationPrompt(targetName, nativeName, nativeCode, scene), []);
-      const parsed = JSON.parse(raw) as GeneratedSituation;
+      const parsed = parseModelJSON<GeneratedSituation>(raw);
       if (dryRun) {
         console.log(`  [dry-run] situation "${st.title}" (${targetCode}→${nativeCode}):`, JSON.stringify(parsed, null, 2));
         continue;
