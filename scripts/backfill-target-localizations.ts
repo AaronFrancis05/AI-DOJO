@@ -52,7 +52,7 @@ import {
   vocabularyLocalizations,
   vocabularyNativeNotes,
 } from '../src/schema';
-import { eq, and, inArray, asc } from 'drizzle-orm';
+import { eq, and, inArray, asc, isNull } from 'drizzle-orm';
 import { TARGET_LANGUAGES, NATIVE_LANGUAGES, BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '../lib/language';
 import { loadLanguageCatalog } from '../lib/language-registry';
 import { getAIProvider, type AIProvider } from '../lib/ai-providers';
@@ -192,7 +192,7 @@ async function backfillScenarios(
   limit: number | null,
   dryRun: boolean,
 ): Promise<{ processed: number; written: number }> {
-  const scenarioRows = await db.select().from(scenarios).orderBy(scenarios.id);
+  const scenarioRows = await db.select().from(scenarios).where(isNull(scenarios.ownerUserId)).orderBy(scenarios.id);
 
   const existing = await db
     .select({ scenarioId: scenarioLocalizations.scenarioId })
@@ -322,7 +322,7 @@ async function backfillGoals(
   limit: number | null,
   dryRun: boolean,
 ): Promise<{ processed: number; written: number }> {
-  const scenarioRows = await db.select().from(scenarios).orderBy(scenarios.id);
+  const scenarioRows = await db.select().from(scenarios).where(isNull(scenarios.ownerUserId)).orderBy(scenarios.id);
   const goalsByScenario = new Map<number, Array<typeof scenarioGoals.$inferSelect>>();
   const allGoals = await db
     .select()
@@ -493,7 +493,7 @@ async function backfillNativeScenarios(
   limit: number | null,
   dryRun: boolean,
 ): Promise<{ processed: number; written: number }> {
-  const scenarioRows = await db.select().from(scenarios).orderBy(scenarios.id);
+  const scenarioRows = await db.select().from(scenarios).where(isNull(scenarios.ownerUserId)).orderBy(scenarios.id);
   const done = new Set((await db
     .select({ scenarioId: scenarioNativeLocalizations.scenarioId })
     .from(scenarioNativeLocalizations)

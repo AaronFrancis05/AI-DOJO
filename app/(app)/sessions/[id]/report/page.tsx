@@ -19,6 +19,8 @@ import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { computeCompositeScore, PASSING_SCORE_THRESHOLD } from '@/lib/roleplay/phase-engine';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
+import { StudyPackLink } from '@/components/study-packs/StudyPackLink';
 import { useUser } from '@/lib/auth/user-context';
 import {
   isRecord,
@@ -351,6 +353,9 @@ export default function SessionReportPage() {
                 >
                   <Repeat2 className="h-4 w-4" /> Review the words
                 </Link>
+                {STUDY_PACKS_ENABLED && session.status === 'completed' && (
+                  <StudyPackLink sessionId={session.id} />
+                )}
                 {!passed && (
                   <Link
                     href="/library"

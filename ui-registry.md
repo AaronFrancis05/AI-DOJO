@@ -178,6 +178,7 @@ Membership changes live in `lib/organizations/membership.ts`. Invite refusals th
 | `PhaseTransitionCard` | Phase-change card, `aspect-[11/10] max-w-md`. The coach art from `PHASE_META.portraitSrc` is the card itself (full-bleed `background-image`, framed by `artSize`/`artPosition`), with the title/description over a top-left scrim and a numbered 1→6 stepper over a bottom scrim. Copy is `text-white` because it always sits on the dark artwork. |
 | `ResultsAvatarBackdrop` | Shared backdrop for `LessonCompleteScreen` / `LessonIncompleteScreen`. Layers: blurred+dimmed copy of the art (`next/image` `fill`) → radial mood glow → the art itself at full opacity, height-fitted and centred so the coach is never cropped or washed out → scrims limited to the top/bottom strips and the outer quarter of each side (where the stat panels sit). `fit="portrait"` caps and feathers small square art (`lesson-incomplete.png`, 380×380) instead of upscaling it to full height. Never put a full-screen scrim over the character. Callers pass local `/characters/...` paths only. |
 | `LessonCompleteScreen` | Full-screen pass overlay. Actions: **Continue Learning** (`continueHref` → next course lesson or `/library`) and **View Report** (`/sessions/[id]/report`). No **Try Another Lesson**. Secondary button is `border-dojo-border bg-dojo-surface-raised/85` with `ClipboardList`. |
+| `QuickExchangeDrill` | One prompt → typed reply → checked exchange per item (`QuickDrillItem`, field names from `quick_drills`; `promptJa` is the target-language prompt whatever the language). Speaks only the target prompt, never the native gloss. `onSubmitResponse(text, drill)` decides right/wrong. Used by `DialoguePractice`. Target text is `translate="no"`. |
 | `LessonIncompleteScreen` | Full-screen fail overlay. Actions: **Repeat Lesson** (POST a new session, same lesson/avatar/languages, then `/session/{newId}/voice` or `/avatar`), **Next Lesson** (`continueHref`, kept even on fail), **View Report**. Do not reuse the completed session id for Repeat. |
 
 ## Speech & Avatar Runtime (`/lib/roleplay/`, `/components/roleplay/three/`)
@@ -454,6 +455,29 @@ in beside their learner rows, so the one page serves both.
 | Correlated subqueries | Don't. "My enrolment" / "my queue slot" use a `leftJoin` narrowed to the user. Drizzle only qualifies column names once a query has a join — in a join-less query, `where live_lesson_id = id` emits `id` unqualified and Postgres resolves it against the *subquery's own* table, so the correlation silently never matches. |
 | Checkbox nesting | The done/undone button is a **sibling** of the row's `<Link>`, never inside it: a `<button>` in an `<a>` is invalid nesting and hydrates badly. |
 
+## Personalized learning (`/lib/study-packs/`, `components/study-packs/`, `app/(app)/study-packs/`)
+
+PLAN.md Phase 3, gated by `NEXT_PUBLIC_STUDY_PACKS_ENABLED` (`lib/study-packs/config.ts`, same literal-read rule as the tutors flag). Everything it writes is owned by one learner; nothing lands in a shared catalogue table.
+
+**The loop.** A session reaching `completed` (`/api/chat/stream` or `PATCH /api/sessions/[id]`) calls `announceSessionCompleted()` *after* the commit, which sends `session/completed` with id `session-completed-{sessionId}` (Inngest dedupes a second send). `generateStudyPack` (`lib/inngest/functions/generateStudyPack.ts`) runs load → classify → generate → save → notify as steps, so a retry never pays for an AI call twice. The save is one transaction keyed on `study_packs.session_id` (unique): a retried save finds the pack and writes nothing.
+
+| Piece | Notes |
+|-------|-------|
+| `learner_weak_points` | (user, target language, category, pattern). Category is grammar / vocab / pronunciation / register. The classifier is shown the learner's existing labels and must reuse them verbatim, which is what lets `count` grow across sessions. Absent for `WEAK_POINT_RESOLVE_AFTER` (3) completed sessions → `resolvedAt`; seen again → reopened. Pure logic in `weak-points.ts`. |
+| `study_packs` / `study_pack_items` | Explanation (native language), then items of kind `focus` (rule per weak point), `drill` (fix-the-sentence), `dialogue`. Payload JSON in a text column, shapes in `types.ts`. The next-scenario pick is constrained to a server-supplied list; an invented id is dropped. |
+| `srs_cards.card_type` | `vocab` (unchanged) · `sentence` (from a drill) · `grammar` (from a focus rule). Pack cards have NULL `vocabulary_id` and a `payload` (`SrsCardPayload`); `/api/review/due` serves them only for the pack's target language. `/review` renders all three; the instruction line per type is UI copy (`CARD_PROMPTS`), not stored. |
+| `calendar_tasks.kind = 'study_pack'` | Due the next day (UTC all-day), links to `/study-packs/[id]`; marking the pack done ticks it. |
+| `ai_usage` | Ledger of every learner-attributable AI call (`usageRecorder()` in `lib/ai-usage.ts`, fed by `GenerateOptions.onUsage`). Batch routes (`study-pack`, `scenario/personalized`) are gated by `DAILY_TOKEN_QUOTA[users.tier]`; live turns are recorded but never blocked (plans arrive with Phase 5). `costMicros` comes from a list-price table; verify it before a pricing decision. |
+| `scenarios.owner_user_id` | Learner-owned scenarios (`POST /api/scenarios/personalized`). Every library listing filters `IS NULL` (`/api/scenarios`, the export, the localization backfill); `POST /api/sessions` and `/api/scenario/[id]` treat someone else's owned row as not found. Rows follow the library's localization layout: base English, target scene in `scenario_localizations` (target ≠ en), native explanation in the (target, native) tables, word meanings via `vocabulary_localizations[native]` + `vocabulary_native_notes`. |
+| `users.occupation` / `users.interests` | From the onboarding `about-you` step (only in the flow while the flag is on) and `PUT /api/user/preferences`. Interests are a JSON array in text; read and write only through `profile.ts`. |
+| `GenerateOptions` (`lib/ai-providers/types.ts`) | `modelTier: 'fast' \| 'batch'` (batch reads `*_BATCH_MODEL`, falls back to the main model; a tier rather than a model id because failover crosses providers), `maxTokens`, `onUsage`. Azure needs a client per deployment: the SDK bakes the deployment into the URL. |
+
+| Component | Notes |
+|-----------|-------|
+| `StudyPackLink` | On the session report for a completed session. Polls `GET /api/study-packs?sessionId=` (8 s × 15) and becomes **Open your study pack**; renders nothing if no pack appears (a session with nothing to work on gets none). |
+| `PersonalizedScenarioCard` | Optional topic input → `POST /api/scenarios/personalized` → `POST /api/sessions` → `/session/[id]`. Shows the 429 quota message inline. |
+| `DialoguePractice` | Maps each partner→learner line pair to a `QuickDrillItem`; answers checked locally by `checkAnswer()` (token F1 ≥ 0.75, characters for unspaced scripts), so practice costs no AI call. |
+
 ## Admin Console (`/app/(app)/admin/`, `components/admin/`, `/app/api/admin/`)
 
 Seven tabs behind one shell. `AdminConsole.tsx` owns the tab set and the single
@@ -530,7 +554,9 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/dojo/[domainSlug]/[situationId]` | Situation Picker | Focus pills + mode toggle |
 | `/dojo/[...]/character` | Character Selection | Grid + preview panel |
 | `/session/new` | Roleplay Room Shell | Static chat layout (wireframe) |
-| `/review` | Spaced Repetition | Due-card drill over `srsCards`; grade → `/api/review/answer` |
+| `/review` | Spaced Repetition | Due-card drill over `srsCards` (vocab words plus study-pack sentence/grammar cards); grade → `/api/review/answer` |
+| `/study-packs` | Study packs | Open weak points, `PersonalizedScenarioCard`, and the learner's packs newest first. Gated by `NEXT_PUBLIC_STUDY_PACKS_ENABLED` |
+| `/study-packs/[id]` | Study pack | Explanation, rules, fix-the-sentence drills (reveal), dialogues (read or practise via `DialoguePractice`), recommended next scenario, **Mark as done**. Opening it marks the pack `opened` |
 | `/tutors` | Tutor Discovery | Verified tutor list + upcoming bookings. Gated by `NEXT_PUBLIC_TUTORS_ENABLED` |
 | `/tutors/[id]` | Booking | Slot picker from `/api/tutors/[id]/availability` → `POST /api/bookings` |
 | `/live/[bookingId]` | Live Session (1:1) | `CallStage` video + `RoomChatPanel` + the tutor's `EvaluationForm` |
@@ -544,7 +570,7 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/progress` | Progress Analytics | Radar chart + activity tabs |
 | `/leaderboard` | Leaderboard | Global/Friends/School tabs |
 | `/messages` | Messages | Thread list + message view |
-| `/calendar` | Calendar | Month grid + day agenda, backed by `GET /api/calendar`: to-dos, lesson-plan reminders, practice sessions, and (tutoring enabled) bookings/live lessons/assessments for learner and tutor alike |
+| `/calendar` | Calendar | Month grid + day agenda, backed by `GET /api/calendar`: to-dos, lesson-plan reminders, study-pack homework, practice sessions, and (tutoring enabled) bookings/live lessons/assessments for learner and tutor alike |
 | `/settings` | Settings | Preferences + Notifications + Privacy |
 | `/settings/avatar` | Avatar & Character | Tabbed: avatar presets + voice prefs |
 | `/settings/billing` | Subscription | Plan cards |
@@ -559,7 +585,7 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/auth/reset` | Set a new password | Landing page for the emailed reset link |
 | `/auth/suspended` | Account access paused | Where a suspended or closed account lands. The `(app)` layout sends them here rather than to `/auth`, because bouncing someone to a sign-in page they *can* sign into is a loop with no explanation in it — `getAuthUser()` is what refuses them, not their credentials. Reads `users.status` / `suspendedReason` through `getAuthUserReadOnly`, since `getAuthUser()` returns null for exactly the accounts this page serves |
 | `/auth/verify-email` | Verify your email | The shared step between creating an account and being let in. `?email=` (required), `?sent=1` (a code was already mailed — do not auto-send), `?next=` (where to land) |
-| `/onboarding/[step]` | Learner wizard | Session required (guest → `/auth/signup`), or `?preview=1` dry run. welcome → languages → level → social-proof → goal → frequency → mode → almost-set-up → domain → age → let’s-get-started → **practice** (icebreaker only). Finish POSTs `/api/user/onboarding` |
+| `/onboarding/[step]` | Learner wizard | Session required (guest → `/auth/signup`), or `?preview=1` dry run. welcome → languages → level → social-proof → goal → frequency → mode → almost-set-up → domain → age → about-you (only with `NEXT_PUBLIC_STUDY_PACKS_ENABLED`) → let’s-get-started → **practice** (icebreaker only). Finish POSTs `/api/user/onboarding` |
 | `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/welcome`). welcome → native-language → availability → ready |
 
 ### Email verification is not optional

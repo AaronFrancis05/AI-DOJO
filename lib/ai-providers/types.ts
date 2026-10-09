@@ -3,9 +3,41 @@ export interface ChatTurn {
   content: string;
 }
 
+/**
+ * Which configured model a call runs on. `fast` is the provider's main model
+ * (GEMINI_MODEL, ANTHROPIC_MODEL, …) and is what a live turn uses. `batch` is
+ * the cheaper one for off-the-critical-path generation — study packs,
+ * personalized scenarios — read from the provider's `*_BATCH_MODEL` variable
+ * and falling back to the main model when that is unset.
+ *
+ * A tier rather than a model name: failover walks several providers, and a
+ * Gemini model id means nothing to Anthropic.
+ */
+export type ModelTier = 'fast' | 'batch';
+
+/** Token counts for one completed call, as the provider reported them. */
+export interface AIUsage {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface GenerateOptions {
+  modelTier?: ModelTier;
+  /** Output cap. Omitted, each provider keeps its own default. */
+  maxTokens?: number;
+  /**
+   * Called once per successful call with the provider's token counts — the
+   * feed for the `ai_usage` ledger (lib/ai-usage.ts). Not called when the
+   * provider does not report usage, and never for a failed attempt.
+   */
+  onUsage?: (usage: AIUsage) => void;
+}
+
 export interface AIProvider {
   readonly name: string;
-  generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string>;
+  generateJSON(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): Promise<string>;
 
   /**
    * Stream the AI's reply text as it is generated.
@@ -15,7 +47,12 @@ export interface AIProvider {
    * The returned text is the model's conversational reply WITHOUT
    * the structured analysis envelope.
    */
-  generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string>;
+  generateStream(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): AsyncIterable<string>;
+}
+
+/** Picks the model for a tier: the batch model when one is configured, else the main one. */
+export function modelForTier(tier: ModelTier | undefined, main: string, batch: string | undefined): string {
+  return tier === 'batch' && batch ? batch : main;
 }
 
 export class AIProviderError extends Error {
@@ -134,4 +171,17 @@ export function categorizeProviderError(
 
   // Generic provider error
   return new AIProviderError(providerName, `${taggedMsg}\n${bodyStr}`.trim(), rawError);
+}
+
+/** Reads an OpenAI-style `usage` object, or null when the endpoint sent none. */
+export function openAIUsage(provider: string, model: string, usage: unknown): AIUsage | null {
+  if (!usage || typeof usage !== 'object') return null;
+  const u = usage as { prompt_tokens?: unknown; completion_tokens?: unknown };
+  if (typeof u.prompt_tokens !== 'number' && typeof u.completion_tokens !== 'number') return null;
+  return {
+    provider,
+    model,
+    inputTokens: typeof u.prompt_tokens === 'number' ? u.prompt_tokens : 0,
+    outputTokens: typeof u.completion_tokens === 'number' ? u.completion_tokens : 0,
+  };
 }

@@ -1,6 +1,7 @@
 /* ───────────────────────────────────────────────
    Review — spaced-repetition drill over words the
-   learner has met in sessions.
+   learner has met in sessions, plus the sentence
+   and grammar cards from their study packs.
    Consumes /api/review/due + /api/review/answer.
    ─────────────────────────────────────────────── */
 
@@ -21,15 +22,41 @@ import { Volume2, RotateCcw, Check, Sparkles, ArrowRight } from 'lucide-react';
 
 interface DueCard {
   id: number;
-  vocabularyId: number;
-  targetText: string;
+  cardType: 'vocab' | 'sentence' | 'grammar';
+  vocabularyId: number | null;
+  /** Which faces are in the language being learned: those are translate="no" and spoken. */
+  front: string;
+  frontIsTarget: boolean;
+  back: string;
+  backIsTarget: boolean;
   phonetic: string | null;
-  translation: string;
   category: string | null;
-  usageTip: string | null;
+  /** Native-language tip or explanation shown with the answer. */
+  note: string | null;
+  /** Target-language example shown with the answer. */
+  example: string | null;
   state: string;
   intervalDays: number;
   reviewCount: number;
+}
+
+/** What the learner is asked to do with each kind of card. */
+const CARD_PROMPTS: Record<DueCard['cardType'], string> = {
+  vocab: 'Do you remember what this means?',
+  sentence: 'This sentence has a mistake. Can you correct it?',
+  grammar: 'Can you explain this rule and give an example?',
+};
+
+const CARD_LABELS: Record<Exclude<DueCard['cardType'], 'vocab'>, string> = {
+  sentence: 'Fix the sentence',
+  grammar: 'Grammar rule',
+};
+
+/** The target-language text worth hearing once the answer is shown. */
+function spokenText(card: DueCard): string | null {
+  if (card.cardType === 'vocab') return card.front;
+  if (card.backIsTarget) return card.back;
+  return card.example;
 }
 
 /**
@@ -82,9 +109,10 @@ export default function ReviewPage() {
   const isDone = !loading && total > 0 && index >= total;
 
   const speak = useCallback(() => {
-    if (!current) return;
+    const text = current ? spokenText(current) : null;
+    if (!text) return;
     unlockAudio();
-    speakWithVisemes(current.targetText, getBCP47(targetLanguage, 'tts')).catch(() => {});
+    speakWithVisemes(text, getBCP47(targetLanguage, 'tts')).catch(() => {});
   }, [current, targetLanguage]);
 
   // Hearing the word is most of the value of reviewing it, so play it as soon
@@ -196,6 +224,9 @@ export default function ReviewPage() {
 
         <Card className="min-h-88">
           <div className="mb-6 flex items-center gap-2">
+            {current.cardType !== 'vocab' && (
+              <Badge variant="accent">{CARD_LABELS[current.cardType]}</Badge>
+            )}
             {current.category && (
               <Badge variant="outline" className="capitalize">{current.category}</Badge>
             )}
@@ -213,27 +244,36 @@ export default function ReviewPage() {
 
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p translate="no" className="text-3xl font-bold leading-tight tracking-tight text-dojo-text-primary">
-                {current.targetText}
+              <p
+                translate={current.frontIsTarget ? 'no' : undefined}
+                className={cn(
+                  'font-bold tracking-tight text-dojo-text-primary',
+                  current.cardType === 'vocab' ? 'text-3xl leading-tight' : 'text-2xl leading-snug',
+                )}
+              >
+                {current.front}
               </p>
               {current.phonetic && (
                 <p translate="no" className="mt-2 text-base text-dojo-text-muted">{current.phonetic}</p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={speak}
-              aria-label="Play pronunciation"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dojo-border text-dojo-text-muted transition-colors hover:border-dojo-accent/40 hover:text-dojo-text-primary"
-            >
-              <Volume2 className="h-4 w-4" />
-            </button>
+            {/* A vocab word is worth hearing before the answer; a wrong sentence is not. */}
+            {(current.cardType === 'vocab' || revealed) && spokenText(current) && (
+              <button
+                type="button"
+                onClick={speak}
+                aria-label="Play pronunciation"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dojo-border text-dojo-text-muted transition-colors hover:border-dojo-accent/40 hover:text-dojo-text-primary"
+              >
+                <Volume2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
 
           {!revealed ? (
             <div className="mt-10">
               <p className="mb-4 text-sm text-dojo-text-muted">
-                Do you remember what this means?
+                {CARD_PROMPTS[current.cardType]}
               </p>
               <Button variant="secondary" className="w-full" onClick={() => setRevealed(true)}>
                 Show answer
@@ -242,12 +282,20 @@ export default function ReviewPage() {
           ) : (
             <div className="mt-8">
               <div className="rounded-(--radius-md) border border-dojo-border/60 bg-dojo-surface-raised p-4">
-                <p className="text-base leading-relaxed text-dojo-text-primary">
-                  {current.translation}
+                <p
+                  translate={current.backIsTarget ? 'no' : undefined}
+                  className="text-base leading-relaxed text-dojo-text-primary"
+                >
+                  {current.back}
                 </p>
-                {current.usageTip && (
+                {current.example && (
+                  <p translate="no" className="mt-2 text-base leading-relaxed text-dojo-text-primary">
+                    {current.example}
+                  </p>
+                )}
+                {current.note && (
                   <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
-                    {current.usageTip}
+                    {current.note}
                   </p>
                 )}
               </div>
@@ -289,8 +337,9 @@ export default function ReviewPage() {
             Review
           </h1>
           <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
-            Words you have met in sessions come back here. Rate how well you
-            knew each one, and they return when it is time.
+            Words you have met in sessions, and the sentences and rules from
+            your study packs, come back here. Rate how well you knew each one,
+            and they return when it is time.
           </p>
         </div>
         {body}

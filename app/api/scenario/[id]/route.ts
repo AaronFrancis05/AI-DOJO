@@ -1,6 +1,7 @@
 import { db } from '../../../../src/db';
 import { scenarios, vocabulary, scenarioGoals, scenarioLocalizations, vocabularyLocalizations } from '../../../../src/schema';
 import { eq, asc, and, inArray } from 'drizzle-orm';
+import { getAuthUser } from '../../../../lib/auth/server';
 
 export async function GET(
   req: Request,
@@ -22,6 +23,14 @@ export async function GET(
 
     if (!scenario) {
       return Response.json({ success: false, error: 'Scenario not found' }, { status: 404 });
+    }
+
+    // A learner-owned scenario is private: only its owner sees it.
+    if (scenario.ownerUserId !== null) {
+      const user = await getAuthUser();
+      if (!user || user.id !== scenario.ownerUserId) {
+        return Response.json({ success: false, error: 'Scenario not found' }, { status: 404 });
+      }
     }
 
     let localized = scenario;

@@ -1,7 +1,7 @@
 import { db } from '../../../../src/db';
 import { scenarios, vocabulary, scenarioGoals } from '../../../../src/schema';
 import { verifyExportApiKey } from '../../../../lib/exportAuth';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, isNull } from 'drizzle-orm';
 
 export async function GET(req: Request) {
   if (!verifyExportApiKey(req)) {
@@ -11,6 +11,8 @@ export async function GET(req: Request) {
   const list = await db
     .select()
     .from(scenarios)
+    // Learner-owned scenarios are personal data, not catalogue.
+    .where(isNull(scenarios.ownerUserId))
     .orderBy(asc(scenarios.displayOrder));
 
   const result = await Promise.all(list.map(async (scenario) => {

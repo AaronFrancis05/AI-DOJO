@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AiInterviewStage } from './AiInterviewStage';
 import { AiInterviewResults, type InterviewRow } from './AiInterviewResults';
 import { Card } from '@/components/ui/Card';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
 import { useRealtimeTopics } from '@/lib/realtime/context';
 import { topics } from '@/lib/realtime/topics';
 import type { InterviewerPersona } from '@/lib/interview/persona';

@@ -1,11 +1,12 @@
 import OpenAI from 'openai';
-import type { AIProvider, ChatTurn } from './types';
-import { AIProviderError, categorizeProviderError } from './types';
+import type { AIProvider, ChatTurn, GenerateOptions } from './types';
+import { AIProviderError, categorizeProviderError, modelForTier, openAIUsage } from './types';
 
 export function createOpenAICompatibleProvider(): AIProvider {
   const baseURL = process.env.AI_BASE_URL ?? 'https://api.openai.com/v1';
   const apiKey = process.env.AI_API_KEY;
   const modelName = process.env.AI_MODEL;
+  const batchModelName = process.env.AI_BATCH_MODEL;
   const jsonMode = process.env.AI_JSON_MODE !== 'off';
 
   if (!modelName) {
@@ -20,7 +21,8 @@ export function createOpenAICompatibleProvider(): AIProvider {
   return {
     name: 'openai-compatible',
 
-    async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
+    async generateJSON(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): Promise<string> {
+      const model = modelForTier(options?.modelTier, modelName, batchModelName);
       try {
         const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
           { role: 'system', content: systemInstruction },
@@ -28,8 +30,9 @@ export function createOpenAICompatibleProvider(): AIProvider {
         ];
 
         const response = await client.chat.completions.create({
-          model: modelName,
+          model,
           messages,
+          ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
           ...(jsonMode ? { response_format: { type: 'json_object' } as const } : {}),
         });
 
@@ -38,14 +41,17 @@ export function createOpenAICompatibleProvider(): AIProvider {
           throw new AIProviderError('openai-compatible', `Received empty response from ${baseURL}`);
         }
 
+        const usage = openAIUsage('openai-compatible', model, response.usage);
+        if (usage) options?.onUsage?.(usage);
         return text;
       } catch (err) {
         if (err instanceof AIProviderError) throw err;
-        throw categorizeProviderError('openai-compatible', modelName, err);
+        throw categorizeProviderError('openai-compatible', model, err);
       }
     },
 
-    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+    async *generateStream(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): AsyncIterable<string> {
+      const model = modelForTier(options?.modelTier, modelName, batchModelName);
       try {
         const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
           { role: 'system', content: systemInstruction },
@@ -53,18 +59,27 @@ export function createOpenAICompatibleProvider(): AIProvider {
         ];
 
         const stream = await client.chat.completions.create({
-          model: modelName,
+          model,
           messages,
+          ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
           stream: true,
         });
 
+        // Usage arrives on a final chunk only when the endpoint sends one
+        // (Groq always does, under x_groq; OpenAI only with include_usage,
+        // which is not requested so an endpoint that rejects it keeps working).
+        let rawUsage: unknown;
         for await (const chunk of stream) {
+          const withUsage = chunk as { usage?: unknown; x_groq?: { usage?: unknown } };
+          rawUsage = withUsage.usage ?? withUsage.x_groq?.usage ?? rawUsage;
           const delta = chunk.choices?.[0]?.delta?.content;
           if (delta) yield delta;
         }
+        const usage = openAIUsage('openai-compatible', model, rawUsage);
+        if (usage) options?.onUsage?.(usage);
       } catch (err) {
         if (err instanceof AIProviderError) throw err;
-        throw categorizeProviderError('openai-compatible', modelName, err);
+        throw categorizeProviderError('openai-compatible', model, err);
       }
     },
   };

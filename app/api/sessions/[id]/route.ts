@@ -5,6 +5,7 @@ import { eq, asc, inArray, and, isNotNull, sql } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { AVATAR_SOURCES, applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
 import { recordLessonActivity, resolveNextLesson } from '../../../../lib/courses/lesson-progress';
+import { announceSessionCompleted } from '../../../../lib/study-packs/server';
 import {
   isAbandonmentReason,
 } from '../../../../lib/roleplay/session-lifecycle';
@@ -397,6 +398,10 @@ export async function PATCH(
   }
 
   await db.update(sessions).set(updateData).where(eq(sessions.id, sessionId));
+
+  if (status === 'completed' && session.status !== 'completed') {
+    await announceSessionCompleted({ sessionId, userId: user.id });
+  }
 
   // A course lesson is complete when its linked session completes.
   if (status === 'completed' && session.lessonId) {

@@ -17,6 +17,8 @@ import {
 } from '../../../../lib/roleplay/phase-engine';
 import { buildEvaluationSummary } from '../../../../lib/roleplay/evaluation-summary';
 import { recordLessonActivity } from '../../../../lib/courses/lesson-progress';
+import { announceSessionCompleted } from '../../../../lib/study-packs/server';
+import { usageRecorder } from '../../../../lib/ai-usage';
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { rateLimitIncrement, cacheKeys, TTL } from '../../../../lib/cache';
@@ -307,6 +309,9 @@ export async function POST(req: Request) {
 
         try {
           const provider = await getAIProvider();
+          // Live turns are recorded for the cost-per-learner metric but are
+          // not gated by the batch quota (lib/ai-usage.ts).
+          const usage = usageRecorder(user.id, 'chat/stream');
           let fullAiText = '';
           const streamSanitizer = createStreamTextSanitizer();
 
@@ -322,7 +327,7 @@ export async function POST(req: Request) {
             for await (const chunk of provider.generateStream(streamSystemPrompt, [
               ...conversationHistory,
               { role: 'user', content: streamUserMsg },
-            ])) {
+            ], { onUsage: usage.onUsage })) {
               fullAiText += chunk;
               const delta = streamSanitizer.push(chunk);
               if (delta) send(JSON.stringify({ type: 'token', text: delta }));
@@ -506,6 +511,7 @@ export async function POST(req: Request) {
             aiReplyText: fullAiText,
             scenario: currentScenario,
             data: turnData,
+            onUsage: usage.onUsage,
           });
 
           const correctionItems = analysis.corrections ?? [];
@@ -1029,6 +1035,11 @@ export async function POST(req: Request) {
                 error: String(err),
               });
             }
+          }
+
+          // After the commit above, so the job reads a completed session.
+          if (writeResult.shouldComplete) {
+            await announceSessionCompleted({ sessionId: numericSessionId, userId: user.id });
           }
 
           const responseCorrections = currentPhase === 'unguided' ? [] : (correctionItems ?? []);

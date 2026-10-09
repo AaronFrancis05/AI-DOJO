@@ -11,7 +11,7 @@ import {
   countries,
 } from '../../src/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
-import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
+import { analyzeUserTurn, type AnalyzeUserTurnInput, type UserTurnAnalysis } from '../ai-engine';
 import { getAIProvider, type ChatTurn } from '../ai-providers';
 import { buildConversationHistory } from './conversation-history';
 import { getLearnerProficiency, resolveDifficulty } from './proficiency';
@@ -455,8 +455,9 @@ export async function analyzeTurn(input: {
   aiReplyText?: string;
   scenario: ScenarioRow;
   data: SessionTurnData;
+  onUsage?: AnalyzeUserTurnInput['onUsage'];
 }): Promise<UserTurnAnalysis> {
-  const { userInput, aiReplyText, scenario, data } = input;
+  const { userInput, aiReplyText, scenario, data, onUsage } = input;
   const situationContext = data.situation && !data.scenarioLocalized ? data.situation.context : scenario.context;
   const situationLearningGoals = data.situation && !data.scenarioLocalized ? data.situation.learningGoals : scenario.learningGoals;
 
@@ -482,5 +483,6 @@ export async function analyzeTurn(input: {
     // the analyzer must be told which output contract to expect.
     phase: data.currentPhase,
     isSameLanguage: data.isSameLanguage,
+    onUsage,
   });
 }

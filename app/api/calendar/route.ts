@@ -23,7 +23,7 @@ export const runtime = 'nodejs';
 
 interface CalendarItem {
   id: string;
-  kind: 'task' | 'lesson_reminder' | 'session' | 'booking' | 'live_lesson' | 'assessment';
+  kind: 'task' | 'lesson_reminder' | 'study_pack' | 'session' | 'booking' | 'live_lesson' | 'assessment';
   title: string;
   subtitle?: string;
   at: string;
@@ -109,7 +109,7 @@ export async function GET(req: Request) {
   for (const { task, courseSlug } of taskRows) {
     items.push({
       id: `${task.kind}-${task.id}`,
-      kind: task.kind === 'lesson_reminder' ? 'lesson_reminder' : 'task',
+      kind: task.kind === 'lesson_reminder' || task.kind === 'study_pack' ? task.kind : 'task',
       title: task.title,
       at: task.dueAt.toISOString(),
       allDay: task.allDay,
@@ -117,7 +117,9 @@ export async function GET(req: Request) {
       completed: task.status === 'done',
       href: task.kind === 'lesson_reminder' && courseSlug && task.sourceLessonId
         ? `/courses/${courseSlug}#lesson-${task.sourceLessonId}`
-        : undefined,
+        : task.kind === 'study_pack' && task.sourceStudyPackId
+          ? `/study-packs/${task.sourceStudyPackId}`
+          : undefined,
     });
   }
 

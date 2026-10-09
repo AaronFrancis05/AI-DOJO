@@ -34,7 +34,9 @@ import {
   Users,
   ShieldCheck,
   Building2,
+  NotebookPen,
 } from 'lucide-react';
+import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
 
 interface NavItem {
   /** Message key under `nav.` in messages/en.json. */
@@ -55,6 +57,7 @@ const tutorsItem: NavItem = { labelKey: 'nav.tutors', href: '/tutors', icon: Use
 const libraryItem: NavItem = { labelKey: 'nav.library', href: '/library', icon: Compass };
 const coursesItem: NavItem = { labelKey: 'nav.courses', href: '/courses', icon: GraduationCap };
 const reviewItem: NavItem = { labelKey: 'nav.review', href: '/review', icon: Repeat2 };
+const studyPacksItem: NavItem = { labelKey: 'nav.studyPacks', href: '/study-packs', icon: NotebookPen };
 
 const resultsItems: NavItem[] = [
   { labelKey: 'nav.sessions',    href: '/sessions',    icon: History },
@@ -118,6 +121,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
     coursesItem,
     ...(tutorsEnabled && user?.canBrowseTutors ? [tutorsItem] : []),
     reviewItem,
+    ...(STUDY_PACKS_ENABLED ? [studyPacksItem] : []),
   ];
   const consoles: NavItem[] = isTutor
     ? []

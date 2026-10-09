@@ -5,6 +5,7 @@ import { requireRole, roleErrorResponse } from '../../../../lib/auth/server';
 import { getAIProvider } from '../../../../lib/ai-providers';
 import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '../../../../lib/language';
 import { isRecord } from '../../../../lib/roleplay/api-types';
+import { parseGeneratedVocab, type VocabRow } from '../../../../lib/roleplay/generated-vocab';
 import { eq, and, count } from 'drizzle-orm';
 
 interface VocabInput {
@@ -13,34 +14,6 @@ interface VocabInput {
   phonetic?: string;
 }
 
-type VocabRow = {
-  targetText: string;
-  phonetic: string;
-  translation: string;
-  category: string;
-  usageTip: string;
-  formalityLevel: string;
-};
-
-function parseGeneratedVocab(value: unknown): VocabRow | null {
-  if (!isRecord(value)) return null;
-
-  const targetText = String(value.targetText ?? '');
-  const translation = String(value.translation ?? '');
-  if (!targetText || !translation) return null;
-
-  return {
-    targetText,
-    phonetic: String(value.phonetic ?? ''),
-    translation,
-    category: String(value.category ?? 'general'),
-    usageTip: String(value.usageTip ?? ''),
-    formalityLevel: typeof value.formalityLevel === 'string'
-      && ['casual', 'polite', 'formal'].includes(value.formalityLevel)
-      ? value.formalityLevel
-      : 'polite',
-  };
-}
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'custom';

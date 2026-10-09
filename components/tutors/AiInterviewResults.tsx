@@ -21,7 +21,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { EvaluationForm } from './EvaluationForm';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
 import type { InterviewTurn } from '@/lib/interview/transcript';
 import { cn } from '@/lib/design-tokens';
 import { ChevronDown, Loader2 } from 'lucide-react';

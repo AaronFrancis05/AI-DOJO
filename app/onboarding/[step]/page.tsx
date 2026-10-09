@@ -7,10 +7,14 @@ import {
   clearPersistedOnboarding,
 } from '@/lib/onboarding/context';
 import {
-  ONBOARDING_STEPS, LEVEL_OPTIONS, GOAL_OPTIONS,
+  ONBOARDING_STEP_DEFINITIONS, LEVEL_OPTIONS, GOAL_OPTIONS,
   MODE_OPTIONS, AGE_OPTIONS, FREQUENCY_OPTIONS,
   onboardingStepPath,
 } from '@/lib/onboarding/steps';
+import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
+import { INTEREST_OPTIONS, MAX_INTERESTS, MAX_OCCUPATION_LENGTH } from '@/lib/study-packs/profile';
+import { Button } from '@/components/ui/Button';
+import { cn } from '@/lib/design-tokens';
 import { SingleSelectStep, InterstitialStep, OnboardingShell, OnboardingPractice } from '@/components/onboarding';
 import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
 import { useLanguageCatalog } from '@/lib/language-context';
@@ -28,9 +32,13 @@ const [
   TRANSITION_2,
   DOMAIN,
   AGE,
+  ABOUT_YOU,
   TRANSITION_1,
   PRACTICE,
-] = ONBOARDING_STEPS;
+] = ONBOARDING_STEP_DEFINITIONS;
+
+/** The step after age: about-you while personalized learning is on, else straight on. */
+const AFTER_AGE = STUDY_PACKS_ENABLED ? ABOUT_YOU : TRANSITION_1;
 
 type StepComponent = React.ReactNode;
 
@@ -96,7 +104,11 @@ export default function OnboardingStepPage() {
     if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
     if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
     if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
-    if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
+    if (state.occupation.trim()) onboardingPayload.occupation = state.occupation.trim();
+    if (state.interests.length > 0) onboardingPayload.interests = state.interests;
+    // `targetLanguage` is the key /api/user/onboarding reads. This used to be sent
+    // as `preferredTargetLanguage`, which the route ignored, so the pick was lost.
+    if (state.targetLanguage) onboardingPayload.targetLanguage = state.targetLanguage;
     if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
     if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
 
@@ -261,12 +273,72 @@ export default function OnboardingStepPage() {
       <SingleSelectStep
         options={AGE_OPTIONS}
         value={state.ageRange}
-        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, TRANSITION_1.key)}
+        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, AFTER_AGE.key)}
         title={AGE.title}
         subtitle={AGE.subtitle}
         skippable={true}
-        onSkip={() => goToStep(TRANSITION_1.key)}
+        onSkip={() => goToStep(AFTER_AGE.key)}
       />
+    ),
+    [ABOUT_YOU.key]: (
+      <div className="flex flex-col gap-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{ABOUT_YOU.title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{ABOUT_YOU.subtitle}</p>
+        </div>
+        <label className="flex flex-col gap-2">
+          <span className="text-sm font-semibold text-dojo-text-primary">What do you do?</span>
+          <input
+            type="text"
+            value={state.occupation}
+            maxLength={MAX_OCCUPATION_LENGTH}
+            onChange={(e) => dispatch({ type: 'SET_OCCUPATION', payload: e.target.value })}
+            placeholder="e.g. nurse, software engineer, student"
+            className="rounded-xl border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary outline-none transition-colors placeholder:text-dojo-text-muted focus:border-dojo-accent"
+          />
+        </label>
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-semibold text-dojo-text-primary">What are you into?</span>
+          <div className="flex flex-wrap gap-2">
+            {INTEREST_OPTIONS.map((interest) => {
+              const selected = state.interests.includes(interest);
+              const full = !selected && state.interests.length >= MAX_INTERESTS;
+              return (
+                <button
+                  key={interest}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={full}
+                  onClick={() => dispatch({ type: 'TOGGLE_INTEREST', payload: interest })}
+                  className={cn(
+                    'rounded-full border px-4 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                    selected
+                      ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-text-primary'
+                      : 'border-dojo-border bg-dojo-surface text-dojo-text-muted hover:border-dojo-accent/50',
+                  )}
+                >
+                  {interest}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <Button
+          onClick={() => {
+            dispatch({ type: 'COMPLETE_STEP', payload: TRANSITION_1.key });
+            goToStep(TRANSITION_1.key);
+          }}
+        >
+          Continue
+        </Button>
+        <button
+          type="button"
+          onClick={() => goToStep(TRANSITION_1.key)}
+          className="text-center text-sm text-dojo-text-muted hover:text-dojo-text-primary underline underline-offset-2"
+        >
+          Skip for now
+        </button>
+      </div>
     ),
     [TARGET_LANGUAGE.key]: (
       <div className="flex flex-col gap-6">

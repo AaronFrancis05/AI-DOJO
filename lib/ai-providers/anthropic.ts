@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AIProvider, ChatTurn } from './types';
-import { AIProviderError, categorizeProviderError } from './types';
+import type { AIProvider, ChatTurn, GenerateOptions } from './types';
+import { AIProviderError, categorizeProviderError, modelForTier } from './types';
 
 // Anthropic rejects an empty `messages` array, so when no history is supplied
 // we still need a valid user turn. The system instruction carries the actual
@@ -26,22 +26,24 @@ export function createAnthropicProvider(): AIProvider {
   }
 
   const modelName = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
+  const batchModelName = process.env.ANTHROPIC_BATCH_MODEL;
   const client = new Anthropic({ apiKey });
 
   return {
     name: 'anthropic',
 
-    async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
+    async generateJSON(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): Promise<string> {
+      const model = modelForTier(options?.modelTier, modelName, batchModelName);
       try {
         const systemWithJson = `${systemInstruction}\n\nCRITICAL: Respond with raw JSON only. No markdown fences, no code blocks, no surrounding text — just the JSON object.`;
 
         const messages = toMessages(history);
 
         const response = await client.messages.create({
-          model: modelName,
+          model,
           system: systemWithJson,
           messages,
-          max_tokens: 4096,
+          max_tokens: options?.maxTokens ?? 4096,
         });
 
         const textBlock = response.content.find(
@@ -51,6 +53,13 @@ export function createAnthropicProvider(): AIProvider {
         if (!textBlock) {
           throw new AIProviderError('anthropic', 'Received empty response from Anthropic API');
         }
+
+        options?.onUsage?.({
+          provider: 'anthropic',
+          model,
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+        });
 
         let text = textBlock.text;
 
@@ -62,30 +71,39 @@ export function createAnthropicProvider(): AIProvider {
         return text;
       } catch (err) {
         if (err instanceof AIProviderError) throw err;
-        throw categorizeProviderError('anthropic', modelName, err);
+        throw categorizeProviderError('anthropic', model, err);
       }
     },
 
-    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+    async *generateStream(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): AsyncIterable<string> {
+      const model = modelForTier(options?.modelTier, modelName, batchModelName);
       try {
         const messages = toMessages(history);
 
         const stream = await client.messages.create({
-          model: modelName,
+          model,
           system: systemInstruction,
           messages,
-          max_tokens: 4096,
+          max_tokens: options?.maxTokens ?? 4096,
           stream: true,
         }) as unknown as AsyncIterable<Anthropic.MessageStreamEvent>;
 
+        // Input tokens arrive on message_start, the output total on message_delta.
+        let inputTokens = 0;
+        let outputTokens = 0;
         for await (const chunk of stream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta && 'text' in chunk.delta) {
+          if (chunk.type === 'message_start') {
+            inputTokens = chunk.message.usage.input_tokens;
+          } else if (chunk.type === 'message_delta') {
+            outputTokens = chunk.usage.output_tokens;
+          } else if (chunk.type === 'content_block_delta' && chunk.delta && 'text' in chunk.delta) {
             yield (chunk.delta as { text: string }).text;
           }
         }
+        options?.onUsage?.({ provider: 'anthropic', model, inputTokens, outputTokens });
       } catch (err) {
         if (err instanceof AIProviderError) throw err;
-        throw categorizeProviderError('anthropic', modelName, err);
+        throw categorizeProviderError('anthropic', model, err);
       }
     },
   };

@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAiInterview } from '@/lib/hooks/useAiInterview';
 import type { InterviewerPersona } from '@/lib/interview/persona';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
 import { cn } from '@/lib/design-tokens';
 import { Mic, MicOff, Loader2, PhoneOff, Play, RotateCcw, ShieldCheck } from 'lucide-react';
 

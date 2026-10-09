@@ -1,7 +1,7 @@
-import type { AIProvider, ChatTurn } from './types';
+import type { AIProvider, ChatTurn, GenerateOptions } from './types';
 import { AIProviderError } from './types';
 
-export type { AIProvider, ChatTurn } from './types';
+export type { AIProvider, ChatTurn, AIUsage, GenerateOptions, ModelTier } from './types';
 export { AIProviderError, AIQuotaError, AIModelError } from './types';
 
 type ProviderFactory = () => Promise<AIProvider>;
@@ -116,7 +116,7 @@ export async function getAIProvider(): Promise<AIProvider> {
   const provider: AIProvider = {
     name: primaryName,
 
-    async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
+    async generateJSON(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): Promise<string> {
       let lastError: unknown = null;
       let attempted = false;
 
@@ -127,7 +127,7 @@ export async function getAIProvider(): Promise<AIProvider> {
           attempted = true;
 
           try {
-            const result = await candidate.generateJSON(systemInstruction, history);
+            const result = await candidate.generateJSON(systemInstruction, history, options);
             recordSuccess(name);
             return result;
           } catch (err) {
@@ -143,7 +143,7 @@ export async function getAIProvider(): Promise<AIProvider> {
       throw new AIProviderError(primaryName, attempted ? 'All AI providers failed' : NOTHING_CONFIGURED_MESSAGE, lastError);
     },
 
-    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+    async *generateStream(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): AsyncIterable<string> {
       let lastError: unknown = null;
       let attempted = false;
 
@@ -155,7 +155,7 @@ export async function getAIProvider(): Promise<AIProvider> {
 
           let yielded = false;
           try {
-            for await (const chunk of candidate.generateStream(systemInstruction, history)) {
+            for await (const chunk of candidate.generateStream(systemInstruction, history, options)) {
               yielded = true;
               yield chunk;
             }

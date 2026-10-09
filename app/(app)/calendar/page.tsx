@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { ChevronLeft, ChevronRight, Clock, Check, Plus, Video, GraduationCap, ClipboardCheck, BookOpen, ListTodo } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Check, Plus, Video, GraduationCap, ClipboardCheck, BookOpen, ListTodo, NotebookPen } from 'lucide-react';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { cn } from '@/lib/design-tokens';
 
@@ -13,7 +13,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
-type EventKind = 'task' | 'lesson_reminder' | 'session' | 'booking' | 'live_lesson' | 'assessment';
+type EventKind = 'task' | 'lesson_reminder' | 'study_pack' | 'session' | 'booking' | 'live_lesson' | 'assessment';
 
 interface CalendarEvent {
   id: string;
@@ -29,6 +29,7 @@ interface CalendarEvent {
 const KIND_META: Record<EventKind, { label: string; dot: string; icon: React.ComponentType<{ className?: string }> }> = {
   task:            { label: 'To-do',      dot: 'bg-dojo-accent',     icon: ListTodo },
   lesson_reminder: { label: 'Lesson',     dot: 'bg-dojo-icebreaker', icon: BookOpen },
+  study_pack:      { label: 'Homework',   dot: 'bg-dojo-evaluation', icon: NotebookPen },
   session:         { label: 'Practice',   dot: 'bg-dojo-success',    icon: Clock },
   booking:         { label: '1:1',        dot: 'bg-dojo-warning',    icon: Video },
   live_lesson:     { label: 'Live lesson',      dot: 'bg-dojo-streak',     icon: GraduationCap },
@@ -110,7 +111,7 @@ export default function CalendarPage() {
   useEffect(() => { void load(); }, [load]);
 
   const toggleTodo = useCallback(async (event: CalendarEvent) => {
-    // `task-12` / `lesson_reminder-12` — the row id is the last segment.
+    // `task-12` / `lesson_reminder-12` / `study_pack-12` — the row id is the last segment.
     const idStr = event.id.split('-').pop();
     const nextStatus = event.completed ? 'pending' : 'done';
     const completed = nextStatus === 'done';
@@ -272,7 +273,7 @@ export default function CalendarPage() {
               {selectedEvents.map((event) => {
                 const meta = KIND_META[event.kind];
                 const Icon = meta.icon;
-                const isTodo = event.kind === 'task' || event.kind === 'lesson_reminder';
+                const isTodo = event.kind === 'task' || event.kind === 'lesson_reminder' || event.kind === 'study_pack';
 
                 const details = (
                   <div className="min-w-0 flex-1">

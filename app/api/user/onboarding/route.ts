@@ -7,8 +7,9 @@ import { and, eq } from 'drizzle-orm';
 import { enrollInCourse } from '@/lib/courses/enroll';
 import { seedLessonPlan } from '@/lib/calendar/seed-lesson-plan';
 import { nativeLanguageFromAcceptLanguage } from '@/lib/language';
-import { loadLanguageCatalog } from '@/lib/language-registry';
+import { isLanguageEnabled, loadLanguageCatalog } from '@/lib/language-registry';
 import { cacheDel, cacheKeys } from '@/lib/cache';
+import { sanitizeOccupation, serializeInterests } from '@/lib/study-packs/profile';
 
 export async function POST(req: NextRequest) {
   const authUser = await getAuthUser();
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { level, learningGoal, preferredDomainId, preferredMode, ageRange, targetLanguage, nativeLanguage, dailyGoalMinutes, countryCode } = body;
+  const { level, learningGoal, preferredDomainId, preferredMode, ageRange, targetLanguage, nativeLanguage, dailyGoalMinutes, countryCode, occupation, interests } = body;
 
   const updateData: Record<string, unknown> = {};
   if (typeof level === 'string' && level) updateData.level = level;
@@ -25,9 +26,21 @@ export async function POST(req: NextRequest) {
   if (typeof preferredDomainId === 'number') updateData.preferredDomainId = preferredDomainId;
   if (typeof preferredMode === 'string' && preferredMode) updateData.preferredMode = preferredMode;
   if (typeof ageRange === 'string' && ageRange) updateData.ageRange = ageRange;
-  if (typeof targetLanguage === 'string' && targetLanguage) updateData.preferredTargetLanguage = targetLanguage;
-  if (typeof nativeLanguage === 'string' && nativeLanguage) updateData.nativeLanguage = nativeLanguage;
+  // Checked against the configured catalogue, as PUT /api/user/preferences
+  // does. An unknown code is dropped rather than rejected: failing the last
+  // step of the wizard over one answer would strand the learner, and a
+  // dropped native language is still inferred below.
+  if (typeof targetLanguage === 'string' && targetLanguage && await isLanguageEnabled(targetLanguage, 'target')) {
+    updateData.preferredTargetLanguage = targetLanguage;
+  }
+  if (typeof nativeLanguage === 'string' && nativeLanguage && await isLanguageEnabled(nativeLanguage, 'native')) {
+    updateData.nativeLanguage = nativeLanguage;
+  }
   if (typeof dailyGoalMinutes === 'number' && dailyGoalMinutes > 0) updateData.dailyGoalMinutes = dailyGoalMinutes;
+  const cleanOccupation = sanitizeOccupation(occupation);
+  if (cleanOccupation) updateData.occupation = cleanOccupation;
+  const cleanInterests = Array.isArray(interests) ? serializeInterests(interests) : null;
+  if (cleanInterests) updateData.interests = cleanInterests;
 
   // A learner who skipped the language question still gets explanations in a
   // language they read: the browser's Accept-Language first, then (below) the

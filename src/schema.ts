@@ -49,6 +49,11 @@ export const users = pgTable('users', {
   countryCode:           varchar('country_code', { length: 2 }).references(() => countries.code, { onDelete: 'set null' }),
   preferredMode:         varchar('preferred_mode', { length: 10 }),
   ageRange:              varchar('age_range', { length: 10 }),
+  // Personalization inputs for learner-owned scenarios
+  // (lib/study-packs/personalized-scenario.ts). `interests` is a JSON array of
+  // short strings in a text column, matching `ai_interviews.transcript`.
+  occupation:            varchar('occupation', { length: 80 }),
+  interests:             text('interests'),
   dailyGoalMinutes:      integer('daily_goal_minutes').default(30).notNull(),
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
@@ -159,8 +164,15 @@ export const scenarios = pgTable('scenarios', {
   learningGoals:      text('learning_goals').notNull(),
   situationId:        integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   displayOrder:       integer('display_order').default(0).notNull(),
+  // Set on a scenario generated for one learner (POST /api/scenarios/
+  // personalized). NULL is the shared library. Every listing of the library
+  // filters on `owner_user_id IS NULL`, and only the owner may start a session
+  // on an owned row (app/api/sessions/route.ts).
+  ownerUserId:        text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
   createdAt:          timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxOwner: index('idx_scenarios_owner').on(t.ownerUserId),
+}));
 
 export const vocabulary = pgTable('vocabulary', {
   id:             serial('id').primaryKey(),
@@ -643,7 +655,14 @@ export const studentLessonProgress = pgTable('student_lesson_progress', {
 export const srsCards = pgTable('srs_cards', {
   id:            serial('id').primaryKey(),
   userId:        text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  vocabularyId:  integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'cascade' }).notNull(),
+  // 'vocab': a catalogue word, vocabularyId set. 'sentence' | 'grammar': built
+  // from a study pack item; vocabularyId is NULL and `payload` carries the
+  // card's faces (SrsCardPayload in lib/study-packs/types.ts).
+  cardType:      varchar('card_type', { length: 20 }).default('vocab').notNull(),
+  vocabularyId:  integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'cascade' }),
+  studyPackItemId: integer('study_pack_item_id').references(() => studyPackItems.id, { onDelete: 'cascade' }),
+  // JSON in a text column, matching `ai_interviews.transcript`.
+  payload:       text('payload'),
   state:         varchar('state', { length: 20 }).default('learning').notNull(),
   intervalDays:  integer('interval_days').default(0).notNull(),
   easeFactor:    numeric('ease_factor', { precision: 5, scale: 2 }).default('2.5').notNull(),
@@ -653,7 +672,97 @@ export const srsCards = pgTable('srs_cards', {
   nextReviewAt:  timestamp('next_review_at').defaultNow().notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
+  // Both keys are nullable and Postgres treats NULLs as distinct, so a vocab
+  // card stays unique per word and a pack card unique per item.
   uniqueUserVocab: uniqueIndex('uq_srs_cards_key').on(table.userId, table.vocabularyId),
+  uniqueUserPackItem: uniqueIndex('uq_srs_cards_pack_item').on(table.userId, table.studyPackItemId),
+}));
+
+// ── Personalized learning (Phase 3) ──────────────────────────────────
+//
+// Everything here belongs to one learner: generated FOR them, never a shared
+// catalogue row. Written by lib/inngest/functions/generateStudyPack.ts after a
+// session completes.
+
+// What a learner keeps getting wrong, aggregated across sessions. One row per
+// (learner, target language, category, pattern). `pattern` is a short
+// normalized label ("past simple of irregular verbs") that the classifier
+// reuses across sessions, so the count means something; `example` is the
+// latest instance. A pattern absent for WEAK_POINT_RESOLVE_AFTER completed
+// sessions in a row is resolved, and seeing it again reopens it.
+export const learnerWeakPoints = pgTable('learner_weak_points', {
+  id:              serial('id').primaryKey(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).notNull(),
+  // 'grammar' | 'vocab' | 'pronunciation' | 'register'
+  category:        varchar('category', { length: 20 }).notNull(),
+  pattern:         varchar('pattern', { length: 120 }).notNull(),
+  example:         text('example'),
+  count:           integer('count').default(1).notNull(),
+  // Completed sessions since this pattern was last seen.
+  cleanSessionCount: integer('clean_session_count').default(0).notNull(),
+  lastSeenAt:      timestamp('last_seen_at').defaultNow().notNull(),
+  resolvedAt:      timestamp('resolved_at'),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqPattern: uniqueIndex('uq_learner_weak_points_key').on(t.userId, t.targetLanguage, t.category, t.pattern),
+  idxUserSeen: index('idx_learner_weak_points_user_seen').on(t.userId, t.lastSeenAt),
+}));
+
+// One pack per completed session. The unique sessionId is what makes the
+// Inngest job idempotent: a retried run finds the row and stops.
+export const studyPacks = pgTable('study_packs', {
+  id:              serial('id').primaryKey(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  sessionId:       integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull().unique(),
+  targetLanguage:  varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage:  varchar('native_language', { length: 10 }).notNull(),
+  // Written in the learner's native language.
+  explanation:     text('explanation').notNull(),
+  recommendedScenarioId: integer('recommended_scenario_id').references(() => scenarios.id, { onDelete: 'set null' }),
+  recommendationReason:  text('recommendation_reason'),
+  // 'ready' | 'opened' | 'completed'
+  status:          varchar('status', { length: 20 }).default('ready').notNull(),
+  openedAt:        timestamp('opened_at'),
+  completedAt:     timestamp('completed_at'),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  idxUserCreated: index('idx_study_packs_user_created').on(t.userId, t.createdAt),
+}));
+
+export const studyPackItems = pgTable('study_pack_items', {
+  id:             serial('id').primaryKey(),
+  packId:         integer('pack_id').references(() => studyPacks.id, { onDelete: 'cascade' }).notNull(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'focus' | 'drill' | 'dialogue'
+  kind:           varchar('kind', { length: 20 }).notNull(),
+  sequenceOrder:  integer('sequence_order').notNull(),
+  weakPointId:    integer('weak_point_id').references(() => learnerWeakPoints.id, { onDelete: 'set null' }),
+  // JSON in a text column; the shape per kind is in lib/study-packs/types.ts.
+  payload:        text('payload').notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  idxPackOrder: index('idx_study_pack_items_pack').on(t.packId, t.sequenceOrder),
+}));
+
+// One row per AI call attributable to a learner. Feeds the per-tier quota
+// (lib/ai-usage.ts) and the cost-per-learner metric. `costMicros` is USD x
+// 1,000,000 from the price table in lib/ai-usage.ts, NULL for a model without
+// a price there. Tokens are always recorded.
+export const aiUsage = pgTable('ai_usage', {
+  id:           serial('id').primaryKey(),
+  userId:       text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  // e.g. 'chat/stream', 'study-pack', 'scenario/personalized'
+  route:        varchar('route', { length: 60 }).notNull(),
+  provider:     varchar('provider', { length: 30 }).notNull(),
+  model:        varchar('model', { length: 100 }).notNull(),
+  inputTokens:  integer('input_tokens').default(0).notNull(),
+  outputTokens: integer('output_tokens').default(0).notNull(),
+  costMicros:   integer('cost_micros'),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // The quota read is "this learner's usage since midnight UTC".
+  idxUserCreated: index('idx_ai_usage_user_created').on(t.userId, t.createdAt),
 }));
 
 // ── Organizations ─────────────────────────────────────────
@@ -1373,7 +1482,8 @@ export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' |
-  // 'organization_invite' | 'group_assignment' | 'group_removal' — what produced it.
+  // 'organization_invite' | 'group_assignment' | 'group_removal' | 'study_pack'
+  // — what produced it.
   type:      varchar('type', { length: 40 }).notNull(),
   title:     varchar('title', { length: 160 }).notNull(),
   body:      text('body'),
@@ -1431,9 +1541,12 @@ export const calendarTasks = pgTable('calendar_tasks', {
   dueAt:         timestamp('due_at').notNull(),
   allDay:        boolean('all_day').default(true).notNull(),
   // 'task' — user-authored to-do. 'lesson_reminder' — system-seeded from the
-  // post-onboarding plan, points back at sourceLessonId.
+  // post-onboarding plan, points back at sourceLessonId. 'study_pack' — the
+  // homework for a completed session, points back at sourceStudyPackId.
   kind:          varchar('kind', { length: 20 }).default('task').notNull(),
   sourceLessonId: integer('source_lesson_id').references(() => lessons.id, { onDelete: 'cascade' }),
+  // Set on kind 'study_pack': the homework reminder generateStudyPack adds.
+  sourceStudyPackId: integer('source_study_pack_id').references(() => studyPacks.id, { onDelete: 'cascade' }),
   status:        varchar('status', { length: 20 }).default('pending').notNull(), // 'pending' | 'done'
   completedAt:   timestamp('completed_at'),
   createdAt:     timestamp('created_at').defaultNow().notNull(),

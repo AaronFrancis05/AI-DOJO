@@ -4,38 +4,9 @@ import { sessions, scenarios, situations, domains, characters, vocabulary, users
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
 import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '../../../lib/language';
-import { isRecord } from '../../../lib/roleplay/api-types';
+import { parseGeneratedVocab, type VocabRow } from '../../../lib/roleplay/generated-vocab';
 import { eq, and, count, desc } from 'drizzle-orm';
 import { AVATAR_SOURCES, FEMALE_AVATAR_IDS, avatarRoleLine } from '../../../lib/avatar/catalog';
-
-type VocabRow = {
-  targetText: string;
-  phonetic: string;
-  translation: string;
-  category: string;
-  usageTip: string;
-  formalityLevel: string;
-};
-
-function parseGeneratedVocab(value: unknown): VocabRow | null {
-  if (!isRecord(value)) return null;
-
-  const targetText = String(value.targetText ?? '');
-  const translation = String(value.translation ?? '');
-  if (!targetText || !translation) return null;
-
-  return {
-    targetText,
-    phonetic: String(value.phonetic ?? ''),
-    translation,
-    category: String(value.category ?? 'general'),
-    usageTip: String(value.usageTip ?? ''),
-    formalityLevel: typeof value.formalityLevel === 'string'
-      && ['casual', 'polite', 'formal'].includes(value.formalityLevel)
-      ? value.formalityLevel
-      : 'polite',
-  };
-}
 
 const MAX_SESSIONS_PAGE = 200;
 
@@ -277,7 +248,8 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   }
 
   const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, numericScenarioId));
-  if (!scenario) {
+  // A learner-owned scenario is private to its owner: to anyone else it does not exist.
+  if (!scenario || (scenario.ownerUserId !== null && scenario.ownerUserId !== user.id)) {
     return Response.json({ error: 'Scenario not found' }, { status: 404 });
   }
 

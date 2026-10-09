@@ -23,6 +23,8 @@ export interface OnboardingState {
   preferredDomainName: string;
   preferredMode: string;
   ageRange: string;
+  occupation: string;
+  interests: string[];
   targetLanguage: string;
   nativeLanguage: string;
   dailyGoalMinutes: number;
@@ -35,6 +37,8 @@ export type OnboardingAction =
   | { type: 'SET_PREFERRED_DOMAIN'; payload: { id: number; name: string } }
   | { type: 'SET_PREFERRED_MODE'; payload: string }
   | { type: 'SET_AGE_RANGE'; payload: string }
+  | { type: 'SET_OCCUPATION'; payload: string }
+  | { type: 'TOGGLE_INTEREST'; payload: string }
   | { type: 'SET_TARGET_LANGUAGE'; payload: string }
   | { type: 'SET_NATIVE_LANGUAGE'; payload: string }
   | { type: 'SET_DAILY_GOAL_MINUTES'; payload: number }
@@ -48,6 +52,8 @@ export const initialOnboardingState: OnboardingState = {
   preferredDomainName: '',
   preferredMode: '',
   ageRange: '',
+  occupation: '',
+  interests: [],
   targetLanguage: DEFAULT_TARGET_LANGUAGE,
   nativeLanguage: 'en',
   dailyGoalMinutes: 30,
@@ -77,6 +83,8 @@ export function mergeOnboardingState(
     preferredDomainName: current.preferredDomainName || restored.preferredDomainName,
     preferredMode: current.preferredMode !== initial.preferredMode ? current.preferredMode : restored.preferredMode,
     ageRange: current.ageRange || restored.ageRange,
+    occupation: current.occupation || restored.occupation,
+    interests: current.interests.length > 0 ? current.interests : restored.interests,
     targetLanguage: current.targetLanguage !== initial.targetLanguage ? current.targetLanguage : restored.targetLanguage,
     nativeLanguage: current.nativeLanguage !== initial.nativeLanguage ? current.nativeLanguage : restored.nativeLanguage,
     dailyGoalMinutes: current.dailyGoalMinutes !== initial.dailyGoalMinutes ? current.dailyGoalMinutes : restored.dailyGoalMinutes,
@@ -100,6 +108,15 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
       return { ...state, preferredMode: action.payload };
     case 'SET_AGE_RANGE':
       return { ...state, ageRange: action.payload };
+    case 'SET_OCCUPATION':
+      return { ...state, occupation: action.payload };
+    case 'TOGGLE_INTEREST':
+      return {
+        ...state,
+        interests: state.interests.includes(action.payload)
+          ? state.interests.filter((i) => i !== action.payload)
+          : [...state.interests, action.payload],
+      };
     case 'SET_TARGET_LANGUAGE':
       return { ...state, targetLanguage: action.payload };
     case 'SET_NATIVE_LANGUAGE':
@@ -166,6 +183,8 @@ function normalizeLoadedState(parsed: Partial<OnboardingState>): OnboardingState
     ...initialOnboardingState,
     ...parsed,
     preferredDomainId: coerceDomainId(parsed.preferredDomainId),
+    occupation: typeof parsed.occupation === 'string' ? parsed.occupation : '',
+    interests: Array.isArray(parsed.interests) ? parsed.interests.filter((i) => typeof i === 'string') : [],
     completedSteps: Array.isArray(parsed.completedSteps) ? parsed.completedSteps.filter((s) => typeof s === 'string') : [],
     ...prefillFromTryout(),
   };

@@ -160,6 +160,8 @@ Job interviews, offshore stand-ups, customer support, IELTS/TOEIC speaking and t
 
 ## Phase 3: Personalized learning materials (the AI-Dojo expansion)
 
+> **Status (2026-10-09):** implemented on `feat/personalized-study-packs` behind `NEXT_PUBLIC_STUDY_PACKS_ENABLED`; migration 0058 generated, not applied. Deviations: JSON-in-text instead of jsonb (codebase convention), a `modelTier` instead of a per-call model id (failover crosses providers), and the quota gates batch generation only. See MEMORY.md and the "Personalized learning" section of ui-registry.md.
+
 The building blocks found by the audit are `getAIProvider().generateJSON`, the vocab-gen validation (`analyze-turn.ts:104`), `corrections` and `vocabularyEncounters`, `srsCards` with SM-2, `calendarTasks`, `createNotification`, `resolveDifficulty` and the Inngest cron pattern.
 
 - **3.1 Learner weak-point model.** Add a `learner_weak_points` table: userId, category (an enum normalizing `correctionType` to grammar / vocab / pronunciation / register), pattern, example, count, lastSeen and resolvedAt. Fill it from the `corrections` rows after each session.

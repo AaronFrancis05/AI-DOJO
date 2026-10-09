@@ -22,7 +22,9 @@ export type NotificationType =
   | 'announcement'
   | 'organization_invite'
   | 'group_assignment'
-  | 'group_removal';
+  | 'group_removal'
+  // Produced by the post-session job (lib/inngest/functions/generateStudyPack.ts).
+  | 'study_pack';
 
 export interface CreateNotificationInput {
   userId: string;
