@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "İptal",
+    "save": "Kaydet",
+    "close": "Kapat",
+    "loading": "Yükleniyor…",
+    "showOriginal": "Orijinali göster",
+    "showTranslation": "Çeviriyi göster"
+  },
+  "nav": {
+    "home": "Ana Sayfa",
+    "library": "Kütüphane",
+    "courses": "Kurslar",
+    "tutors": "Eğitmenler",
+    "review": "Tekrar",
+    "studyPacks": "Çalışma Paketleri",
+    "placement": "Seviyeniz",
+    "sessions": "Oturumlar",
+    "progress": "İlerleme",
+    "leaderboard": "Lider Tablosu",
+    "calendar": "Takvim",
+    "messages": "Mesajlar",
+    "settings": "Ayarlar",
+    "teaching": "Öğretme",
+    "admin": "Yönetim",
+    "organization": "Kuruluş",
+    "sectionPractice": "Pratik",
+    "sectionResults": "Sonuçlar",
+    "openMenu": "Menüyü aç",
+    "closeMenu": "Menüyü kapat",
+    "signOut": "Oturumu Kapat"
+  },
+  "sidebar": {
+    "tutor": "Eğitmen",
+    "tutorVerified": "Onaylı",
+    "tutorRejected": "Onaylanmadı",
+    "tutorPending": "İncelemede",
+    "level": "Seviye {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Arayüz dili",
+    "description": "Düğmelerin ve menülerin gösterildiği dil. Dersler öğrenmekte olduğunuz dilde kalır.",
+    "viewingIn": "{language} dilinde görüntüleniyor",
+    "change": "değiştir",
+    "keep": "Koruma",
+    "saveFailed": "Dil değiştirilemedi. Lütfen tekrar deneyin."
+  }
+}

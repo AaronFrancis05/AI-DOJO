@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Batalisha",
+    "save": "Hifadhi",
+    "close": "Funga",
+    "loading": "Inapakia…",
+    "showOriginal": "Onyesha asili",
+    "showTranslation": "Onyesha tafsiri"
+  },
+  "nav": {
+    "home": "Nyumbani",
+    "library": "Maktaba",
+    "courses": "Kozi",
+    "tutors": "Walimu",
+    "review": "Kaguzi",
+    "studyPacks": "Vifurushi vya masomo",
+    "placement": "Nafasi yako",
+    "sessions": "Vikao",
+    "progress": "Maendeleo",
+    "leaderboard": "Ubao wa wanaoongoza",
+    "calendar": "Kalenda",
+    "messages": "Ujumbe",
+    "settings": "Mipangilio",
+    "teaching": "Kufundisha",
+    "admin": "Utawala",
+    "organization": "Shirika",
+    "sectionPractice": "Mazoezi",
+    "sectionResults": "Matokeo",
+    "openMenu": "Fungua menyu",
+    "closeMenu": "Funga menyu",
+    "signOut": "Toka"
+  },
+  "sidebar": {
+    "tutor": "Mwalimu",
+    "tutorVerified": "Amehakikiwa",
+    "tutorRejected": "Hajaruhusiwa",
+    "tutorPending": "Inasubiri ukaguzi",
+    "level": "Kiwango {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Lugha ya kiolesura",
+    "description": "Lugha inayotumika kwa vitufe na menyu. Masomo hubaki katika lugha unayojifunza.",
+    "viewingIn": "Inaonyeshwa katika {language}",
+    "change": "Badilisha",
+    "keep": "Hifadhi",
+    "saveFailed": "Imeshindikana kubadilisha lugha. Tafadhali jaribu tena."
+  }
+}

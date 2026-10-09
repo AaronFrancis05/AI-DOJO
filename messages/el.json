@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Ακύρωση",
+    "save": "Αποθήκευση",
+    "close": "Κλείσιμο",
+    "loading": "Φόρτωση…",
+    "showOriginal": "Εμφάνιση πρωτότυπου",
+    "showTranslation": "Εμφάνιση μετάφρασης"
+  },
+  "nav": {
+    "home": "Αρχική",
+    "library": "Βιβλιοθήκη",
+    "courses": "Μαθήματα",
+    "tutors": "Καθηγητές",
+    "review": "Επανάληψη",
+    "studyPacks": "Πακέτα μελέτης",
+    "placement": "Το επίπεδό σας",
+    "sessions": "Συνεδρίες",
+    "progress": "Πρόοδος",
+    "leaderboard": "Κατάταξη",
+    "calendar": "Ημερολόγιο",
+    "messages": "Μηνύματα",
+    "settings": "Ρυθμίσεις",
+    "teaching": "Διδασκαλία",
+    "admin": "Διαχείριση",
+    "organization": "Οργάνωση",
+    "sectionPractice": "Εξάσκηση",
+    "sectionResults": "Αποτελέσματα",
+    "openMenu": "Άνοιγμα μενού",
+    "closeMenu": "Κλείσιμο μενού",
+    "signOut": "Αποσύνδεση"
+  },
+  "sidebar": {
+    "tutor": "Καθηγητής",
+    "tutorVerified": "Επαληθευμένο",
+    "tutorRejected": "Δεν εγκρίθηκε",
+    "tutorPending": "Αναμένεται έλεγχος",
+    "level": "Επίπεδο {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Γλώσσα διεπαφής",
+    "description": "Η γλώσσα στην οποία εμφανίζονται τα κουμπιά και τα μενού. Τα μαθήματα παραμένουν στη γλώσσα που μαθαίνετε.",
+    "viewingIn": "Προβολή στα {language}",
+    "change": "αλλαγή",
+    "keep": "Διατήρηση",
+    "saveFailed": "Αποτυχία αλλαγής γλώσσας. Δοκιμάστε ξανά."
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "close": "إغلاق",
+    "loading": "جارٍ التحميل…",
+    "showOriginal": "عرض الأصل",
+    "showTranslation": "عرض الترجمة"
+  },
+  "nav": {
+    "home": "الرئيسية",
+    "library": "المكتبة",
+    "courses": "الدورات",
+    "tutors": "المعلمون",
+    "review": "مراجعة",
+    "studyPacks": "حزم الدراسة",
+    "placement": "مستواك",
+    "sessions": "الجلسات",
+    "progress": "التقدم",
+    "leaderboard": "لوحة الصدارة",
+    "calendar": "التقويم",
+    "messages": "الرسائل",
+    "settings": "الإعدادات",
+    "teaching": "التدريس",
+    "admin": "مسؤول",
+    "organization": "المؤسسة",
+    "sectionPractice": "تدرب",
+    "sectionResults": "النتائج",
+    "openMenu": "فتح القائمة",
+    "closeMenu": "إغلاق القائمة",
+    "signOut": "تسجيل الخروج"
+  },
+  "sidebar": {
+    "tutor": "معلم",
+    "tutorVerified": "معتمد",
+    "tutorRejected": "غير معتمد",
+    "tutorPending": "قيد المراجعة",
+    "level": "مستوى {level}",
+    "xp": "{xp} / {xpToNext} نقطة خبرة"
+  },
+  "uiLanguage": {
+    "label": "لغة الواجهة",
+    "description": "اللغة التي تُعرض بها الأزرار والقوائم. تبقى الدروس بلغة التعلم.",
+    "viewingIn": "تُعرض باللغة {language}",
+    "change": "تغيير",
+    "keep": "احتفاظ",
+    "saveFailed": "تعذر تغيير اللغة. يُرجى المحاولة مرة أخرى."
+  }
+}

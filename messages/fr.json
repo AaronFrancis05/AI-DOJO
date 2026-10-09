@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "close": "Fermer",
+    "loading": "Chargement…",
+    "showOriginal": "Afficher l'original",
+    "showTranslation": "Afficher la traduction"
+  },
+  "nav": {
+    "home": "Accueil",
+    "library": "Bibliothèque",
+    "courses": "Cours",
+    "tutors": "Tuteurs",
+    "review": "Révision",
+    "studyPacks": "Packs d'étude",
+    "placement": "Votre niveau",
+    "sessions": "Sessions",
+    "progress": "Progrès",
+    "leaderboard": "Classement",
+    "calendar": "Calendrier",
+    "messages": "Messages",
+    "settings": "Paramètres",
+    "teaching": "Enseignement",
+    "admin": "Admin",
+    "organization": "Organisation",
+    "sectionPractice": "Pratique",
+    "sectionResults": "Résultats",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "signOut": "Se déconnecter"
+  },
+  "sidebar": {
+    "tutor": "Tuteur",
+    "tutorVerified": "Vérifié",
+    "tutorRejected": "Non approuvé",
+    "tutorPending": "En attente de validation",
+    "level": "Niveau {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Langue de l'interface",
+    "description": "La langue dans laquelle les boutons et les menus sont affichés. Les leçons restent dans la langue que vous apprenez.",
+    "viewingIn": "Affichage en {language}",
+    "change": "Changer",
+    "keep": "Conserver",
+    "saveFailed": "Impossible de changer la langue. Veuillez réessayer."
+  }
+}

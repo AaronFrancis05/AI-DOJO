@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Kukyansiza",
+    "save": "Kuwoneka",
+    "close": "Kuggala",
+    "loading": "Kwebuulira…",
+    "showOriginal": "Kalaga eky'oluganda",
+    "showTranslation": "Kalaga olukadde"
+  },
+  "nav": {
+    "home": "Kaakano",
+    "library": "Eby'okulugendo",
+    "courses": "Eby'okwewola",
+    "tutors": "Banaamasomero",
+    "review": "Nyongeza",
+    "studyPacks": "ebitabo by'okusoma",
+    "placement": "Kikula kyo",
+    "sessions": "Ebibalusa",
+    "progress": "Ku Maaso",
+    "leaderboard": "tabula",
+    "calendar": "Kalendano",
+    "messages": "Ebyemboozi",
+    "settings": "Ebibalirampola",
+    "teaching": "Kusomesa",
+    "admin": "Admin",
+    "organization": "Ekibina",
+    "sectionPractice": "Kuyigirizwa",
+    "sectionResults": "ebipapula",
+    "openMenu": "Kuggulawo menu",
+    "closeMenu": "Kuggalawo menu",
+    "signOut": "Kuweereza"
+  },
+  "sidebar": {
+    "tutor": "Muwakanya",
+    "tutorVerified": "Waliwo okukkirizibwa",
+    "tutorRejected": "Teyakkirizibwa",
+    "tutorPending": "Kwemululira",
+    "level": "Kikula {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Olulimi lw'abantu",
+    "description": "Olulimi olukozesebwa mu bipapula n'ebikolwa. Ebitabo bigenda kubeera mu lulimi lw'oyigirizako.",
+    "viewingIn": "Kuba mu {language}",
+    "change": "Kukyusa",
+    "keep": "Kutwala",
+    "saveFailed": "Waliwo okukyusa olulimi. Nyongeza."
+  }
+}

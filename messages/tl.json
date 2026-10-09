@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Kanselahin",
+    "save": "I-save",
+    "close": "Isara",
+    "loading": "Naglo-load…",
+    "showOriginal": "Ipakita ang orihinal",
+    "showTranslation": "Ipakita ang salin"
+  },
+  "nav": {
+    "home": "Home",
+    "library": "Library",
+    "courses": "Mga Kurso",
+    "tutors": "Mga Tutor",
+    "review": "Repasuhin",
+    "studyPacks": "Mga Study Pack",
+    "placement": "Iyong Lebel",
+    "sessions": "Mga Sesyon",
+    "progress": "Pag-unlad",
+    "leaderboard": "Leaderboard",
+    "calendar": "Kalendaryo",
+    "messages": "Mga Mensahe",
+    "settings": "Mga Setting",
+    "teaching": "Pagtuturo",
+    "admin": "Admin",
+    "organization": "Organisasyon",
+    "sectionPractice": "Praktis",
+    "sectionResults": "Mga Resulta",
+    "openMenu": "Buksan ang menu",
+    "closeMenu": "Isara ang menu",
+    "signOut": "Mag-sign Out"
+  },
+  "sidebar": {
+    "tutor": "Tutor",
+    "tutorVerified": "Beripikado",
+    "tutorRejected": "Hindi inaprubahan",
+    "tutorPending": "Nakaantabay sa pagsusuri",
+    "level": "Lebel {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Wika ng Interface",
+    "description": "Ang wikang ginagamit para sa mga button at menu. Ang mga aralin ay mananatili sa wikang iyong pinag-aaralan.",
+    "viewingIn": "Tinitingnan sa {language}",
+    "change": "Baguhin",
+    "keep": "Panatilihin",
+    "saveFailed": "Hindi mabago ang wika. Pakisubukang muli."
+  }
+}

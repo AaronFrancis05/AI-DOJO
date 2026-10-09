@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Отмена",
+    "save": "Сохранить",
+    "close": "Закрыть",
+    "loading": "Загрузка…",
+    "showOriginal": "Показать оригинал",
+    "showTranslation": "Показать перевод"
+  },
+  "nav": {
+    "home": "Главная",
+    "library": "Библиотека",
+    "courses": "Курсы",
+    "tutors": "Репетиторы",
+    "review": "Повторение",
+    "studyPacks": "Наборы для изучения",
+    "placement": "Ваш уровень",
+    "sessions": "Сессии",
+    "progress": "Прогресс",
+    "leaderboard": "Таблица лидеров",
+    "calendar": "Календарь",
+    "messages": "Сообщения",
+    "settings": "Настройки",
+    "teaching": "Преподавание",
+    "admin": "Админ",
+    "organization": "Организация",
+    "sectionPractice": "Практика",
+    "sectionResults": "Результаты",
+    "openMenu": "Открыть меню",
+    "closeMenu": "Закрыть меню",
+    "signOut": "Выйти"
+  },
+  "sidebar": {
+    "tutor": "Репетитор",
+    "tutorVerified": "Проверен",
+    "tutorRejected": "Не одобрен",
+    "tutorPending": "На проверке",
+    "level": "Уровень {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Язык интерфейса",
+    "description": "Язык, на котором отображаются кнопки и меню. Уроки остаются на языке, который вы изучаете.",
+    "viewingIn": "Просмотр на {language}",
+    "change": "Сменить",
+    "keep": "Оставить",
+    "saveFailed": "Не удалось изменить язык. Пожалуйста, попробуйте еще раз."
+  }
+}

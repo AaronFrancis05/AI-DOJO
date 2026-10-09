@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Batal",
+    "save": "Simpan",
+    "close": "Tutup",
+    "loading": "Memuatkan…",
+    "showOriginal": "Tunjukkan asal",
+    "showTranslation": "Tunjukkan terjemahan"
+  },
+  "nav": {
+    "home": "Laman Utama",
+    "library": "Perpustakaan",
+    "courses": "Kursus",
+    "tutors": "Tutor",
+    "review": "Semakan",
+    "studyPacks": "Pek Belajar",
+    "placement": "Tahap Anda",
+    "sessions": "Sesi",
+    "progress": "Progres",
+    "leaderboard": "Papan Pendahulu",
+    "calendar": "Kalendar",
+    "messages": "Mesej",
+    "settings": "Tetapan",
+    "teaching": "Pengajaran",
+    "admin": "Pentadbir",
+    "organization": "Organisasi",
+    "sectionPractice": "Latihan",
+    "sectionResults": "Keputusan",
+    "openMenu": "Buka menu",
+    "closeMenu": "Tutup menu",
+    "signOut": "Log Keluar"
+  },
+  "sidebar": {
+    "tutor": "Tutor",
+    "tutorVerified": "Diverifikasi",
+    "tutorRejected": "Tidak diluluskan",
+    "tutorPending": "Menunggu semakan",
+    "level": "Tahap {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Bahasa antara muka",
+    "description": "Bahasa butang dan menu dipaparkan. Pelajaran kekal dalam bahasa yang anda pelajari.",
+    "viewingIn": "Dilihat dalam {language}",
+    "change": "tukar",
+    "keep": "Kekalkan",
+    "saveFailed": "Tidak dapat menukar bahasa. Sila cuba lagi."
+  }
+}

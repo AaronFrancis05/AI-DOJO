@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "取消",
+    "save": "保存",
+    "close": "关闭",
+    "loading": "正在加载…",
+    "showOriginal": "显示原文",
+    "showTranslation": "显示译文"
+  },
+  "nav": {
+    "home": "首页",
+    "library": "语料库",
+    "courses": "课程",
+    "tutors": "导师",
+    "review": "复习",
+    "studyPacks": "学习包",
+    "placement": "你的水平",
+    "sessions": "课程",
+    "progress": "进度",
+    "leaderboard": "排行榜",
+    "calendar": "日历",
+    "messages": "消息",
+    "settings": "设置",
+    "teaching": "教学",
+    "admin": "管理",
+    "organization": "组织",
+    "sectionPractice": "练习",
+    "sectionResults": "结果",
+    "openMenu": "打开菜单",
+    "closeMenu": "关闭菜单",
+    "signOut": "退出登录"
+  },
+  "sidebar": {
+    "tutor": "导师",
+    "tutorVerified": "已认证",
+    "tutorRejected": "未获批准",
+    "tutorPending": "审核中",
+    "level": "等级 {level}",
+    "xp": "{xp} / {xpToNext} 经验值"
+  },
+  "uiLanguage": {
+    "label": "界面语言",
+    "description": "按钮和菜单显示的语言。课程内容保持你正在学习的语言。",
+    "viewingIn": "当前语言：{language}",
+    "change": "更改",
+    "keep": "保留",
+    "saveFailed": "无法更改语言。请重试。"
+  }
+}

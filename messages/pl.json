@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Anuluj",
+    "save": "Zapisz",
+    "close": "Zamknij",
+    "loading": "Ładowanie…",
+    "showOriginal": "Pokaż oryginał",
+    "showTranslation": "Pokaż tłumaczenie"
+  },
+  "nav": {
+    "home": "Start",
+    "library": "Biblioteka",
+    "courses": "Kursy",
+    "tutors": "Tutorzy",
+    "review": "Powtórka",
+    "studyPacks": "Pakiety nauki",
+    "placement": "Twój poziom",
+    "sessions": "Sesje",
+    "progress": "Postępy",
+    "leaderboard": "Ranking",
+    "calendar": "Kalendarz",
+    "messages": "Wiadomości",
+    "settings": "Ustawienia",
+    "teaching": "Nauczanie",
+    "admin": "Admin",
+    "organization": "Organizacja",
+    "sectionPractice": "Ćwicz",
+    "sectionResults": "Wyniki",
+    "openMenu": "Otwórz menu",
+    "closeMenu": "Zamknij menu",
+    "signOut": "Wyloguj"
+  },
+  "sidebar": {
+    "tutor": "Tutor",
+    "tutorVerified": "Zweryfikowany",
+    "tutorRejected": "Odrzucony",
+    "tutorPending": "Oczekuje na weryfikację",
+    "level": "Poziom {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Język interfejsu",
+    "description": "Język, w jakim wyświetlane są przyciski i menu. Lekcje pozostają w języku, którego się uczysz.",
+    "viewingIn": "Widok w {language}",
+    "change": "zmień",
+    "keep": "Zachowaj",
+    "saveFailed": "Nie udało się zmienić języka. Spróbuj ponownie."
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Annuleren",
+    "save": "Opslaan",
+    "close": "Sluiten",
+    "loading": "Laden…",
+    "showOriginal": "Origineel tonen",
+    "showTranslation": "Vertaling tonen"
+  },
+  "nav": {
+    "home": "Home",
+    "library": "Bibliotheek",
+    "courses": "Cursussen",
+    "tutors": "Tutors",
+    "review": "Herhalen",
+    "studyPacks": "Studiepakketten",
+    "placement": "Jouw niveau",
+    "sessions": "Sessies",
+    "progress": "Voortgang",
+    "leaderboard": "Scorebord",
+    "calendar": "Agenda",
+    "messages": "Berichten",
+    "settings": "Instellingen",
+    "teaching": "Lesgeven",
+    "admin": "Beheer",
+    "organization": "Organisatie",
+    "sectionPractice": "Oefenen",
+    "sectionResults": "Resultaten",
+    "openMenu": "Menu openen",
+    "closeMenu": "Menu sluiten",
+    "signOut": "Uitloggen"
+  },
+  "sidebar": {
+    "tutor": "Tutor",
+    "tutorVerified": "Geverifieerd",
+    "tutorRejected": "Niet goedgekeurd",
+    "tutorPending": "In afwachting van beoordeling",
+    "level": "Niveau {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Interface taal",
+    "description": "De taal waarin knoppen en menu's worden weergegeven. Lessen blijven in de taal die je leert.",
+    "viewingIn": "Weergegeven in {language}",
+    "change": "wijzigen",
+    "keep": "Behouden",
+    "saveFailed": "Taal kon niet worden gewijzigd. Probeer het opnieuw."
+  }
+}

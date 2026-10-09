@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "ຍົກເລີກ",
+    "save": "ບັນທຶກ",
+    "close": "ປິດ",
+    "loading": "ກຳລັງໂຫຼດ...",
+    "showOriginal": "ສະແດງຕົ້ນສະບັບ",
+    "showTranslation": "ສະແດງການແປ"
+  },
+  "nav": {
+    "home": "ໜ້າຫຼັກ",
+    "library": "ຫ້ອງສະໝຸດ",
+    "courses": "ຫຼັກສູດ",
+    "tutors": "ຄູສອນ",
+    "review": "ທົບທວນ",
+    "studyPacks": "ຊຸດການຮຽນ",
+    "placement": "ລະດັບຂອງທ່ານ",
+    "sessions": "ການຮຽນ",
+    "progress": "ຄວາມຄືບໜ້າ",
+    "leaderboard": "ກະດານຜູ້ນຳ",
+    "calendar": "ປະຕິທິນ",
+    "messages": "ຂໍ້ຄວາມ",
+    "settings": "ການຕັ້ງຄ່າ",
+    "teaching": "ການສອນ",
+    "admin": "ຜູ້ບໍລິຫານ",
+    "organization": "ອົງກອນ",
+    "sectionPractice": "ຝຶກຫັດ",
+    "sectionResults": "ຜົນໄດ້ຮັບ",
+    "openMenu": "ເປີດເມນູ",
+    "closeMenu": "ປິດເມນູ",
+    "signOut": "ອອກຈາກລະບົບ"
+  },
+  "sidebar": {
+    "tutor": "ຄູສອນ",
+    "tutorVerified": "ຢືນຢັນແລ້ວ",
+    "tutorRejected": "ບໍ່ໄດ້ຮັບການອະນຸມັດ",
+    "tutorPending": "ລໍຖ້າການກວດສອບ",
+    "level": "ລະດັບ {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "ພາສາໂຕໂຕ້ຕອບ",
+    "description": "ພາສາທີ່ໃຊ້ສະແດງປຸ່ມ ແລະເມນູ. ບົດຮຽນຈະຍັງຄົງເປັນພາສາທີ່ທ່ານກຳລັງຮຽນ.",
+    "viewingIn": "ສະແດງເປັນ {language}",
+    "change": "ປ່ຽນ",
+    "keep": "ຮັກສາ",
+    "saveFailed": "ບໍ່ສາມາດປ່ຽນພາສາໄດ້. ກະລຸນາລອງອີກຄັ້ງ."
+  }
+}

@@ -502,6 +502,23 @@ async function backfillNativeScenarios(
       eq(scenarioNativeLocalizations.nativeLanguage, nativeCode),
     ))).map((r) => r.scenarioId));
 
+  // A scenario row alone is not "done": the model sometimes drops a word tip or
+  // a goal. Re-run those too — every insert below is onConflictDoNothing, so
+  // only the missing pieces get written.
+  const [baseVocab, notes, allGoals, goalNotes] = await Promise.all([
+    db.select({ id: vocabulary.id, scenarioId: vocabulary.scenarioId }).from(vocabulary)
+      .where(eq(vocabulary.languageCode, BASE_LANG)),
+    db.select({ id: vocabularyNativeNotes.vocabularyId }).from(vocabularyNativeNotes)
+      .where(and(eq(vocabularyNativeNotes.targetLanguage, targetCode), eq(vocabularyNativeNotes.nativeLanguage, nativeCode))),
+    db.select({ id: scenarioGoals.id, scenarioId: scenarioGoals.scenarioId }).from(scenarioGoals),
+    db.select({ id: scenarioGoalNativeLocalizations.scenarioGoalId }).from(scenarioGoalNativeLocalizations)
+      .where(and(eq(scenarioGoalNativeLocalizations.targetLanguage, targetCode), eq(scenarioGoalNativeLocalizations.nativeLanguage, nativeCode))),
+  ]);
+  const noted = new Set(notes.map((n) => n.id));
+  const goalNoted = new Set(goalNotes.map((g) => g.id));
+  for (const v of baseVocab) if (v.scenarioId != null && !noted.has(v.id)) done.delete(v.scenarioId);
+  for (const g of allGoals) if (!goalNoted.has(g.id)) done.delete(g.scenarioId);
+
   let processed = 0;
   let written = 0;
   for (const sc of scenarioRows) {

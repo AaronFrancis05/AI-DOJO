@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "취소",
+    "save": "저장",
+    "close": "닫기",
+    "loading": "로딩 중…",
+    "showOriginal": "원본 보기",
+    "showTranslation": "번역 보기"
+  },
+  "nav": {
+    "home": "홈",
+    "library": "라이브러리",
+    "courses": "코스",
+    "tutors": "튜터",
+    "review": "복습",
+    "studyPacks": "학습 팩",
+    "placement": "레벨 테스트",
+    "sessions": "세션",
+    "progress": "진행 상황",
+    "leaderboard": "리더보드",
+    "calendar": "캘린더",
+    "messages": "메시지",
+    "settings": "설정",
+    "teaching": "티칭",
+    "admin": "관리",
+    "organization": "조직",
+    "sectionPractice": "연습",
+    "sectionResults": "결과",
+    "openMenu": "메뉴 열기",
+    "closeMenu": "메뉴 닫기",
+    "signOut": "로그아웃"
+  },
+  "sidebar": {
+    "tutor": "튜터",
+    "tutorVerified": "인증됨",
+    "tutorRejected": "승인 거부됨",
+    "tutorPending": "검토 대기 중",
+    "level": "{level} 레벨",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "인터페이스 언어",
+    "description": "버튼과 메뉴가 표시되는 언어입니다. 학습 내용은 배우고 있는 언어로 유지됩니다.",
+    "viewingIn": "{language}으로 보기",
+    "change": "변경",
+    "keep": "유지",
+    "saveFailed": "언어를 변경할 수 없습니다. 다시 시도해 주세요."
+  }
+}

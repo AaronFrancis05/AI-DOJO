@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "ยกเลิก",
+    "save": "บันทึก",
+    "close": "ปิด",
+    "loading": "กำลังโหลด...",
+    "showOriginal": "แสดงต้นฉบับ",
+    "showTranslation": "แสดงคำแปล"
+  },
+  "nav": {
+    "home": "หน้าหลัก",
+    "library": "คลัง",
+    "courses": "คอร์ส",
+    "tutors": "ผู้สอน",
+    "review": "ทบทวน",
+    "studyPacks": "ชุดฝึก",
+    "placement": "ระดับของคุณ",
+    "sessions": "เซสชัน",
+    "progress": "ความคืบหน้า",
+    "leaderboard": "กระดานผู้นำ",
+    "calendar": "ปฏิทิน",
+    "messages": "ข้อความ",
+    "settings": "ตั้งค่า",
+    "teaching": "การสอน",
+    "admin": "ผู้ดูแลระบบ",
+    "organization": "องค์กร",
+    "sectionPractice": "ฝึกฝน",
+    "sectionResults": "ผลลัพธ์",
+    "openMenu": "เปิดเมนู",
+    "closeMenu": "ปิดเมนู",
+    "signOut": "ออกจากระบบ"
+  },
+  "sidebar": {
+    "tutor": "ผู้สอน",
+    "tutorVerified": "ได้รับการรับรอง",
+    "tutorRejected": "ไม่ผ่านการอนุมัติ",
+    "tutorPending": "รอการตรวจสอบ",
+    "level": "ระดับ {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "ภาษาอินเทอร์เฟซ",
+    "description": "ภาษาที่ใช้แสดงปุ่มและเมนู บทเรียนจะยังคงเป็นภาษาที่คุณกำลังเรียนรู้",
+    "viewingIn": "กำลังดูในภาษา {language}",
+    "change": "เปลี่ยน",
+    "keep": "คงไว้",
+    "saveFailed": "ไม่สามารถเปลี่ยนภาษาได้ โปรดลองอีกครั้ง"
+  }
+}

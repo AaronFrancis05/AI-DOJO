@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "បោះបង់",
+    "save": "រក្សាទុក",
+    "close": "បិទ",
+    "loading": "កំពុងផ្ទុក...",
+    "showOriginal": "បង្ហាញដើម",
+    "showTranslation": "បង្ហាញការបកប្រែ"
+  },
+  "nav": {
+    "home": "ទំព័រដើម",
+    "library": "បណ្ណាល័យ",
+    "courses": "វគ្គសិក្សា",
+    "tutors": "គ្រូបង្រៀន",
+    "review": "ពិនិត្យឡើងវិញ",
+    "studyPacks": "កញ្ចប់សិក្សា",
+    "placement": "កម្រិតរបស់អ្នក",
+    "sessions": "វគ្គបណ្ដុះបណ្ដាល",
+    "progress": "វឌ្ឍនភាព",
+    "leaderboard": "តារាងពិន្ទុ",
+    "calendar": "ប្រតិទិន",
+    "messages": "សារ",
+    "settings": "ការកំណត់",
+    "teaching": "ការបង្រៀន",
+    "admin": "គ្រប់គ្រង",
+    "organization": "អង្គភាព",
+    "sectionPractice": "អនុវត្ត",
+    "sectionResults": "លទ្ធផល",
+    "openMenu": "បើកម៉ឺនុយ",
+    "closeMenu": "បិទម៉ឺនុយ",
+    "signOut": "ចាកចេញ"
+  },
+  "sidebar": {
+    "tutor": "គ្រូបង្រៀន",
+    "tutorVerified": "បានផ្ទៀងផ្ទាត់",
+    "tutorRejected": "មិនបានអនុម័ត",
+    "tutorPending": "កំពុងរង់ចាំការត្រួតពិនិត្យ",
+    "level": "កម្រិត {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "ភាសាចំណុចប្រទាក់",
+    "description": "ភាសាដែលប៊ូតុង និងម៉ឺនុយត្រូវបានបង្ហាញ។ មេរៀននៅតែជាភាសាដែលអ្នកកំពុងរៀន។",
+    "viewingIn": "បង្ហាញជាភាសា {language}",
+    "change": "ផ្លាស់ប្តូរ",
+    "keep": "រក្សាទុក",
+    "saveFailed": "មិនអាចផ្លាស់ប្តូរភាសាបានទេ។ សូមព្យាយាមម្តងទៀត។"
+  }
+}

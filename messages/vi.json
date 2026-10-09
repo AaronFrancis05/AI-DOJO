@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Hủy",
+    "save": "Lưu",
+    "close": "Đóng",
+    "loading": "Đang tải…",
+    "showOriginal": "Xem bản gốc",
+    "showTranslation": "Xem bản dịch"
+  },
+  "nav": {
+    "home": "Trang chủ",
+    "library": "Thư viện",
+    "courses": "Khóa học",
+    "tutors": "Gia sư",
+    "review": "Ôn tập",
+    "studyPacks": "Bộ bài học",
+    "placement": "Trình độ của bạn",
+    "sessions": "Buổi học",
+    "progress": "Tiến độ",
+    "leaderboard": "Bảng xếp hạng",
+    "calendar": "Lịch",
+    "messages": "Tin nhắn",
+    "settings": "Cài đặt",
+    "teaching": "Giảng dạy",
+    "admin": "Quản trị",
+    "organization": "Tổ chức",
+    "sectionPractice": "Luyện tập",
+    "sectionResults": "Kết quả",
+    "openMenu": "Mở menu",
+    "closeMenu": "Đóng menu",
+    "signOut": "Đăng xuất"
+  },
+  "sidebar": {
+    "tutor": "Gia sư",
+    "tutorVerified": "Đã xác minh",
+    "tutorRejected": "Không được duyệt",
+    "tutorPending": "Chờ xem xét",
+    "level": "Cấp độ {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Ngôn ngữ giao diện",
+    "description": "Ngôn ngữ hiển thị cho các nút và menu. Bài học vẫn giữ nguyên ngôn ngữ bạn đang học.",
+    "viewingIn": "Đang xem bằng {language}",
+    "change": "thay đổi",
+    "keep": "Giữ nguyên",
+    "saveFailed": "Không thể thay đổi ngôn ngữ. Vui lòng thử lại."
+  }
+}

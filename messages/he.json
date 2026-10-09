@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "ביטול",
+    "save": "שמור",
+    "close": "סגור",
+    "loading": "טוען…",
+    "showOriginal": "הצג מקורי",
+    "showTranslation": "הצג תרגום"
+  },
+  "nav": {
+    "home": "ראשי",
+    "library": "ספרייה",
+    "courses": "קורסים",
+    "tutors": "מורים",
+    "review": "חזרה",
+    "studyPacks": "חבילות לימוד",
+    "placement": "הרמה שלך",
+    "sessions": "שיעורים",
+    "progress": "התקדמות",
+    "leaderboard": "טבלת מובילים",
+    "calendar": "לוח שנה",
+    "messages": "הודעות",
+    "settings": "הגדרות",
+    "teaching": "הוראה",
+    "admin": "ניהול",
+    "organization": "ארגון",
+    "sectionPractice": "תרגול",
+    "sectionResults": "תוצאות",
+    "openMenu": "פתח תפריט",
+    "closeMenu": "סגור תפריט",
+    "signOut": "התנתק"
+  },
+  "sidebar": {
+    "tutor": "מורה",
+    "tutorVerified": "מאושר",
+    "tutorRejected": "נדחה",
+    "tutorPending": "ממתין לאישור",
+    "level": "רמה {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "שפת ממשק",
+    "description": "השפה בה מוצגים כפתורים ותפריטים. השיעורים נשארים בשפה שאתה לומד.",
+    "viewingIn": "צפייה ב- {language}",
+    "change": "שנה",
+    "keep": "שמור",
+    "saveFailed": "לא ניתן היה לשנות את השפה. נסה שוב."
+  }
+}

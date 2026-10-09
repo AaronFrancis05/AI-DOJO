@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "لغو",
+    "save": "ذخیره",
+    "close": "بستن",
+    "loading": "در حال بارگذاری…",
+    "showOriginal": "نمایش اصل",
+    "showTranslation": "نمایش ترجمه"
+  },
+  "nav": {
+    "home": "خانه",
+    "library": "کتابخانه",
+    "courses": "دوره‌ها",
+    "tutors": "مدرسان",
+    "review": "مرور",
+    "studyPacks": "بسته‌های آموزشی",
+    "placement": "سطح شما",
+    "sessions": "جلسات",
+    "progress": "پیشرفت",
+    "leaderboard": "جدول امتیازات",
+    "calendar": "تقویم",
+    "messages": "پیام‌ها",
+    "settings": "تنظیمات",
+    "teaching": "آموزش",
+    "admin": "مدیریت",
+    "organization": "سازمان",
+    "sectionPractice": "تمرین",
+    "sectionResults": "نتایج",
+    "openMenu": "باز کردن منو",
+    "closeMenu": "بستن منو",
+    "signOut": "خروج"
+  },
+  "sidebar": {
+    "tutor": "مدرس",
+    "tutorVerified": "تأیید شده",
+    "tutorRejected": "تأیید نشده",
+    "tutorPending": "در انتظار بررسی",
+    "level": "سطح {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "زبان رابط کاربری",
+    "description": "زبانی که دکمه‌ها و منوها به آن نمایش داده می‌شوند. درس‌ها به زبانی که یاد می‌گیرید باقی می‌مانند.",
+    "viewingIn": "نمایش به زبان {language}",
+    "change": "تغییر",
+    "keep": "حفظ",
+    "saveFailed": "تغییر زبان ممکن نبود. لطفاً دوباره امتحان کنید."
+  }
+}

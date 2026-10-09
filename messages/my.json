@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "ပယ်ဖျက်မည်",
+    "save": "သိမ်းဆည်းမည်",
+    "close": "ပိတ်မည်",
+    "loading": "တင်နေသည်...",
+    "showOriginal": "မူရင်းကိုပြပါ",
+    "showTranslation": "ဘာသာပြန်ကိုပြပါ"
+  },
+  "nav": {
+    "home": "ပင်မစာမျက်နှာ",
+    "library": "စာကြည့်တိုက်",
+    "courses": "သင်တန်းများ",
+    "tutors": "နည်းပြများ",
+    "review": "ပြန်လည်သုံးသပ်ရန်",
+    "studyPacks": "လေ့လာရေးအထုပ်များ",
+    "placement": "သင့်အဆင့်",
+    "sessions": "သင်ခန်းစာများ",
+    "progress": "တိုးတက်မှု",
+    "leaderboard": "အဆင့်သတ်မှတ်ချက်",
+    "calendar": "ပြက္ခဒိန်",
+    "messages": "မက်ဆေ့ခ်ျများ",
+    "settings": "ဆက်တင်များ",
+    "teaching": "သင်ကြားရေး",
+    "admin": "အုပ်ချုပ်ရေး",
+    "organization": "အဖွဲ့အစည်း",
+    "sectionPractice": "လေ့ကျင့်ခန်း",
+    "sectionResults": "ရလဒ်များ",
+    "openMenu": "မီနူးဖွင့်ပါ",
+    "closeMenu": "မီနူးပိတ်ပါ",
+    "signOut": "ထွက်မည်"
+  },
+  "sidebar": {
+    "tutor": "နည်းပြ",
+    "tutorVerified": "အတည်ပြုပြီး",
+    "tutorRejected": "မအတည်ပြုပါ။",
+    "tutorPending": "စိစစ်ဆဲ",
+    "level": "အဆင့် {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "အင်တာဖေ့စ်ဘာသာစကား",
+    "description": "ခလုတ်များနှင့်မီနူးများကိုပြသသည့်ဘာသာစကား။ သင်ခန်းစာများသည် သင်သင်ယူနေသောဘာသာစကားအတိုင်းရှိနေပါမည်။",
+    "viewingIn": "{language} ဖြင့်ကြည့်ရှုနေသည်",
+    "change": "ပြောင်းရန်",
+    "keep": "ဆက်ထားမည်",
+    "saveFailed": "ဘာသာစကားကို ပြောင်းလဲနိုင်ခြင်းမရှိပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Скасувати",
+    "save": "Зберегти",
+    "close": "Закрити",
+    "loading": "Завантаження…",
+    "showOriginal": "Показати оригінал",
+    "showTranslation": "Показати переклад"
+  },
+  "nav": {
+    "home": "Головна",
+    "library": "Бібліотека",
+    "courses": "Курси",
+    "tutors": "Репетитори",
+    "review": "Огляд",
+    "studyPacks": "Набори для навчання",
+    "placement": "Ваш рівень",
+    "sessions": "Сесії",
+    "progress": "Прогрес",
+    "leaderboard": "Таблиця лідерів",
+    "calendar": "Календар",
+    "messages": "Повідомлення",
+    "settings": "Налаштування",
+    "teaching": "Навчання",
+    "admin": "Адмін",
+    "organization": "Організація",
+    "sectionPractice": "Практика",
+    "sectionResults": "Результати",
+    "openMenu": "Відкрити меню",
+    "closeMenu": "Закрити меню",
+    "signOut": "Вийти"
+  },
+  "sidebar": {
+    "tutor": "Репетитор",
+    "tutorVerified": "Перевірено",
+    "tutorRejected": "Не схвалено",
+    "tutorPending": "Очікує на розгляд",
+    "level": "Рівень {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Мова інтерфейсу",
+    "description": "Мова, якою відображаються кнопки та меню. Уроки залишаються тією мовою, яку ви вивчаєте.",
+    "change": "Змінити",
+    "keep": "Залишити",
+    "saveFailed": "Не вдалося змінити мову. Будь ласка, спробуйте ще раз."
+  }
+}

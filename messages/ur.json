@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "منسوخ کریں",
+    "save": "محفوظ کریں",
+    "close": "بند کریں",
+    "loading": "لوڈ ہو رہا ہے…",
+    "showOriginal": "اصل دکھائیں",
+    "showTranslation": "ترجمہ دکھائیں"
+  },
+  "nav": {
+    "home": "گھر",
+    "library": "لائبریری",
+    "courses": "کورسز",
+    "tutors": "اساتذہ",
+    "review": "دہرائیں",
+    "studyPacks": "مطالعہ پیک",
+    "placement": "آپ کی سطح",
+    "sessions": "اجلاس",
+    "progress": "ترقی",
+    "leaderboard": "لیڈر بورڈ",
+    "calendar": "کیلنڈر",
+    "messages": "پیغامات",
+    "settings": "سیٹنگز",
+    "teaching": "تدریس",
+    "admin": "ایڈمن",
+    "organization": "تنظیم",
+    "sectionPractice": "مشق",
+    "sectionResults": "نتائج",
+    "openMenu": "مینو کھولیں",
+    "closeMenu": "مینو بند کریں",
+    "signOut": "سائن آؤٹ"
+  },
+  "sidebar": {
+    "tutor": "استاد",
+    "tutorVerified": "تصدیق شدہ",
+    "tutorRejected": "منظور نہیں",
+    "tutorPending": "جائزے کے منتظر",
+    "level": "سطح {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "انٹرفیس کی زبان",
+    "description": "وہ زبان جس میں بٹن اور مینو دکھائے جاتے ہیں۔ اسباق اس زبان میں رہیں گے جسے آپ سیکھ رہے ہیں۔",
+    "viewingIn": "{language} میں دیکھ رہے ہیں",
+    "change": "بدلیں",
+    "keep": "رکھیں",
+    "saveFailed": "زبان تبدیل نہیں ہو سکی۔ براہ کرم دوبارہ کوشش کریں۔"
+  }
+}

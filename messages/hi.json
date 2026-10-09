@@ -1,0 +1,50 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "close": "बंद करें",
+    "loading": "लोड हो रहा है…",
+    "showOriginal": "मूल दिखाएँ",
+    "showTranslation": "अनुवाद दिखाएँ"
+  },
+  "nav": {
+    "home": "होम",
+    "library": "लाइब्रेरी",
+    "courses": "कोर्स",
+    "tutors": "ट्यूटर",
+    "review": "समीक्षा",
+    "studyPacks": "स्टडी पैक",
+    "placement": "आपका स्तर",
+    "sessions": "सत्र",
+    "progress": "प्रगति",
+    "leaderboard": "लीडरबोर्ड",
+    "calendar": "कैलेंडर",
+    "messages": "संदेश",
+    "settings": "सेटिंग्स",
+    "teaching": "शिक्षण",
+    "admin": "प्रशासन",
+    "organization": "संगठन",
+    "sectionPractice": "अभ्यास",
+    "sectionResults": "परिणाम",
+    "openMenu": "मेनू खोलें",
+    "closeMenu": "मेनू बंद करें",
+    "signOut": "साइन आउट करें"
+  },
+  "sidebar": {
+    "tutor": "ट्यूटर",
+    "tutorVerified": "सत्यापित",
+    "tutorRejected": "अनुमोदित नहीं",
+    "tutorPending": "समीक्षा के अधीन",
+    "level": "स्तर {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "इंटरफ़ेस भाषा",
+    "description": "जिसमें बटन और मेनू दिखाए जाते हैं। पाठ उस भाषा में रहते हैं जिसे आप सीख रहे हैं।",
+    "viewingIn": "{language} में देख रहे हैं",
+    "change": "बदलें",
+    "keep": "रखें",
+    "saveFailed": "भाषा नहीं बदल सकी। कृपया पुनः प्रयास करें।"
+  }
+}
