@@ -131,7 +131,7 @@ export function ChatBubbleSkeleton({
     <div className={`flex ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
       <Skeleton
         className={`h-10 ${width} rounded-2xl ${
-          align === 'right' ? 'rounded-br-sm' : 'rounded-bl-sm'
+          align === 'right' ? 'rounded-ee-sm' : 'rounded-es-sm'
         }`}
         delay={delay}
       />
@@ -218,7 +218,7 @@ export function ChatPageSkeleton() {
 
 export function TypingIndicator() {
   return (
-    <div className="flex w-fit gap-1 rounded-2xl rounded-bl-sm bg-neutral-100 px-4 py-3 dark:bg-neutral-800" role="status" aria-label="AI is typing">
+    <div className="flex w-fit gap-1 rounded-2xl rounded-es-sm bg-neutral-100 px-4 py-3 dark:bg-neutral-800" role="status" aria-label="AI is typing">
       {[0, 1, 2].map((i) => (
         <span
           key={i}
@@ -266,7 +266,7 @@ export function SharedSessionSkeleton() {
 // on your navigation-pending state (router events / a loading.tsx boundary).
 export function TopProgressBar() {
   return (
-    <div className="fixed left-0 top-0 z-50 h-[2px] w-full overflow-hidden bg-transparent">
+    <div className="fixed start-0 top-0 z-50 h-[2px] w-full overflow-hidden bg-transparent">
       <div className="h-full w-full bg-neutral-900 dark:bg-white animate-progress-indeterminate" />
     </div>
   );

@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
-import { getBCP47 } from '@/lib/language';
+import { getBCP47, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import { speakWithVisemes, unlockAudio } from '@/lib/roleplay/tts';
 import { cn } from '@/lib/design-tokens';
 import { Volume2, RotateCcw, Check, Sparkles, ArrowRight } from 'lucide-react';
@@ -52,7 +52,7 @@ export default function ReviewPage() {
   usePageTitle('Review');
   const router = useRouter();
   const user = useUser();
-  const targetLanguage = user?.preferredTargetLanguage ?? 'ja';
+  const targetLanguage = user?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE;
 
   const [cards, setCards] = useState<DueCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -201,7 +201,7 @@ export default function ReviewPage() {
             )}
             {current.state === 'relearning' && (
               <Badge variant="default">
-                <RotateCcw className="mr-1 inline h-3 w-3" /> Relearning
+                <RotateCcw className="me-1 inline h-3 w-3" /> Relearning
               </Badge>
             )}
             {current.reviewCount > 0 && (
@@ -213,11 +213,11 @@ export default function ReviewPage() {
 
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-3xl font-bold leading-tight tracking-tight text-dojo-text-primary">
+              <p translate="no" className="text-3xl font-bold leading-tight tracking-tight text-dojo-text-primary">
                 {current.targetText}
               </p>
               {current.phonetic && (
-                <p className="mt-2 text-base text-dojo-text-muted">{current.phonetic}</p>
+                <p translate="no" className="mt-2 text-base text-dojo-text-muted">{current.phonetic}</p>
               )}
             </div>
             <button
@@ -263,7 +263,7 @@ export default function ReviewPage() {
                     disabled={submitting}
                     onClick={() => grade(g.quality)}
                     className={cn(
-                      'rounded-(--radius-md) border px-4 py-3 text-left transition-colors disabled:opacity-50',
+                      'rounded-(--radius-md) border px-4 py-3 text-start transition-colors disabled:opacity-50',
                       g.variant === 'danger' && 'border-dojo-danger/30 bg-dojo-danger/10 hover:bg-dojo-danger/20',
                       g.variant === 'secondary' && 'border-dojo-border bg-dojo-surface hover:bg-dojo-surface-raised',
                       g.variant === 'primary' && 'border-dojo-success/30 bg-dojo-success/10 hover:bg-dojo-success/20',

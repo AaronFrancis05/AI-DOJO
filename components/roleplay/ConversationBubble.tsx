@@ -62,11 +62,13 @@ export function ConversationBubble({
           className={cn(
             'group relative overflow-hidden px-4 py-3 shadow-xl transition-all duration-200',
             isUser 
-              ? 'rounded-2xl rounded-tr-none bg-dojo-accent text-white hover:bg-dojo-accent/90' 
-              : 'rounded-2xl rounded-tl-none border border-dojo-border bg-dojo-surface-raised/90 backdrop-blur-md text-dojo-text-primary hover:border-dojo-accent/40'
+              ? 'rounded-2xl rounded-se-none bg-dojo-accent text-white hover:bg-dojo-accent/90' 
+              : 'rounded-2xl rounded-ss-none border border-dojo-border bg-dojo-surface-raised/90 backdrop-blur-md text-dojo-text-primary hover:border-dojo-accent/40'
           )}
         >
-          <p className="text-base font-medium leading-relaxed tracking-wide">
+          {/* translate="no": this is the language being taught. Browser
+              translate (and our own) must never turn it into the learner's. */}
+          <p translate="no" className="text-base font-medium leading-relaxed tracking-wide">
             {messageJp}
           </p>
           
@@ -76,7 +78,7 @@ export function ConversationBubble({
               isUser ? 'border-white/10' : 'border-dojo-border'
             )}>
               {messagePhonetic && (
-                <p className={cn(
+                <p translate="no" className={cn(
                   'text-sm italic leading-relaxed',
                   isUser ? 'text-white/80' : 'text-dojo-text-muted'
                 )}>

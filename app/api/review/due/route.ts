@@ -2,7 +2,8 @@ import { getAuthUser } from '@/lib/auth/server';
 import { db } from '@/src/db';
 import { srsCards, users, vocabulary } from '@/src/schema';
 import { and, eq, lte } from 'drizzle-orm';
-import { applyTargetLanguageVocab, getTargetVocabLocalizations } from '@/lib/localization';
+import { localizeVocabularyForLearner } from '@/lib/localization';
+import { BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export async function GET() {
   const authUser = await getAuthUser();
@@ -26,34 +27,30 @@ export async function GET() {
       )
       .orderBy(srsCards.nextReviewAt),
     db
-      .select({ targetLanguage: users.preferredTargetLanguage })
+      .select({ targetLanguage: users.preferredTargetLanguage, nativeLanguage: users.nativeLanguage })
       .from(users)
       .where(eq(users.id, authUser.id))
       .limit(1),
   ]);
 
-  // Base vocabulary rows hold the Japanese word, so every card used to show
-  // Japanese whatever the learner studies. Cards carry no language of their
-  // own, so the learner's current target language decides; the override is
-  // the same one sessions apply (lib/localization.ts), looked up once per
-  // scenario and cached there.
-  const targetLanguage = profile?.targetLanguage ?? 'ja';
-  const isBaseLanguage = targetLanguage === 'ja';
+  // Cards carry no language of their own, so the learner's current target
+  // language decides the word and their native language decides the meaning
+  // and tip — the same resolver sessions use (lib/localization.ts), looked up
+  // once per scenario and cached there.
+  const targetLanguage = profile?.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
+  const nativeLanguage = profile?.nativeLanguage ?? 'en';
+  const isBaseLanguage = targetLanguage === BASE_CONTENT_LANGUAGE;
   const localizedVocab = new Map<number, typeof rows[number]['vocabulary']>();
-  if (isBaseLanguage) {
-    for (const { vocabulary: v } of rows) localizedVocab.set(v.id, v);
-  } else {
-    const byScenario = new Map<number, typeof rows[number]['vocabulary'][]>();
-    for (const { vocabulary: v } of rows) {
-      const list = byScenario.get(v.scenarioId) ?? [];
-      list.push(v);
-      byScenario.set(v.scenarioId, list);
-    }
-    await Promise.all([...byScenario].map(async ([scenarioId, vocabRows]) => {
-      const locMap = await getTargetVocabLocalizations(scenarioId, targetLanguage);
-      for (const v of applyTargetLanguageVocab(vocabRows, locMap)) localizedVocab.set(v.id, v);
-    }));
+  const byScenario = new Map<number, typeof rows[number]['vocabulary'][]>();
+  for (const { vocabulary: v } of rows) {
+    const list = byScenario.get(v.scenarioId) ?? [];
+    list.push(v);
+    byScenario.set(v.scenarioId, list);
   }
+  await Promise.all([...byScenario].map(async ([scenarioId, vocabRows]) => {
+    const localized = await localizeVocabularyForLearner(scenarioId, vocabRows, targetLanguage, nativeLanguage);
+    for (const v of localized) localizedVocab.set(v.id, v);
+  }));
 
   return Response.json({
     success: true,

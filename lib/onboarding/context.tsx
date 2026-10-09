@@ -12,6 +12,7 @@ import {
   type Dispatch,
 } from 'react';
 import { loadTryoutParams, sanitizeLanguageCode } from '@/lib/tryout/guest-params';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export const ONBOARDING_STORAGE_KEY = 'ai-dojo:onboarding';
 
@@ -47,7 +48,7 @@ export const initialOnboardingState: OnboardingState = {
   preferredDomainName: '',
   preferredMode: '',
   ageRange: '',
-  targetLanguage: 'ja',
+  targetLanguage: DEFAULT_TARGET_LANGUAGE,
   nativeLanguage: 'en',
   dailyGoalMinutes: 30,
   completedSteps: [],

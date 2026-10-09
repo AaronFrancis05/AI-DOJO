@@ -63,7 +63,7 @@ export function VoiceCoachPanel({
               <p className="text-sm font-medium text-dojo-text-primary leading-relaxed">
                 {retryTarget.correctedText}
                 {retryTarget.correctedPhonetic ? (
-                  <span className="ml-1 italic text-dojo-text-muted">({retryTarget.correctedPhonetic})</span>
+                  <span className="ms-1 italic text-dojo-text-muted">({retryTarget.correctedPhonetic})</span>
                 ) : null}
               </p>
               {onRetry && (

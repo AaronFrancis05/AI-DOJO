@@ -87,7 +87,7 @@ function ScoreRow({ label, ai, tutor }: { label: string; ai: number | null; tuto
         {ai != null && <ProgressBar value={ai} color="accent" size="sm" />}
         {tutor != null && <ProgressBar value={tutor} color="success" size="sm" />}
       </span>
-      <span className="text-right font-semibold tabular-nums text-dojo-text-primary">
+      <span className="text-end font-semibold tabular-nums text-dojo-text-primary">
         {ai != null && tutor != null ? `${ai}/${tutor}` : (ai ?? tutor ?? '—')}
       </span>
     </div>

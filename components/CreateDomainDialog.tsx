@@ -127,7 +127,7 @@ export function CreateDomainDialog({ open, onClose }: { open: boolean; onClose: 
         className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[--radius-lg] border border-dojo-border bg-dojo-sidebar p-6 shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        <button onClick={onClose} className="absolute right-4 top-4 text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
+        <button onClick={onClose} className="absolute end-4 top-4 text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
           <X className="h-5 w-5" />
         </button>
 

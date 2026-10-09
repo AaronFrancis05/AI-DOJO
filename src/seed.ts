@@ -9,6 +9,8 @@ import {
   goalCompletions, vocabularyEncounters,
   scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
   scenarioGoalLocalizations,
+  scenarioNativeLocalizations, situationNativeLocalizations,
+  scenarioGoalNativeLocalizations, vocabularyNativeNotes,
   countries, scenarioSettings,
   courses, courseLevels, units, lessons, lessonPhases,
   languages,
@@ -54,6 +56,15 @@ interface GoalLocFixtureRow {
   targetPhrase: string | null;
 }
 
+// Native-language explanations, keyed by (row, target, native) — see the
+// *_native_* tables in src/schema.ts. Optional so older fixtures still load.
+interface NativeLocFixture {
+  scenarios: Array<{ scenario: string; targetLanguage: string; nativeLanguage: string; title: string | null; context: string | null; learningGoals: string | null; aiCharacterRole: string | null; userCharacterRole: string | null }>;
+  situations: Array<{ domainSlug: string; situation: string; targetLanguage: string; nativeLanguage: string; title: string | null; context: string | null; learningGoals: string | null; focusPills: string | null }>;
+  goals: Array<{ scenario: string; sequenceOrder: number; targetLanguage: string; nativeLanguage: string; goalText: string | null }>;
+  vocabulary: Array<{ scenario: string; targetText: string; targetLanguage: string; nativeLanguage: string; usageTip: string | null }>;
+}
+
 interface LocalizationFixture {
   version: number;
   counts: { scenarios: number; situations: number; vocabulary: number; goals: number };
@@ -61,6 +72,26 @@ interface LocalizationFixture {
   situationLocalizations: SituationLocFixtureRow[];
   vocabularyLocalizations: VocabLocFixtureRow[];
   scenarioGoalLocalizations: GoalLocFixtureRow[];
+  nativeLocalizations?: NativeLocFixture;
+}
+
+// Chunked insert for fixture replay; returns how many rows were new.
+async function insertChunked(
+  table: typeof scenarioNativeLocalizations | typeof situationNativeLocalizations
+    | typeof scenarioGoalNativeLocalizations | typeof vocabularyNativeNotes,
+  values: Array<Record<string, unknown>>,
+): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < values.length; i += 200) {
+    const res = await db.insert(table)
+      // Each caller builds rows for exactly this table; the union type is
+      // what keeps one helper for all four.
+      .values(values.slice(i, i + 200) as never)
+      .onConflictDoNothing()
+      .returning({ id: table.id });
+    inserted += res.length;
+  }
+  return inserted;
 }
 
 async function seed() {
@@ -1286,6 +1317,39 @@ const [s1Row] = await db.insert(sessions).values({
         `${scenLocSkippedNoParent.length} scenario, ${sitLocSkippedNoParent.length} situation, ${vocabLocSkippedNoParent.length} vocab, ${goalLocSkippedNoParent.length} goal entr(ies) skipped.`);
       for (const s of [...scenLocSkippedNoParent.slice(0, 3), ...sitLocSkippedNoParent.slice(0, 3), ...vocabLocSkippedNoParent.slice(0, 3), ...goalLocSkippedNoParent.slice(0, 3)]) {
         console.log(`  [skip-no-parent] ${s}`);
+      }
+    }
+
+    // Native-language explanations. The unique (row, target, native) index
+    // makes onConflictDoNothing the existence check, so reruns insert nothing.
+    const nativeFixture = fixture.nativeLocalizations;
+    if (nativeFixture) {
+      const nativeSkipped: string[] = [];
+      const pick = <T, V>(rows: T[], resolve: (row: T) => number | undefined, label: (row: T) => string, build: (id: number, row: T) => V): V[] =>
+        rows.flatMap((row) => {
+          const id = resolve(row);
+          if (!id) { nativeSkipped.push(label(row)); return []; }
+          return [build(id, row)];
+        });
+      const nativeInserts: Array<[string, () => Promise<number>]> = [
+        ['scenario', async () => insertChunked(scenarioNativeLocalizations, pick(nativeFixture.scenarios,
+          (r) => scenarioIdByTitle.get(r.scenario), (r) => r.scenario,
+          (scenarioId, r) => ({ scenarioId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, title: r.title, context: r.context, learningGoals: r.learningGoals, aiCharacterRole: r.aiCharacterRole, userCharacterRole: r.userCharacterRole })))],
+        ['situation', async () => insertChunked(situationNativeLocalizations, pick(nativeFixture.situations,
+          (r) => situationIdByKey.get(`${r.domainSlug}\u0000${r.situation}`), (r) => `${r.domainSlug}/${r.situation}`,
+          (situationId, r) => ({ situationId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, title: r.title, context: r.context, learningGoals: r.learningGoals, focusPills: r.focusPills })))],
+        ['goal', async () => insertChunked(scenarioGoalNativeLocalizations, pick(nativeFixture.goals,
+          (r) => goalIdByKey.get(`${r.scenario}\u0000${r.sequenceOrder}`), (r) => `${r.scenario}/#${r.sequenceOrder}`,
+          (scenarioGoalId, r) => ({ scenarioGoalId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, goalText: r.goalText })))],
+        ['word tip', async () => insertChunked(vocabularyNativeNotes, pick(nativeFixture.vocabulary,
+          (r) => vocabIdByKey.get(`${r.scenario}\u0000${r.targetText}`), (r) => `${r.scenario}/${r.targetText}`,
+          (vocabularyId, r) => ({ vocabularyId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, usageTip: r.usageTip })))],
+      ];
+      const counts: string[] = [];
+      for (const [label, run] of nativeInserts) counts.push(`${await run()} ${label}`);
+      console.log(`Native explanations replayed: ${counts.join(', ')} row(s) inserted.`);
+      if (nativeSkipped.length > 0) {
+        console.log(`  ${nativeSkipped.length} native entr(ies) skipped — parent not found yet, e.g. ${nativeSkipped.slice(0, 3).join('; ')}`);
       }
     }
 

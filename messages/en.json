@@ -1,0 +1,48 @@
+{
+  "common": {
+    "appName": "AI DOJO",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "loading": "Loading…",
+    "showOriginal": "Show original",
+    "showTranslation": "Show translation"
+  },
+  "nav": {
+    "home": "Home",
+    "library": "Library",
+    "courses": "Courses",
+    "tutors": "Tutors",
+    "review": "Review",
+    "sessions": "Sessions",
+    "progress": "Progress",
+    "leaderboard": "Leaderboard",
+    "calendar": "Calendar",
+    "messages": "Messages",
+    "settings": "Settings",
+    "teaching": "Teaching",
+    "admin": "Admin",
+    "organization": "Organization",
+    "sectionPractice": "Practice",
+    "sectionResults": "Results",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "signOut": "Sign Out"
+  },
+  "sidebar": {
+    "tutor": "Tutor",
+    "tutorVerified": "Verified",
+    "tutorRejected": "Not approved",
+    "tutorPending": "Pending review",
+    "level": "Level {level}",
+    "xp": "{xp} / {xpToNext} XP"
+  },
+  "uiLanguage": {
+    "label": "Interface language",
+    "description": "The language buttons and menus are shown in. Lessons stay in the language you are learning.",
+    "viewingIn": "Viewing in {language}",
+    "change": "change",
+    "keep": "Keep",
+    "saveFailed": "Could not change the language. Please try again."
+  }
+}

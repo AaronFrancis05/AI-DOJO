@@ -236,7 +236,7 @@ function RoomRow({
         type="button"
         onClick={onClick}
         className={cn(
-          'flex w-full items-center gap-3 rounded-[--radius-md] p-2.5 text-left transition-colors',
+          'flex w-full items-center gap-3 rounded-[--radius-md] p-2.5 text-start transition-colors',
           active
             ? 'bg-dojo-accent/10'
             : 'hover:bg-dojo-surface',
@@ -268,7 +268,7 @@ function RoomRow({
             <p className={cn('truncate text-xs', unread ? 'text-dojo-text-primary' : 'text-dojo-text-muted')}>
               {isMine ? 'You: ' : ''}
               {isVoice && (
-                <Mic className="mr-1 inline h-3 w-3 align-[-1px] text-dojo-text-muted" />
+                <Mic className="me-1 inline h-3 w-3 align-[-1px] text-dojo-text-muted" />
               )}
               {preview}
             </p>
@@ -312,14 +312,14 @@ function NewChatDialog({
       size="md"
     >
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dojo-text-muted" />
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dojo-text-muted" />
         <input
           autoFocus
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Type a name or email…"
           aria-label="Search users"
-          className="w-full rounded-full border border-dojo-border bg-dojo-surface py-2 pl-9 pr-4 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none focus:ring-2 focus:ring-dojo-accent/20"
+          className="w-full rounded-full border border-dojo-border bg-dojo-surface py-2 ps-9 pe-4 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none focus:ring-2 focus:ring-dojo-accent/20"
         />
       </div>
 
@@ -350,7 +350,7 @@ function NewChatDialog({
                     type="button"
                     onClick={() => onCreate(u.id)}
                     disabled={creating === u.id}
-                    className="flex w-full items-center gap-3 rounded-[--radius-md] p-2.5 text-left transition-colors hover:bg-dojo-surface-raised disabled:opacity-60"
+                    className="flex w-full items-center gap-3 rounded-[--radius-md] p-2.5 text-start transition-colors hover:bg-dojo-surface-raised disabled:opacity-60"
                   >
                     <Avatar name={u.name} src={u.avatarSrc} size="md" />
                     <div className="min-w-0 flex-1">

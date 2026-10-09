@@ -9,12 +9,18 @@ import {
   isAbandonmentReason,
 } from '../../../../lib/roleplay/session-lifecycle';
 import {
-  getScenarioLocalization,
-  getScenarioVocabLocalizations,
-  getTargetVocabLocalizations,
+  getTargetScenarioLocalization,
+  getTargetSituationLocalization,
+  getTargetGoalLocalizations,
   applyScenarioLocalization,
-  applyTargetLanguageVocab,
+  applySituationLocalization,
+  applyGoalLocalization,
+  resolveNativeScenarioLocalization,
+  resolveNativeSituationLocalization,
+  localizeGoalsForLearner,
+  localizeVocabularyForLearner,
 } from '../../../../lib/localization';
+import { BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '../../../../lib/language';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
@@ -140,11 +146,11 @@ export async function GET(
   const [vocabItems, goals, domainResult] = await Promise.all([
     scenario
       ? (async (): Promise<VocabRow[]> => {
-          const lang = session.targetLanguage ?? 'ja';
+          const lang = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
           const k = cacheKeys.vocabulary(scenario.id, lang);
           const c = await cacheGet<VocabRow[]>(k);
           if (c) return c;
-          const languages = lang === 'ja' ? ['ja'] : ['ja', lang];
+          const languages = lang === BASE_CONTENT_LANGUAGE ? [BASE_CONTENT_LANGUAGE] : [BASE_CONTENT_LANGUAGE, lang];
           const r = await db.select().from(vocabulary).where(and(eq(vocabulary.scenarioId, scenario.id), inArray(vocabulary.languageCode, languages)));
           await cacheSet(k, r, TTL.VOCABULARY);
           return r;
@@ -194,37 +200,40 @@ export async function GET(
     corrections: correctionsByConvId.get(conv.id) ?? [],
   }));
 
-  // Localize the scenario into the learner's NATIVE language so the
-  // icebreaker and chat screens show an explanation they can understand,
-  // then overlay any target-language content on top (mirrors analyze-turn).
-  // The base scenario rows are English; scenario_localizations hold the
-  // native-language instructional text.
+  // What the learner reads is the TARGET scene (the one the AI plays, see
+  // analyze-turn) explained in their NATIVE language. Target layer first —
+  // setting, character names, the phrases to say — then the native
+  // explanation over it, resolved per (target, native) pair. Each resolver
+  // falls back native → English → base on its own, so a missing row never
+  // mixes languages silently (it logs).
   let localizedScenario = scenario;
-  let localizedVocab = vocabItems;
+  let localizedSituation = situation;
+  let localizedGoals = goals;
   const nativeLang = session.nativeLanguage ?? 'en';
-  const targetLang = session.targetLanguage ?? 'ja';
+  const targetLang = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
+  const isBaseTarget = targetLang === BASE_CONTENT_LANGUAGE;
+  const [targetScenarioLoc, nativeScenarioLoc, targetSituationLoc, nativeSituationLoc, targetGoalLocs] = await Promise.all([
+    scenario && !isBaseTarget ? getTargetScenarioLocalization(scenario.id, targetLang) : Promise.resolve(null),
+    scenario ? resolveNativeScenarioLocalization(scenario.id, targetLang, nativeLang) : Promise.resolve(null),
+    situation && !isBaseTarget ? getTargetSituationLocalization(situation.id, targetLang) : Promise.resolve(null),
+    situation ? resolveNativeSituationLocalization(situation.id, targetLang, nativeLang) : Promise.resolve(null),
+    scenario && !isBaseTarget ? getTargetGoalLocalizations(scenario.id, targetLang) : Promise.resolve(new Map()),
+  ]);
   if (localizedScenario) {
-    // Native-language scenario text is the final state for the shared
-    // instructional fields (title/context/goals/character names). The base
-    // rows are English; applyScenarioLocalization never overwrites an
-    // existing value, so a missing native row falls back to English cleanly.
-    const nativeLoc = await getScenarioLocalization(localizedScenario.id, nativeLang);
-    if (nativeLoc) localizedScenario = applyScenarioLocalization(localizedScenario, nativeLoc);
+    localizedScenario = applyScenarioLocalization(localizedScenario, targetScenarioLoc);
+    localizedScenario = applyScenarioLocalization(localizedScenario, nativeScenarioLoc);
   }
-  if (localizedVocab.length > 0) {
-    const [nativeVocabLoc, targetVocabLoc] = await Promise.all([
-      getScenarioVocabLocalizations(localizedScenario!.id, nativeLang),
-      getTargetVocabLocalizations(localizedScenario!.id, targetLang),
-    ]);
-    if (nativeVocabLoc.size > 0) {
-      localizedVocab = localizedVocab.map((v) => {
-        const localized = nativeVocabLoc.get(v.id);
-        if (!localized) return v;
-        return { ...v, translation: localized.translation ?? v.translation, usageTip: localized.usageTip ?? v.usageTip };
-      });
-    }
-    if (targetVocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(localizedVocab, targetVocabLoc);
+  if (localizedSituation) {
+    localizedSituation = applySituationLocalization(localizedSituation, targetSituationLoc);
+    localizedSituation = applySituationLocalization(localizedSituation, nativeSituationLoc);
   }
+  if (scenario && localizedGoals.length > 0) {
+    localizedGoals = localizedGoals.map((g) => applyGoalLocalization(g, targetGoalLocs.get(g.id) ?? null));
+    localizedGoals = await localizeGoalsForLearner(scenario.id, localizedGoals, targetLang, nativeLang);
+  }
+  const localizedVocab = scenario
+    ? await localizeVocabularyForLearner(scenario.id, vocabItems, targetLang, nativeLang)
+    : vocabItems;
 
   // Per-session avatar override — resolves the catalog entry the user picked
   // in the two-card picker. Keeps historical sessions isolated even when the
@@ -249,12 +258,12 @@ export async function GET(
     session,
     nextLesson,
     scenario: scenarioForClient,
-    situation,
+    situation: localizedSituation,
     domain: domainResult,
     character,
     selectedAvatar,
     vocabulary: localizedVocab,
-    goals,
+    goals: localizedGoals,
     conversations: conversationWithCorrections,
     evaluation: evaluationResult,
     goalCompletions: goalCompletionList,

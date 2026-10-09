@@ -58,6 +58,8 @@ import {
   Briefcase,
   Compass,
   Sun,
+  UserRound,
+  GraduationCap,
   Repeat2,
   type LucideIcon,
 } from 'lucide-react';
@@ -118,6 +120,8 @@ const domainIconMap: Record<string, LucideIcon> = {
   business: Briefcase,
   travel: Compass,
   daily_life: Sun,
+  careers: UserRound,
+  speaking_exams: GraduationCap,
 };
 
 interface JourneyItem {
@@ -452,11 +456,11 @@ export default function HomePage() {
 
       {/* ── Profile hero: level, progress, headline stats ── */}
       <div className="relative overflow-hidden rounded-[--radius-lg] border border-dojo-border bg-dojo-surface-raised p-6 lg:p-8 shadow-lg">
-        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-dojo-accent/10 blur-[80px]" />
-        <div className="absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
+        <div className="absolute -top-24 -end-24 h-64 w-64 rounded-full bg-dojo-accent/10 blur-[80px]" />
+        <div className="absolute -bottom-24 -start-24 h-64 w-64 rounded-full bg-dojo-success/10 blur-[80px]" />
 
         <div className="relative z-10 flex flex-col items-center gap-8 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex w-full flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:text-left xl:w-auto">
+          <div className="flex w-full flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:text-start xl:w-auto">
             {/* Avatar inside a ring of progress toward the next level. */}
             <RadialProgress
               value={xpPct}
@@ -475,7 +479,7 @@ export default function HomePage() {
                   </div>
                 )}
               </div>
-              <div className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-dojo-surface-raised bg-dojo-accent text-white shadow-lg">
+              <div className="absolute bottom-2 end-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-dojo-surface-raised bg-dojo-accent text-white shadow-lg">
                 <Trophy className="h-4 w-4" />
               </div>
             </RadialProgress>
@@ -558,7 +562,7 @@ export default function HomePage() {
               </span>
               <span className="mt-1 text-xs font-medium text-dojo-text-muted">mins</span>
             </RadialProgress>
-            <div className="text-right">
+            <div className="text-end">
               <p className="text-xl font-black text-dojo-accent">{dailyGoalPct}%</p>
               <p className="text-xs font-medium text-dojo-text-muted">completed</p>
             </div>
@@ -688,7 +692,7 @@ export default function HomePage() {
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
                       <Repeat2 className="h-4 w-4 text-dojo-warning-strong" />
                     </div>
-                    <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-dojo-text-muted" />
+                    <ArrowRight className="ms-auto h-4 w-4 shrink-0 text-dojo-text-muted" />
                   </div>
                   <p className="mt-3 text-sm font-semibold text-dojo-text-primary">
                     {dueCount} {dueCount === 1 ? 'word' : 'words'} to review
@@ -744,7 +748,7 @@ export default function HomePage() {
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">Learning Journey</h3>
             <Button variant="ghost" size="sm" className="text-xs font-bold" onClick={() => router.push('/progress')}>
-              View Roadmap <ArrowRight className="ml-1 h-3 w-3" />
+              View Roadmap <ArrowRight className="ms-1 h-3 w-3" />
             </Button>
           </div>
 
@@ -755,7 +759,7 @@ export default function HomePage() {
                 <p className="mb-1 text-sm font-bold text-dojo-text-primary">Your learning journey starts here</p>
                 <p className="mx-auto max-w-sm text-sm leading-relaxed text-dojo-text-muted">Complete role-play scenarios in the Dojo to build up each domain on your roadmap.</p>
                 <Button variant="primary" size="sm" className="mt-5" onClick={() => router.push('/library')}>
-                  Explore Scenarios <ArrowRight className="ml-1 h-3 w-3" />
+                  Explore Scenarios <ArrowRight className="ms-1 h-3 w-3" />
                 </Button>
               </div>
             ) : (
@@ -765,13 +769,13 @@ export default function HomePage() {
                 const completed = item.pct >= 100;
                 return (
                   <Link key={item.slug} href={`/dojo/${item.slug}`} className="group relative overflow-hidden rounded-[--radius-md] border border-dojo-border bg-dojo-surface/40 p-4 transition-all hover:border-dojo-accent">
-                    <div className={`absolute left-0 top-0 h-1 w-full ${isAccent ? 'bg-dojo-accent' : 'bg-dojo-success/40'}`} />
+                    <div className={`absolute start-0 top-0 h-1 w-full ${isAccent ? 'bg-dojo-accent' : 'bg-dojo-success/40'}`} />
                     <div className="mb-3 flex items-center gap-3">
                       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${isAccent ? 'bg-dojo-accent/20 text-dojo-accent' : 'bg-dojo-success/20 text-dojo-success-strong'}`}>
                         <Icon className="h-4 w-4" />
                       </div>
                       <p className="text-sm font-bold text-dojo-text-primary">{item.name}</p>
-                      <Badge variant={completed ? 'success' : 'accent'} className="ml-auto text-xs">{completed ? 'Completed' : 'In Progress'}</Badge>
+                      <Badge variant={completed ? 'success' : 'accent'} className="ms-auto text-xs">{completed ? 'Completed' : 'In Progress'}</Badge>
                     </div>
                     <p className="mb-3 text-sm leading-relaxed text-dojo-text-muted">{item.completed} of {item.total} scenarios practiced in this domain.</p>
                     <div className="mb-1 flex items-center justify-between text-xs font-bold text-dojo-text-muted">
@@ -865,7 +869,7 @@ export default function HomePage() {
           <Link href="/sessions?from=home">
             <Button variant="ghost" size="sm" className="h-8 text-xs font-bold">
               View Full History
-              <ArrowRight className="ml-1 h-3 w-3" />
+              <ArrowRight className="ms-1 h-3 w-3" />
             </Button>
           </Link>
         </div>

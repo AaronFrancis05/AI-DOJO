@@ -25,7 +25,10 @@ export const users = pgTable('users', {
   xpToNext:              integer('xp_to_next').default(1000).notNull(),
   tier:                  varchar('tier', { length: 20 }).default('premium').notNull(),
   nativeLanguage:        varchar('native_language', { length: 10 }).default('en').notNull(),
-  preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('ja').notNull(),
+  // 'en' mirrors DEFAULT_TARGET_LANGUAGE in lib/language.ts. nativeLanguage's
+  // 'en' is only a technical fallback — sign-up infers it from the country or
+  // Accept-Language (app/api/user/onboarding/route.ts).
+  preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('en').notNull(),
   streak:                integer('streak').default(0).notNull(),
   lastActiveDate:        varchar('last_active_date', { length: 10 }),
   avatarSrc:             text('avatar_src'),
@@ -238,6 +241,74 @@ export const scenarioGoalLocalizations = pgTable('scenario_goal_localizations', 
   uniqueGoalLang: uniqueIndex('uq_scenario_goal_localizations_key').on(table.scenarioGoalId, table.languageCode),
 }));
 
+// ── Native-language explanations ──────────────────────────────
+// The *_localizations tables above hold TARGET-language content: the scene a
+// learner of that language plays (re-set in a place where it is spoken,
+// written in it). A learner also needs that scene EXPLAINED in their own
+// language, and the explanation depends on both sides of the pair: a French
+// speaker learning English needs the English café scene described in French,
+// which is neither the French target row nor the English one. These tables
+// are keyed by (row, targetLanguage, nativeLanguage) for that reason, and are
+// read through lib/localization.ts (resolveNative*), never directly.
+// Character names are not here: they belong to the target scene.
+
+export const scenarioNativeLocalizations = pgTable('scenario_native_localizations', {
+  id:                serial('id').primaryKey(),
+  scenarioId:        integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:    varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage:    varchar('native_language', { length: 10 }).notNull(),
+  title:             varchar('title', { length: 120 }),
+  context:           text('context'),
+  learningGoals:     text('learning_goals'),
+  aiCharacterRole:   varchar('ai_character_role', { length: 150 }),
+  userCharacterRole: varchar('user_character_role', { length: 150 }),
+  createdAt:         timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueScenarioPair: uniqueIndex('uq_scenario_native_localizations_key').on(table.scenarioId, table.targetLanguage, table.nativeLanguage),
+}));
+
+export const situationNativeLocalizations = pgTable('situation_native_localizations', {
+  id:             serial('id').primaryKey(),
+  situationId:    integer('situation_id').references(() => situations.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  title:          varchar('title', { length: 120 }),
+  context:        text('context'),
+  learningGoals:  text('learning_goals'),
+  focusPills:     text('focus_pills'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueSituationPair: uniqueIndex('uq_situation_native_localizations_key').on(table.situationId, table.targetLanguage, table.nativeLanguage),
+}));
+
+// goalText only — targetPhrase is what the learner says, so it stays in the
+// target language (scenario_goal_localizations).
+export const scenarioGoalNativeLocalizations = pgTable('scenario_goal_native_localizations', {
+  id:             serial('id').primaryKey(),
+  scenarioGoalId: integer('scenario_goal_id').references(() => scenarioGoals.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  goalText:       text('goal_text'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueGoalPair: uniqueIndex('uq_scenario_goal_native_localizations_key').on(table.scenarioGoalId, table.targetLanguage, table.nativeLanguage),
+}));
+
+// The meaning of a word needs no row here: it is the word itself in the
+// learner's language (vocabulary_localizations[native].translation, or the
+// base columns) — see resolveNativeGloss. A usage tip is different: it is
+// advice about the TARGET word, written for a speaker of the native one.
+export const vocabularyNativeNotes = pgTable('vocabulary_native_notes', {
+  id:             serial('id').primaryKey(),
+  vocabularyId:   integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  usageTip:       text('usage_tip'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueVocabPair: uniqueIndex('uq_vocabulary_native_notes_key').on(table.vocabularyId, table.targetLanguage, table.nativeLanguage),
+}));
+
 export const countries = pgTable('countries', {
   id:                    serial('id').primaryKey(),
   code:                  varchar('code', { length: 2 }).notNull().unique(),
@@ -286,7 +357,7 @@ export const sessions = pgTable('sessions', {
   pendingRetryCorrectionId: integer('pending_retry_correction_id'),
   stalledTurnCount: integer('stalled_turn_count').default(0).notNull(),
   completionAcknowledged: boolean('completion_acknowledged').default(false).notNull(),
-  targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).default('en').notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
@@ -530,7 +601,7 @@ export const studentProgress = pgTable('student_progress', {
   id:               serial('id').primaryKey(),
   userId:           text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   courseId:         integer('course_id').references(() => courses.id, { onDelete: 'cascade' }).notNull(),
-  targetLanguage:   varchar('target_language', { length: 10 }).default('ja').notNull(),
+  targetLanguage:   varchar('target_language', { length: 10 }).default('en').notNull(),
   nativeLanguage:   varchar('native_language', { length: 10 }).default('en').notNull(),
   currentLevelId:   integer('current_level_id').references(() => courseLevels.id, { onDelete: 'set null' }),
   currentUnitId:    integer('current_unit_id').references(() => units.id, { onDelete: 'set null' }),
@@ -555,7 +626,7 @@ export const studentLessonProgress = pgTable('student_lesson_progress', {
   id:              serial('id').primaryKey(),
   userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   lessonId:        integer('lesson_id').references(() => lessons.id, { onDelete: 'cascade' }).notNull(),
-  targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).default('en').notNull(),
   status:          varchar('status', { length: 20 }).default('not_started').notNull(),
   currentPhaseKey: varchar('current_phase_key', { length: 20 }),
   completedPhases: text('completed_phases'),

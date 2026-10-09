@@ -285,7 +285,7 @@ function LanguageForm({
     <div>
       <label htmlFor={id(key)} className="mb-2 block text-sm text-dojo-text-primary">
         {label}
-        {(REQUIRED as readonly string[]).includes(key) && <span className="ml-1 text-dojo-danger">*</span>}
+        {(REQUIRED as readonly string[]).includes(key) && <span className="ms-1 text-dojo-danger">*</span>}
       </label>
       <input
         id={id(key)}

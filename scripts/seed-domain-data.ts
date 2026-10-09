@@ -12,6 +12,10 @@ const domainFixtures = [
   { slug: 'business', name: 'Business', description: 'Attend meetings, communicate with colleagues, send emails', icon: 'Briefcase', heroGradientFrom: '#2563EB', heroGradientTo: '#0F337A', situationCount: 8, displayOrder: 6 },
   { slug: 'travel', name: 'Travel & Tourism', description: 'Ask for directions, buy tickets, check into accommodation', icon: 'Compass', heroGradientFrom: '#06B6D4', heroGradientTo: '#035B6B', situationCount: 7, displayOrder: 7 },
   { slug: 'daily_life', name: 'Daily Life', description: 'Meet neighbours, make small talk, manage errands', icon: 'Sun', heroGradientFrom: '#F59E0B', heroGradientTo: '#7A4F06', situationCount: 9, displayOrder: 8 },
+  // English-first (PLAN.md 2.6): the scenes learners of English most often
+  // need, written culture-neutral so they work for every native language.
+  { slug: 'careers', name: 'Careers & Interviews', description: 'Interview for a job, talk to recruiters, negotiate an offer', icon: 'UserRound', heroGradientFrom: '#0EA5E9', heroGradientTo: '#075985', situationCount: 4, displayOrder: 9 },
+  { slug: 'speaking_exams', name: 'Speaking Exams', description: 'Rehearse IELTS and TOEIC speaking tasks under exam conditions', icon: 'GraduationCap', heroGradientFrom: '#DB2777', heroGradientTo: '#701A45', situationCount: 5, displayOrder: 10 },
 ];
 
 const characterFixtures = [
@@ -61,6 +65,21 @@ const situationFixtures = [
   { domainSlug: 'hospital', title: 'Orienting a New Resident', context: 'Walk a newly admitted elderly resident through the daily schedule and facility rules on their first day.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Explain a daily routine and facility rules clearly and kindly', focusPills: 'Elderly Care|||Orientation|||Daily Schedule|||Clarity', displayOrder: 11 },
   { domainSlug: 'hospital', title: 'Pharmacy Medication Instructions', context: 'Explain to a patient (or their caregiver) how and when to take a newly prescribed medication.', skillLevel: 'beginner', behaviorMode: 'standard', learningGoals: 'Give clear dosage and timing instructions for medication', focusPills: 'Medication|||Dosage & Timing|||Side Effects|||Clarity', displayOrder: 12 },
   { domainSlug: 'hospital', title: 'Difficult Family Conversation', context: 'A resident\'s condition has worsened — deliver the update to an upset family member with care and honesty.', skillLevel: 'advanced', behaviorMode: 'trouble', learningGoals: 'Deliver sensitive news calmly while managing an emotional reaction', focusPills: 'Elderly Care|||Difficult News|||Emotional Regulation|||Compassion', displayOrder: 13 },
+  // ── English-first, culture-neutral (PLAN.md 2.6) ──
+  { domainSlug: 'business', title: 'Daily Stand-up with a Remote Team', context: 'Join a 15-minute video stand-up with a project team spread across several time zones and report what you did yesterday, what you will do today, and what is blocking you.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Give a clear, time-boxed status update and ask a teammate for help with a blocker', focusPills: 'Status Updates|||Past vs Present Tense|||Blockers|||Asking for Help', displayOrder: 4 },
+  { domainSlug: 'business', title: 'Customer Support Call', context: 'A customer calls because their online order arrived damaged. Listen, confirm the details, apologise and offer a replacement or refund.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Handle a support call with empathy, confirm details and resolve the issue', focusPills: 'Empathy Phrases|||Confirming Details|||Apologies|||Offering Solutions', displayOrder: 5 },
+  { domainSlug: 'business', title: 'Escalating an Angry Customer', context: 'A customer whose problem has been open for two weeks demands to speak to a manager. Stay calm, take ownership and agree a concrete next step.', skillLevel: 'advanced', behaviorMode: 'trouble', learningGoals: 'De-escalate an angry customer and commit to a clear resolution plan', focusPills: 'De-escalation|||Ownership Language|||Setting Expectations|||Professional Tone', displayOrder: 6 },
+  { domainSlug: 'business', title: 'Small Talk Before a Client Call', context: 'Two minutes before a video call with an international client starts, make friendly small talk while everyone joins.', skillLevel: 'beginner', behaviorMode: 'standard', learningGoals: 'Open a call with natural small talk about weather, weekends and travel', focusPills: 'Small Talk|||Greetings|||Follow-up Questions|||Transitions', displayOrder: 7 },
+  { domainSlug: 'careers', title: 'Tell Me About Yourself', context: 'A hiring manager opens a job interview with the classic first question. Introduce your background, strengths and why you want this role.', skillLevel: 'beginner', behaviorMode: 'standard', learningGoals: 'Give a structured two-minute self-introduction for a job interview', focusPills: 'Self-introduction|||Work Experience|||Strengths|||Motivation', displayOrder: 1 },
+  { domainSlug: 'careers', title: 'Phone Screen with a Recruiter', context: 'A recruiter calls about a role you applied for and asks about your availability, notice period and expectations.', skillLevel: 'beginner', behaviorMode: 'standard', learningGoals: 'Answer screening questions clearly and ask about next steps', focusPills: 'Availability|||Dates & Times|||Clarifying Questions|||Next Steps', displayOrder: 2 },
+  { domainSlug: 'careers', title: 'Behavioural Interview Questions', context: 'The interviewer asks "Tell me about a time you solved a difficult problem." Answer with a clear situation, task, action and result.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Answer behavioural questions with the STAR structure and past tenses', focusPills: 'STAR Method|||Past Tenses|||Achievements|||Reflection', displayOrder: 3 },
+  { domainSlug: 'careers', title: 'Negotiating a Job Offer', context: 'You have received an offer, but the salary is lower than you hoped. Negotiate the salary and start date politely and confidently.', skillLevel: 'advanced', behaviorMode: 'trouble', learningGoals: 'Negotiate an offer firmly while keeping the relationship positive', focusPills: 'Negotiation|||Hedging|||Justifying a Request|||Closing a Deal', displayOrder: 4 },
+  { domainSlug: 'speaking_exams', title: 'IELTS Speaking Part 1: Everyday Topics', context: 'An examiner asks short questions about your home, work or studies, and your hobbies. Give full, natural answers, not one-word replies.', skillLevel: 'beginner', behaviorMode: 'standard', learningGoals: 'Extend short answers with reasons and examples', focusPills: 'Personal Topics|||Giving Reasons|||Examples|||Fluency', displayOrder: 1 },
+  { domainSlug: 'speaking_exams', title: 'IELTS Speaking Part 2: Long Turn', context: 'You get a cue card ("Describe a place you would like to visit"), one minute to prepare, and must speak for up to two minutes without stopping.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Organise a two-minute talk with a clear opening, details and conclusion', focusPills: 'Organisation|||Linking Words|||Description|||Speaking at Length', displayOrder: 2 },
+  { domainSlug: 'speaking_exams', title: 'IELTS Speaking Part 3: Discussion', context: 'The examiner moves from your Part 2 topic to abstract questions about society and the future, and asks you to compare and speculate.', skillLevel: 'advanced', behaviorMode: 'standard', learningGoals: 'Discuss abstract ideas, compare viewpoints and speculate', focusPills: 'Opinions|||Comparing|||Speculating|||Complex Sentences', displayOrder: 3 },
+  { domainSlug: 'speaking_exams', title: 'TOEIC Speaking: Describe a Picture', context: 'You see a photo of a busy office and have 30 seconds to describe who is in it, what they are doing and where they are.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Describe a scene accurately with the present continuous and location words', focusPills: 'Present Continuous|||Prepositions of Place|||People & Actions|||Timed Answers', displayOrder: 4 },
+  { domainSlug: 'speaking_exams', title: 'TOEIC Speaking: Respond to a Request', context: 'A recorded voicemail from a colleague asks you to reschedule a meeting. Respond with a solution in under a minute.', skillLevel: 'intermediate', behaviorMode: 'standard', learningGoals: 'Respond to a workplace request with a clear proposal', focusPills: 'Proposing Solutions|||Polite Requests|||Scheduling|||Timed Answers', displayOrder: 5 },
+  { domainSlug: 'travel', title: 'Ask a Local for Recommendations', context: 'On your first evening in a new city, ask the hotel receptionist where to eat and what to see nearby.', skillLevel: 'beginner', behaviorMode: 'standard', learningGoals: 'Ask for and react to recommendations politely', focusPills: 'Recommendations|||Directions|||Opinions|||Gratitude', displayOrder: 4 },
 ];
 
 type SituationInsert = typeof situations.$inferInsert;
@@ -72,8 +91,18 @@ async function seedDomainData() {
 
   const existingDomains = await db.select().from(domains);
   if (existingDomains.length > 0) {
-    console.log(`Domains table already has ${existingDomains.length} rows. Checking for missing situations...\n`);
+    console.log(`Domains table already has ${existingDomains.length} rows. Checking for missing domains and situations...\n`);
     domainMap = new Map(existingDomains.map(d => [d.slug, d.id]));
+    // Domains added to the fixtures after a database was first seeded (the
+    // English-first ones) would otherwise never arrive. Insert-only: an
+    // existing domain is owned by the admin console from then on.
+    const missingDomains = domainFixtures.filter(d => !domainMap.has(d.slug));
+    if (missingDomains.length > 0) {
+      const inserted = await db.insert(domains).values(missingDomains)
+        .onConflictDoNothing({ target: domains.slug }).returning();
+      for (const d of inserted) domainMap.set(d.slug, d.id);
+      console.log(`  Inserted ${inserted.length} new domain(s): ${inserted.map(d => d.slug).join(', ')}\n`);
+    }
   } else {
     console.log('Seeding domains...');
     const insertedDomains = await db.insert(domains).values(domainFixtures).returning();

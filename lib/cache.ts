@@ -19,6 +19,8 @@ SESSION: 60,         // 1 min (session state changes often)
   LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
   CHAT_TURN_RATE_LIMIT: 600, // 10 min window for the per-user roleplay turn limit
   LEADERBOARD: 60,     // 1 min — rankings move with XP, but every viewer reads the same top 20
+  COUNTRY_LANGUAGE: 86400, // 24 hr — a country's default language is reference data
+  UI_TRANSLATION: 2592000, // 30 days — a translation of an unchanged text never goes stale; the key is a content hash
 } as const;
 
 let redis: Redis | null = null;
@@ -131,6 +133,11 @@ export const cacheKeys = {
   goalLocalizations: (scenarioId: number, lang: string) => key('goal-loc', scenarioId, lang),
   situation: (situationId: number) => key('situation', situationId),
   situationLocalization: (situationId: number, lang: string) => key('situation-loc', situationId, lang),
+  /** Native-language explanation of a scenario for one (target, native) pair. */
+  scenarioNativeLocalization: (scenarioId: number, target: string, native: string) => key('scenario-native-loc', scenarioId, target, native),
+  situationNativeLocalization: (situationId: number, target: string, native: string) => key('situation-native-loc', situationId, target, native),
+  goalNativeLocalizations: (scenarioId: number, target: string, native: string) => key('goal-native-loc', scenarioId, target, native),
+  vocabNativeNotes: (scenarioId: number, target: string, native: string) => key('vocab-native-notes', scenarioId, target, native),
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
   tryoutRateLimit: (ip: string) => key('tryout-rate-limit', ip),
@@ -147,6 +154,14 @@ export const cacheKeys = {
   chatTurnRateLimit: (userId: string) => key('chat-turn-rate', userId),
   /** The whole `languages` table — one key, because it is always read whole. */
   languageCatalog: () => key('language-catalog', 'v1'),
+  /** users.nativeLanguage, read on every page to pick the UI locale. Deleted when it changes. */
+  uiNativeLanguage: (userId: string) => key('ui-native', userId),
+  /** countries.defaultNativeLanguage for a visitor's geo header. */
+  countryLanguage: (countryCode: string) => key('country-language', countryCode),
+  /** On-demand translation of dynamic text (tutor bios, lesson titles), keyed by content hash. */
+  uiTranslation: (textHash: string, lang: string) => key('ui-translation', textHash, lang),
+  /** /api/translate-text calls one signed-in user made in the current window. */
+  translateTextRateLimit: (userId: string) => key('translate-text-rate', userId),
 };
 
 export { TTL };

@@ -120,7 +120,7 @@ export function DemoVideoDialog() {
           >
             <button
               onClick={close}
-              className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition-colors hover:bg-black/70 hover:text-white"
+              className="absolute end-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition-colors hover:bg-black/70 hover:text-white"
             >
               <X className="h-4 w-4" />
             </button>
@@ -137,7 +137,7 @@ export function DemoVideoDialog() {
               />
 
               {/* Custom Controls */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 pt-10 pb-3">
+              <div className="absolute bottom-0 start-0 end-0 bg-gradient-to-t from-black/80 to-transparent px-4 pt-10 pb-3">
                 {/* Progress Bar */}
                 <div
                   className="group mb-2 cursor-pointer py-1"

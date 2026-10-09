@@ -18,6 +18,7 @@ import { NotificationBell } from './NotificationBell';
 import { useUser, useTutorsEnabled } from '@/lib/auth/user-context';
 import { resolveDisplayName } from '@/lib/auth/display-name';
 import { useCurrentAvatar } from '@/lib/auth/avatar-context';
+import { useT } from '@/lib/language-context';
 import {
   LayoutDashboard,
   Compass,
@@ -36,35 +37,36 @@ import {
 } from 'lucide-react';
 
 interface NavItem {
-  label: string;
+  /** Message key under `nav.` in messages/en.json. */
+  labelKey: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
 interface NavSection {
   id: string;
-  /** Section heading. `null` = ungrouped cluster (Home, or Calendar/Messages/Settings). */
-  label: string | null;
+  /** Section heading message key. `null` = ungrouped cluster (Home, or Calendar/Messages/Settings). */
+  labelKey: string | null;
   items: NavItem[];
 }
 
-const homeItem: NavItem = { label: 'Home', href: '/home', icon: LayoutDashboard };
-const tutorsItem: NavItem = { label: 'Tutors', href: '/tutors', icon: Users };
-const libraryItem: NavItem = { label: 'Library', href: '/library', icon: Compass };
-const coursesItem: NavItem = { label: 'Courses', href: '/courses', icon: GraduationCap };
-const reviewItem: NavItem = { label: 'Review', href: '/review', icon: Repeat2 };
+const homeItem: NavItem = { labelKey: 'nav.home', href: '/home', icon: LayoutDashboard };
+const tutorsItem: NavItem = { labelKey: 'nav.tutors', href: '/tutors', icon: Users };
+const libraryItem: NavItem = { labelKey: 'nav.library', href: '/library', icon: Compass };
+const coursesItem: NavItem = { labelKey: 'nav.courses', href: '/courses', icon: GraduationCap };
+const reviewItem: NavItem = { labelKey: 'nav.review', href: '/review', icon: Repeat2 };
 
 const resultsItems: NavItem[] = [
-  { label: 'Sessions',    href: '/sessions',    icon: History },
-  { label: 'Progress',    href: '/progress',    icon: BarChart3 },
-  { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },
+  { labelKey: 'nav.sessions',    href: '/sessions',    icon: History },
+  { labelKey: 'nav.progress',    href: '/progress',    icon: BarChart3 },
+  { labelKey: 'nav.leaderboard', href: '/leaderboard', icon: Trophy },
 ];
 
 const connectItems: NavItem[] = [
-  { label: 'Calendar', href: '/calendar', icon: Calendar },
-  { label: 'Messages', href: '/messages', icon: MessageSquare },
+  { labelKey: 'nav.calendar', href: '/calendar', icon: Calendar },
+  { labelKey: 'nav.messages', href: '/messages', icon: MessageSquare },
 ];
-const settingsItem: NavItem = { label: 'Settings', href: '/settings', icon: Settings };
+const settingsItem: NavItem = { labelKey: 'nav.settings', href: '/settings', icon: Settings };
 
 /**
  * What a tutor sees instead.
@@ -76,18 +78,18 @@ const settingsItem: NavItem = { label: 'Settings', href: '/settings', icon: Sett
  * live lessons, assessments and bookings they run (see `GET /api/calendar`).
  */
 const tutorNavItems: NavItem[] = [
-  { label: 'Teaching',  href: '/tutor',    icon: GraduationCap },
-  { label: 'Calendar',  href: '/calendar', icon: Calendar },
-  { label: 'Messages',  href: '/messages', icon: MessageSquare },
-  { label: 'Settings',  href: '/settings', icon: Settings },
+  { labelKey: 'nav.teaching',  href: '/tutor',    icon: GraduationCap },
+  { labelKey: 'nav.calendar',  href: '/calendar', icon: Calendar },
+  { labelKey: 'nav.messages',  href: '/messages', icon: MessageSquare },
+  { labelKey: 'nav.settings',  href: '/settings', icon: Settings },
 ];
 
 /** Role-gated consoles. Admin / Teaching sit above Home; Organization
  *  stays before Settings. Hiding the link is convenience only — /admin
  *  and /tutor re-check the role server-side. */
-const adminNavItem: NavItem = { label: 'Admin', href: '/admin', icon: ShieldCheck };
-const tutorNavItem: NavItem = { label: 'Teaching', href: '/tutor', icon: GraduationCap };
-const organizationNavItem: NavItem = { label: 'Organization', href: '/organization', icon: Building2 };
+const adminNavItem: NavItem = { labelKey: 'nav.admin', href: '/admin', icon: ShieldCheck };
+const tutorNavItem: NavItem = { labelKey: 'nav.teaching', href: '/tutor', icon: GraduationCap };
+const organizationNavItem: NavItem = { labelKey: 'nav.organization', href: '/organization', icon: Building2 };
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -95,6 +97,7 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const t = useT();
   const user = useUser();
   const tutorsEnabled = useTutorsEnabled();
   const currentAvatarUrl = useCurrentAvatar();
@@ -125,12 +128,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   const organizationItems =
     !isTutor && user?.organizationAdmin ? [organizationNavItem] : [];
   const sections: NavSection[] = isTutor
-    ? [{ id: 'tutor', label: null, items: tutorNavItems }]
+    ? [{ id: 'tutor', labelKey: null, items: tutorNavItems }]
     : [
-        { id: 'top', label: null, items: [...consoles, homeItem] },
-        { id: 'practice', label: 'Practice', items: practiceItems },
-        { id: 'results', label: 'Results', items: resultsItems },
-        { id: 'chrome', label: null, items: [...connectItems, ...organizationItems, settingsItem] },
+        { id: 'top', labelKey: null, items: [...consoles, homeItem] },
+        { id: 'practice', labelKey: 'nav.sectionPractice', items: practiceItems },
+        { id: 'results', labelKey: 'nav.sectionResults', items: resultsItems },
+        { id: 'chrome', labelKey: null, items: [...connectItems, ...organizationItems, settingsItem] },
       ];
 
   const isActive = (href: string) => {
@@ -150,12 +153,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   };
 
   return (
-    <aside className="flex h-full w-60 flex-col bg-dojo-sidebar border-r border-dojo-border shrink-0">
+    <aside className="flex h-full w-60 flex-col bg-dojo-sidebar border-e border-dojo-border shrink-0">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2.5 border-b border-dojo-border pl-14 pr-14 md:pl-5 md:pr-5 justify-center md:justify-start">
+      <div className="flex h-16 items-center gap-2.5 border-b border-dojo-border ps-14 pe-14 md:ps-5 md:pe-5 justify-center md:justify-start">
         <Image src="/logo.png" alt="" width={32} height={32} className="h-8 w-8 rounded-lg object-cover" />
         <span className="text-lg font-semibold text-dojo-text-primary tracking-tight">
-          AI DOJO
+          {t('common.appName')}
         </span>
       </div>
 
@@ -167,15 +170,15 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           <div
             key={section.id}
             className="space-y-1"
-            role={section.label ? 'group' : undefined}
-            aria-labelledby={section.label ? `sidebar-nav-${section.id}` : undefined}
+            role={section.labelKey ? 'group' : undefined}
+            aria-labelledby={section.labelKey ? `sidebar-nav-${section.id}` : undefined}
           >
-            {section.label && (
+            {section.labelKey && (
               <p
                 id={`sidebar-nav-${section.id}`}
                 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-dojo-text-muted"
               >
-                {section.label}
+                {t(section.labelKey)}
               </p>
             )}
             {section.items.map((item) => {
@@ -194,7 +197,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                   )}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               );
             })}
@@ -236,7 +239,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             forever. Their standing is whether learners can see them yet. */}
         {isTutor ? (
           <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-dojo-text-muted">Tutor</span>
+            <span className="text-xs font-medium text-dojo-text-muted">{t('sidebar.tutor')}</span>
             {/* Rejected is its own answer: it used to read "Pending review",
                 which told a tutor to keep waiting for a decision already made. */}
             <Badge
@@ -249,20 +252,20 @@ export function Sidebar({ onNavigate }: SidebarProps) {
               }
             >
               {user?.tutorStatus === 'verified'
-                ? 'Verified'
+                ? t('sidebar.tutorVerified')
                 : user?.tutorStatus === 'rejected'
-                  ? 'Not approved'
-                  : 'Pending review'}
+                  ? t('sidebar.tutorRejected')
+                  : t('sidebar.tutorPending')}
             </Badge>
           </div>
         ) : (
           <div className="mt-3 space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-dojo-text-muted">
-                Level {user?.level ?? '-'}
+                {t('sidebar.level', { level: user?.level ?? '-' })}
               </span>
               <span className="text-xs text-dojo-text-muted">
-                {user?.xp ?? 0} / {user?.xpToNext ?? 1000} XP
+                {t('sidebar.xp', { xp: user?.xp ?? 0, xpToNext: user?.xpToNext ?? 1000 })}
               </span>
             </div>
             <ProgressBar
@@ -282,7 +285,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-dojo-text-muted hover:bg-dojo-surface hover:text-dojo-danger transition-colors"
         >
           <LogOut className="h-5 w-5 shrink-0" />
-          Sign Out
+          {t('nav.signOut')}
         </button>
       </div>
     </aside>

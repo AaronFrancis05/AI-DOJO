@@ -239,7 +239,7 @@ export function MessageComposer({ disabled, onSend, onSendVoice, voiceSending = 
               )}
             </button>
             <span className="select-none text-sm font-medium tabular-nums text-dojo-text-primary">
-              <Mic className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-dojo-text-muted" />
+              <Mic className="me-1 inline h-3.5 w-3.5 align-[-2px] text-dojo-text-muted" />
               {formatDuration(clip?.durationMs ?? 0)}
             </span>
             <span className="hidden truncate text-xs text-dojo-text-muted sm:inline">Voice message</span>
@@ -249,7 +249,7 @@ export function MessageComposer({ disabled, onSend, onSendVoice, voiceSending = 
               onClick={handleCancelClip}
               disabled={voiceSending}
               aria-label="Discard recording"
-              className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-dojo-text-muted transition-colors hover:bg-dojo-surface-raised hover:text-dojo-text-primary"
+              className="ms-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-dojo-text-muted transition-colors hover:bg-dojo-surface-raised hover:text-dojo-text-primary"
             >
               <X className="h-4 w-4" />
             </button>

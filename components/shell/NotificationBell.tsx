@@ -133,7 +133,7 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void }) {
         <span className="relative shrink-0">
           <Bell className="h-5 w-5" />
           {unread > 0 && (
-            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-dojo-accent px-1 text-[10px] font-bold leading-none text-white">
+            <span className="absolute -end-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-dojo-accent px-1 text-[10px] font-bold leading-none text-white">
               {unread > 9 ? '9+' : unread}
             </span>
           )}
@@ -142,7 +142,7 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-(--radius-md) border border-dojo-border bg-dojo-surface-raised shadow-2xl">
+        <div className="absolute bottom-full start-0 z-50 mb-2 w-72 overflow-hidden rounded-(--radius-md) border border-dojo-border bg-dojo-surface-raised shadow-2xl">
           <div className="flex items-center justify-between border-b border-dojo-border px-4 py-3">
             <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
               Notifications
@@ -189,7 +189,7 @@ export function NotificationBell({ onNavigate }: { onNavigate?: () => void }) {
                 );
 
                 const className = cn(
-                  'block w-full border-b border-dojo-border px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-dojo-surface',
+                  'block w-full border-b border-dojo-border px-4 py-3 text-start transition-colors last:border-b-0 hover:bg-dojo-surface',
                   !n.readAt && 'bg-dojo-accent-soft/40',
                 );
 

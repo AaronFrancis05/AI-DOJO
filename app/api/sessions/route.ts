@@ -3,7 +3,7 @@ import { dbPool } from '../../../src/db-pool';
 import { sessions, scenarios, situations, domains, characters, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
-import { getTargetLangConfig } from '../../../lib/language';
+import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '../../../lib/language';
 import { isRecord } from '../../../lib/roleplay/api-types';
 import { eq, and, count, desc } from 'drizzle-orm';
 import { AVATAR_SOURCES, FEMALE_AVATAR_IDS, avatarRoleLine } from '../../../lib/avatar/catalog';
@@ -186,7 +186,7 @@ export async function POST(req: Request) {
         }
       }
 
-      const lang = targetLanguage ?? 'ja';
+      const lang = targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
       const langName = getTargetLangConfig(lang).name;
 
       let vocabRows: VocabRow[] = [];
@@ -329,7 +329,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
     selectedAvatarId: avatarForVoice?.id ?? null,
     behaviorMode: behaviorMode ?? 'standard',
     phase: 'orientation',
-    targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? 'ja',
+    targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE,
     nativeLanguage: nativeLanguage ?? profile?.nativeLanguage ?? 'en',
     voiceGender,
     sessionNumber,

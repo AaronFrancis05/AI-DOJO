@@ -69,7 +69,7 @@ export function SessionInfoPanel({
           {domain?.name && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Scenario</span>
-              <span className="text-dojo-text-primary font-medium text-right capitalize">
+              <span className="text-dojo-text-primary font-medium text-end capitalize">
                 {domain.name.replace('_', ' ')}
               </span>
             </div>
@@ -77,7 +77,7 @@ export function SessionInfoPanel({
           {(situation?.title ?? scenario?.title) && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Situation</span>
-              <span className="text-dojo-text-primary font-medium text-right">
+              <span className="text-dojo-text-primary font-medium text-end">
                 {situation?.title ?? scenario?.title}
               </span>
             </div>
@@ -86,14 +86,14 @@ export function SessionInfoPanel({
           {targetName && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Target</span>
-              <span className="text-dojo-text-primary font-medium text-right">{targetName}</span>
+              <span className="text-dojo-text-primary font-medium text-end">{targetName}</span>
             </div>
           )}
 
           {nativeName && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Native</span>
-              <span className="text-dojo-text-primary font-medium text-right">{nativeName}</span>
+              <span className="text-dojo-text-primary font-medium text-end">{nativeName}</span>
             </div>
           )}
 

@@ -416,6 +416,71 @@ export const BUILT_IN_TARGET_LANGUAGES: readonly LanguageConfig[] = TARGET_LANGU
 export const BUILT_IN_NATIVE_LANGUAGES: readonly NativeLanguage[] = NATIVE_LANGUAGES.map(l => ({ ...l }));
 
 /**
+ * The language a learner studies when nothing else says otherwise — a new
+ * account, a session row with no language, a request that omitted it. The
+ * product teaches English to the world, so this is 'en'. src/schema.ts mirrors
+ * it as a literal column default (the schema imports nothing from lib/).
+ */
+export const DEFAULT_TARGET_LANGUAGE = 'en';
+
+/**
+ * The language the seeded catalogue content is written in: base `vocabulary`
+ * rows hold Japanese words, base `scenario_goals.targetPhrase` holds Japanese
+ * phrases. This is a fact about the data, not a default — every other target
+ * language is reached through `vocabulary_localizations` and friends. Compare
+ * against this constant, never against a literal 'ja'.
+ */
+export const BASE_CONTENT_LANGUAGE = 'ja';
+
+/**
+ * Scripts written right-to-left. Keyed by code rather than stored on
+ * NativeLanguage, because the admin console can add languages and direction is
+ * a property of the script, not something an admin should have to remember.
+ */
+const RTL_LANGUAGE_CODES = new Set(['ar', 'he', 'fa', 'ur', 'ps', 'sd', 'yi', 'dv', 'ug', 'ckb']);
+
+export function isRtlLanguage(code: string | null | undefined): boolean {
+  if (!code) return false;
+  return RTL_LANGUAGE_CODES.has(code.toLowerCase().split('-')[0]);
+}
+
+/**
+ * Picks the best supported code from an HTTP `Accept-Language` header, in the
+ * header's q-order. Matches on the primary subtag, so `pt-BR` selects `pt` and
+ * `zh-Hant-TW` selects `zh`. Returns null when nothing in the header is
+ * supported — the caller decides the fallback.
+ */
+export function matchAcceptLanguage(
+  header: string | null | undefined,
+  supported: readonly string[],
+): string | null {
+  if (!header) return null;
+  const available = new Set(supported.map(c => c.toLowerCase()));
+  const ranked = header
+    .split(',')
+    .map((part, index) => {
+      const [tag, ...params] = part.trim().split(';');
+      const q = params.map(p => p.trim()).find(p => p.startsWith('q='));
+      const quality = q ? Number(q.slice(2)) : 1;
+      return { tag: tag.trim().toLowerCase(), quality: Number.isFinite(quality) ? quality : 0, index };
+    })
+    .filter(entry => entry.tag && entry.tag !== '*' && entry.quality > 0)
+    .sort((a, b) => b.quality - a.quality || a.index - b.index);
+  for (const { tag } of ranked) {
+    const primary = tag.split('-')[0];
+    // Filipino is tagged both fil and tl in the wild; the catalogue uses tl.
+    const candidate = primary === 'fil' ? 'tl' : primary;
+    if (available.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** `matchAcceptLanguage` against the live native-language catalogue. */
+export function nativeLanguageFromAcceptLanguage(header: string | null | undefined): string | null {
+  return matchAcceptLanguage(header, NATIVE_LANGUAGES.map(l => l.code));
+}
+
+/**
  * Replace the live catalogue with the one configured in the database.
  *
  * Called on the server from `loadLanguageCatalog()` and in the browser from
@@ -433,7 +498,9 @@ export function hydrateLanguageCatalog(
 }
 
 export function getTargetLangConfig(code: string): LanguageConfig {
-  return TARGET_LANGUAGES.find(l => l.code === code) ?? TARGET_LANGUAGES[0];
+  return TARGET_LANGUAGES.find(l => l.code === code)
+    ?? TARGET_LANGUAGES.find(l => l.code === DEFAULT_TARGET_LANGUAGE)
+    ?? TARGET_LANGUAGES[0];
 }
 
 export function getNativeLangName(code: string): string {

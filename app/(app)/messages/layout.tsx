@@ -22,7 +22,7 @@ export default function MessagesLayout({ children }: { children: React.ReactNode
       {/* Persistent room list (mobile: only at /messages; md+: always) */}
       <div
         className={cn(
-          'h-full w-full border-r border-dojo-border md:w-80 md:shrink-0 md:flex-col',
+          'h-full w-full border-e border-dojo-border md:w-80 md:shrink-0 md:flex-col',
           inThread ? 'hidden md:flex' : 'flex',
         )}
       >

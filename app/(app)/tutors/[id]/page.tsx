@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED, BOOKING_DURATIONS_MINUTES } from '@/lib/tutors/config';
-import { getTargetLangConfig } from '@/lib/language';
+import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import { cn } from '@/lib/design-tokens';
 import { ArrowLeft, Calendar, Check } from 'lucide-react';
 
@@ -52,7 +52,7 @@ export default function TutorDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const targetLanguage = user?.preferredTargetLanguage ?? 'ja';
+  const targetLanguage = user?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE;
 
   useEffect(() => {
     if (!TUTORS_ENABLED || !user?.canBrowseTutors) return;

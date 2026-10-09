@@ -17,7 +17,7 @@ import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { cn } from '@/lib/design-tokens';
-import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig, getNativeLangName, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import {
   ArrowLeft,
   Check,
@@ -145,7 +145,7 @@ export default function CourseDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useUser();
-  const targetLanguage = searchParams.get('target') || user?.preferredTargetLanguage || 'ja';
+  const targetLanguage = searchParams.get('target') || user?.preferredTargetLanguage || DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage = searchParams.get('native') || user?.nativeLanguage || 'en';
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
@@ -399,8 +399,8 @@ export default function CourseDetailPage() {
 
       {/* ── Hero ── */}
       <div className="relative overflow-hidden rounded-3xl border border-dojo-border bg-dojo-surface-raised p-8 shadow-2xl mb-10">
-        <div className="absolute -top-20 -right-20 h-56 w-56 rounded-full bg-dojo-accent/15 blur-[80px]" />
-        <div className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-dojo-success/10 blur-[80px]" />
+        <div className="absolute -top-20 -end-20 h-56 w-56 rounded-full bg-dojo-accent/15 blur-[80px]" />
+        <div className="absolute -bottom-20 -start-20 h-56 w-56 rounded-full bg-dojo-success/10 blur-[80px]" />
         <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-3">

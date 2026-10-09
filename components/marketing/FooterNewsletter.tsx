@@ -39,12 +39,12 @@ export function FooterNewsletter() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Your email"
-            className="w-full rounded-lg border border-dojo-border bg-dojo-surface py-2.5 pl-4 pr-12 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
+            className="w-full rounded-lg border border-dojo-border bg-dojo-surface py-2.5 ps-4 pe-12 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
           />
           <button
             type="submit"
             aria-label="Subscribe"
-            className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent text-white transition-colors hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
+            className="absolute end-1 top-1 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-accent text-white transition-colors hover:bg-dojo-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
           >
             <ChevronRightIcon className="h-4 w-4" />
           </button>

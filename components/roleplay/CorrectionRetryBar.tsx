@@ -20,7 +20,7 @@ export function CorrectionRetryBar({
         <p className="text-sm font-medium text-dojo-text-primary leading-relaxed truncate">
           {retry.correctedText}
           {retry.correctedPhonetic ? (
-            <span className="ml-1.5 italic text-dojo-text-muted font-normal">({retry.correctedPhonetic})</span>
+            <span className="ms-1.5 italic text-dojo-text-muted font-normal">({retry.correctedPhonetic})</span>
           ) : null}
         </p>
       </div>

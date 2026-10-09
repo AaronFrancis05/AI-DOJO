@@ -46,7 +46,7 @@ export default function PasswordInput({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="relative">
-        <LockIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dojo-text-muted/60" />
+        <LockIcon className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-dojo-text-muted/60" />
         <input
           type={visible ? 'text' : 'password'}
           value={value}
@@ -55,7 +55,7 @@ export default function PasswordInput({
           required={required}
           minLength={minLength}
           autoComplete={autoComplete}
-          className="w-full rounded-lg border border-dojo-border bg-dojo-surface py-3 pl-10 pr-11 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
+          className="w-full rounded-lg border border-dojo-border bg-dojo-surface py-3 ps-10 pe-11 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
         />
         <button
           type="button"
@@ -63,7 +63,7 @@ export default function PasswordInput({
           aria-label={visible ? 'Hide password' : 'Show password'}
           aria-pressed={visible}
           tabIndex={0}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-dojo-text-muted/60 transition hover:text-dojo-text-primary"
+          className="absolute end-3 top-1/2 -translate-y-1/2 text-dojo-text-muted/60 transition hover:text-dojo-text-primary"
         >
           {visible ? <EyeOffIcon /> : <EyeIcon />}
         </button>
@@ -81,7 +81,7 @@ export default function PasswordInput({
               />
             ))}
           </div>
-          <span className="w-24 text-right text-xs text-dojo-text-muted">{strength.label}</span>
+          <span className="w-24 text-end text-xs text-dojo-text-muted">{strength.label}</span>
         </div>
       )}
     </div>

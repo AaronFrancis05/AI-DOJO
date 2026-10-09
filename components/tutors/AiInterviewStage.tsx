@@ -109,7 +109,7 @@ export function AiInterviewStage({
             )}
           </div>
 
-          <div className="min-w-0 flex-1 text-center sm:text-left">
+          <div className="min-w-0 flex-1 text-center sm:text-start">
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <h2 className="text-lg font-bold leading-none tracking-tight text-dojo-text-primary">
                 {interviewer.name}

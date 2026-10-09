@@ -458,7 +458,7 @@ export default function SessionReportPage() {
                   {gc.goalText}
                 </span>
                 {gc.goalType && (
-                  <Badge variant="default" className="ml-auto">{gc.goalType}</Badge>
+                  <Badge variant="default" className="ms-auto">{gc.goalType}</Badge>
                 )}
               </div>
             ))}
@@ -490,8 +490,8 @@ export default function SessionReportPage() {
                       )}
                       <div className={`rounded-2xl px-4 py-3 ${
                         isUser
-                          ? 'rounded-br-none bg-dojo-accent'
-                          : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
+                          ? 'rounded-ee-none bg-dojo-accent'
+                          : 'rounded-ss-none bg-dojo-surface-raised border border-dojo-border'
                       }`}>
                         {text && (
                           <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
@@ -542,8 +542,8 @@ export default function SessionReportPage() {
       {scenario && (
         <div className="text-center text-xs text-dojo-text-muted">
           {scenario.aiCharacterName && <span>AI: {scenario.aiCharacterName} ({scenario.aiCharacterRole})</span>}
-          {scenario.userCharacterName && <span className="ml-4">You: {scenario.userCharacterName}</span>}
-          {scenario.difficulty && <span className="ml-4">Difficulty: {scenario.difficulty}</span>}
+          {scenario.userCharacterName && <span className="ms-4">You: {scenario.userCharacterName}</span>}
+          {scenario.difficulty && <span className="ms-4">Difficulty: {scenario.difficulty}</span>}
         </div>
       )}
     </div>

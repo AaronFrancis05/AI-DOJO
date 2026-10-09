@@ -17,6 +17,9 @@ import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { useUiLocale } from '@/lib/language-context';
+import { formatCurrency, formatDate } from '@/lib/i18n/format';
+import { TranslatedText } from '@/components/ui/TranslatedText';
 import { Video, Calendar, ArrowRight, GraduationCap, Users, ClipboardCheck, Bot } from 'lucide-react';
 
 interface TutorRow {
@@ -72,13 +75,13 @@ interface AssessmentRow {
   status: string;
 }
 
-function formatMoney(cents: number, currency: string): string {
+function formatMoney(cents: number, currency: string, locale: string): string {
   if (cents === 0) return 'Free';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(cents / 100);
+  return formatCurrency(cents / 100, currency, locale);
 }
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+function formatWhen(iso: string, locale: string): string {
+  return formatDate(iso, locale, {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
@@ -103,6 +106,7 @@ const STATUS_VARIANT: Record<string, 'accent' | 'success' | 'default' | 'outline
 };
 
 export default function TutorsPage() {
+  const { locale } = useUiLocale();
   usePageTitle('Tutors');
   const router = useRouter();
   const user = useUser();
@@ -204,7 +208,7 @@ export default function TutorsPage() {
                       {b.purpose === 'evaluation' && ' · Evaluation'}
                     </p>
                     <p className="text-xs text-dojo-text-muted">
-                      {formatWhen(b.scheduledAt)} · {b.durationMinutes} min
+                      {formatWhen(b.scheduledAt, locale)} · {b.durationMinutes} min
                     </p>
                   </div>
                   <Badge variant={STATUS_VARIANT[b.status] ?? 'default'} className="capitalize">
@@ -239,7 +243,7 @@ export default function TutorsPage() {
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{c.title}</p>
                     <p className="text-xs text-dojo-text-muted">
                       {c.tutorName} ·{' '}
-                      {c.status === 'live' ? 'running now' : formatWhen(c.scheduledAt)} ·{' '}
+                      {c.status === 'live' ? 'running now' : formatWhen(c.scheduledAt, locale)} ·{' '}
                       {c.enrolledCount}/{c.capacity} enrolled
                     </p>
                   </div>
@@ -281,7 +285,7 @@ export default function TutorsPage() {
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{a.title}</p>
                     <p className="text-xs text-dojo-text-muted">
                       {a.tutorName} ·{' '}
-                      {a.status === 'live' ? 'open now' : formatWhen(a.scheduledAt)} ·{' '}
+                      {a.status === 'live' ? 'open now' : formatWhen(a.scheduledAt, locale)} ·{' '}
                       {a.examiner === 'ai'
                         ? `AI examiner · ${a.minutesPerLearner} min`
                         : `${a.waitingCount} waiting`}
@@ -370,12 +374,14 @@ export default function TutorsPage() {
                 )}
 
                 {t.bio && (
-                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-dojo-text-muted">{t.bio}</p>
+                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-dojo-text-muted">
+                    <TranslatedText text={t.bio} />
+                  </p>
                 )}
 
                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-sm font-semibold text-dojo-text-primary">
-                    {formatMoney(t.hourlyRateCents, t.currency)}
+                    {formatMoney(t.hourlyRateCents, t.currency, locale)}
                     {t.hourlyRateCents > 0 && (
                       <span className="text-xs font-normal text-dojo-text-muted"> / hr</span>
                     )}

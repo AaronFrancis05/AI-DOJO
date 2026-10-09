@@ -17,6 +17,8 @@ import { AvatarProvider } from '@/lib/auth/avatar-context';
 import { RealtimeProvider } from '@/lib/realtime/context';
 import { PageTitleProvider, usePageTitleValue } from '@/lib/hooks/PageTitleContext';
 import { Menu, X } from 'lucide-react';
+import { useT } from '@/lib/language-context';
+import { UiLocaleNotice } from '@/components/ui/UiLocaleNotice';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -24,12 +26,13 @@ interface AppShellProps {
 
 function MobileTopBar({ onToggle, sidebarOpen }: { onToggle: () => void; sidebarOpen: boolean }) {
   const title = usePageTitleValue();
+  const t = useT();
   return (
     <div className="md:hidden fixed inset-x-0 top-0 z-50 flex h-14 items-center bg-dojo-sidebar border-b border-dojo-border px-3">
       <button
         onClick={onToggle}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+        aria-label={sidebarOpen ? t('nav.closeMenu') : t('nav.openMenu')}
       >
         {sidebarOpen ? <X className="h-5 w-5 text-dojo-text-primary" /> : <Menu className="h-5 w-5 text-dojo-text-primary" />}
       </button>
@@ -78,14 +81,15 @@ export function AppShell({ children }: AppShellProps) {
         {/* Sidebar */}
         <div
           className={`${
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          } fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'
+          } fixed inset-y-0 start-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
         >
           <Sidebar onNavigate={() => setSidebarOpen(false)} />
         </div>
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
+          <UiLocaleNotice />
           <AvatarProvider>{children}</AvatarProvider>
         </main>
       </div>

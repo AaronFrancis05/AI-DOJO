@@ -115,7 +115,7 @@ export function AiInterviewResults({
               type="button"
               onClick={() => open(row.id)}
               aria-expanded={isOpen}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-dojo-surface-raised"
+              className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-dojo-surface-raised"
             >
               <Avatar name={row.learnerName} src={row.avatarSrc ?? undefined} size="sm" />
               <div className="min-w-0 flex-1">

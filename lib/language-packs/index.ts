@@ -1,4 +1,6 @@
+import { EN_APPROPRIATENESS_RUBRIC } from './en/appropriatenessRubric';
 import { EN_DIFFICULTY_TIERS } from './en/difficultyTiers';
+import { getEnglishPronunciationTargets } from './en/pronunciationTargets';
 import { JA_APPROPRIATENESS_RUBRIC } from './ja/appropriatenessRubric';
 import { JA_DIFFICULTY_TIERS } from './ja/difficultyTiers';
 
@@ -25,6 +27,8 @@ function loadAppropriatenessRubric(langCode: string): string | null {
   switch (langCode) {
     case 'ja':
       return JA_APPROPRIATENESS_RUBRIC;
+    case 'en':
+      return EN_APPROPRIATENESS_RUBRIC;
     default:
       return null;
   }
@@ -44,4 +48,16 @@ export function getDifficultyTierDescription(
   if (langPack && langPack[tier]) return langPack[tier];
   const generic = GENERIC_TIER_DESCRIPTIONS[tier] ?? GENERIC_TIER_DESCRIPTIONS.beginner;
   return generic;
+}
+
+/**
+ * The target-language sounds a speaker of `nativeLanguage` typically gets
+ * wrong, as a prompt block — or '' when the pack has none for this target.
+ * Only English has a list today; it is the language the product teaches.
+ */
+export function getPronunciationFocus(targetLanguage: string, nativeLanguage: string): string {
+  if (targetLanguage !== 'en' || nativeLanguage === 'en') return '';
+  const targets = getEnglishPronunciationTargets(nativeLanguage);
+  const list = targets.map((t) => `- ${t}`).join('\n');
+  return `Typical pronunciation difficulties for this learner's first language — when the transcript or a low pronunciation score suggests one of these, prefer correcting it over cosmetic issues. Judge intelligibility, never accent:\n${list}`;
 }

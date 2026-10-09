@@ -22,6 +22,8 @@ import {
   Briefcase,
   Compass,
   Sun,
+  UserRound,
+  GraduationCap,
   ArrowRight,
   Plus,
 } from 'lucide-react';
@@ -38,6 +40,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Briefcase,
   Compass,
   Sun,
+  UserRound,
+  GraduationCap,
 };
 
 export default function LibraryPage() {
@@ -139,7 +143,7 @@ export default function LibraryPage() {
 
           {/* ── Create Custom Card ── */}
           {canCreate && (
-            <button onClick={() => setShowCreate(true)} className="block text-left w-full">
+            <button onClick={() => setShowCreate(true)} className="block text-start w-full">
               <Card className="group h-full !p-0 overflow-hidden border-2 border-dashed border-dojo-border hover:border-dojo-accent transition-all duration-300 cursor-pointer bg-dojo-surface/50 hover:bg-dojo-surface">
                 <div className="flex h-full min-h-[17rem] flex-col items-center justify-center gap-3 p-6">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-dashed border-dojo-text-muted/40 transition-colors duration-300 group-hover:border-dojo-accent group-hover:bg-dojo-accent/10">

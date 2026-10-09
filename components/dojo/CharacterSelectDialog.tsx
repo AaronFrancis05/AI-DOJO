@@ -24,6 +24,7 @@ import { getDomainBySlug } from '@/lib/data/domains';
 import { getCharacters } from '@/lib/data/characters';
 import { AVATAR_SOURCES, FEMALE_AVATAR_IDS, type AvatarSource } from '@/lib/avatar/catalog';
 import { ChevronRight, Shuffle, Check } from 'lucide-react';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 const SESSION_START_TIMEOUT_MS = 30_000;
 
@@ -62,7 +63,7 @@ export function CharacterSelectDialog({
   const [source, setSource] = useState<'live' | 'fixture'>('live');
   const loading = open && !charsLoaded;
 
-  const [targetLanguage, setTargetLanguage] = useState('ja');
+  const [targetLanguage, setTargetLanguage] = useState<string>(DEFAULT_TARGET_LANGUAGE);
   const [nativeLanguage, setNativeLanguage] = useState('en');
 
   const [femalePick, setFemalePick] = useState<AvatarSource>(defaultFemale);
@@ -246,7 +247,7 @@ export function CharacterSelectDialog({
                     disabled={starting}
                     onClick={() => setPickerGender(gender)}
                   >
-                    <Shuffle className="mr-1.5 h-3.5 w-3.5" />
+                    <Shuffle className="me-1.5 h-3.5 w-3.5" />
                     Change avatar
                   </Button>
                   <Button
@@ -257,7 +258,7 @@ export function CharacterSelectDialog({
                     onClick={() => startSession(avatar)}
                   >
                     Start Practice
-                    <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                    <ChevronRight className="ms-1 h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
@@ -293,7 +294,7 @@ export function CharacterSelectDialog({
                 }`}
               >
                 {selected && (
-                  <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-dojo-accent text-white">
+                  <span className="absolute end-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-dojo-accent text-white">
                     <Check className="h-3 w-3" />
                   </span>
                 )}

@@ -215,7 +215,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
           </div>
 
           {voice.partialTranscript && (
-            <div className="absolute bottom-44 left-0 right-0 flex justify-center z-10 px-4">
+            <div className="absolute bottom-44 start-0 end-0 flex justify-center z-10 px-4">
               <div className="flex items-start gap-2 rounded-xl bg-dojo-surface/85 backdrop-blur-md border border-dojo-border/70 px-4 py-2.5 max-w-md shadow-lg">
                 <Mic className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-1" />
                 <p className="text-sm text-dojo-text-primary/90 italic leading-relaxed">{voice.partialTranscript}</p>
@@ -224,12 +224,12 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
           )}
 
           {error && (
-            <div className="absolute top-4 left-0 right-0 flex justify-center z-10 px-4">
+            <div className="absolute top-4 start-0 end-0 flex justify-center z-10 px-4">
               <p className="rounded-lg bg-dojo-danger/15 border border-dojo-danger/30 px-3 py-1.5 text-xs text-dojo-danger">{error}</p>
             </div>
           )}
 
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-8 safe-bottom z-10 px-4 pointer-events-none">
+          <div className="absolute bottom-0 start-0 end-0 flex justify-center pb-8 safe-bottom z-10 px-4 pointer-events-none">
             <div className="flex items-center justify-center gap-6 sm:gap-8 rounded-2xl bg-black/10 backdrop-blur-[2px] border border-white/10 px-6 sm:px-8 py-3 pointer-events-auto">
               <div className="flex flex-col items-center gap-1">
                 <button
@@ -288,7 +288,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
           </div>
         </div>
 
-        <div className={`absolute top-0 left-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-r border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute top-0 start-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-e border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'}`}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border/60 shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-dojo-accent" />
@@ -314,8 +314,8 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
                       <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? TRYOUT_CHARACTER_NAME : 'You'}</span>
                     </div>
-                    <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
-                      <p className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
+                    <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-se-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
+                      <p translate="no" className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
                       {isAi && turn.messageNative && (
                         <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}
@@ -330,10 +330,10 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                   {TRYOUT_CHARACTER_NAME[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
-                  <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
+                  <div className="rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
                     <p className="text-base text-dojo-text-primary leading-relaxed">
                       {streamingText}
-                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
+                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ms-0.5 animate-pulse align-middle" />
                     </p>
                   </div>
                 </div>

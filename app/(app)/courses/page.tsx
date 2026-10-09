@@ -22,6 +22,7 @@ import {
   BookOpen,
   Sparkles,
 } from 'lucide-react';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 interface CourseRecord {
   id: number;
@@ -51,7 +52,7 @@ export default function CoursesPage() {
   // Per-course language pair (pre-filled from profile, editable on the card).
   const [pair, setPair] = useState<Record<number, { target: string; native: string }>>({});
 
-  const preferredTarget = user?.preferredTargetLanguage ?? 'ja';
+  const preferredTarget = user?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE;
   const preferredNative = user?.nativeLanguage ?? 'en';
 
   useEffect(() => {
@@ -133,7 +134,7 @@ export default function CoursesPage() {
             const p = getPair(course.id);
             return (
               <Card key={course.id} className="group h-full !p-8 relative overflow-hidden border-dojo-border">
-                <div className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-dojo-accent/10 blur-[60px]" />
+                <div className="absolute -top-16 -end-16 h-40 w-40 rounded-full bg-dojo-accent/10 blur-[60px]" />
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
                     <Badge variant={course.difficulty as 'beginner'}>

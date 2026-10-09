@@ -27,7 +27,7 @@ import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-
 import { continueHref } from '@/lib/courses/continue-href';
 import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
-import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
+import { getBCP47, getNativeLangBcp47, DEFAULT_TARGET_LANGUAGE, getTargetLangConfig } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
 import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { cn } from '@/lib/design-tokens';
@@ -62,7 +62,7 @@ export default function AvatarModePage() {
     elapsedLabel, saveSession, abandonSession, restartSession,
   } = useRoleplaySessionContext();
 
-  const [targetLanguage, setTargetLanguage] = useState('ja');
+  const [targetLanguage, setTargetLanguage] = useState<string>(DEFAULT_TARGET_LANGUAGE);
   const [nativeLanguage, setNativeLanguage] = useState('en');
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [sending, setSending] = useState(false);
@@ -102,7 +102,7 @@ export default function AvatarModePage() {
 
   const speakingRef = useRef(false);
   const mutedRef = useRef(false);
-  const targetLangRef = useRef('ja');
+  const targetLangRef = useRef<string>(DEFAULT_TARGET_LANGUAGE);
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
   const sendingRef = useRef(false);
@@ -412,7 +412,7 @@ export default function AvatarModePage() {
     isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
 
 
-  const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
+  const langLabel = getTargetLangConfig(targetLanguage).name;
   const skillLevelLabel = situation?.skillLevel
     ? situation.skillLevel.charAt(0).toUpperCase() + situation.skillLevel.slice(1)
     : null;
@@ -563,7 +563,7 @@ export default function AvatarModePage() {
           <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
 
           {/* Your Role card (top-left) */}
-          <div className="absolute top-4 left-4 z-10 hidden md:block">
+          <div className="absolute top-4 start-4 z-10 hidden md:block">
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 space-y-2 max-w-48">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border/40">
@@ -604,7 +604,7 @@ export default function AvatarModePage() {
 
           {/* Partial transcript */}
           {voice.partialTranscript && (
-            <div className="absolute bottom-44 left-0 right-0 flex justify-center z-10 px-4">
+            <div className="absolute bottom-44 start-0 end-0 flex justify-center z-10 px-4">
               <div className="flex items-start gap-2 rounded-xl bg-dojo-surface/85 backdrop-blur-md border border-dojo-border/70 px-4 py-2.5 max-w-md shadow-lg">
                 <Mic className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-1" />
                 <p className="text-sm text-dojo-text-primary/90 italic leading-relaxed">{voice.partialTranscript}</p>
@@ -613,7 +613,7 @@ export default function AvatarModePage() {
           )}
 
           {/* Session Progress card (bottom-left) */}
-          <div className="absolute bottom-28 left-4 z-10 hidden md:block">
+          <div className="absolute bottom-28 start-4 z-10 hidden md:block">
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold text-dojo-text-primary">Session Progress</p>
@@ -654,7 +654,7 @@ export default function AvatarModePage() {
           </div>
 
           {/* Character info card (bottom-right) */}
-          <div className="absolute bottom-28 right-4 z-10 hidden md:block">
+          <div className="absolute bottom-28 end-4 z-10 hidden md:block">
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center gap-3 mb-2">
                 <div
@@ -681,7 +681,7 @@ export default function AvatarModePage() {
           </div>
 
           {/* ── Bottom Controls: Mute / Mic / Chat (Transparent to reveal avatar) ── */}
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-6 safe-bottom z-10 px-4 pointer-events-none">
+          <div className="absolute bottom-0 start-0 end-0 flex justify-center pb-6 safe-bottom z-10 px-4 pointer-events-none">
             <div className="flex items-center justify-center gap-6 sm:gap-8 rounded-2xl bg-black/10 backdrop-blur-[2px] border border-white/10 px-6 sm:px-8 py-3 pointer-events-auto">
               <div className="flex flex-col items-center gap-1">
                 <button
@@ -752,7 +752,7 @@ export default function AvatarModePage() {
         </div>
 
         {/* ── Slide-out Chat Panel (left side) ── */}
-        <div className={`absolute top-0 left-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-r border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute top-0 start-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-e border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'}`}>
           {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border/60 shrink-0">
             <div className="flex items-center gap-2">
@@ -818,20 +818,20 @@ export default function AvatarModePage() {
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${
                       isAi
-                        ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60'
-                        : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'
+                        ? 'rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60'
+                        : 'rounded-2xl rounded-se-sm bg-dojo-accent/15 border border-dojo-accent/20'
                     }`}>
-                      <p className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
+                      <p translate="no" className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
                       {turn.messagePhonetic && (
-                        <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messagePhonetic}</p>
+                        <p translate="no" className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messagePhonetic}</p>
                       )}
                       {!isAi && turn.corrections && turn.corrections.length > 0 && (
                         <div className="mt-2 border-t border-dojo-border/30 pt-2 space-y-1">
                           {turn.corrections.map((c, i) => (
                             <p key={i} className="text-sm text-dojo-text-muted leading-relaxed">
-                              <span className="line-through">{c.originalText}</span>
+                              <span translate="no" className="line-through">{c.originalText}</span>
                               {' → '}
-                              <span className="font-medium text-dojo-text-primary">{c.correctedText}</span>
+                              <span translate="no" className="font-medium text-dojo-text-primary">{c.correctedText}</span>
                             </p>
                           ))}
                         </div>
@@ -862,10 +862,10 @@ export default function AvatarModePage() {
                   <div className="flex items-center gap-2 px-1 mb-1">
                     <span className="text-xs font-semibold text-dojo-text-primary">{charName}</span>
                   </div>
-                  <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
+                  <div className="rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
                     <p className="text-base text-dojo-text-primary leading-relaxed">
                       {streamingText}
-                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
+                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ms-0.5 animate-pulse align-middle" />
                     </p>
                   </div>
                 </div>
@@ -918,7 +918,7 @@ export default function AvatarModePage() {
 
         {/* Desktop coach panel (hidden when chat is open) */}
         {!chatOpen && (
-          <aside className="hidden lg:flex w-80 shrink-0 flex-col gap-4 border-l border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
+          <aside className="hidden lg:flex w-80 shrink-0 flex-col gap-4 border-s border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
             <VoiceCoachPanel
               corrections={coachOpen ? lastCorrections : []}
               suggestedReplies={coachOpen ? suggestedReplies : []}

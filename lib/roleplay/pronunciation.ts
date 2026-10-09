@@ -1,4 +1,5 @@
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
+import { parsePronunciationWords, type WordPronunciation } from './pronunciation-detail';
 
 /* ── Overview ───────────────────────────────────────────────────────────
    Microphone capture and speech recognition for the roleplay session.
@@ -841,15 +842,17 @@ export function destroyRecognizer(): void {
   activeCallbacks = null;
 }
 
-// Legacy single-utterance assessment
+// Single-utterance assessment against a reference text (read-aloud checks).
 export interface PronunciationResult {
   transcript: string;
   accuracyScore: number;
+  /** Per-word scores with their phonemes — see lib/roleplay/pronunciation-detail. */
+  words: WordPronunciation[];
 }
 
 export async function assessPronunciation(
   referenceText: string,
-  lang: string = 'ja-JP',
+  lang: string = 'en-US',
 ): Promise<PronunciationResult> {
   const { token, region } = await getToken();
 
@@ -877,9 +880,10 @@ export async function assessPronunciation(
           resolve({
             transcript: result.text,
             accuracyScore: details.accuracyScore ?? 0,
+            words: parsePronunciationWords(details.detailResult),
           });
         } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
-          resolve({ transcript: '', accuracyScore: 0 });
+          resolve({ transcript: '', accuracyScore: 0, words: [] });
         } else {
           reject(new Error(`Recognition failed: ${result.errorDetails}`));
         }

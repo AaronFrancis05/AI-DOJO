@@ -50,13 +50,13 @@ export function LanguageSelectionPanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dojo-text-muted" />
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dojo-text-muted" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full rounded-lg border border-dojo-border bg-dojo-surface py-2 pl-9 pr-4 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/60 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
+          className="w-full rounded-lg border border-dojo-border bg-dojo-surface py-2 ps-9 pe-4 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/60 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
         />
       </div>
 
@@ -83,7 +83,7 @@ export function LanguageSelectionPanel({
                   key={lang.code}
                   type="button"
                   onClick={() => onSelect(lang.code)}
-                  className={`flex items-center gap-3 border-b border-dojo-border/60 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-dojo-surface-raised ${
+                  className={`flex items-center gap-3 border-b border-dojo-border/60 px-4 py-3 text-start transition-colors last:border-b-0 hover:bg-dojo-surface-raised ${
                     selected ? 'bg-dojo-accent/5' : ''
                   }`}
                 >

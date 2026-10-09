@@ -5,6 +5,7 @@ import { syncUser } from '@/lib/auth/sync-user';
 import { UserProvider } from '@/lib/auth/user-context';
 import { LanguageCatalogProvider } from '@/lib/language-context';
 import { loadLanguageCatalog } from '@/lib/language-registry';
+import { loadUiLocaleContext } from '@/lib/i18n/server';
 import { toUserRole } from '@/lib/auth/roles';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { loadMembership } from '@/lib/organizations/membership';
@@ -12,6 +13,7 @@ import { learnerHasBookableTutor } from '@/lib/organizations/tutor-access';
 import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export default async function AppLayout({
   children,
@@ -20,7 +22,7 @@ export default async function AppLayout({
 }) {
   // Resolved here rather than per-page: it is cached, it never throws, and
   // every authenticated surface either lists languages or looks one up.
-  const languageCatalog = await loadLanguageCatalog();
+  const [languageCatalog, ui] = await Promise.all([loadLanguageCatalog(), loadUiLocaleContext()]);
 
   const authUser = await getAuthUserReadOnly();
   const u = authUser as { id?: string; name?: string; email?: string } | null;
@@ -160,14 +162,14 @@ export default async function AppLayout({
       avatarColor: '#2D3BC5',
       dailyGoalMinutes: dbUser?.dailyGoalMinutes ?? 30,
       nativeLanguage: dbUser?.nativeLanguage ?? 'en',
-      preferredTargetLanguage: dbUser?.preferredTargetLanguage ?? 'ja',
+      preferredTargetLanguage: dbUser?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE,
       countryCode: dbUser?.countryCode ?? null,
     };
   }
 
   return (
     <UserProvider value={user} tutorsEnabled={TUTORS_ENABLED}>
-      <LanguageCatalogProvider value={languageCatalog}>
+      <LanguageCatalogProvider value={languageCatalog} ui={ui}>
         <AppShell>{children}</AppShell>
       </LanguageCatalogProvider>
     </UserProvider>

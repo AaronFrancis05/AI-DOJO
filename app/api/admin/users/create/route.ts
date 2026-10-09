@@ -6,6 +6,7 @@ import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { isUserRole, DEFAULT_ROLE } from '@/lib/auth/roles';
 import { isLanguageEnabled } from '@/lib/language-registry';
 import { ensureLearnerMembership } from '@/lib/organizations/membership';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export const runtime = 'nodejs';
 
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
   const preferredTargetLanguage =
     typeof body.preferredTargetLanguage === 'string' && body.preferredTargetLanguage
       ? body.preferredTargetLanguage
-      : 'ja';
+      : DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage =
     typeof body.nativeLanguage === 'string' && body.nativeLanguage ? body.nativeLanguage : 'en';
 

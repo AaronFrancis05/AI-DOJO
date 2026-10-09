@@ -35,13 +35,13 @@ export function AvatarPicker({ selectedId, onSelect, className, disabled }: Avat
   return (
     <div className={cn('flex flex-col gap-4', className)}>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dojo-text-muted" />
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dojo-text-muted" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search avatars — e.g. Apio, casual, coordinator…"
-          className="h-10 w-full rounded-xl border border-dojo-border bg-dojo-surface-raised pl-10 pr-4 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none focus-visible:border-dojo-accent focus-visible:ring-2 focus-visible:ring-dojo-accent"
+          className="h-10 w-full rounded-xl border border-dojo-border bg-dojo-surface-raised ps-10 pe-4 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none focus-visible:border-dojo-accent focus-visible:ring-2 focus-visible:ring-dojo-accent"
         />
       </div>
 
@@ -55,7 +55,7 @@ export function AvatarPicker({ selectedId, onSelect, className, disabled }: Avat
               onClick={() => onSelect(avatar)}
               disabled={disabled}
               className={cn(
-                'group relative flex flex-col overflow-hidden rounded-xl border bg-dojo-surface-raised text-left transition-colors focus-visible:ring-2 focus-visible:ring-dojo-accent disabled:opacity-50',
+                'group relative flex flex-col overflow-hidden rounded-xl border bg-dojo-surface-raised text-start transition-colors focus-visible:ring-2 focus-visible:ring-dojo-accent disabled:opacity-50',
                 selected
                   ? 'border-dojo-accent ring-1 ring-dojo-accent'
                   : 'border-dojo-border hover:border-dojo-accent/40',
@@ -73,7 +73,7 @@ export function AvatarPicker({ selectedId, onSelect, className, disabled }: Avat
                   }}
                 />
                 {selected && (
-                  <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-dojo-accent text-white shadow">
+                  <span className="absolute end-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-dojo-accent text-white shadow">
                     <Check className="h-4 w-4" />
                   </span>
                 )}

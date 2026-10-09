@@ -85,7 +85,7 @@ export function RoleplaySidePanel({
           {(situation?.title ?? scenario?.title) && (
             <div className="flex items-center justify-between">
               <span className="text-dojo-text-muted">Situation</span>
-              <span className="text-dojo-text-primary font-medium text-right max-w-[60%] truncate">
+              <span className="text-dojo-text-primary font-medium text-end max-w-[60%] truncate">
                 {situation?.title ?? scenario?.title}
               </span>
             </div>
@@ -175,7 +175,7 @@ export function RoleplaySidePanel({
           <div className="space-y-2">
             {vocabulary.map((v) => (
               <div key={v.id} className="flex justify-between text-xs">
-                <span className="text-dojo-text-primary font-medium">{v.japanese}</span>
+                <span translate="no" className="text-dojo-text-primary font-medium">{v.japanese}</span>
                 <span className="text-dojo-text-muted">{v.english}</span>
               </div>
             ))}

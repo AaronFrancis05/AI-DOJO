@@ -335,7 +335,7 @@ function OnboardingPracticeSession({
           )}
 
           {voice.partialTranscript && (
-            <div className="absolute bottom-44 left-0 right-0 z-10 flex justify-center px-4">
+            <div className="absolute bottom-44 start-0 end-0 z-10 flex justify-center px-4">
               <div className="flex max-w-md items-start gap-2 rounded-xl border border-dojo-border/70 bg-dojo-surface/85 px-4 py-2.5 shadow-lg backdrop-blur-md">
                 <Mic className="mt-0.5 h-3.5 w-3.5 shrink-0 text-dojo-warning" />
                 <p className="text-sm italic leading-relaxed text-dojo-text-primary/90">{voice.partialTranscript}</p>
@@ -344,12 +344,12 @@ function OnboardingPracticeSession({
           )}
 
           {error && (
-            <div className="absolute top-4 left-0 right-0 z-10 flex justify-center px-4">
+            <div className="absolute top-4 start-0 end-0 z-10 flex justify-center px-4">
               <p className="rounded-lg border border-dojo-danger/30 bg-dojo-danger/15 px-3 py-1.5 text-xs text-dojo-danger">{error}</p>
             </div>
           )}
 
-          <div className={`absolute bottom-0 left-0 right-0 z-10 flex justify-center px-4 pb-8 safe-bottom ${surface === 'avatar' ? 'pointer-events-none' : ''}`}>
+          <div className={`absolute bottom-0 start-0 end-0 z-10 flex justify-center px-4 pb-8 safe-bottom ${surface === 'avatar' ? 'pointer-events-none' : ''}`}>
             <div className={`flex items-center justify-center gap-6 rounded-2xl px-6 py-3 sm:gap-8 sm:px-8 ${
               surface === 'avatar'
                 ? 'pointer-events-auto border border-white/10 bg-black/10 backdrop-blur-[2px]'
@@ -418,7 +418,7 @@ function OnboardingPracticeSession({
           </div>
         </div>
 
-        <div className={`absolute top-0 bottom-0 left-0 z-30 flex w-80 max-w-[85vw] flex-col border-r border-dojo-border/60 bg-dojo-surface/95 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-in-out sm:w-96 ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute top-0 bottom-0 start-0 z-30 flex w-80 max-w-[85vw] flex-col border-e border-dojo-border/60 bg-dojo-surface/95 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-in-out sm:w-96 ${chatOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'}`}>
           <div className="flex shrink-0 items-center justify-between border-b border-dojo-border/60 px-4 py-3">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-dojo-accent" />
@@ -449,8 +449,8 @@ function OnboardingPracticeSession({
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${isAi ? 'items-start' : 'items-end'}`}>
                     <span className="mb-1 px-1 text-xs font-semibold text-dojo-text-primary">{isAi ? characterName : 'You'}</span>
-                    <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90' : 'rounded-2xl rounded-tr-sm border border-dojo-accent/20 bg-dojo-accent/15'}`}>
-                      <p className="text-base leading-relaxed text-dojo-text-primary">{displayedUtterance(turn)}</p>
+                    <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-ss-sm border border-dojo-border/60 bg-dojo-surface-raised/90' : 'rounded-2xl rounded-se-sm border border-dojo-accent/20 bg-dojo-accent/15'}`}>
+                      <p translate="no" className="text-base leading-relaxed text-dojo-text-primary">{displayedUtterance(turn)}</p>
                       {isAi && turn.messageNative && (
                         <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}
@@ -464,10 +464,10 @@ function OnboardingPracticeSession({
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: colors.accent }}>
                   {characterName[0]}
                 </div>
-                <div className="rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90 px-4 py-3 shadow-sm">
+                <div className="rounded-2xl rounded-ss-sm border border-dojo-border/60 bg-dojo-surface-raised/90 px-4 py-3 shadow-sm">
                   <p className="text-base leading-relaxed text-dojo-text-primary">
                     {streamingText}
-                    <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-dojo-accent align-middle" />
+                    <span className="ms-0.5 inline-block h-4 w-0.5 animate-pulse bg-dojo-accent align-middle" />
                   </p>
                 </div>
               </div>

@@ -33,7 +33,7 @@ export function SingleSelectStep({ options, value, onChange, title, subtitle, sk
               key={opt.value}
               type="button"
               onClick={() => onChange(opt.value)}
-              className={`flex items-start gap-4 rounded-xl border p-4 text-left transition-all ${
+              className={`flex items-start gap-4 rounded-xl border p-4 text-start transition-all ${
                 selected
                   ? 'border-dojo-accent bg-dojo-accent/5 ring-2 ring-dojo-accent/20'
                   : 'border-dojo-border bg-dojo-surface hover:border-dojo-accent/50 hover:bg-dojo-surface-raised'

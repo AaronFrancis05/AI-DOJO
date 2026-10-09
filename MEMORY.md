@@ -1293,3 +1293,41 @@ Practice showed "Pick a domain first so we know what to practise" even after a d
 
 
 
+
+## 2026-10-09 (security + performance pass, branch fix/security-and-performance)
+
+- backups/ (user emails, bcrypt hashes, share tokens) untracked and gitignored. STILL IN GIT HISTORY on GitHub — needs a coordinated `git filter-repo` purge + force-push, and rotation of share tokens / affected passwords. Not done.
+- clientIp (lib/tryout/gate.ts) now reads X-Forwarded-For from the RIGHT (TRUSTED_PROXY_HOPS, default 1 = Traefik). The first hop is client-controlled; trusting it made every per-IP limit spoofable. tts + speech/token reuse clientIp. NOTE: docker-compose publishes port 3000 directly — if reachable without Traefik, headers are spoofable regardless.
+- rateLimitIncrement = MULTI(INCR, EXPIRE NX): a failed separate EXPIRE left keys with no TTL (permanent lockout). rateLimitUnavailable(count) is the one fail-closed rule for guest/billed routes (configured-but-erroring OR production-without-Redis = deny).
+- chat/stream: 1000-char input cap, per-user 60 turns / 10 min (fails open — signed-in only). accuracyScore is client-measured (Azure runs in browser) so it is only clamped; it only gates a retry prompt.
+- Guest history (tryout + onboarding) bounded by boundGuestHistory (24 turns, 1000 chars each).
+- Migration 0054 = nine FK indexes (sessions, conversations, corrections, evaluations, goal_completions, vocabulary_encounters, chat_messages, vocabulary, scenario_goals). GENERATED, NOT APPLIED.
+- db-migrate: each file runs in one Neon HTTP transaction with its history row; splitter is quote/$$-aware. Verified identical output on all 348 existing statements.
+- syncUser no longer UPDATEs an unchanged name on every request; membership check cached 5 min (cacheKeys.membershipChecked).
+- Leaderboard uses computeCompositeScore on per-dimension averages (linear ⇒ equal to average of composites), learners/active/non-deleted only, cached 60s. Friends/School tabs were already "coming soon" (audit claim of fake data was wrong).
+- Removed dead /api/chat + analyzeAndGenerateTurn + AIResponseAnalysis, lib/test-ai.ts, RoleplayInputBar, unused fixture getters, unreferenced sunset.hdr x2. /api/chat/analyze left (no in-app caller, may be external).
+- Bookings: learner-side overlap check (409 "You already have a lesson booked at that time"). App-level only; a DB exclusion constraint on learner_id is a follow-up.
+- review/due localizes targetText/usageTip to preferredTargetLanguage; phonetic only for ja.
+- Build trap: stale `.next/dev/types` (old /hub, /api/classes routes) fails `npm run build` / tsc — `rm -rf .next` first.
+
+## 2026-10-09 (product decisions resolved)
+
+- Share links: share_tokens.expires_at (migration 0055). New links expire after 90 days (SHARE_LINK_TTL_DAYS in app/api/sessions/[id]/share/route.ts); pre-existing rows are NULL = never expire, so no sent link broke. Re-sharing an expired session issues a fresh token. Expired GET → 410.
+- Home WelcomeBanner shows the avatar's webp portrait (useCurrentAvatarThumbnail, falls back to thumbnailForModelUrl) and only mounts three.js + the GLB on tap, then bows.
+- Git LFS: .gitattributes tracks *.glb *.fbx *.hdr *.mp4 *.exe (65 files, ~260 MB) via renormalize — no history rewrite; old blobs remain in history. image.yml's image job checks out with lfs: true; lint/test/build jobs don't fetch LFS. Everyone needs `git lfs install` once. Watch the org's GitHub LFS storage/bandwidth quota.
+- Learner double-booking: custom migration 0056 adds EXCLUDE constraint tutor_bookings_learner_no_overlap with a DO $$ pre-flight that aborts listing the clash count. bookings route maps that constraint's 23P01 to the learner 409. Migrations 0054–0056 are generated, NOT applied — the user applies all migrations + docker together after all phases.
+
+## 2026-10-09 (Phase 2 English-first pivot, branch feat/english-first-pivot)
+
+- Defaults: DEFAULT_TARGET_LANGUAGE='en' and BASE_CONTENT_LANGUAGE='ja' in lib/language.ts. They are DIFFERENT things — 'ja' is a fact about the seeded data (vocabulary rows are Japanese), not a default. Compare against the constants, never a literal. getTargetLangConfig's unknown-code fallback is now English. Schema defaults for users/sessions/student_progress/student_lesson_progress target_language → 'en' (migration 0057, column defaults only).
+- Onboarding infers nativeLanguage when not given: Accept-Language, then the picked country's default.
+- DESIGN CHANGE vs PLAN.md 2.2/2.3: *_localizations rows are TARGET content (the backfill re-sets scenes per language). Reading scenario_localizations[native] as the native explanation showed a French speaker learning English a French café scene. New tables scenario_/situation_/scenario_goal_native_localizations + vocabulary_native_notes are keyed (row, target, native). Resolvers in lib/localization.ts: resolveNativeScenarioLocalization / resolveNativeSituationLocalization / localizeGoalsForLearner / localizeVocabularyForLearner (fallback native → English → base, warns once per pair). Target 'ja' keeps reading the legacy single-key rows (they were literal translations of the base scene, correct there).
+- resolveNativeGloss (lib/native-gloss.ts, pure): meaning in native X = the word in X (vocabulary_localizations[X].translation); en → base translation; row's own language → base word. ~31 languages of meanings with no generation.
+- The usage-tip overwrite (English tip replacing the native one) is gone: localizeVocabularyForLearner never lets a target-row tip beat a native note. sessions/[id], review/due and analyze-turn all use it.
+- Fill: `npm run db:backfill-target-localizations -- --only=native [--target=en] [--lang=ja]` (one AI call per scenario covers description + goals + word tips). Gate: `npm run db:check-localization` now prints per-native coverage and fails below 100% (`-- --native-only` for just that). Fixture export/seed replay carry the new tables (optional `nativeLocalizations` section). NOTHING GENERATED OR APPLIED YET.
+- 2.5: EN appropriateness rubric + L1 pronunciation targets (lib/language-packs/en/) feed the turn prompt for target en. assessPronunciation now returns words[]/phonemes (lib/roleplay/pronunciation-detail.ts) — it still has NO caller; the live pipeline never runs Azure pronunciation assessment (accuracyScore only comes from the icebreaker drill). Wire it in 4.6 (clarity check) rather than into the capture path.
+- 2.6: 14 culture-neutral English situations (stand-ups, support calls, interviews, IELTS/TOEIC) + domains careers and speaking_exams in scripts/seed-domain-data.ts, which now inserts missing domain slugs into an existing DB. Run `tsx scripts/seed-domain-data.ts`. Domains/situations have no per-target-language filter, so Japanese learners will also see "IELTS Speaking" — follow-up.
+- 2.4: in-house i18n (see ui-registry "Interface language"). DELIBERATE DEVIATION from PLAN.md's order: the ui-locale cookie outranks the profile's nativeLanguage, because only the switcher writes it and a Japanese speaker who picks an English UI must get it. Geo is read in lib/i18n/server.ts, not proxy.ts (the proxy's protected branch returns its own response, so request headers can't be injected there). Root layout is async now (cookies/headers) — every page is dynamic; it already effectively was.
+- 2.4 NOT DONE: string extraction beyond wave 1 (shell only), SEO /ja /ko routes + hreflang (deferred until wave 2 — prefixed routes serving English would be duplicate content), `npm run i18n:translate` not run (no catalogs but en.json yet). Root metadata still says "practice Japanese" — copy change needs a PRODUCT.md pass.
+- Directional Tailwind classes → logical across 64 files by codemod (centring/percent offsets excluded).
+

@@ -75,7 +75,7 @@ export default function DomainDetailPage() {
 
       <div
         className={cn(
-          'flex flex-col sm:flex-row items-center gap-6 rounded-[--radius-lg] p-8 text-center sm:text-left',
+          'flex flex-col sm:flex-row items-center gap-6 rounded-[--radius-lg] p-8 text-center sm:text-start',
           domain.isActive === false && 'opacity-40',
         )}
         style={{

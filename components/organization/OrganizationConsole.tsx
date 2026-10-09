@@ -380,7 +380,7 @@ function PeopleTab({
                 Retire
               </Button>
               {lastAdmin && (
-                <p className="max-w-xs text-xs leading-relaxed text-dojo-text-muted sm:text-right">
+                <p className="max-w-xs text-xs leading-relaxed text-dojo-text-muted sm:text-end">
                   Appoint another administrator before removing this one.
                 </p>
               )}
@@ -491,7 +491,7 @@ function GroupsTab({
                       </Button>
                     </div>
                     {group.memberCount > 0 && (
-                      <p className="max-w-xs text-right text-xs leading-relaxed text-dojo-text-muted">
+                      <p className="max-w-xs text-end text-xs leading-relaxed text-dojo-text-muted">
                         Remove everyone from this group before deleting it.
                       </p>
                     )}

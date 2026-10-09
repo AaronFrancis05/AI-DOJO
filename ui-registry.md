@@ -65,6 +65,10 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `RadarChart` | `data: RadarDataPoint[]`, `size`, `levels`, `color` | SVG-based radar/spider chart with labels |
 | `BehaviorModeToggle` | `value`, `onChange` | Standard/Trouble pill toggle |
 | `SliderRow` | `label`, `value`, `min/max`, `onChange` | Labelled range slider for settings |
+| `LanguageSelector` | `label`, `value`, `options`, `onChange`, `compact?` | The dropdown inside `LanguagePicker`, exported for single-language choices. Reuse it for any language select — do not build another |
+| `UiLanguageSwitcher` | `compact?` | Interface-language picker (Settings, and inside `UiLocaleNotice`). POSTs `/api/ui-locale`, then `router.refresh()`. Never touches the learning pair |
+| `UiLocaleNotice` | — | "Viewing in 日本語 · change" bar, shown only while the UI locale is a guess (`source` country/browser). Mounted in `AppShell` `<main>` and the marketing layout |
+| `TranslatedText` | `text`, `className?`, `toggleClassName?` | User-written text (tutor bios, lesson titles, announcements) in the reader's UI language via `/api/translate-text`, with a "Show original" toggle. Never for the language being taught |
 
 ## Marketing Components (`/components/marketing/`)
 | Component | Props | Notes |
@@ -127,6 +131,24 @@ Last updated: 2026-09-30
 | Page width | Outer wrapper is always `mx-auto w-full max-w-7xl`. Headings share one left edge. Pages that need a narrower reading measure wrap only the body in `max-w-3xl` or `max-w-2xl` with **no** `mx-auto` (left-aligned under the heading) |
 
 **Pattern notes:** The HTML tag is always `h1`; size comes from Tailwind, not the tag. Render it in every page state (loading, empty, error, complete), not only the main content return — Review used to omit it on early returns. Feature blurbs under the `h1` share `mt-2 text-base text-dojo-text-muted leading-relaxed` (Library, Courses, Tutors, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Profile). Sessions also shows a `text-sm` count (`N total · M in progress`) above the list, not under the heading. Nested pages (course detail, session report, live rooms, not-found states) are not this pattern — leave those as they are. Messages is a split-pane and does not use this wrapper.
+
+## Interface language (i18n) (`/lib/i18n/`, `/messages/`)
+
+In-house, no dependency (agreed for PLAN.md 2.4). One provider: `LanguageCatalogProvider` takes `ui={await loadUiLocaleContext()}` in every section layout.
+
+| Piece | Where | Notes |
+|---|---|---|
+| Catalogs | `messages/<lang>.json` | `en.json` is the source of truth. Dotted keys, `{name}` placeholders. Other locales are machine-filled by `npm run i18n:translate` (hashes of the English each string came from live in `messages/.sources/`, so only missing/changed keys are re-sent) |
+| Client | `useT()`, `useUiLocale()` from `lib/language-context.tsx` | `t('nav.home')`, `t('sidebar.level', { level })`. Outside a provider: English |
+| Server | `getTranslations()`, `getUiLocale()` from `lib/i18n/server.ts` | Per-request cached; the root layout uses it for `<html lang dir>` |
+| Resolution | `lib/i18n/config.ts` `resolveUiLocale` | `ui-locale` cookie (switcher only) → signed-in `nativeLanguage` → non-English browser → country header (`cf-ipcountry` / `x-vercel-ip-country` / `x-country-code`) via `countries.defaultNativeLanguage` → browser → `en` |
+| Formatting | `lib/i18n/format.ts` | `formatDate/Time/Number/Currency/RelativeTime(value, locale)`. The one formatter — pass `useUiLocale().locale`, never the target language |
+| CI gate | `lib/i18n/catalogs.test.ts` (runs in `npm test`) | Fails on a literal `t()` / `labelKey:` key missing from `en.json`, a catalog key `en.json` lacks, or changed placeholders. Missing translations are allowed (render English) |
+
+**Rules:**
+- **Logical direction only.** `ms-/me-/ps-/pe-/start-/end-/border-s/border-e/text-start/text-end/rounded-ss…`, never `ml-/mr-/pl-/pr-/left-/right-`. `dir="rtl"` (ar, he, fa, ur — `isRtlLanguage`) mirrors the app through them. Exceptions that stay physical: centring (`left-1/2 -translate-x-1/2`) and percentage offsets. Slide-in drawers add `rtl:translate-x-full` next to `-translate-x-full`.
+- **`translate="no"` on the language being taught** — role-play bubbles, chat-drawer utterances and corrections, flashcards, icebreaker words, vocab lists. Browser translate (and ours) must never turn the English lesson into the learner's language.
+- New strings go into `en.json` first; extract by wave (1 shell/learner chrome · 2 marketing/tryout · 3 tutor/org consoles/settings · 4 admin, may stay English).
 
 ## Organizations
 

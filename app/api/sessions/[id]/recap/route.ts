@@ -2,7 +2,7 @@ import { db } from '@/src/db';
 import { sessions, scenarios, situations, scenarioGoals, goalCompletions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
 import { getAIProvider } from '@/lib/ai-providers';
-import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig, getNativeLangName, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import { eq } from 'drizzle-orm';
 import { isSessionEnded } from '@/lib/roleplay/session-lifecycle';
 
@@ -65,7 +65,7 @@ export async function POST(
     return Response.json({ error: 'Scenario not found' }, { status: 404 });
   }
 
-  const targetLanguage = session.targetLanguage ?? 'ja';
+  const targetLanguage = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage = session.nativeLanguage ?? 'en';
   const targetLangName = getTargetLangConfig(targetLanguage).name;
   const nativeLangName = getNativeLangName(nativeLanguage);

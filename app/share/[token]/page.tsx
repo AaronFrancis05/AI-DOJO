@@ -210,8 +210,8 @@ export default function SharedSessionPage() {
                       <div className={`max-w-[75%]`}>
                         <div className={`rounded-2xl px-4 py-3 ${
                           isUser
-                            ? 'rounded-br-none bg-dojo-accent'
-                            : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
+                            ? 'rounded-ee-none bg-dojo-accent'
+                            : 'rounded-ss-none bg-dojo-surface-raised border border-dojo-border'
                         }`}>
                           {text && (
                             <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>

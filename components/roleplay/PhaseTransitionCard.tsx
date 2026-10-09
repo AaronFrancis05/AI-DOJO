@@ -57,7 +57,7 @@ export function PhaseTransitionCard({ transition, onDismiss, autoDismissMs = 300
         <button
           type="button"
           onClick={onDismiss}
-          className="tap-target absolute right-3 top-3 z-10 text-white/70 transition-colors hover:text-white"
+          className="tap-target absolute end-3 top-3 z-10 text-white/70 transition-colors hover:text-white"
           aria-label="Skip"
         >
           <X className="h-4 w-4" />

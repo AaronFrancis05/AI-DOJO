@@ -1,10 +1,10 @@
-import { getTargetLangConfig, getNativeLangName, getGreetingGesture, TARGET_LANGUAGES } from './language';
+import { getTargetLangConfig, getNativeLangName, getGreetingGesture, TARGET_LANGUAGES, DEFAULT_TARGET_LANGUAGE } from './language';
 // Imported from the leaf modules rather than the prompts barrel: the barrel
 // pulls in the phase builders, and nothing here needs them.
 import { describeReplyContract } from './roleplay/prompts/reply-contract';
 import { buildIdentityAndGuardBlock } from './roleplay/prompts/shared';
 import type { SessionPhase } from './roleplay/phase-engine';
-import { getDifficultyTierDescription, getAppropriatenessRubric } from './language-packs';
+import { getDifficultyTierDescription, getAppropriatenessRubric, getPronunciationFocus } from './language-packs';
 import { getAIProvider } from './ai-providers';
 import type { ChatTurn } from './ai-providers';
 
@@ -186,7 +186,7 @@ export async function analyzeUserTurn(input: AnalyzeUserTurnInput): Promise<User
     behaviorMode,
     situationContext,
     situationLearningGoals,
-    targetLanguage = 'ja',
+    targetLanguage = DEFAULT_TARGET_LANGUAGE,
     nativeLanguage = 'en',
     learnerName,
     learnerCountry,
@@ -214,6 +214,7 @@ export async function analyzeUserTurn(input: AnalyzeUserTurnInput): Promise<User
   const difficulty = scenario.difficulty ?? 'beginner';
   const difficultyDesc = getDifficultyTierDescription(difficulty, targetLanguage);
   const appropriatenessRubric = getAppropriatenessRubric(targetLanguage);
+  const pronunciationFocus = getPronunciationFocus(targetLanguage, nativeLanguage);
 
   const modeInstruction = behaviorMode === 'trouble'
     ? `===== BEHAVIOR MODE: TROUBLE =====
@@ -232,7 +233,7 @@ The AI character should be cooperative, friendly, and helpful. They should:
 - Provide a supportive learning environment`;
 
   const correctionPhoneticInstruction = hasPhonetic
-    ? `      "originalPhonetic": "Phonetic of originalText (Japanese only, else null)",\n      "correctedPhonetic": "Phonetic of correctedText (Japanese only, else null)",`
+    ? `      "originalPhonetic": "Romanized phonetic of originalText, else null",\n      "correctedPhonetic": "Romanized phonetic of correctedText, else null",`
     : '';
 
   const learnerIdentityBlock = buildIdentityAndGuardBlock(learnerName, learnerCountry);
@@ -261,7 +262,7 @@ IMPORTANT: The placeholder user character name ("${scenario.userCharacterName}")
 ${describeReplyContract(phase, isSameLanguage, targetLangName, nativeLangName)}
 - ALL TEACHING CONTENT — the "feedback" field, every "explanation" inside "corrections", and any coaching notes — MUST be written entirely in ${nativeLangName}, regardless of how advanced the learner is.
 - Grade the learner against what this phase actually asks of them. Do not penalise them for not doing something the phase never invited.
-${hasPhonetic ? '- Provide phonetic transcription for Japanese target-language text (messagePhonetic and correction phonetic fields below).' : '- Phonetic is NOT relevant for this language — always set phonetic fields to null.'}
+${hasPhonetic ? `- Provide a romanized phonetic transcription of ${targetLangName} text (messagePhonetic and correction phonetic fields below).` : '- Phonetic is NOT relevant for this language — always set phonetic fields to null.'}
 
 ===== SCENARIO GOALS =====
 ${goalsBlock}
@@ -284,7 +285,7 @@ YOUR JOBS:
 
 ===== EXPRESSION APPROPRIATENESS RUBRIC =====
 ${appropriatenessRubric}
-
+${pronunciationFocus ? `\n===== PRONUNCIATION FOCUS =====\n${pronunciationFocus}\n` : ''}
 ===== SCENARIO COMPLETION RULE =====
 Set scenarioComplete to true ONLY when ALL goals show [COVERED]. If even one goal remains [PENDING], scenarioComplete must be false.
 
@@ -292,7 +293,7 @@ Provide your response strictly as a single JSON object matching this schema blue
 {
   "messageTarget": "The ${targetLangName} phrase(s) the user produced — empty string if they used only ${nativeLangName}",
   "messageNative": "The user's full utterance (primarily ${nativeLangName}, may include code-switched ${targetLangName} phrases)",
-  "messagePhonetic": ${hasPhonetic ? '"Phonetic transcription (only for Japanese)"' : 'null'},
+  "messagePhonetic": ${hasPhonetic ? '"Romanized phonetic transcription of message"' : 'null'},
   "isValidInContext": true,
   "isEnglishWhenExpected": false,
   "emotionTone": "friendly",

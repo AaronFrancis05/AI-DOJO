@@ -1,6 +1,7 @@
 import { db } from '@/src/db';
 import { courses, lessons, units, courseLevels, lessonPhases, vocabulary, studentLessonProgress, studentProgress, srsCards } from '@/src/schema';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export const LESSON_COMPLETION_XP = 50;
 
@@ -130,7 +131,7 @@ export async function recordLessonActivity({
   phaseKey = null,
   complete = false,
   score = null,
-  targetLanguage = 'ja',
+  targetLanguage = DEFAULT_TARGET_LANGUAGE,
   nativeLanguage = 'en',
 }: RecordLessonActivityInput) {
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, lessonId));

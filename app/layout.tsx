@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Inter, Geist_Mono, Playfair_Display } from "next/font/google";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { getAppOrigin } from "@/lib/auth/app-origin";
+import { getUiLocale } from "@/lib/i18n/server";
 import "./globals.css";
 
 const inter = Inter({
@@ -60,14 +61,20 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The interface language, resolved once per request (lib/i18n/server.ts) and
+  // shared with the section layout that ships its messages. `dir` mirrors the
+  // whole layout for Arabic, Hebrew, Persian and Urdu — the components use
+  // logical classes (ms-/pe-/start-) so they flip with it.
+  const { locale, dir } = await getUiLocale();
   return (
     <html
-      lang="en"
+      lang={locale}
+      dir={dir}
       className={`${inter.variable} ${geistMono.variable} ${playfairDisplay.variable} h-full antialiased`}
       suppressHydrationWarning
     >

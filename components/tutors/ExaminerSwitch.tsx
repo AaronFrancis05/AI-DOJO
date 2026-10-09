@@ -140,7 +140,7 @@ export function ExaminerSwitch({
                     {choice.name}
                   </span>
                   {avatarId === choice.avatarId && (
-                    <Check className="absolute right-1 top-1 h-3.5 w-3.5 text-dojo-accent" />
+                    <Check className="absolute end-1 top-1 h-3.5 w-3.5 text-dojo-accent" />
                   )}
                 </button>
               ))}

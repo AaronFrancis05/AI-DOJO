@@ -1,7 +1,7 @@
 import { db } from '@/src/db';
 import { domains, scenarios, situations, vocabulary } from '@/src/schema';
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig, getNativeLangName, BASE_CONTENT_LANGUAGE } from '@/lib/language';
 import {
   applySituationLocalization,
   getTargetSituationLocalization,
@@ -112,7 +112,7 @@ async function loadPracticePhrases(
     return TRYOUT_ICEBREAKER_PHRASES.map((p) => ({ ...p }));
   }
 
-  const languages = targetLanguage === 'ja' ? ['ja'] : ['ja', targetLanguage];
+  const languages = targetLanguage === BASE_CONTENT_LANGUAGE ? [BASE_CONTENT_LANGUAGE] : [BASE_CONTENT_LANGUAGE, targetLanguage];
   const rows = await db
     .select({
       targetText: vocabulary.targetText,
@@ -125,7 +125,7 @@ async function loadPracticePhrases(
     .orderBy(asc(vocabulary.id));
 
   const preferred = rows.filter((r) => r.languageCode === targetLanguage);
-  const source = preferred.length > 0 ? preferred : rows.filter((r) => r.languageCode === 'ja');
+  const source = preferred.length > 0 ? preferred : rows.filter((r) => r.languageCode === BASE_CONTENT_LANGUAGE);
   const picked = source.slice(0, MAX_ONBOARDING_USER_TURNS);
   if (picked.length === 0) {
     return TRYOUT_ICEBREAKER_PHRASES.map((p) => ({ ...p }));

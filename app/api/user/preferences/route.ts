@@ -3,6 +3,7 @@ import { db } from '../../../../src/db';
 import { users } from '../../../../src/schema';
 import { eq } from 'drizzle-orm';
 import { isLanguageEnabled } from '../../../../lib/language-registry';
+import { cacheDel, cacheKeys } from '../../../../lib/cache';
 
 export async function GET() {
   const authUser = await getAuthUser();
@@ -67,6 +68,8 @@ export async function PUT(req: Request) {
   }
 
   await db.update(users).set(updateData).where(eq(users.id, authUser.id));
+  // The UI locale follows the native language (lib/i18n/server.ts).
+  if ('nativeLanguage' in updateData) await cacheDel(cacheKeys.uiNativeLanguage(authUser.id));
 
   return Response.json({ success: true });
 }

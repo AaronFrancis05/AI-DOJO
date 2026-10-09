@@ -3,7 +3,7 @@ import { withSessionLock } from '../../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, goalCompletions, lessons, users, vocabularyEncounters, srsCards } from '../../../../src/schema';
 import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
-import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
+import { getTargetLangConfig, getNativeLangName, getBCP47, BASE_CONTENT_LANGUAGE } from '../../../../lib/language';
 import {
   advancePhaseState,
   computeCompositeScore,
@@ -214,7 +214,7 @@ export async function POST(req: Request) {
     // The base `phonetic` column stores Japanese romaji. Once vocab is
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
-    const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+    const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === BASE_CONTENT_LANGUAGE;
 
     const scenarioTitle = turnData.scenarioLocalized
       ? currentScenario.title

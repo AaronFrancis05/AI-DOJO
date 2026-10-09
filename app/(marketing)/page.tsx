@@ -210,7 +210,7 @@ export default async function LandingPage() {
         {/* Faint kanji watermark */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-10 top-0 select-none font-display text-[26rem] leading-none text-dojo-text-primary/[0.04]"
+          className="pointer-events-none absolute -end-10 top-0 select-none font-display text-[26rem] leading-none text-dojo-text-primary/[0.04]"
         >
           道
         </div>
@@ -222,7 +222,7 @@ export default async function LandingPage() {
           aria-hidden="true"
           width={1536}
           height={1024}
-          className="pointer-events-none absolute bottom-0 left-0 hidden h-auto w-56 select-none opacity-70 sm:block lg:w-72"
+          className="pointer-events-none absolute bottom-0 start-0 hidden h-auto w-56 select-none opacity-70 sm:block lg:w-72"
         />
 
         <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-16 sm:px-6 sm:pt-20 sm:pb-20 lg:pt-24">
@@ -311,7 +311,7 @@ export default async function LandingPage() {
                   <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/35 to-black/70" />
 
                   {/* ── CONVERSATION BUBBLE (left side) ── */}
-                  <div className="absolute left-3 top-12 max-w-[150px] rounded-2xl border border-white/10 bg-black/60 p-3 backdrop-blur-xl sm:left-6 sm:top-16 sm:max-w-[180px] sm:p-4">
+                  <div className="absolute start-3 top-12 max-w-[150px] rounded-2xl border border-white/10 bg-black/60 p-3 backdrop-blur-xl sm:start-6 sm:top-16 sm:max-w-[180px] sm:p-4">
                     <p className="text-sm font-semibold leading-snug text-white sm:text-base">
                       いらっしゃいませ！
                     </p>
@@ -322,7 +322,7 @@ export default async function LandingPage() {
                       &ldquo;Welcome! Have you decided your order?&rdquo;
                     </p>
                     {/* Tail indicator */}
-                    <div className="absolute -left-1.5 top-4 h-3 w-3 rotate-45 border-l border-t border-white/10 bg-black/60" />
+                    <div className="absolute -start-1.5 top-4 h-3 w-3 rotate-45 border-s border-t border-white/10 bg-black/60" />
                   </div>
 
                   {/* ── AVATAR (centered, full height) ── */}
@@ -340,7 +340,7 @@ export default async function LandingPage() {
                   </div>
 
                   {/* ── BOTTOM OVERLAY (progress bar + mic) ── */}
-                  <div className="absolute bottom-0 left-0 right-0 flex items-end gap-3 px-3 pb-3 sm:px-5 sm:pb-4">
+                  <div className="absolute bottom-0 start-0 end-0 flex items-end gap-3 px-3 pb-3 sm:px-5 sm:pb-4">
                     <div className="min-w-0 flex-1">
                       <div className="rounded-2xl border border-white/10 bg-black/60 px-3.5 py-3 backdrop-blur-xl sm:px-4 sm:py-3.5">
                         <div className="mb-2 flex items-center justify-between">
@@ -382,14 +382,14 @@ export default async function LandingPage() {
                           ))}
                         </div>
                       </div>
-                      <p className="mt-2 text-left text-[10px] font-medium tracking-wider text-white/70 sm:mt-2.5 sm:text-xs">
+                      <p className="mt-2 text-start text-[10px] font-medium tracking-wider text-white/70 sm:mt-2.5 sm:text-xs">
                         Listening...
                       </p>
                     </div>
                   </div>
 
                   {/* ── SESSION XP + STREAK (grouped, right side) ── */}
-                  <div className="absolute right-3 top-12 flex flex-col gap-2 sm:right-5 sm:top-16 sm:gap-2.5">
+                  <div className="absolute end-3 top-12 flex flex-col gap-2 sm:end-5 sm:top-16 sm:gap-2.5">
                     <div className="rounded-xl border border-white/10 bg-black/50 px-3 py-2 backdrop-blur-xl sm:rounded-2xl sm:px-4 sm:py-2.5">
                       <p className="text-[9px] text-white/50 sm:text-[10px]">Session XP</p>
                       <p className="mt-0.5 flex items-center gap-1 text-xs font-bold text-amber-400 sm:text-sm">
@@ -491,7 +491,7 @@ export default async function LandingPage() {
                       sizes="(min-width: 1024px) 20vw, (min-width: 640px) 33vw, 50vw"
                       className="object-cover transition-transform duration-500 group-hover:scale-110"
                     />
-                    <div className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-md">
+                    <div className="absolute start-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-dojo-accent text-white shadow-md">
                       {Icon && <Icon className="h-4 w-4" />}
                     </div>
                   </div>
@@ -515,7 +515,7 @@ export default async function LandingPage() {
           aria-hidden="true"
           width={1536}
           height={1024}
-          className="pointer-events-none absolute -right-6 bottom-0 hidden h-auto w-72 select-none opacity-80 lg:block xl:w-80"
+          className="pointer-events-none absolute -end-6 bottom-0 hidden h-auto w-72 select-none opacity-80 lg:block xl:w-80"
         />
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-dojo-accent">How It Works</p>
@@ -606,13 +606,13 @@ export default async function LandingPage() {
           aria-hidden="true"
           width={1536}
           height={1024}
-          className="pointer-events-none absolute -bottom-6 left-0 hidden h-auto w-48 select-none opacity-90 sm:block lg:w-60"
+          className="pointer-events-none absolute -bottom-6 start-0 hidden h-auto w-48 select-none opacity-90 sm:block lg:w-60"
         />
 
-        <div className="relative flex flex-col items-center justify-between gap-6 px-6 py-12 text-center sm:flex-row sm:px-10 sm:py-14 sm:text-left sm:pl-56 lg:pl-64">
+        <div className="relative flex flex-col items-center justify-between gap-6 px-6 py-12 text-center sm:flex-row sm:px-10 sm:py-14 sm:text-start sm:ps-56 lg:ps-64">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -left-8 -top-8 select-none font-display text-9xl leading-none text-dojo-accent/10"
+            className="pointer-events-none absolute -start-8 -top-8 select-none font-display text-9xl leading-none text-dojo-accent/10"
           >
             道
           </div>

@@ -31,7 +31,7 @@ const LEVELS: TreeLevel[] = [
       { key: 'name', label: 'Name', required: true },
       { key: 'slug', label: 'Slug', required: true, hint: 'The URL segment: /dojo/<slug>.' },
       { key: 'description', label: 'Description', widget: 'textarea' },
-      { key: 'icon', label: 'Icon', hint: 'One of the lucide names the Library maps: UtensilsCrossed, Building2, Plane, HeartPulse, ShoppingBag, Briefcase, Compass, Sun.' },
+      { key: 'icon', label: 'Icon', hint: 'One of the lucide names the Library maps: UtensilsCrossed, Building2, Plane, HeartPulse, ShoppingBag, Briefcase, Compass, Sun, UserRound, GraduationCap.' },
       { key: 'heroGradientFrom', label: 'Hero gradient from', hint: 'Hex, e.g. #6366f1 — a per-domain brand colour, not a design token.' },
       { key: 'heroGradientTo', label: 'Hero gradient to' },
       { key: 'imageUrl', label: 'Hero image URL', nullable: true },

@@ -73,7 +73,7 @@ export default function ForgotPasswordModal({
             </p>
             <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
               <div className="relative">
-                <MailIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-dojo-text-muted/60" />
+                <MailIcon className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-dojo-text-muted/60" />
                 <input
                   ref={emailRef}
                   type="email"
@@ -81,7 +81,7 @@ export default function ForgotPasswordModal({
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-dojo-border bg-dojo-surface-raised py-2 pl-10 pr-4 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
+                  className="w-full rounded-lg border border-dojo-border bg-dojo-surface-raised py-2 ps-10 pe-4 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
                 />
               </div>
               {error && (

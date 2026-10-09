@@ -71,7 +71,7 @@ export default function LeaderboardPage() {
                     </div>
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <p className="text-sm font-semibold text-dojo-text-primary">
                     {currentUser.averageScore}%
                   </p>
@@ -144,7 +144,7 @@ function LeaderboardTable({ data }: { data: LeaderboardEntry[] }) {
               <span className="text-xs text-dojo-text-muted">{entry.sessionsCompleted} sessions</span>
             </div>
           </div>
-          <div className="text-right shrink-0 flex items-center gap-3">
+          <div className="text-end shrink-0 flex items-center gap-3">
             {entry.streak > 0 && (
               <div className="flex items-center gap-1">
                 <Flame className="h-4 w-4 text-dojo-streak" />

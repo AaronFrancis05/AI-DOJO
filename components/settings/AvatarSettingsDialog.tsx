@@ -167,7 +167,7 @@ export function AvatarSettingsDialog({ open, onClose }: AvatarSettingsDialogProp
                               e.stopPropagation();
                               if (confirm('Remove this avatar?')) deleteAvatar(av.id);
                             }}
-                            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-dojo-danger text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            className="absolute -top-1.5 -end-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-dojo-danger text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>

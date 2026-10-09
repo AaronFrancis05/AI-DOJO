@@ -168,7 +168,7 @@ export function QuickExchangeDrill({
             <span className="text-sm font-medium text-dojo-text-primary">{characterName}</span>
           </div>
 
-          <div className="rounded-xl bg-dojo-surface p-4 mb-6 text-left">
+          <div className="rounded-xl bg-dojo-surface p-4 mb-6 text-start">
             <p className="text-base text-dojo-text-primary leading-relaxed">{currentDrill.promptJa}</p>
             {currentDrill.promptPhonetic && (
               <p className="text-sm text-dojo-text-muted italic mt-1 leading-relaxed">{currentDrill.promptPhonetic}</p>

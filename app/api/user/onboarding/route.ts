@@ -6,6 +6,9 @@ import { users, countries, studentProgress, domains } from '@/src/schema';
 import { and, eq } from 'drizzle-orm';
 import { enrollInCourse } from '@/lib/courses/enroll';
 import { seedLessonPlan } from '@/lib/calendar/seed-lesson-plan';
+import { nativeLanguageFromAcceptLanguage } from '@/lib/language';
+import { loadLanguageCatalog } from '@/lib/language-registry';
+import { cacheDel, cacheKeys } from '@/lib/cache';
 
 export async function POST(req: NextRequest) {
   const authUser = await getAuthUser();
@@ -26,6 +29,15 @@ export async function POST(req: NextRequest) {
   if (typeof nativeLanguage === 'string' && nativeLanguage) updateData.nativeLanguage = nativeLanguage;
   if (typeof dailyGoalMinutes === 'number' && dailyGoalMinutes > 0) updateData.dailyGoalMinutes = dailyGoalMinutes;
 
+  // A learner who skipped the language question still gets explanations in a
+  // language they read: the browser's Accept-Language first, then (below) the
+  // country they picked. The 'en' column default is only the last resort.
+  if (typeof updateData.nativeLanguage !== 'string') {
+    await loadLanguageCatalog();
+    const inferred = nativeLanguageFromAcceptLanguage(req.headers.get('accept-language'));
+    if (inferred) updateData.nativeLanguage = inferred;
+  }
+
   if (typeof countryCode === 'string' && countryCode) {
     const [country] = await db.select().from(countries).where(eq(countries.code, countryCode));
     if (!country) {
@@ -45,6 +57,7 @@ export async function POST(req: NextRequest) {
     ...updateData,
     onboardingCompletedAt: new Date(),
   }).where(eq(users.id, authUser.id));
+  if ('nativeLanguage' in updateData) await cacheDel(cacheKeys.uiNativeLanguage(authUser.id));
 
   // Preferences alone left the learner with nothing to follow. Enrolment is
   // the other half of finishing onboarding: it creates the student_progress

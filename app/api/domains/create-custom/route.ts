@@ -3,7 +3,7 @@ import { dbPool } from '../../../../src/db-pool';
 import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters } from '../../../../src/schema';
 import { requireRole, roleErrorResponse } from '../../../../lib/auth/server';
 import { getAIProvider } from '../../../../lib/ai-providers';
-import { getTargetLangConfig } from '../../../../lib/language';
+import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '../../../../lib/language';
 import { isRecord } from '../../../../lib/roleplay/api-types';
 import { eq, and, count } from 'drizzle-orm';
 
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
       displayOrder: 1,
     }).returning();
 
-    const lang = targetLanguage ?? 'ja';
+    const lang = targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
     const langName = getTargetLangConfig(lang).name;
 
     let vocabRows: VocabRow[] = [];
@@ -261,7 +261,7 @@ Each item must be a single ${langName} word or short phrase directly relevant to
       situationId: situation.id,
       characterId: numericCharacterId,
       behaviorMode: behaviorMode ?? 'standard',
-      targetLanguage: targetLanguage ?? 'ja',
+      targetLanguage: targetLanguage ?? DEFAULT_TARGET_LANGUAGE,
       nativeLanguage: nativeLanguage ?? 'en',
       voiceGender,
       sessionNumber,

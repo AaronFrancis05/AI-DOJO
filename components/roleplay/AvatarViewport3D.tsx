@@ -34,7 +34,7 @@ class AvatarErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="absolute top-0 left-0 z-50 bg-red-900/90 text-white text-xs p-2 max-w-[320px] rounded-br">
+        <div className="absolute top-0 start-0 z-50 bg-red-900/90 text-white text-xs p-2 max-w-[320px] rounded-ee">
           Avatar crashed: {this.state.error.message}
         </div>
       );
@@ -54,7 +54,7 @@ function DevOverlay() {
   }, []);
   if (warnings.length === 0) return null;
   return (
-    <div className="absolute top-0 left-0 z-50 bg-red-900/80 text-white text-xs p-2 max-w-[300px] rounded-br pointer-events-none">
+    <div className="absolute top-0 start-0 z-50 bg-red-900/80 text-white text-xs p-2 max-w-[300px] rounded-ee pointer-events-none">
       {warnings.map((w, i) => <div key={i}>{w}</div>)}
     </div>
   );

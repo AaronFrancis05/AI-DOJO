@@ -20,6 +20,8 @@ import {
   scenarios, situations, domains, vocabulary, scenarioGoals,
   scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
   scenarioGoalLocalizations,
+  scenarioNativeLocalizations, situationNativeLocalizations,
+  scenarioGoalNativeLocalizations, vocabularyNativeNotes,
 } from '../src/schema';
 
 interface ScenarioLocFixture {
@@ -61,6 +63,15 @@ interface GoalLocFixture {
   targetPhrase: string | null;
 }
 
+// Native-language explanations, keyed by (row, target, native) — see the
+// *_native_* tables in src/schema.ts. Optional so older fixtures still load.
+interface NativeLocFixture {
+  scenarios: Array<{ scenario: string; targetLanguage: string; nativeLanguage: string; title: string | null; context: string | null; learningGoals: string | null; aiCharacterRole: string | null; userCharacterRole: string | null }>;
+  situations: Array<{ domainSlug: string; situation: string; targetLanguage: string; nativeLanguage: string; title: string | null; context: string | null; learningGoals: string | null; focusPills: string | null }>;
+  goals: Array<{ scenario: string; sequenceOrder: number; targetLanguage: string; nativeLanguage: string; goalText: string | null }>;
+  vocabulary: Array<{ scenario: string; targetText: string; targetLanguage: string; nativeLanguage: string; usageTip: string | null }>;
+}
+
 interface LocalizationFixture {
   version: number;
   counts: { scenarios: number; situations: number; vocabulary: number; goals: number };
@@ -68,6 +79,7 @@ interface LocalizationFixture {
   situationLocalizations: SituationLocFixture[];
   vocabularyLocalizations: VocabLocFixture[];
   scenarioGoalLocalizations: GoalLocFixture[];
+  nativeLocalizations: NativeLocFixture;
 }
 
 const FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'data', 'localizations.json');
@@ -138,6 +150,56 @@ async function main() {
     .innerJoin(scenarioGoals, eq(scenarioGoalLocalizations.scenarioGoalId, scenarioGoals.id))
     .innerJoin(scenarios, eq(scenarioGoals.scenarioId, scenarios.id));
 
+  const nativeScenRows = await db
+    .select({
+      scenario: scenarios.title,
+      targetLanguage: scenarioNativeLocalizations.targetLanguage,
+      nativeLanguage: scenarioNativeLocalizations.nativeLanguage,
+      title: scenarioNativeLocalizations.title,
+      context: scenarioNativeLocalizations.context,
+      learningGoals: scenarioNativeLocalizations.learningGoals,
+      aiCharacterRole: scenarioNativeLocalizations.aiCharacterRole,
+      userCharacterRole: scenarioNativeLocalizations.userCharacterRole,
+    })
+    .from(scenarioNativeLocalizations)
+    .innerJoin(scenarios, eq(scenarioNativeLocalizations.scenarioId, scenarios.id));
+  const nativeSitRows = await db
+    .select({
+      domainSlug: domains.slug,
+      situation: situations.title,
+      targetLanguage: situationNativeLocalizations.targetLanguage,
+      nativeLanguage: situationNativeLocalizations.nativeLanguage,
+      title: situationNativeLocalizations.title,
+      context: situationNativeLocalizations.context,
+      learningGoals: situationNativeLocalizations.learningGoals,
+      focusPills: situationNativeLocalizations.focusPills,
+    })
+    .from(situationNativeLocalizations)
+    .innerJoin(situations, eq(situationNativeLocalizations.situationId, situations.id))
+    .innerJoin(domains, eq(situations.domainId, domains.id));
+  const nativeGoalRows = await db
+    .select({
+      scenario: scenarios.title,
+      sequenceOrder: scenarioGoals.sequenceOrder,
+      targetLanguage: scenarioGoalNativeLocalizations.targetLanguage,
+      nativeLanguage: scenarioGoalNativeLocalizations.nativeLanguage,
+      goalText: scenarioGoalNativeLocalizations.goalText,
+    })
+    .from(scenarioGoalNativeLocalizations)
+    .innerJoin(scenarioGoals, eq(scenarioGoalNativeLocalizations.scenarioGoalId, scenarioGoals.id))
+    .innerJoin(scenarios, eq(scenarioGoals.scenarioId, scenarios.id));
+  const nativeVocabRows = await db
+    .select({
+      scenario: scenarios.title,
+      targetText: vocabulary.targetText,
+      targetLanguage: vocabularyNativeNotes.targetLanguage,
+      nativeLanguage: vocabularyNativeNotes.nativeLanguage,
+      usageTip: vocabularyNativeNotes.usageTip,
+    })
+    .from(vocabularyNativeNotes)
+    .innerJoin(vocabulary, eq(vocabularyNativeNotes.vocabularyId, vocabulary.id))
+    .innerJoin(scenarios, eq(vocabulary.scenarioId, scenarios.id));
+
   assertUnique(scenRows.map((r) => [r.scenarioTitle, r.languageCode]));
   assertUnique(sitRows.map((r) => [r.domainSlug, r.situationTitle, r.languageCode]));
   assertUnique(vocabRows.map((r) => [r.scenarioTitle, r.targetText, r.languageCode]));
@@ -186,6 +248,12 @@ async function main() {
       goalText: r.goalText,
       targetPhrase: r.targetPhrase,
     })),
+    nativeLocalizations: {
+      scenarios: nativeScenRows,
+      situations: nativeSitRows,
+      goals: nativeGoalRows,
+      vocabulary: nativeVocabRows,
+    },
   };
 
   // Locale-independent ordering: the fixture is committed, so its byte order
@@ -203,6 +271,14 @@ async function main() {
     cmp(a.scenario, b.scenario) || (a.sequenceOrder - b.sequenceOrder)
     || cmp(a.languageCode, b.languageCode));
 
+  const pairCmp = (a: { targetLanguage: string; nativeLanguage: string }, b: { targetLanguage: string; nativeLanguage: string }) =>
+    cmp(a.targetLanguage, b.targetLanguage) || cmp(a.nativeLanguage, b.nativeLanguage);
+  const n = fixture.nativeLocalizations;
+  n.scenarios.sort((a, b) => cmp(a.scenario, b.scenario) || pairCmp(a, b));
+  n.situations.sort((a, b) => cmp(a.domainSlug, b.domainSlug) || cmp(a.situation, b.situation) || pairCmp(a, b));
+  n.goals.sort((a, b) => cmp(a.scenario, b.scenario) || (a.sequenceOrder - b.sequenceOrder) || pairCmp(a, b));
+  n.vocabulary.sort((a, b) => cmp(a.scenario, b.scenario) || cmp(a.targetText, b.targetText) || pairCmp(a, b));
+
   await mkdir(dirname(FIXTURE_PATH), { recursive: true });
   await writeFile(FIXTURE_PATH, JSON.stringify(fixture, null, 2) + '\n', 'utf8');
 
@@ -212,6 +288,7 @@ async function main() {
   console.log(`  situation_localizations: ${sitRows.length}`);
   console.log(`  vocabulary_localizations: ${vocabRows.length}`);
   console.log(`  scenario_goal_localizations: ${goalRows.length}`);
+  console.log(`  native explanations: ${n.scenarios.length} scenario, ${n.situations.length} situation, ${n.goals.length} goal, ${n.vocabulary.length} word tip(s)`);
   console.log(`  total rows: ${scenRows.length + sitRows.length + vocabRows.length + goalRows.length} (${sizeKb} KB)`);
 
   process.exit(0);

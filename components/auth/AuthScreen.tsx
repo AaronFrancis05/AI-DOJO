@@ -515,7 +515,7 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
             <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
 
             <div className="absolute inset-0 z-10 flex flex-col justify-between p-10">
-              <div className="ml-auto max-w-xs rounded-2xl rounded-tr-none border border-white/10 bg-black/50 p-4 shadow-xl backdrop-blur-xl">
+              <div className="ms-auto max-w-xs rounded-2xl rounded-se-none border border-white/10 bg-black/50 p-4 shadow-xl backdrop-blur-xl">
                 <div className="text-sm font-medium leading-relaxed text-white">おかえり！</div>
                 <div className="mt-1 text-xs text-white/70">Welcome back!</div>
                 <div className="my-2 h-px bg-white/10" />

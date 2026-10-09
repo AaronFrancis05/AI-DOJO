@@ -22,7 +22,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* Mobile hamburger toggle */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="fixed left-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-sidebar border border-dojo-border md:hidden"
+        className="fixed start-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-sidebar border border-dojo-border md:hidden"
         aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
       >
         {sidebarOpen ? <X className="h-5 w-5 text-dojo-text-primary" /> : <Menu className="h-5 w-5 text-dojo-text-primary" />}
@@ -40,7 +40,7 @@ export function AppShell({ children }: AppShellProps) {
       <div
         className={`${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
+        } fixed inset-y-0 start-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
       >
         <Sidebar onNavigate={() => setSidebarOpen(false)} />
       </div>

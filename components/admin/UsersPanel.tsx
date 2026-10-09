@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { useUser } from '@/lib/auth/user-context';
 import { USER_ROLES, type UserRole } from '@/lib/auth/roles';
 import { ACCOUNT_STATUSES } from '@/lib/auth/account-status';
-import { getNativeLangName, getTargetLangConfig } from '@/lib/language';
+import { getNativeLangName, getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import { useLanguageCatalog } from '@/lib/language-context';
 import { EmptyState, Loading, adminFetch, adminInputClass } from '@/components/admin/shared';
 import { Ban, RotateCcw, Search, Trash2, UserPlus } from 'lucide-react';
@@ -210,7 +210,7 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
         <>
           <p className="text-xs text-dojo-text-muted">Showing {users.length} of {total}</p>
           <Card raised className="!p-0 overflow-x-auto">
-            <table className="w-full min-w-[880px] text-left text-sm">
+            <table className="w-full min-w-[880px] text-start text-sm">
               <thead>
                 <tr className="border-b border-dojo-border text-xs uppercase tracking-wider text-dojo-text-muted">
                   <th className="px-4 py-3 font-semibold">Name</th>
@@ -229,7 +229,7 @@ export function UsersPanel({ onError }: { onError: (msg: string) => void }) {
                     <tr key={u.id} className="border-b border-dojo-border/60 last:border-0">
                       <td className="px-4 py-3 font-medium text-dojo-text-primary">
                         {u.name || '—'}
-                        {isSelf && <span className="ml-2 text-xs text-dojo-text-muted">(you)</span>}
+                        {isSelf && <span className="ms-2 text-xs text-dojo-text-muted">(you)</span>}
                       </td>
                       <td className="px-4 py-3 text-dojo-text-muted">{u.email}</td>
                       <td className="px-4 py-3 text-dojo-text-muted">
@@ -317,7 +317,9 @@ function CreateUserForm({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('learner');
-  const [preferredTargetLanguage, setTarget] = useState(catalog.target[0]?.code ?? 'ja');
+  const [preferredTargetLanguage, setTarget] = useState(
+    catalog.target.find(l => l.code === DEFAULT_TARGET_LANGUAGE)?.code ?? catalog.target[0]?.code ?? DEFAULT_TARGET_LANGUAGE,
+  );
   const [nativeLanguage, setNative] = useState(catalog.native[0]?.code ?? 'en');
   const [saving, setSaving] = useState(false);
 

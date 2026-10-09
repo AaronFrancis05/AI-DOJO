@@ -55,13 +55,13 @@ function Selector({
         <ChevronDown className={`h-3.5 w-3.5 text-dojo-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 rounded-[--radius-md] border border-dojo-border bg-dojo-sidebar shadow-xl max-h-48 overflow-y-auto">
+        <div className="absolute top-full start-0 end-0 mt-1 z-50 rounded-[--radius-md] border border-dojo-border bg-dojo-sidebar shadow-xl max-h-48 overflow-y-auto">
           {options.map(opt => (
             <button
               key={opt.code}
               type="button"
               onClick={() => { onChange(opt.code); setOpen(false); }}
-              className={`flex items-center gap-2 w-full px-3 py-2 text-left text-sm transition-colors hover:bg-dojo-surface-raised ${
+              className={`flex items-center gap-2 w-full px-3 py-2 text-start text-sm transition-colors hover:bg-dojo-surface-raised ${
                 opt.code === value ? 'text-dojo-accent' : 'text-dojo-text-primary'
               }`}
             >
@@ -77,6 +77,9 @@ function Selector({
     </div>
   );
 }
+
+/** The same dropdown, for single-language choices such as the interface language. */
+export { Selector as LanguageSelector };
 
 export function LanguagePicker({ targetLanguage, nativeLanguage, onTargetChange, onNativeChange }: LanguagePickerProps) {
   const catalog = useLanguageCatalog();
