@@ -7,6 +7,7 @@ import {
   applyScenarioLocalization,
   applyTargetLanguageVocab,
 } from '@/lib/localization';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export async function GET(
   req: Request,
@@ -58,7 +59,7 @@ export async function GET(
   // the right words and shows the right context instead of the Japanese base.
   let localizedScenario = scenario;
   let localizedVocab = vocabRows;
-  const targetLanguage = target ?? 'ja';
+  const targetLanguage = target ?? DEFAULT_TARGET_LANGUAGE;
   if (scenario && targetLanguage) {
     const [scenarioLoc, vocabLoc] = await Promise.all([
       getTargetScenarioLocalization(scenario.id, targetLanguage),

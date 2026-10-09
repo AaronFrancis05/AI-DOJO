@@ -22,7 +22,7 @@ export function RoomDetailsPanel({ room, myId, className }: RoomDetailsPanelProp
   const others = members.filter((m) => m.id !== myId);
 
   return (
-    <aside className={cn('hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-dojo-border bg-dojo-sidebar lg:flex', className)}>
+    <aside className={cn('hidden w-72 shrink-0 flex-col overflow-y-auto border-s border-dojo-border bg-dojo-sidebar lg:flex', className)}>
       <div className="flex items-center gap-2 border-b border-dojo-border px-4 py-3">
         <Users className="h-4 w-4 text-dojo-text-muted" />
         <h3 className="text-sm font-semibold text-dojo-text-primary">Details</h3>

@@ -8,6 +8,16 @@ type TableConfig = {
   isRequired: boolean;
 };
 
+type ColumnDataTypeRow = {
+  column_name: string;
+  data_type: string;
+};
+
+type RowCount = {
+  tbl: string;
+  cnt: number;
+};
+
 const TABLES: TableConfig[] = [
   {
     name: 'sessions',
@@ -200,15 +210,15 @@ async function verify() {
   console.log('\n=== Final Verification ===\n');
   const checkTables = ['users', 'sessions', 'conversations', 'evaluations', 'goal_completions', 'user_id_migration_map'];
   for (const tbl of checkTables) {
-    const dt = await db.execute(sql`
+    const dt = await db.execute<ColumnDataTypeRow>(sql`
       SELECT column_name, data_type FROM information_schema.columns
       WHERE table_name = ${tbl} AND (column_name = 'id' OR column_name = 'user_id');
     `);
     if (dt.rows.length > 0) {
-      console.log(`  ${tbl}: ${dt.rows.map((r: any) => `${r.column_name}=${r.data_type}`).join(', ')}`);
+      console.log(`  ${tbl}: ${dt.rows.map((r) => `${r.column_name}=${r.data_type}`).join(', ')}`);
     }
   }
-  const rowCounts = await db.execute(sql`
+  const rowCounts = await db.execute<RowCount>(sql`
     SELECT 'users' as tbl, COUNT(*)::int as cnt FROM users
     UNION ALL SELECT 'sessions', COUNT(*) FROM sessions
     UNION ALL SELECT 'conversations', COUNT(*) FROM conversations
@@ -217,7 +227,7 @@ async function verify() {
   `);
   console.log();
   for (const r of rowCounts.rows) {
-    console.log(`  ${(r as any).tbl}: ${(r as any).cnt} rows`);
+    console.log(`  ${r.tbl}: ${r.cnt} rows`);
   }
 }
 

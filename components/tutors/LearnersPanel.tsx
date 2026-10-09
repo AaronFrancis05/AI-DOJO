@@ -15,7 +15,7 @@ import { Card } from '@/components/ui/Card';
 import { getNativeLangName, getTargetLangConfig } from '@/lib/language';
 import { MessageSquare, Users } from 'lucide-react';
 
-export interface LearnerRosterClass {
+export interface LearnerRosterLesson {
   id: number;
   title: string;
 }
@@ -31,9 +31,9 @@ interface LearnerRow {
   lastActiveDate: string | null;
 }
 
-type Scope = { kind: 'all_my_learners' } | { kind: 'class'; classSessionId: number };
+type Scope = { kind: 'all_my_learners' } | { kind: 'live_lesson'; liveLessonId: number };
 
-export function LearnersPanel({ classes }: { classes: LearnerRosterClass[] }) {
+export function LearnersPanel({ liveLessons }: { liveLessons: LearnerRosterLesson[] }) {
   const router = useRouter();
 
   const [scope, setScope] = useState<Scope>({ kind: 'all_my_learners' });
@@ -46,7 +46,7 @@ export function LearnersPanel({ classes }: { classes: LearnerRosterClass[] }) {
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({ audienceKind: scope.kind });
-    if (scope.kind === 'class') params.set('classSessionId', String(scope.classSessionId));
+    if (scope.kind === 'live_lesson') params.set('liveLessonId', String(scope.liveLessonId));
 
     fetch(`/api/tutor/learners?${params}`, { credentials: 'include' })
       .then((r) => r.json())
@@ -93,8 +93,8 @@ export function LearnersPanel({ classes }: { classes: LearnerRosterClass[] }) {
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(
-          scope.kind === 'class'
-            ? { audienceKind: 'class', classSessionId: scope.classSessionId }
+          scope.kind === 'live_lesson'
+            ? { audienceKind: 'live_lesson', liveLessonId: scope.liveLessonId }
             : { audienceKind: 'all_my_learners' },
         ),
       });
@@ -117,18 +117,18 @@ export function LearnersPanel({ classes }: { classes: LearnerRosterClass[] }) {
       <div className="flex flex-wrap items-center gap-3">
         <select
           aria-label="Which learners"
-          value={scope.kind === 'class' ? String(scope.classSessionId) : 'all'}
+          value={scope.kind === 'live_lesson' ? String(scope.liveLessonId) : 'all'}
           onChange={(e) =>
             setScope(
               e.target.value === 'all'
                 ? { kind: 'all_my_learners' }
-                : { kind: 'class', classSessionId: Number(e.target.value) },
+                : { kind: 'live_lesson', liveLessonId: Number(e.target.value) },
             )
           }
           className={inputClass}
         >
           <option value="all">Everyone I teach</option>
-          {classes.map((c) => (
+          {liveLessons.map((c) => (
             <option key={c.id} value={c.id}>{c.title}</option>
           ))}
         </select>
@@ -147,7 +147,7 @@ export function LearnersPanel({ classes }: { classes: LearnerRosterClass[] }) {
         </Card>
       ) : learners.length === 0 ? (
         <p className="rounded-(--radius-md) border border-dashed border-dojo-border px-4 py-8 text-center text-sm text-dojo-text-muted">
-          No learners here yet. They appear once someone enrols in a class, books you, or
+          No learners here yet. They appear once someone enrols in a live lesson, books you, or
           joins one of your assessments.
         </p>
       ) : (

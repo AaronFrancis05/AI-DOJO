@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { getDomainBySlug, type DomainFixture } from '@/lib/data/domains';
 import { getSituationsByDomain, type SituationFixture } from '@/lib/data/situations';
+import { cn } from '@/lib/design-tokens';
 import { Sprout, ChevronRight, ArrowLeft, MessageSquare } from 'lucide-react';
 
 export default function DomainDetailPage() {
@@ -49,8 +50,8 @@ export default function DomainDetailPage() {
     return (
       <div className="mx-auto max-w-4xl p-6">
         <h1 className="text-2xl font-bold text-dojo-text-primary">Scenario not found</h1>
-        <Link href="/hub" className="text-dojo-accent mt-2 inline-block text-sm underline">
-          Back to hub
+        <Link href="/library" className="text-dojo-accent mt-2 inline-block text-sm underline">
+          Back to Library
         </Link>
       </div>
     );
@@ -59,7 +60,7 @@ export default function DomainDetailPage() {
   return (
     <div className="mx-auto max-w-4xl p-6">
       <Link
-        href="/hub"
+        href="/library"
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -73,7 +74,10 @@ export default function DomainDetailPage() {
       )}
 
       <div
-        className="flex flex-col sm:flex-row items-center gap-6 rounded-[--radius-lg] p-8 text-center sm:text-left"
+        className={cn(
+          'flex flex-col sm:flex-row items-center gap-6 rounded-[--radius-lg] p-8 text-center sm:text-start',
+          domain.isActive === false && 'opacity-40',
+        )}
         style={{
           background: `linear-gradient(135deg, ${domain.heroGradientFrom}, ${domain.heroGradientTo})`,
         }}
@@ -94,7 +98,11 @@ export default function DomainDetailPage() {
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {situations.map((s) => (
-          <Link key={s.id} href={`/dojo/${domainSlug}/${s.id}`}>
+          <Link
+            key={s.id}
+            href={`/dojo/${domainSlug}/${s.id}`}
+            className={cn(s.isActive === false && 'opacity-40')}
+          >
             <Card hoverable className="group p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2.5">
@@ -102,7 +110,10 @@ export default function DomainDetailPage() {
                     <MessageSquare className="h-4 w-4 text-dojo-accent" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-dojo-text-primary">{s.title}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-dojo-text-primary">{s.title}</h3>
+                      {s.isActive === false && <Badge variant="outline">archived</Badge>}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <Badge variant={s.skillLevel}>{s.skillLevel}</Badge>
                       {s.behaviorMode !== 'standard' && (

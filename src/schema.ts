@@ -7,12 +7,17 @@ export const users = pgTable('users', {
   email:                 varchar('email', { length: 150 }).notNull().unique(),
   passwordHash:          varchar('password_hash', { length: 255 }),
   level:                 varchar('level', { length: 20 }).default('beginner').notNull(),
+  // 'A0' | 'A1' … 'C2', from the latest graded placement interview
+  // (cefr_placements, PLAN.md 4.3). NULL until the learner has taken one.
+  // `level` above is derived from it on each placement (lib/interview/cefr.ts).
+  cefrLevel:             varchar('cefr_level', { length: 2 }),
+  cefrAssessedAt:        timestamp('cefr_assessed_at'),
   // 'learner' | 'tutor' | 'admin'. A `tutors` row describes what a tutor
   // teaches; this column is what authorises them — see requireRole() in
   // lib/auth/server.ts. 'admin' satisfies every other role.
   role:                  varchar('role', { length: 20 }).default('learner').notNull(),
   // 'active' | 'suspended' | 'deleted'. Access is revoked here rather than by
-  // deleting the row: users.id is referenced by sessions, evaluations, class
+  // deleting the row: users.id is referenced by sessions, evaluations, live-lesson
   // rosters and grades, so a hard delete rewrites other people's history.
   // Enforced in getAuthUser() — a suspended account gets no session, so the
   // check sits with authorisation rather than in the UI. 'deleted' is a soft
@@ -25,7 +30,10 @@ export const users = pgTable('users', {
   xpToNext:              integer('xp_to_next').default(1000).notNull(),
   tier:                  varchar('tier', { length: 20 }).default('premium').notNull(),
   nativeLanguage:        varchar('native_language', { length: 10 }).default('en').notNull(),
-  preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('ja').notNull(),
+  // 'en' mirrors DEFAULT_TARGET_LANGUAGE in lib/language.ts. nativeLanguage's
+  // 'en' is only a technical fallback — sign-up infers it from the country or
+  // Accept-Language (app/api/user/onboarding/route.ts).
+  preferredTargetLanguage: varchar('preferred_target_language', { length: 10 }).default('en').notNull(),
   streak:                integer('streak').default(0).notNull(),
   lastActiveDate:        varchar('last_active_date', { length: 10 }),
   avatarSrc:             text('avatar_src'),
@@ -46,6 +54,11 @@ export const users = pgTable('users', {
   countryCode:           varchar('country_code', { length: 2 }).references(() => countries.code, { onDelete: 'set null' }),
   preferredMode:         varchar('preferred_mode', { length: 10 }),
   ageRange:              varchar('age_range', { length: 10 }),
+  // Personalization inputs for learner-owned scenarios
+  // (lib/study-packs/personalized-scenario.ts). `interests` is a JSON array of
+  // short strings in a text column, matching `ai_interviews.transcript`.
+  occupation:            varchar('occupation', { length: 80 }),
+  interests:             text('interests'),
   dailyGoalMinutes:      integer('daily_goal_minutes').default(30).notNull(),
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
   createdAt:             timestamp('created_at').defaultNow().notNull(),
@@ -156,8 +169,15 @@ export const scenarios = pgTable('scenarios', {
   learningGoals:      text('learning_goals').notNull(),
   situationId:        integer('situation_id').references(() => situations.id, { onDelete: 'set null' }),
   displayOrder:       integer('display_order').default(0).notNull(),
+  // Set on a scenario generated for one learner (POST /api/scenarios/
+  // personalized). NULL is the shared library. Every listing of the library
+  // filters on `owner_user_id IS NULL`, and only the owner may start a session
+  // on an owned row (app/api/sessions/route.ts).
+  ownerUserId:        text('owner_user_id').references(() => users.id, { onDelete: 'cascade' }),
   createdAt:          timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxOwner: index('idx_scenarios_owner').on(t.ownerUserId),
+}));
 
 export const vocabulary = pgTable('vocabulary', {
   id:             serial('id').primaryKey(),
@@ -170,7 +190,9 @@ export const vocabulary = pgTable('vocabulary', {
   usageTip:       text('usage_tip'),
   formalityLevel: varchar('formality_level', { length: 20 }).default('polite').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxScenarioLang: index('idx_vocabulary_scenario_lang').on(t.scenarioId, t.languageCode),
+}));
 
 export const vocabularyLocalizations = pgTable('vocabulary_localizations', {
   id:             serial('id').primaryKey(),
@@ -221,7 +243,9 @@ export const scenarioGoals = pgTable('scenario_goals', {
   targetPhrase:   varchar('target_phrase', { length: 200 }),
   languageCode:   varchar('language_code', { length: 10 }).default('ja').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxScenarioOrder: index('idx_scenario_goals_scenario_order').on(t.scenarioId, t.sequenceOrder),
+}));
 
 export const scenarioGoalLocalizations = pgTable('scenario_goal_localizations', {
   id:             serial('id').primaryKey(),
@@ -232,6 +256,74 @@ export const scenarioGoalLocalizations = pgTable('scenario_goal_localizations', 
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   uniqueGoalLang: uniqueIndex('uq_scenario_goal_localizations_key').on(table.scenarioGoalId, table.languageCode),
+}));
+
+// ── Native-language explanations ──────────────────────────────
+// The *_localizations tables above hold TARGET-language content: the scene a
+// learner of that language plays (re-set in a place where it is spoken,
+// written in it). A learner also needs that scene EXPLAINED in their own
+// language, and the explanation depends on both sides of the pair: a French
+// speaker learning English needs the English café scene described in French,
+// which is neither the French target row nor the English one. These tables
+// are keyed by (row, targetLanguage, nativeLanguage) for that reason, and are
+// read through lib/localization.ts (resolveNative*), never directly.
+// Character names are not here: they belong to the target scene.
+
+export const scenarioNativeLocalizations = pgTable('scenario_native_localizations', {
+  id:                serial('id').primaryKey(),
+  scenarioId:        integer('scenario_id').references(() => scenarios.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:    varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage:    varchar('native_language', { length: 10 }).notNull(),
+  title:             varchar('title', { length: 120 }),
+  context:           text('context'),
+  learningGoals:     text('learning_goals'),
+  aiCharacterRole:   varchar('ai_character_role', { length: 150 }),
+  userCharacterRole: varchar('user_character_role', { length: 150 }),
+  createdAt:         timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueScenarioPair: uniqueIndex('uq_scenario_native_localizations_key').on(table.scenarioId, table.targetLanguage, table.nativeLanguage),
+}));
+
+export const situationNativeLocalizations = pgTable('situation_native_localizations', {
+  id:             serial('id').primaryKey(),
+  situationId:    integer('situation_id').references(() => situations.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  title:          varchar('title', { length: 120 }),
+  context:        text('context'),
+  learningGoals:  text('learning_goals'),
+  focusPills:     text('focus_pills'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueSituationPair: uniqueIndex('uq_situation_native_localizations_key').on(table.situationId, table.targetLanguage, table.nativeLanguage),
+}));
+
+// goalText only — targetPhrase is what the learner says, so it stays in the
+// target language (scenario_goal_localizations).
+export const scenarioGoalNativeLocalizations = pgTable('scenario_goal_native_localizations', {
+  id:             serial('id').primaryKey(),
+  scenarioGoalId: integer('scenario_goal_id').references(() => scenarioGoals.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  goalText:       text('goal_text'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueGoalPair: uniqueIndex('uq_scenario_goal_native_localizations_key').on(table.scenarioGoalId, table.targetLanguage, table.nativeLanguage),
+}));
+
+// The meaning of a word needs no row here: it is the word itself in the
+// learner's language (vocabulary_localizations[native].translation, or the
+// base columns) — see resolveNativeGloss. A usage tip is different: it is
+// advice about the TARGET word, written for a speaker of the native one.
+export const vocabularyNativeNotes = pgTable('vocabulary_native_notes', {
+  id:             serial('id').primaryKey(),
+  vocabularyId:   integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  usageTip:       text('usage_tip'),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  uniqueVocabPair: uniqueIndex('uq_vocabulary_native_notes_key').on(table.vocabularyId, table.targetLanguage, table.nativeLanguage),
 }));
 
 export const countries = pgTable('countries', {
@@ -282,7 +374,7 @@ export const sessions = pgTable('sessions', {
   pendingRetryCorrectionId: integer('pending_retry_correction_id'),
   stalledTurnCount: integer('stalled_turn_count').default(0).notNull(),
   completionAcknowledged: boolean('completion_acknowledged').default(false).notNull(),
-  targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).default('en').notNull(),
   nativeLanguage:  varchar('native_language', { length: 10 }).default('en').notNull(),
   sessionNumber:   integer('session_number').notNull(),
   status:          varchar('status', { length: 20 }).default('active').notNull(),
@@ -301,7 +393,16 @@ export const sessions = pgTable('sessions', {
   startedAt:       timestamp('started_at').defaultNow().notNull(),
   lastActiveAt:    timestamp('last_active_at').defaultNow().notNull(),
   completedAt:     timestamp('completed_at'),
-});
+  // Seconds the learner actually spent on the voice/avatar screen with the
+  // tab visible. Wall-clock `startedAt`→now is not this: leaving the page,
+  // backgrounding the tab, or saving must not keep the clock running.
+  activeDurationSeconds: integer('active_duration_seconds').default(0).notNull(),
+  // Preset id from ABANDONMENT_REASONS. Null until they pick one on the
+  // abandoned-session report; cleared if they restore the session to paused.
+  abandonmentReason: varchar('abandonment_reason', { length: 40 }),
+}, (t) => ({
+  idxUserStarted: index('idx_sessions_user_started').on(t.userId, t.startedAt),
+}));
 
 export const userPreferences = pgTable('user_preferences', {
   userId:      text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
@@ -326,7 +427,9 @@ export const conversations = pgTable('conversations', {
   audioUrl:              text('audio_url'),
   responseTimeMs:        integer('response_time_ms'), // Added for P1
   createdAt:             timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxSessionTurn: index('idx_conversations_session_turn').on(t.sessionId, t.turnNo),
+}));
 
 export const audioJobs = pgTable('audio_jobs', {
   id:             serial('id').primaryKey(),
@@ -359,7 +462,9 @@ export const corrections = pgTable('corrections', {
   retryOfCorrectionId: integer('retry_of_correction_id'),
   isFinalAttempt:      boolean('is_final_attempt').default(false).notNull(),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxConversation: index('idx_corrections_conversation').on(t.conversationId),
+}));
 
 export const evaluations = pgTable('evaluations', {
   id:              serial('id').primaryKey(),
@@ -373,7 +478,9 @@ export const evaluations = pgTable('evaluations', {
   expressionAppropriatenessScore: integer('expression_appropriateness_score').default(0).notNull(),
   feedback:        text('feedback'),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxUser: index('idx_evaluations_user').on(t.userId),
+}));
 
 export const goalCompletions = pgTable('goal_completions', {
   id:              serial('id').primaryKey(),
@@ -384,7 +491,9 @@ export const goalCompletions = pgTable('goal_completions', {
   achieved:        boolean('achieved').default(true).notNull(),
   evidenceNote:    text('evidence_note'),
   createdAt:       timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxSession: index('idx_goal_completions_session').on(t.sessionId),
+}));
 
 export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   id:             serial('id').primaryKey(),
@@ -396,13 +505,18 @@ export const vocabularyEncounters = pgTable('vocabulary_encounters', {
   accuracyScore:  integer('accuracy_score'),
   phase:          varchar('phase', { length: 20 }).default('icebreaker').notNull(),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxSession: index('idx_vocabulary_encounters_session').on(t.sessionId),
+}));
 
 export const shareTokens = pgTable('share_tokens', {
   id:        serial('id').primaryKey(),
   sessionId: integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).notNull().unique(),
   token:     varchar('token', { length: 64 }).notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  // Null = never expires. Links created before expiry existed stay null, so
+  // nothing a learner already sent stops working; new links get SHARE_LINK_TTL_DAYS.
+  expiresAt: timestamp('expires_at'),
 });
 
 export const userAvatars = pgTable('user_avatars', {
@@ -430,7 +544,7 @@ export const quickDrills = pgTable('quick_drills', {
   uniqueDrillKey: uniqueIndex('uq_quick_drills_key').on(table.languageCode, table.domainSlug, table.promptJa),
 }));
 
-// ── Curriculum ────────────────────────────────────────────
+// ── Courses ────────────────────────────────────────────
 // A course is a LANGUAGE-AGNOSTIC pedagogical template (title, structure).
 // Target/ native language are chosen per-enrollment / per-session, never
 // baked onto the course row — so the same template can be learned in any
@@ -440,6 +554,11 @@ export const courses = pgTable('courses', {
   slug:          varchar('slug', { length: 60 }).notNull().unique(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description').notNull(),
+  // NULL for a language-agnostic template (the default). Set when the course
+  // teaches one language's grammar, like the English CEFR syllabus (PLAN.md
+  // 4.7): its grammar sequence means nothing to a learner of Japanese, so the
+  // catalogue only offers it to learners of that language.
+  targetLanguage: varchar('target_language', { length: 10 }),
   difficulty:    varchar('difficulty', { length: 20 }).default('beginner').notNull(),
   icon:          varchar('icon', { length: 40 }),
   isActive:      boolean('is_active').default(true).notNull(),
@@ -453,6 +572,9 @@ export const courseLevels = pgTable('course_levels', {
   sequenceOrder: integer('sequence_order').notNull(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description'),
+  // 'A0' … 'C2' when the level maps to a CEFR band (PLAN.md 4.7). NULL for
+  // the older XP-gated levels, which have no CEFR meaning.
+  cefrLevel:     varchar('cefr_level', { length: 2 }),
   requiredXp:    integer('required_xp').default(0).notNull(),
   isActive:      boolean('is_active').default(true).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
@@ -466,6 +588,10 @@ export const units = pgTable('units', {
   sequenceOrder: integer('sequence_order').notNull(),
   title:         varchar('title', { length: 120 }).notNull(),
   description:   text('description'),
+  // JSON array of CEFR can-do statements ("Can describe past experiences and
+  // give reasons"), in a text column like `student_progress.acknowledged_unit_ids`.
+  // A learner's progress on each is in `can_do_progress`, keyed by index.
+  canDo:         text('can_do'),
   displayOrder:  integer('display_order').default(0).notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
@@ -504,7 +630,7 @@ export const studentProgress = pgTable('student_progress', {
   id:               serial('id').primaryKey(),
   userId:           text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   courseId:         integer('course_id').references(() => courses.id, { onDelete: 'cascade' }).notNull(),
-  targetLanguage:   varchar('target_language', { length: 10 }).default('ja').notNull(),
+  targetLanguage:   varchar('target_language', { length: 10 }).default('en').notNull(),
   nativeLanguage:   varchar('native_language', { length: 10 }).default('en').notNull(),
   currentLevelId:   integer('current_level_id').references(() => courseLevels.id, { onDelete: 'set null' }),
   currentUnitId:    integer('current_unit_id').references(() => units.id, { onDelete: 'set null' }),
@@ -529,7 +655,7 @@ export const studentLessonProgress = pgTable('student_lesson_progress', {
   id:              serial('id').primaryKey(),
   userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   lessonId:        integer('lesson_id').references(() => lessons.id, { onDelete: 'cascade' }).notNull(),
-  targetLanguage:  varchar('target_language', { length: 10 }).default('ja').notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).default('en').notNull(),
   status:          varchar('status', { length: 20 }).default('not_started').notNull(),
   currentPhaseKey: varchar('current_phase_key', { length: 20 }),
   completedPhases: text('completed_phases'),
@@ -546,7 +672,14 @@ export const studentLessonProgress = pgTable('student_lesson_progress', {
 export const srsCards = pgTable('srs_cards', {
   id:            serial('id').primaryKey(),
   userId:        text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  vocabularyId:  integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'cascade' }).notNull(),
+  // 'vocab': a catalogue word, vocabularyId set. 'sentence' | 'grammar': built
+  // from a study pack item; vocabularyId is NULL and `payload` carries the
+  // card's faces (SrsCardPayload in lib/study-packs/types.ts).
+  cardType:      varchar('card_type', { length: 20 }).default('vocab').notNull(),
+  vocabularyId:  integer('vocabulary_id').references(() => vocabulary.id, { onDelete: 'cascade' }),
+  studyPackItemId: integer('study_pack_item_id').references(() => studyPackItems.id, { onDelete: 'cascade' }),
+  // JSON in a text column, matching `ai_interviews.transcript`.
+  payload:       text('payload'),
   state:         varchar('state', { length: 20 }).default('learning').notNull(),
   intervalDays:  integer('interval_days').default(0).notNull(),
   easeFactor:    numeric('ease_factor', { precision: 5, scale: 2 }).default('2.5').notNull(),
@@ -556,7 +689,180 @@ export const srsCards = pgTable('srs_cards', {
   nextReviewAt:  timestamp('next_review_at').defaultNow().notNull(),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
+  // Both keys are nullable and Postgres treats NULLs as distinct, so a vocab
+  // card stays unique per word and a pack card unique per item.
   uniqueUserVocab: uniqueIndex('uq_srs_cards_key').on(table.userId, table.vocabularyId),
+  uniqueUserPackItem: uniqueIndex('uq_srs_cards_pack_item').on(table.userId, table.studyPackItemId),
+}));
+
+// ── Personalized learning (Phase 3) ──────────────────────────────────
+//
+// Everything here belongs to one learner: generated FOR them, never a shared
+// catalogue row. Written by lib/inngest/functions/generateStudyPack.ts after a
+// session completes.
+
+// What a learner keeps getting wrong, aggregated across sessions. One row per
+// (learner, target language, category, pattern). `pattern` is a short
+// normalized label ("past simple of irregular verbs") that the classifier
+// reuses across sessions, so the count means something; `example` is the
+// latest instance. A pattern absent for WEAK_POINT_RESOLVE_AFTER completed
+// sessions in a row is resolved, and seeing it again reopens it.
+export const learnerWeakPoints = pgTable('learner_weak_points', {
+  id:              serial('id').primaryKey(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  targetLanguage:  varchar('target_language', { length: 10 }).notNull(),
+  // 'grammar' | 'vocab' | 'pronunciation' | 'register'
+  category:        varchar('category', { length: 20 }).notNull(),
+  pattern:         varchar('pattern', { length: 120 }).notNull(),
+  example:         text('example'),
+  count:           integer('count').default(1).notNull(),
+  // Completed sessions since this pattern was last seen.
+  cleanSessionCount: integer('clean_session_count').default(0).notNull(),
+  lastSeenAt:      timestamp('last_seen_at').defaultNow().notNull(),
+  resolvedAt:      timestamp('resolved_at'),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqPattern: uniqueIndex('uq_learner_weak_points_key').on(t.userId, t.targetLanguage, t.category, t.pattern),
+  idxUserSeen: index('idx_learner_weak_points_user_seen').on(t.userId, t.lastSeenAt),
+}));
+
+// One pack per completed session, or per tutor lesson whose notes were filed
+// (PLAN.md 4.2). Exactly one of sessionId / bookingId is set. Each is unique,
+// and that is what makes the Inngest job idempotent: a retried run finds the
+// row and stops. (Postgres unique indexes admit many NULLs.)
+export const studyPacks = pgTable('study_packs', {
+  id:              serial('id').primaryKey(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  sessionId:       integer('session_id').references(() => sessions.id, { onDelete: 'cascade' }).unique(),
+  bookingId:       integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).unique(),
+  targetLanguage:  varchar('target_language', { length: 10 }).notNull(),
+  nativeLanguage:  varchar('native_language', { length: 10 }).notNull(),
+  // Written in the learner's native language.
+  explanation:     text('explanation').notNull(),
+  recommendedScenarioId: integer('recommended_scenario_id').references(() => scenarios.id, { onDelete: 'set null' }),
+  recommendationReason:  text('recommendation_reason'),
+  // 'ready' | 'opened' | 'completed'
+  status:          varchar('status', { length: 20 }).default('ready').notNull(),
+  openedAt:        timestamp('opened_at'),
+  completedAt:     timestamp('completed_at'),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  idxUserCreated: index('idx_study_packs_user_created').on(t.userId, t.createdAt),
+}));
+
+export const studyPackItems = pgTable('study_pack_items', {
+  id:             serial('id').primaryKey(),
+  packId:         integer('pack_id').references(() => studyPacks.id, { onDelete: 'cascade' }).notNull(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'focus' | 'drill' | 'dialogue'
+  kind:           varchar('kind', { length: 20 }).notNull(),
+  sequenceOrder:  integer('sequence_order').notNull(),
+  weakPointId:    integer('weak_point_id').references(() => learnerWeakPoints.id, { onDelete: 'set null' }),
+  // JSON in a text column; the shape per kind is in lib/study-packs/types.ts.
+  payload:        text('payload').notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  idxPackOrder: index('idx_study_pack_items_pack').on(t.packId, t.sequenceOrder),
+}));
+
+// One row per AI call attributable to a learner. Feeds the per-tier quota
+// (lib/ai-usage.ts) and the cost-per-learner metric. `costMicros` is USD x
+// 1,000,000 from the price table in lib/ai-usage.ts, NULL for a model without
+// a price there. Tokens are always recorded.
+export const aiUsage = pgTable('ai_usage', {
+  id:           serial('id').primaryKey(),
+  userId:       text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  // e.g. 'chat/stream', 'study-pack', 'scenario/personalized', 'lesson/captions'
+  // (AIUsageRoute in lib/ai-usage.ts)
+  route:        varchar('route', { length: 60 }).notNull(),
+  provider:     varchar('provider', { length: 30 }).notNull(),
+  model:        varchar('model', { length: 100 }).notNull(),
+  inputTokens:  integer('input_tokens').default(0).notNull(),
+  outputTokens: integer('output_tokens').default(0).notNull(),
+  costMicros:   integer('cost_micros'),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // The quota read is "this learner's usage since midnight UTC".
+  idxUserCreated: index('idx_ai_usage_user_created').on(t.userId, t.createdAt),
+}));
+
+// ── Organizations ─────────────────────────────────────────
+//
+// A learner belongs to exactly one organization. Groups are named subsets of
+// that organization's members and never cross an organization. Tutors are not
+// members: a `tutors` row stays independent of this tree. A private
+// organization may name which tutors its learners can start something new
+// with (`organization_tutor_permissions`). The default organization does not
+// use that table. Removing a row does not cancel a booking already made.
+//
+// The default organization (slug `ai-dojo`, `isDefault`) is where sign-up and
+// retirement land. Another organization can invite only a learner who is
+// currently there, and only that learner's acceptance moves them.
+
+export const organizations = pgTable('organizations', {
+  id:        serial('id').primaryKey(),
+  name:      varchar('name', { length: 120 }).notNull(),
+  slug:      varchar('slug', { length: 60 }).notNull().unique(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  // The per-organization switch for the hybrid tutoring layer (PLAN.md 4.5):
+  // briefings, lesson plans, captions and in-lesson explanations. Off until an
+  // admin turns it on, so the pilot customer gets it first. Only consulted
+  // while NEXT_PUBLIC_HYBRID_ENABLED is on — see lib/tutors/hybrid.ts.
+  hybridTutoringEnabled: boolean('hybrid_tutoring_enabled').default(false).notNull(),
+  // 'active' | 'archived'
+  status:    varchar('status', { length: 20 }).default('active').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  // One default organization. Rows with is_default = false are outside the index.
+  uqDefault: uniqueIndex('uq_organizations_default')
+    .on(t.isDefault)
+    .where(sql`${t.isDefault} = true`),
+}));
+
+export const organizationMemberships = pgTable('organization_memberships', {
+  id:             serial('id').primaryKey(),
+  organizationId: integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  // 'member' | 'admin' — a membership role, not users.role.
+  role:           varchar('role', { length: 20 }).default('member').notNull(),
+  joinedAt:       timestamp('joined_at').defaultNow().notNull(),
+}, (t) => ({
+  idxOrg: index('idx_organization_memberships_org').on(t.organizationId),
+}));
+
+export const groups = pgTable('groups', {
+  id:             serial('id').primaryKey(),
+  organizationId: integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  name:           varchar('name', { length: 120 }).notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqName: uniqueIndex('uq_groups_org_name').on(t.organizationId, t.name),
+}));
+
+export const groupMemberships = pgTable('group_memberships', {
+  id:       serial('id').primaryKey(),
+  groupId:  integer('group_id').references(() => groups.id, { onDelete: 'cascade' }).notNull(),
+  userId:   text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  joinedAt: timestamp('joined_at').defaultNow().notNull(),
+}, (t) => ({
+  uqMember: uniqueIndex('uq_group_memberships').on(t.groupId, t.userId),
+  idxUser:  index('idx_group_memberships_user').on(t.userId),
+}));
+
+export const organizationInvitations = pgTable('organization_invitations', {
+  id:              serial('id').primaryKey(),
+  organizationId:  integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  userId:          text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  invitedByUserId: text('invited_by_user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'pending' | 'accepted' | 'declined' | 'revoked'
+  status:          varchar('status', { length: 20 }).default('pending').notNull(),
+  createdAt:       timestamp('created_at').defaultNow().notNull(),
+  respondedAt:     timestamp('responded_at'),
+}, (t) => ({
+  uqPending: uniqueIndex('uq_organization_invitations_pending')
+    .on(t.organizationId, t.userId)
+    .where(sql`${t.status} = 'pending'`),
+  idxUserStatus: index('idx_organization_invitations_user_status').on(t.userId, t.status),
 }));
 
 // ── Relations ────────────────────────────────────────────
@@ -571,6 +877,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   courseProgress:   many(studentProgress),
   lessonProgress:   many(studentLessonProgress),
   srsCards:         many(srsCards),
+  organizationMembership: one(organizationMemberships, { fields: [users.id], references: [organizationMemberships.userId] }),
 }));
 
 export const coursesRelations = relations(courses, ({ many }) => ({
@@ -735,10 +1042,10 @@ export const chatRooms = pgTable('chat_rooms', {
   id:        serial('id').primaryKey(),
   name:      varchar('name', { length: 150 }),                       // optional display name (group chats)
   isGroup:   boolean('is_group').default(false).notNull(),
-  // 'direct'  — a 1:1 or ad-hoc group room, de-duplicated by membership.
-  // 'class'   — the room a scheduled class_session creates for itself.
-  // 'cohort'  — a tutor's standing room for their learners, which outlives any
-  //             one class. Found by (ownerTutorId, audienceKey) so re-running
+  // 'direct'      — a 1:1 or ad-hoc group room, de-duplicated by membership.
+  // 'live_lesson' — the room a scheduled live_lesson creates for itself.
+  // 'cohort'      — a tutor's standing room for their learners, which outlives any
+  //             one live lesson. Found by (ownerTutorId, audienceKey) so re-running
   //             the create adds newly-enrolled learners instead of a second
   //             room — see `audienceKey` below for why the name is not enough.
   kind:      varchar('kind', { length: 20 }).default('direct').notNull(),
@@ -784,7 +1091,9 @@ export const chatMessages = pgTable('chat_messages', {
   audioMimeType:     varchar('audio_mime_type', { length: 40 }),       // e.g. audio/webm;codecs=opus
   audioDurationMs:   integer('audio_duration_ms'),                     // recorded clip length, for the player UI
   createdAt:         timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  idxRoomCreated: index('idx_chat_messages_room_created').on(t.roomId, t.createdAt),
+}));
 
 // Cached per-target-language translations of a message, so a room with
 // several members reading in different languages only pays for each
@@ -845,8 +1154,8 @@ export const tutors = pgTable('tutors', {
   // The native languages this tutor can *explain* in, same comma-separated
   // shape as `languages` above. The two are different capabilities: `languages`
   // is what they teach (the target), this is what they teach it in. A tutor who
-  // speaks five languages can pair any of them, and a class picks one of each —
-  // see class_sessions.instructionLanguage.
+  // speaks five languages can pair any of them, and a live lesson picks one of each —
+  // see live_lessons.instructionLanguage.
   instructionLanguages: text('instruction_languages'),
   hourlyRateCents: integer('hourly_rate_cents').default(0).notNull(),
   currency:        varchar('currency', { length: 3 }).default('USD').notNull(),
@@ -854,8 +1163,40 @@ export const tutors = pgTable('tutors', {
   // 'pending' until a human verifies them; only 'verified' tutors are listed.
   verificationStatus: varchar('verification_status', { length: 20 }).default('pending').notNull(),
   isAcceptingBookings: boolean('is_accepting_bookings').default(true).notNull(),
+  // ── Vetting evidence (PLAN.md 4.6) ──
+  // Approval rests on these, not on nationality. Shown to the admin who
+  // verifies, and the stored values are what the learner-side trust badge reads.
+  // The proficiency interview: the tutor's graded `cefr_placements` row.
+  cefrLevel:      varchar('cefr_level', { length: 2 }),
+  vettingPlacementId: integer('vetting_placement_id').references(() => cefrPlacements.id, { onDelete: 'set null' }),
+  // 0-100 Azure pronunciation-assessment accuracy over the read-aloud passages:
+  // intelligibility, not accent. Client-measured — see app/api/tutor/vetting.
+  clarityScore:   integer('clarity_score'),
+  // JSON {correctionQuality, talkTimeBalance, levelAdaptation} on 1-5, entered
+  // by the admin who watched the recorded trial lesson.
+  trialLessonScores: text('trial_lesson_scores'),
+  teachingModuleCompletedAt: timestamp('teaching_module_completed_at'),
+  // Set when ratings or AI agreement fall below threshold (lib/tutors/quality.ts).
+  // Cleared by an admin after re-review. Does not unlist the tutor by itself.
+  reviewFlaggedAt: timestamp('review_flagged_at'),
+  reviewFlagReason: text('review_flag_reason'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 });
+
+// Which tutors a private organization's learners may start a new booking,
+// live lesson or assessment with. The default organization has no rows:
+// its learners may start with any verified tutor who is accepting bookings.
+// A row is not a membership, and deleting one does not touch bookings that
+// already exist.
+export const organizationTutorPermissions = pgTable('organization_tutor_permissions', {
+  id:             serial('id').primaryKey(),
+  organizationId: integer('organization_id').references(() => organizations.id, { onDelete: 'cascade' }).notNull(),
+  tutorId:        integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  createdAt:      timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  uqTutor: uniqueIndex('uq_organization_tutor_permissions').on(t.organizationId, t.tutorId),
+  idxTutor: index('idx_organization_tutor_permissions_tutor').on(t.tutorId),
+}));
 
 export const tutorAvailability = pgTable('tutor_availability', {
   id:         serial('id').primaryKey(),
@@ -885,6 +1226,16 @@ export const tutorBookings = pgTable('tutor_bookings', {
   // 'lesson' — ordinary practice; 'evaluation' — verify what the AI taught.
   purpose:     varchar('purpose', { length: 20 }).default('lesson').notNull(),
   learnerNote: text('learner_note'),
+  // The syllabus step this lesson teaches (PLAN.md 4.7). Both nullable: set
+  // when the lesson plan is drafted, from the learner's course progress.
+  unitId:      integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
+  lessonId:    integer('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
+  // The tutor's post-lesson notes (PLAN.md 4.2). Filing them is what turns the
+  // human lesson into AI homework — see generateStudyPack's lesson branch.
+  // `lessonCorrections` is a JSON array of {original, corrected, note}.
+  lessonNotes: text('lesson_notes'),
+  lessonCorrections: text('lesson_corrections'),
+  notesFiledAt: timestamp('notes_filed_at'),
   // The GetStream call this booking meets in. Generated at booking time so
   // both sides resolve the same call without a negotiation step, and never
   // returned except alongside a token — see lib/tutors/rooms.ts.
@@ -904,19 +1255,19 @@ export const tutorBookings = pgTable('tutor_bookings', {
   idxLearner:       index('idx_tutor_bookings_learner').on(t.learnerId),
 }));
 
-/* ── Group classrooms ──────────────────────────────────────────────────
+/* ── Live lessons ──────────────────────────────────────────────────────
  *
  * A scheduled lesson one tutor teaches to many learners, optionally pinned
- * to a curriculum unit so the course page can offer "join the live lesson
+ * to a course unit so the course page can offer "join the live lesson
  * for this unit". Distinct from `tutor_bookings`, which is 1:1 and initiated
- * by the learner: a class is created by the tutor and enrolled into.
+ * by the learner: a live lesson is created by the tutor and enrolled into.
  */
 
-export const classSessions = pgTable('class_sessions', {
+export const liveLessons = pgTable('live_lessons', {
   id:             serial('id').primaryKey(),
   tutorId:        integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
-  // Both nullable: a class may be a standalone conversation hour rather than
-  // the live counterpart of one unit.
+  // Both nullable: a live lesson may be a standalone conversation hour rather
+  // than the live counterpart of one unit.
   courseId:       integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
   unitId:         integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
   title:          varchar('title', { length: 150 }).notNull(),
@@ -938,34 +1289,34 @@ export const classSessions = pgTable('class_sessions', {
   // live → scheduled → live must not announce themselves to the cohort twice.
   // Null on a room that has never been opened, including a cancelled one.
   wentLiveAt:     timestamp('went_live_at'),
-  // The classroom's text chat reuses the messaging tables — and therefore the
+  // The room's text chat reuses the messaging tables — and therefore the
   // per-member UgaJapa translation, which is the whole point in a room where
   // the learners do not share a native language.
   chatRoomId:     integer('chat_room_id').references(() => chatRooms.id, { onDelete: 'set null' }),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
   updatedAt:      timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
-  idxTutorSchedule: index('idx_class_sessions_tutor_scheduled').on(t.tutorId, t.scheduledAt),
+  idxTutorSchedule: index('idx_live_lessons_tutor_scheduled').on(t.tutorId, t.scheduledAt),
   // "Is there a live lesson for this unit?" is the course page's query.
-  idxUnitSchedule:  index('idx_class_sessions_unit_scheduled').on(t.unitId, t.scheduledAt),
+  idxUnitSchedule:  index('idx_live_lessons_unit_scheduled').on(t.unitId, t.scheduledAt),
 }));
 
-export const classEnrollments = pgTable('class_enrollments', {
+export const liveLessonEnrollments = pgTable('live_lesson_enrollments', {
   id:             serial('id').primaryKey(),
-  classSessionId: integer('class_session_id').references(() => classSessions.id, { onDelete: 'cascade' }).notNull(),
+  liveLessonId:   integer('live_lesson_id').references(() => liveLessons.id, { onDelete: 'cascade' }).notNull(),
   learnerId:      text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   // 'enrolled' | 'attended' | 'cancelled'
   status:         varchar('status', { length: 20 }).default('enrolled').notNull(),
   enrolledAt:     timestamp('enrolled_at').defaultNow().notNull(),
   attendedAt:     timestamp('attended_at'),
 }, (t) => ({
-  uqEnrollment: uniqueIndex('uq_class_enrollment').on(t.classSessionId, t.learnerId),
-  idxLearner:   index('idx_class_enrollments_learner').on(t.learnerId),
+  uqEnrollment: uniqueIndex('uq_live_lesson_enrollment').on(t.liveLessonId, t.learnerId),
+  idxLearner:   index('idx_live_lesson_enrollments_learner').on(t.learnerId),
 }));
 
 /* ── Assessment rooms ──────────────────────────────────────────────────
  *
- * The same call plumbing as a class, run as an examination: exactly one
+ * The same call plumbing as a live lesson, run as an examination: exactly one
  * learner is in the room at a time and the rest wait in a queue the tutor
  * admits from. The queue is OURS — a table, pushed over lib/realtime — not
  * Stream's, because who is next is an academic decision, not a media one.
@@ -979,7 +1330,7 @@ export const assessmentSessions = pgTable('assessment_sessions', {
   title:          varchar('title', { length: 150 }).notNull(),
   description:    text('description'),
   targetLanguage: varchar('target_language', { length: 10 }).notNull(),
-  // As on class_sessions — and it also reaches the AI examiner, whose locked
+  // As on live_lessons — and it also reaches the AI examiner, whose locked
   // brief tells it to examine in the target language but explain in this one.
   instructionLanguage: varchar('instruction_language', { length: 10 }),
   scheduledAt:    timestamp('scheduled_at').notNull(),
@@ -1004,7 +1355,7 @@ export const assessmentSessions = pgTable('assessment_sessions', {
   aiInterviewerBrief:    text('ai_interviewer_brief'),
   // 'scheduled' | 'live' | 'completed' | 'cancelled'
   status:         varchar('status', { length: 20 }).default('scheduled').notNull(),
-  // As on class_sessions: when the room actually opened, and the guard that
+  // As on live_lessons: when the room actually opened, and the guard that
   // keeps the go-live announcement from firing twice.
   wentLiveAt:     timestamp('went_live_at'),
   createdAt:      timestamp('created_at').defaultNow().notNull(),
@@ -1117,6 +1468,107 @@ export const tutorEvaluations = pgTable('tutor_evaluations', {
   createdAt:   timestamp('created_at').defaultNow().notNull(),
 });
 
+/* ── Hybrid tutoring (PLAN.md Phase 4) ────────────────────────────────── */
+
+/**
+ * One spoken CEFR interview outside an assessment room: a learner's placement
+ * (and monthly re-test), or a tutor applicant's proficiency check.
+ *
+ * Separate from `ai_interviews` because that table is anchored to an
+ * assessment's queue slot — a placement has no room, no tutor and no queue.
+ * The shape is otherwise the same on purpose: same status machine, same
+ * client-reported transcript, same six 0-100 dimensions, graded by the same
+ * lib/interview/grade.ts with the CEFR rubric switched on.
+ */
+export const cefrPlacements = pgTable('cefr_placements', {
+  id:            serial('id').primaryKey(),
+  userId:        text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 'placement' (learner) | 'tutor_vetting' (applicant)
+  purpose:       varchar('purpose', { length: 20 }).notNull(),
+  targetLanguage: varchar('target_language', { length: 10 }).notNull(),
+  // The language feedback is written in.
+  nativeLanguage: varchar('native_language', { length: 10 }).notNull(),
+  model:         varchar('model', { length: 80 }).notNull(),
+  /** 'live' | 'completed' | 'failed' */
+  status:        varchar('status', { length: 20 }).default('live').notNull(),
+  startedAt:     timestamp('started_at').defaultNow().notNull(),
+  endedAt:       timestamp('ended_at'),
+  learnerTurns:  integer('learner_turns').default(0).notNull(),
+  transcript:    text('transcript'),
+  vocabularyScore: integer('vocabulary_score'),
+  grammarScore:    integer('grammar_score'),
+  fluencyScore:    integer('fluency_score'),
+  culturalScore:   integer('cultural_score'),
+  taskScore:       integer('task_score'),
+  expressionAppropriatenessScore: integer('expression_appropriateness_score'),
+  // 'A0' … 'C2'. `dimensionLevels` is JSON {dimension: level} for the floor check.
+  cefrLevel:     varchar('cefr_level', { length: 2 }),
+  dimensionLevels: text('dimension_levels'),
+  feedback:      text('feedback'),
+  summary:       text('summary'),
+  gradedAt:      timestamp('graded_at'),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+  updatedAt:     timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxUserPurpose: index('idx_cefr_placements_user_purpose').on(t.userId, t.purpose, t.createdAt),
+}));
+
+/** A learner's rating of one completed 1:1 booking (PLAN.md 4.4). */
+export const tutorReviews = pgTable('tutor_reviews', {
+  id:          serial('id').primaryKey(),
+  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).notNull().unique(),
+  tutorId:     integer('tutor_id').references(() => tutors.id, { onDelete: 'cascade' }).notNull(),
+  learnerId:   text('learner_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // 1-5
+  rating:      integer('rating').notNull(),
+  comment:     text('comment'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  idxTutor: index('idx_tutor_reviews_tutor').on(t.tutorId),
+}));
+
+/**
+ * The plan for one 1:1 lesson (PLAN.md 4.7): the next syllabus step plus a
+ * personal-fix slot from the learner's weak points. Drafted by the AI, edited
+ * by the tutor. `plan` is JSON (LessonPlan in lib/tutors/lesson-plan.ts).
+ */
+export const lessonPlans = pgTable('lesson_plans', {
+  id:          serial('id').primaryKey(),
+  bookingId:   integer('booking_id').references(() => tutorBookings.id, { onDelete: 'cascade' }).notNull().unique(),
+  unitId:      integer('unit_id').references(() => units.id, { onDelete: 'set null' }),
+  lessonId:    integer('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
+  plan:        text('plan').notNull(),
+  tutorEdited: boolean('tutor_edited').default(false).notNull(),
+  // The slide both sides of the call are on (PLAN.md 4.8 part 3). The tutor
+  // moves it; the learner's panel follows over lib/realtime.
+  currentSlide: integer('current_slide').default(0).notNull(),
+  taughtAt:    timestamp('taught_at'),
+  createdAt:   timestamp('created_at').defaultNow().notNull(),
+  updatedAt:   timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
+ * A learner's standing on one can-do statement of one unit (PLAN.md 4.7).
+ * `statementIndex` points into `units.can_do`. A tutor marks introduced /
+ * practised / achieved after a lesson; `confirmedAt` is set when an AI
+ * session or the CEFR re-test backs up an 'achieved'.
+ */
+export const canDoProgress = pgTable('can_do_progress', {
+  id:             serial('id').primaryKey(),
+  userId:         text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  unitId:         integer('unit_id').references(() => units.id, { onDelete: 'cascade' }).notNull(),
+  statementIndex: integer('statement_index').notNull(),
+  // 'introduced' | 'practised' | 'achieved'
+  status:         varchar('status', { length: 20 }).notNull(),
+  markedByTutorId: integer('marked_by_tutor_id').references(() => tutors.id, { onDelete: 'set null' }),
+  bookingId:      integer('booking_id').references(() => tutorBookings.id, { onDelete: 'set null' }),
+  confirmedAt:    timestamp('confirmed_at'),
+  updatedAt:      timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  uqStatement: uniqueIndex('uq_can_do_progress_key').on(t.userId, t.unitId, t.statementIndex),
+}));
+
 export const tutorsRelations = relations(tutors, ({ one, many }) => ({
   user:         one(users, { fields: [tutors.userId], references: [users.id] }),
   availability: many(tutorAvailability),
@@ -1142,17 +1594,17 @@ export const tutorEvaluationsRelations = relations(tutorEvaluations, ({ one }) =
   session: one(sessions,      { fields: [tutorEvaluations.sessionId], references: [sessions.id] }),
 }));
 
-export const classSessionsRelations = relations(classSessions, ({ one, many }) => ({
-  tutor:       one(tutors,    { fields: [classSessions.tutorId],    references: [tutors.id] }),
-  course:      one(courses,   { fields: [classSessions.courseId],   references: [courses.id] }),
-  unit:        one(units,     { fields: [classSessions.unitId],     references: [units.id] }),
-  chatRoom:    one(chatRooms, { fields: [classSessions.chatRoomId], references: [chatRooms.id] }),
-  enrollments: many(classEnrollments),
+export const liveLessonsRelations = relations(liveLessons, ({ one, many }) => ({
+  tutor:       one(tutors,    { fields: [liveLessons.tutorId],    references: [tutors.id] }),
+  course:      one(courses,   { fields: [liveLessons.courseId],   references: [courses.id] }),
+  unit:        one(units,     { fields: [liveLessons.unitId],     references: [units.id] }),
+  chatRoom:    one(chatRooms, { fields: [liveLessons.chatRoomId], references: [chatRooms.id] }),
+  enrollments: many(liveLessonEnrollments),
 }));
 
-export const classEnrollmentsRelations = relations(classEnrollments, ({ one }) => ({
-  classSession: one(classSessions, { fields: [classEnrollments.classSessionId], references: [classSessions.id] }),
-  learner:      one(users,         { fields: [classEnrollments.learnerId],      references: [users.id] }),
+export const liveLessonEnrollmentsRelations = relations(liveLessonEnrollments, ({ one }) => ({
+  liveLesson: one(liveLessons, { fields: [liveLessonEnrollments.liveLessonId], references: [liveLessons.id] }),
+  learner:    one(users,       { fields: [liveLessonEnrollments.learnerId],    references: [users.id] }),
 }));
 
 export const assessmentSessionsRelations = relations(assessmentSessions, ({ one, many }) => ({
@@ -1183,9 +1635,9 @@ export const aiInterviewsRelations = relations(aiInterviews, ({ one }) => ({
 export const notifications = pgTable('notifications', {
   id:        serial('id').primaryKey(),
   userId:    text('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  // 'evaluation' | 'class' | 'assessment' | 'booking' | 'announcement' — what
-  // produced it. 'announcement' is the only one a human authors; the rest fall
-  // out of an action that already succeeded.
+  // 'evaluation' | 'live_lesson' | 'assessment' | 'booking' | 'announcement' |
+  // 'organization_invite' | 'group_assignment' | 'group_removal' | 'study_pack'
+  // — what produced it.
   type:      varchar('type', { length: 40 }).notNull(),
   title:     varchar('title', { length: 160 }).notNull(),
   body:      text('body'),
@@ -1213,10 +1665,10 @@ export const tutorAnnouncements = pgTable('tutor_announcements', {
   // The course the announcement is about, and the language it is written in.
   targetLanguage:      varchar('target_language', { length: 10 }),
   instructionLanguage: varchar('instruction_language', { length: 10 }),
-  // 'class' | 'course' | 'all_my_learners' — resolved by resolveAudience() in
-  // lib/tutors/audience.ts, which is the only place the membership rules live.
+  // 'live_lesson' | 'course' | 'all_my_learners' — resolved by resolveAudience()
+  // in lib/tutors/audience.ts, which is the only place the membership rules live.
   audienceKind:        varchar('audience_kind', { length: 20 }).notNull(),
-  classSessionId:      integer('class_session_id').references(() => classSessions.id, { onDelete: 'set null' }),
+  liveLessonId:        integer('live_lesson_id').references(() => liveLessons.id, { onDelete: 'set null' }),
   courseId:            integer('course_id').references(() => courses.id, { onDelete: 'set null' }),
   // Counted at send time. The audience changes as learners enrol and leave, so
   // recomputing it later would not describe what was actually delivered.
@@ -1231,7 +1683,7 @@ export const tutorAnnouncements = pgTable('tutor_announcements', {
 // The one genuinely new piece of scheduled data: a user's own to-dos, plus
 // the "do this lesson" reminders seeded onto a learner's calendar right
 // after onboarding (see lib/calendar/seed-lesson-plan.ts). Everything else
-// that shows up on /calendar — sessions, tutor bookings, classes,
+// that shows up on /calendar — sessions, tutor bookings, live lessons,
 // assessments — already has its own row with a date; /api/calendar reads
 // those live rather than copying them in here.
 
@@ -1243,9 +1695,12 @@ export const calendarTasks = pgTable('calendar_tasks', {
   dueAt:         timestamp('due_at').notNull(),
   allDay:        boolean('all_day').default(true).notNull(),
   // 'task' — user-authored to-do. 'lesson_reminder' — system-seeded from the
-  // post-onboarding plan, points back at sourceLessonId.
+  // post-onboarding plan, points back at sourceLessonId. 'study_pack' — the
+  // homework for a completed session, points back at sourceStudyPackId.
   kind:          varchar('kind', { length: 20 }).default('task').notNull(),
   sourceLessonId: integer('source_lesson_id').references(() => lessons.id, { onDelete: 'cascade' }),
+  // Set on kind 'study_pack': the homework reminder generateStudyPack adds.
+  sourceStudyPackId: integer('source_study_pack_id').references(() => studyPacks.id, { onDelete: 'cascade' }),
   status:        varchar('status', { length: 20 }).default('pending').notNull(), // 'pending' | 'done'
   completedAt:   timestamp('completed_at'),
   createdAt:     timestamp('created_at').defaultNow().notNull(),
@@ -1263,4 +1718,37 @@ export const calendarTasks = pgTable('calendar_tasks', {
 export const calendarTasksRelations = relations(calendarTasks, ({ one }) => ({
   user:         one(users,   { fields: [calendarTasks.userId],         references: [users.id] }),
   sourceLesson: one(lessons, { fields: [calendarTasks.sourceLessonId], references: [lessons.id] }),
+}));
+
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  memberships: many(organizationMemberships),
+  groups:      many(groups),
+  invitations: many(organizationInvitations),
+  tutorPermissions: many(organizationTutorPermissions),
+}));
+
+export const organizationMembershipsRelations = relations(organizationMemberships, ({ one }) => ({
+  organization: one(organizations, { fields: [organizationMemberships.organizationId], references: [organizations.id] }),
+  user:         one(users,         { fields: [organizationMemberships.userId],         references: [users.id] }),
+}));
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  organization: one(organizations, { fields: [groups.organizationId], references: [organizations.id] }),
+  members:      many(groupMemberships),
+}));
+
+export const groupMembershipsRelations = relations(groupMemberships, ({ one }) => ({
+  group: one(groups, { fields: [groupMemberships.groupId], references: [groups.id] }),
+  user:  one(users,  { fields: [groupMemberships.userId],  references: [users.id] }),
+}));
+
+export const organizationInvitationsRelations = relations(organizationInvitations, ({ one }) => ({
+  organization: one(organizations, { fields: [organizationInvitations.organizationId], references: [organizations.id] }),
+  user:         one(users,         { fields: [organizationInvitations.userId],         references: [users.id] }),
+  invitedBy:    one(users,         { fields: [organizationInvitations.invitedByUserId], references: [users.id] }),
+}));
+
+export const organizationTutorPermissionsRelations = relations(organizationTutorPermissions, ({ one }) => ({
+  organization: one(organizations, { fields: [organizationTutorPermissions.organizationId], references: [organizations.id] }),
+  tutor:        one(tutors,        { fields: [organizationTutorPermissions.tutorId],        references: [tutors.id] }),
 }));

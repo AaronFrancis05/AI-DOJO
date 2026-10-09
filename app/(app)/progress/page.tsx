@@ -5,7 +5,12 @@ import { Card } from '@/components/ui/Card';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { RadarChart, type RadarDataPoint } from '@/components/ui/RadarChart';
-import { getUserStats, getWeeklyActivity, type WeeklyActivity } from '@/lib/data/sessions';
+import {
+  getUserStats,
+  getWeeklyActivity,
+  type UserStats,
+  type WeeklyActivity,
+} from '@/lib/data/sessions';
 import { useUser } from '@/lib/auth/user-context';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import {
@@ -52,11 +57,16 @@ const monthlyData = [
   { month: 'Feb', score: 82 },
 ];
 
+type ProgressStats = UserStats & {
+  xp?: number;
+  streak?: number;
+};
+
 export default function ProgressPage() {
   usePageTitle('Progress');
   const user = useUser();
-  const [stats, setStats] = useState<any>(null);
-  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [stats, setStats] = useState<ProgressStats | null>(null);
+  const [weeklyData, setWeeklyData] = useState<WeeklyActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -72,17 +82,18 @@ export default function ProgressPage() {
     load();
   }, []);
 
-  const displayXP = stats?.xp ?? user?.xp ?? 0;
+  const displayXP = stats?.xp ?? stats?.totalXP ?? user?.xp ?? 0;
   const displaySessions = stats?.totalSessions ?? 0;
   const displayCompleted = stats?.completedSessions ?? 0;
-  const displayStreak = stats?.streak ?? user?.streak ?? 0;
+  const displayStreak = stats?.streak ?? stats?.currentStreak ?? user?.streak ?? 0;
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Progress</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Track your learning journey across all domains
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Progress</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          See how you have been scoring — fluency, grammar, vocabulary, and
+          the rest — across skills and over time.
         </p>
       </div>
 

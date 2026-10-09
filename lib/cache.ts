@@ -13,9 +13,15 @@ SESSION: 60,         // 1 min (session state changes often)
   TRYOUT_RATE_LIMIT: 3600, // 1 hr window for guest tryout throttling
   TRYOUT_DAILY: 86400, // 24 hr window for the one-completed-tryout-per-guest gate
   TRYOUT_SESSION: 3600, // 1 hr — a preview is 2-3 min; this only has to outlive one sitting
+  ONBOARDING_PRACTICE: 3600, // 1 hr — the in-wizard sample is one sitting
   SPEECH_TOKEN: 540,   // 9 min (Azure issueToken lifetime is 10 min)
   PROFICIENCY: 300,    // 5 min (only changes when a session completes)
   LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
+  CHAT_TURN_RATE_LIMIT: 600, // 10 min window for the per-user roleplay turn limit
+  LESSON_EXPLAIN_RATE_LIMIT: 600, // 10 min window for in-lesson "explain in my language" (PLAN.md 4.8)
+  LEADERBOARD: 60,     // 1 min — rankings move with XP, but every viewer reads the same top 20
+  COUNTRY_LANGUAGE: 86400, // 24 hr — a country's default language is reference data
+  UI_TRANSLATION: 2592000, // 30 days — a translation of an unchanged text never goes stale; the key is a content hash
 } as const;
 
 let redis: Redis | null = null;
@@ -40,6 +46,17 @@ function getRedis(): Redis | null {
  */
 export function isCacheConfigured(): boolean {
   return Boolean(process.env.UPSTASH_REDIS_URL && process.env.UPSTASH_REDIS_TOKEN);
+}
+
+/**
+ * Whether a `rateLimitIncrement` result means "the limit could not be
+ * checked, so deny". True for a configured cache that errored, and for
+ * production with no cache at all — an unconfigured production deploy would
+ * otherwise be an unmetered relay. Only a dev machine without Upstash
+ * credentials is let through.
+ */
+export function rateLimitUnavailable(count: number | null): boolean {
+  return count === null && (isCacheConfigured() || process.env.NODE_ENV === 'production');
 }
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
@@ -76,10 +93,12 @@ export async function rateLimitIncrement(key: string, ttl: number): Promise<numb
   const r = getRedis();
   if (!r) return null;
   try {
-    const count = await r.incr(key);
-    // Only the request that created the key sets the window, so the window
+    // One MULTI/EXEC round trip, so the counter can never exist without a TTL.
+    // A separate `expire` that failed after a successful `incr` left a key
+    // that never expired — a permanent lockout for that IP or user.
+    // `NX` sets the window only when the key has none yet, so the window still
     // rolls forward from the first request rather than the most recent one.
-    if (count === 1) await r.expire(key, ttl);
+    const [count] = await r.multi().incr(key).expire(key, ttl, 'NX').exec<[number, number]>();
     return count;
   } catch {
     return null;
@@ -103,6 +122,8 @@ function key(prefix: string, ...parts: (string | number)[]): string {
 export const cacheKeys = {
   userAvatars: (userId: string) => key('avatars', userId),
   userProfile: (userId: string) => key('user-profile', userId),
+  /** Set after ensureLearnerMembership succeeds, so syncUser skips it on the next requests. */
+  membershipChecked: (userId: string) => key('membership-checked', userId),
   learnerProficiency: (userId: string, lang: string) => key('proficiency', `${userId}:${lang}`),
   session: (sessionId: number) => key('session', sessionId),
   scenario: (scenarioId: number) => key('scenario', scenarioId),
@@ -113,6 +134,11 @@ export const cacheKeys = {
   goalLocalizations: (scenarioId: number, lang: string) => key('goal-loc', scenarioId, lang),
   situation: (situationId: number) => key('situation', situationId),
   situationLocalization: (situationId: number, lang: string) => key('situation-loc', situationId, lang),
+  /** Native-language explanation of a scenario for one (target, native) pair. */
+  scenarioNativeLocalization: (scenarioId: number, target: string, native: string) => key('scenario-native-loc', scenarioId, target, native),
+  situationNativeLocalization: (situationId: number, target: string, native: string) => key('situation-native-loc', situationId, target, native),
+  goalNativeLocalizations: (scenarioId: number, target: string, native: string) => key('goal-native-loc', scenarioId, target, native),
+  vocabNativeNotes: (scenarioId: number, target: string, native: string) => key('vocab-native-notes', scenarioId, target, native),
   character: (characterId: number) => key('character', characterId),
   domain: (domainId: number) => key('domain', domainId),
   tryoutRateLimit: (ip: string) => key('tryout-rate-limit', ip),
@@ -120,9 +146,24 @@ export const cacheKeys = {
   tryoutDailyGate: (ip: string) => key('tryout-daily', ip),
   /** Server-side turn budget for one issued tryout id. */
   tryoutTurns: (tryoutId: string) => key('tryout-turns', tryoutId),
+  onboardingTurns: (budgetId: string) => key('onboarding-turns', budgetId),
+  onboardingPracticeRateLimit: (id: string) => key('onboarding-practice-rate', id),
   speechToken: (region: string) => key('speech-token', region),
+  /** The global top-20 ranking, shared by every viewer. */
+  leaderboard: () => key('leaderboard', 'v1'),
+  /** Roleplay turns one signed-in user has sent in the current window. */
+  chatTurnRateLimit: (userId: string) => key('chat-turn-rate', userId),
+  lessonExplainRateLimit: (userId: string) => key('lesson-explain-rate', userId),
   /** The whole `languages` table — one key, because it is always read whole. */
   languageCatalog: () => key('language-catalog', 'v1'),
+  /** users.nativeLanguage, read on every page to pick the UI locale. Deleted when it changes. */
+  uiNativeLanguage: (userId: string) => key('ui-native', userId),
+  /** countries.defaultNativeLanguage for a visitor's geo header. */
+  countryLanguage: (countryCode: string) => key('country-language', countryCode),
+  /** On-demand translation of dynamic text (tutor bios, lesson titles), keyed by content hash. */
+  uiTranslation: (textHash: string, lang: string) => key('ui-translation', textHash, lang),
+  /** /api/translate-text calls one signed-in user made in the current window. */
+  translateTextRateLimit: (userId: string) => key('translate-text-rate', userId),
 };
 
 export { TTL };

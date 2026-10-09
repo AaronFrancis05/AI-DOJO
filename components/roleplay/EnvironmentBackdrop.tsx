@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useMemo } from 'react';
 
 const backdropImages: Record<string, string> = {
@@ -24,13 +25,16 @@ export function EnvironmentBackdrop({ domainSlug }: { domainSlug?: string }) {
   return (
     <div className="absolute inset-0 z-0 overflow-hidden">
       {/* Photo — warm, visible but not competing with the avatar */}
-      <img
+      <Image
         src={src}
         alt=""
-        className="h-full w-full object-cover"
+        fill
+        unoptimized
+        priority
+        sizes="100vw"
+        className="object-cover"
         style={{ opacity: 0.45 }}
         draggable={false}
-        loading="eager"
       />
       {/* Cinematic vignette:
            Top: light darken so top bar + speech bubble text stays readable

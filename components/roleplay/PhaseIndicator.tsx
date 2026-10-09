@@ -23,7 +23,7 @@ export function PhaseIndicator({ phase }: PhaseIndicatorProps) {
   }, [phase]);
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-shadow ${meta.badgeClass} ${justChanged ? 'animate-glow-pulse' : ''}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-shadow ${meta.badgeClass} ${justChanged ? 'animate-glow-pulse' : ''}`}>
       <span
         className={`h-1.5 w-1.5 rounded-full ${phase === 'completed' ? '' : 'animate-pulse'}`}
         style={{ backgroundColor: meta.hex }}

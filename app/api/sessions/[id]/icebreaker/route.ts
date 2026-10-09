@@ -1,8 +1,8 @@
 import { db } from '@/src/db';
 import { sessions, vocabulary, vocabularyEncounters, vocabularyLocalizations } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
-import { nextPhase } from '@/lib/roleplay/phase-engine';
 import { eq, and, sql } from 'drizzle-orm';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export async function POST(
   req: Request,
@@ -31,7 +31,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { vocabularyId, transcript, accuracyScore, attemptNumber } = body;
+  const { vocabularyId, accuracyScore, attemptNumber } = body;
 
   if (!vocabularyId || typeof accuracyScore !== 'number') {
     return Response.json({ error: 'vocabularyId and accuracyScore are required' }, { status: 400 });
@@ -45,7 +45,7 @@ export async function POST(
   // Use the localized target-language word for feedback when the session is
   // running in a language other than the Japanese base (e.g. a French course).
   let displayWord = word;
-  const targetLang = session.targetLanguage ?? 'ja';
+  const targetLang = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
   if (targetLang) {
     const [loc] = await db
       .select()

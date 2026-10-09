@@ -9,7 +9,7 @@
 
 import { db } from '../src/db';
 import { scenarios, sessions, vocabulary } from '../src/schema';
-import { eq, sql, inArray, count } from 'drizzle-orm';
+import { sql, inArray, count } from 'drizzle-orm';
 
 async function main() {
   const args = process.argv.slice(2);

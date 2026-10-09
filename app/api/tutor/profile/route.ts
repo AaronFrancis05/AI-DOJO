@@ -2,11 +2,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { tutors } from '@/src/schema';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
+import { unknownLanguageCodes } from '@/lib/tutors/language-catalog';
 import {
   parseLanguageCodes,
   serializeLanguageCodes,
   tutorLanguageSets,
-  unknownLanguageCodes,
 } from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';

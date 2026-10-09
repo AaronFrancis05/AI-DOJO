@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { prefersReducedMotion } from '@/lib/hooks/useCelebrationConfetti';
 
 interface ResultsAvatarBackdropProps {
@@ -37,21 +38,30 @@ export function ResultsAvatarBackdrop({ src, glow, fit = 'fill' }: ResultsAvatar
   const portrait = fit === 'portrait';
   const heroSizeClass = portrait ? 'h-3/4 max-h-152 w-auto' : 'h-full w-auto';
   const heroMask = portrait ? PORTRAIT_MASK : EDGE_MASK;
+  const heroSize = portrait
+    ? { width: 380, height: 380 }
+    : { width: 1448, height: 1086 };
 
   return (
     <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-dojo-canvas">
-      <img
-        src={src}
-        alt=""
-        aria-hidden
-        className="absolute inset-0 h-full w-full scale-110 object-cover object-center opacity-40 blur-2xl"
-      />
+      <div className="absolute inset-0">
+        <Image
+          src={src}
+          alt=""
+          aria-hidden
+          fill
+          sizes="100vw"
+          className="scale-110 object-cover object-center opacity-40 blur-2xl"
+        />
+      </div>
 
       <div className="absolute inset-0" style={{ background: `radial-gradient(ellipse at 50% 45%, ${glow}, transparent 68%)` }} />
 
-      <img
+      <Image
         src={src}
         alt=""
+        width={heroSize.width}
+        height={heroSize.height}
         className={`absolute left-1/2 top-1/2 ${heroSizeClass} max-w-none -translate-x-1/2 -translate-y-1/2 object-contain ${
           reduced ? '' : 'animate-in fade-in zoom-in-95 duration-700'
         }`}
@@ -60,8 +70,8 @@ export function ResultsAvatarBackdrop({ src, glow, fit = 'fill' }: ResultsAvatar
 
       <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-dojo-canvas via-dojo-canvas/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-dojo-canvas via-dojo-canvas/70 to-transparent" />
-      <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-dojo-canvas/85 to-transparent" />
-      <div className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-dojo-canvas/85 to-transparent" />
+      <div className="absolute inset-y-0 start-0 w-1/4 bg-gradient-to-r from-dojo-canvas/85 to-transparent" />
+      <div className="absolute inset-y-0 end-0 w-1/4 bg-gradient-to-l from-dojo-canvas/85 to-transparent" />
     </div>
   );
 }

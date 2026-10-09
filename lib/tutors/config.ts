@@ -70,8 +70,20 @@ export const JOIN_GRACE_AFTER_MS = 30 * 60 * 1000;
 
 export const BOOKING_DURATIONS_MINUTES = [30, 45, 60] as const;
 
-/** Durations a tutor may schedule a group class or an assessment for. */
-export const CLASS_DURATIONS_MINUTES = [30, 45, 60, 90] as const;
+/** Durations a tutor may schedule a live lesson or an assessment for. */
+export const LIVE_LESSON_DURATIONS_MINUTES = [30, 45, 60, 90] as const;
 
-/** Upper bound on learners in one class room. */
-export const MAX_CLASS_CAPACITY = 50;
+/** Upper bound on learners in one live lesson. */
+export const MAX_LIVE_LESSON_CAPACITY = 50;
+
+/**
+ * The hybrid tutoring layer (PLAN.md Phase 4): CEFR placement, pre-lesson
+ * briefings, post-lesson homework, reviews, vetting evidence, lesson plans,
+ * captions and in-lesson explanations. Off by default; with it off every one
+ * of those surfaces is hidden and their routes answer 404.
+ *
+ * Learner-facing lesson tools are further gated per organization
+ * (`organizations.hybrid_tutoring_enabled`, see lib/tutors/hybrid.ts) so the
+ * pilot customer gets them first. Same full-literal rule as above.
+ */
+export const HYBRID_ENABLED = process.env.NEXT_PUBLIC_HYBRID_ENABLED === '1';

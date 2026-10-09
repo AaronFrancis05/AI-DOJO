@@ -5,10 +5,15 @@ import { syncUser } from '@/lib/auth/sync-user';
 import { UserProvider } from '@/lib/auth/user-context';
 import { LanguageCatalogProvider } from '@/lib/language-context';
 import { loadLanguageCatalog } from '@/lib/language-registry';
+import { loadUiLocaleContext } from '@/lib/i18n/server';
 import { toUserRole } from '@/lib/auth/roles';
+import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { loadMembership } from '@/lib/organizations/membership';
+import { learnerHasBookableTutor } from '@/lib/organizations/tutor-access';
 import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { eq } from 'drizzle-orm';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export default async function AppLayout({
   children,
@@ -17,7 +22,7 @@ export default async function AppLayout({
 }) {
   // Resolved here rather than per-page: it is cached, it never throws, and
   // every authenticated surface either lists languages or looks one up.
-  const languageCatalog = await loadLanguageCatalog();
+  const [languageCatalog, ui] = await Promise.all([loadLanguageCatalog(), loadUiLocaleContext()]);
 
   const authUser = await getAuthUserReadOnly();
   const u = authUser as { id?: string; name?: string; email?: string } | null;
@@ -99,16 +104,17 @@ export default async function AppLayout({
     // An admin skips it entirely. Neither wizard collects anything the console
     // reads, and an operator pre-provisioned by another admin (which leaves
     // `onboardingCompletedAt` null — see /api/admin/users/create) would
-    // otherwise be held at a learner level-picker on the way to /admin.
+    // otherwise be held at the learner wizard on the way to /admin.
     if (dbUser && dbUser.onboardingCompletedAt === null && role !== 'admin') {
-      redirect(role === 'tutor' ? '/onboarding/tutor/welcome' : '/onboarding/level');
+      redirect(role === 'tutor' ? '/onboarding/tutor/welcome' : '/onboarding/welcome');
     }
 
-    // What the sidebar tells a tutor about their own standing. Only fetched
-    // for a tutor: a learner has no row, and an extra round-trip on every
+    // What the sidebar tells a tutor about their own standing. Also fetched
+    // for an admin: Teaching is offered only when they actually have a
+    // tutors row. A learner has none, and an extra round-trip on every
     // authenticated page render is not free.
     let tutorStatus: string | null = null;
-    if (role === 'tutor') {
+    if (role === 'tutor' || role === 'admin') {
       try {
         const [profile] = await db
           .select({ verificationStatus: tutors.verificationStatus })
@@ -121,12 +127,32 @@ export default async function AppLayout({
       }
     }
 
+    let organizationAdmin = false;
+    let organizationName: string | null = null;
+    let canBrowseTutors = role === 'admin';
+    if (role === 'learner') {
+      try {
+        const membership = await loadMembership(authId);
+        if (membership) {
+          organizationAdmin = membership.role === 'admin';
+          organizationName = membership.organizationName;
+        }
+        canBrowseTutors = await learnerHasBookableTutor(authId);
+      } catch (err) {
+        console.error('[app-layout] organization membership read failed', err);
+        canBrowseTutors = false;
+      }
+    }
+
     user = {
       id: authId,
       name: dbUser?.name || providerName || '',
       email: dbUser?.email || u.email || '',
       level: dbUser?.level ?? 'beginner',
       role,
+      organizationAdmin,
+      organizationName,
+      canBrowseTutors,
       tutorStatus,
       tier: (dbUser?.tier ?? 'free') as 'free' | 'premium',
       xp: dbUser?.xp ?? 0,
@@ -136,14 +162,14 @@ export default async function AppLayout({
       avatarColor: '#2D3BC5',
       dailyGoalMinutes: dbUser?.dailyGoalMinutes ?? 30,
       nativeLanguage: dbUser?.nativeLanguage ?? 'en',
-      preferredTargetLanguage: dbUser?.preferredTargetLanguage ?? 'ja',
+      preferredTargetLanguage: dbUser?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE,
       countryCode: dbUser?.countryCode ?? null,
     };
   }
 
   return (
-    <UserProvider value={user}>
-      <LanguageCatalogProvider value={languageCatalog}>
+    <UserProvider value={user} tutorsEnabled={TUTORS_ENABLED}>
+      <LanguageCatalogProvider value={languageCatalog} ui={ui}>
         <AppShell>{children}</AppShell>
       </LanguageCatalogProvider>
     </UserProvider>

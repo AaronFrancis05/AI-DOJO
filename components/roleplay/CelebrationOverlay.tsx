@@ -71,7 +71,7 @@ export function CelebrationOverlay({ variant, title, subtitle, onDismiss, onRepe
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right-2 fade-in duration-200">
+    <div className="fixed top-4 end-4 z-50 animate-in slide-in-from-right-2 fade-in duration-200">
       <div className="flex items-start gap-3 rounded-xl border border-dojo-border bg-dojo-surface-raised p-4 shadow-2xl max-w-xs">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-dojo-success/20">
           <Icon className="h-4 w-4 text-dojo-success" />

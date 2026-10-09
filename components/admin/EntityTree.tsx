@@ -6,8 +6,8 @@
    `courses → levels → units → lessons → phases` and
    `domains → situations → scenarios` are the same interaction: pick a node,
    walk into its children, add/rename/reorder/archive/delete one. The two
-   routes behind them (`/api/admin/curriculum/[entity]`,
-   `/api/admin/catalogue/[entity]`) are already one implementation each over a
+   routes behind them (`/api/admin/courses/[entity]`,
+   `/api/admin/library/[entity]`) are already one implementation each over a
    validated path segment, so the console matches that shape rather than
    growing eight near-identical panels that would drift.
 
@@ -187,7 +187,7 @@ export function EntityTree({
         <h2 className="text-base font-bold text-dojo-text-primary">
           {level.plural}
           {depth > 0 && (
-            <span className="ml-2 text-sm font-normal text-dojo-text-muted">
+            <span className="ms-2 text-sm font-normal text-dojo-text-muted">
               in “{titleOf(path[depth - 1], levels[depth - 1])}”
             </span>
           )}
@@ -483,7 +483,7 @@ function RowForm({
               <>
                 <label htmlFor={id(field.key)} className="mb-2 block text-sm text-dojo-text-primary">
                   {field.label}
-                  {field.required && <span className="ml-1 text-dojo-danger">*</span>}
+                  {field.required && <span className="ms-1 text-dojo-danger">*</span>}
                 </label>
                 {field.widget === 'textarea' ? (
                   <textarea

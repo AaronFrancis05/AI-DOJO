@@ -5,7 +5,6 @@ import { Canvas } from '@react-three/fiber';
 import { Environment, ContactShadows } from '@react-three/drei';
 import {
   AnimatedModel,
-  EmotionLight,
   SceneLoadingFallback,
   CameraIntent,
 } from '@/components/roleplay/three/AnimatedModel';

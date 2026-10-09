@@ -3,6 +3,7 @@ import { sessions } from '../../../../src/schema';
 import { eq } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
 import { loadSessionTurnData, analyzeTurn } from '../../../../lib/roleplay/analyze-turn';
+import { isSessionEnded } from '../../../../lib/roleplay/session-lifecycle';
 
 export const runtime = 'nodejs';
 
@@ -22,7 +23,6 @@ export async function POST(req: Request) {
 
     const rawSessionId = body.sessionId;
     const rawUserInput = body.userRawInput;
-    const isRetryOfPreviousMistake = body.isRetryOfPreviousMistake === true;
 
     if (!rawSessionId || !rawUserInput) {
       return Response.json({ error: 'sessionId and userRawInput are required' }, { status: 400 });
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (session.status === 'completed') {
+    if (isSessionEnded(session.status)) {
       return Response.json({ error: 'Session is already completed' }, { status: 400 });
     }
 

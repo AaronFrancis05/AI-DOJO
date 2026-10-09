@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { dbPool } from '@/src/db-pool';
-import { chatRoomMembers, chatRooms, classSessions, tutors } from '@/src/schema';
+import { chatRoomMembers, chatRooms, liveLessons, tutors } from '@/src/schema';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { isAudienceKind, resolveAudience, type AudienceKind } from '@/lib/tutors/audience';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
@@ -20,11 +20,11 @@ export const runtime = 'nodejs';
  */
 function cohortAudienceKey(
   kind: AudienceKind,
-  scope: { classSessionId: number | null; courseId: number | null; targetLanguage: string | null },
+  scope: { liveLessonId: number | null; courseId: number | null; targetLanguage: string | null },
   name: string,
 ): string {
   const parts: string[] = [kind];
-  if (kind === 'class') parts.push(String(scope.classSessionId));
+  if (kind === 'live_lesson') parts.push(String(scope.liveLessonId));
   if (kind === 'course') parts.push(String(scope.courseId), scope.targetLanguage ?? '*');
   parts.push(name);
   return parts.join('|').slice(0, 200);
@@ -33,10 +33,10 @@ function cohortAudienceKey(
 /**
  * A tutor's standing group chat rooms.
  *
- * Distinct from the room a `class_session` creates for itself: that one is
+ * Distinct from the room a `live_lesson` creates for itself: that one is
  * scoped to a single scheduled meeting and disappears from view once it is
- * over. A cohort room outlives any one class, which is what "a group chat for
- * all the learners in my class" actually asks for.
+ * over. A cohort room outlives any one live lesson, which is what "a group chat for
+ * all the learners in my live lesson" actually asks for.
  *
  * It is a normal `chat_rooms` row, so it inherits the existing UgaJapa
  * per-reader translation, the realtime transport, and `/messages/[roomId]` —
@@ -105,12 +105,12 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Unknown audience' }, { status: 400 });
   }
 
-  const classSessionId = body.classSessionId != null ? Number(body.classSessionId) : null;
+  const liveLessonId = body.liveLessonId != null ? Number(body.liveLessonId) : null;
   const courseId = body.courseId != null ? Number(body.courseId) : null;
   const targetLanguage = body.targetLanguage ? String(body.targetLanguage).trim() : null;
 
   const audience = await resolveAudience(profile.id, audienceKind, {
-    classSessionId,
+    liveLessonId,
     courseId,
     targetLanguage,
   });
@@ -119,19 +119,19 @@ export async function POST(req: Request) {
     return Response.json({ error: 'There is nobody to add yet.' }, { status: 400 });
   }
 
-  // The room's default reading language. For a class room it is what the class
+  // The room's default reading language. For a live-lesson room it is what the lesson
   // is taught in, so the sidebar opens in the language of the lesson rather
   // than each member's own. Null keeps the pre-existing per-reader behaviour.
   let preferredLanguage: string | null = null;
   let name = 'My learners';
 
-  if (audienceKind === 'class' && classSessionId) {
+  if (audienceKind === 'live_lesson' && liveLessonId) {
     const [cls] = await db
-      .select({ title: classSessions.title, instructionLanguage: classSessions.instructionLanguage })
-      .from(classSessions)
-      .where(and(eq(classSessions.id, classSessionId), eq(classSessions.tutorId, profile.id)))
+      .select({ title: liveLessons.title, instructionLanguage: liveLessons.instructionLanguage })
+      .from(liveLessons)
+      .where(and(eq(liveLessons.id, liveLessonId), eq(liveLessons.tutorId, profile.id)))
       .limit(1);
-    if (!cls) return Response.json({ error: 'Class not found' }, { status: 404 });
+    if (!cls) return Response.json({ error: 'Live lesson not found' }, { status: 404 });
     preferredLanguage = cls.instructionLanguage;
     name = cls.title;
   } else if (typeof body.name === 'string' && body.name.trim()) {
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
 
   const audienceKey = cohortAudienceKey(
     audienceKind,
-    { classSessionId, courseId, targetLanguage },
+    { liveLessonId, courseId, targetLanguage },
     name.slice(0, 150),
   );
 
@@ -176,7 +176,7 @@ export async function POST(req: Request) {
         )[0].id;
 
     // The tutor is a member too — without this the room they just made 403s
-    // for them, the same trap /api/classes avoids for a class room.
+    // for them, the same trap /api/live-lessons avoids for a live-lesson room.
     await tx
       .insert(chatRoomMembers)
       .values([

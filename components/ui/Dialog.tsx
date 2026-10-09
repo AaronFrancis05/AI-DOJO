@@ -80,7 +80,7 @@ export function Dialog({
           ref={closeRef}
           onClick={onClose}
           aria-label="Close dialog"
-          className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-[--radius-md] text-dojo-text-muted transition-colors hover:bg-dojo-surface-raised hover:text-dojo-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
+          className="absolute end-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-[--radius-md] text-dojo-text-muted transition-colors hover:bg-dojo-surface-raised hover:text-dojo-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent"
         >
           <X className="h-5 w-5" />
         </button>

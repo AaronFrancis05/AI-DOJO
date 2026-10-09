@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
 import { ArrowLeft, Bot, GraduationCap } from 'lucide-react';
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -87,7 +87,7 @@ function ScoreRow({ label, ai, tutor }: { label: string; ai: number | null; tuto
         {ai != null && <ProgressBar value={ai} color="accent" size="sm" />}
         {tutor != null && <ProgressBar value={tutor} color="success" size="sm" />}
       </span>
-      <span className="text-right font-semibold tabular-nums text-dojo-text-primary">
+      <span className="text-end font-semibold tabular-nums text-dojo-text-primary">
         {ai != null && tutor != null ? `${ai}/${tutor}` : (ai ?? tutor ?? '—')}
       </span>
     </div>

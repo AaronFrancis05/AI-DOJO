@@ -6,8 +6,12 @@ const auth = createNeonAuth({
   cookies: { secret: process.env.NEON_AUTH_COOKIE_SECRET! },
 });
 
-function printKeys(obj: any, prefix = '') {
-  if (!obj || typeof obj !== 'object') return;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function printKeys(obj: unknown, prefix = '') {
+  if (!isRecord(obj)) return;
   const keys = Object.keys(obj).slice(0, 30);
   for (const k of keys) {
     const v = obj[k];
@@ -29,7 +33,7 @@ if (auth.api?.createUser) {
 
 // Try other common property names
 for (const prop of ['server', 'admin', 'internal', 'client', 'hooks', 'endpoints', '_api']) {
-  if (auth[prop]) {
+  if (isRecord(auth) && auth[prop]) {
     console.log(`\n=== auth.${prop} ===`);
     printKeys(auth[prop]);
   }

@@ -44,6 +44,7 @@ export function Avatar({ name, src, size = 'md', color = '#2D3BC5', className }:
 
   if (showImg) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element -- user-supplied URL (catalog path, OAuth host, or data URI)
       <img
         src={src}
         alt={name}

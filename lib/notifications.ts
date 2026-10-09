@@ -16,11 +16,18 @@ import { topics } from '@/lib/realtime/topics';
 export type NotificationType =
   | 'evaluation'
   | 'booking'
-  | 'class'
+  | 'live_lesson'
   | 'assessment'
-  // The only one a human writes rather than a completed action producing it —
-  // see POST /api/tutor/announcements.
-  | 'announcement';
+  // The ones a human writes rather than a completed action producing them.
+  | 'announcement'
+  | 'organization_invite'
+  | 'group_assignment'
+  | 'group_removal'
+  // Produced by the post-session job (lib/inngest/functions/generateStudyPack.ts).
+  | 'study_pack'
+  // Hybrid tutoring (PLAN.md Phase 4): placement results, reviews, vetting.
+  | 'placement'
+  | 'tutor_review';
 
 export interface CreateNotificationInput {
   userId: string;

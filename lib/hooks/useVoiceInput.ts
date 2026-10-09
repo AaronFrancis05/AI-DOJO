@@ -187,16 +187,16 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     startPromiseRef.current = startPromise;
     try {
       await startPromise;
-    } catch (e: any) {
+    } catch (e: unknown) {
       await stopContinuousRecognition();
-      setError(e.message ?? 'Failed to start voice input');
+      setError(e instanceof Error ? e.message : 'Failed to start voice input');
       isListeningRef.current = false;
       setIsListening(false);
       setVolumeLevel(0);
     } finally {
       if (startPromiseRef.current === startPromise) startPromiseRef.current = null;
     }
-  }, [lang, onFinal]);
+  }, [lang]);
 
   const stop = useCallback(async () => {
     if (startPromiseRef.current) {

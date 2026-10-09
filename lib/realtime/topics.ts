@@ -28,8 +28,10 @@ export const topics = {
   user: (userId: string) => `user:${userId}`,
   /** Queue movement in one assessment room. Tutor + queued learners. */
   assessment: (assessmentId: number) => `assessment:${assessmentId}`,
-  /** Roster/status changes on one scheduled class. */
-  classSession: (classId: number) => `class:${classId}`,
+  /** Roster/status changes on one live lesson. */
+  liveLesson: (lessonId: number) => `lesson:${lessonId}`,
+  /** One 1:1 booking's lesson tools: the slide in view, explain requests. Its tutor + learner. */
+  booking: (bookingId: number) => `booking:${bookingId}`,
 } as const;
 
 export type RealtimeEvent =
@@ -43,8 +45,12 @@ export type RealtimeEvent =
   | { type: 'assessment.queue'; assessmentId: number }
   /** The assessment itself moved between scheduled/live/completed. */
   | { type: 'assessment.status'; assessmentId: number; status: string }
-  /** A class session changed status or roster. */
-  | { type: 'class.updated'; classId: number };
+  /** A live lesson changed status or roster. */
+  | { type: 'lesson.updated'; lessonId: number }
+  /** The tutor moved the lesson panel to another slide, or edited the plan. */
+  | { type: 'booking.plan'; bookingId: number }
+  /** The learner asked for an explanation in their own language — the tutor's cue to slow down. */
+  | { type: 'booking.explain'; bookingId: number };
 
 /** A rough guard for values arriving off the wire. */
 export function isRealtimeEvent(value: unknown): value is RealtimeEvent {

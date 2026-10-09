@@ -12,14 +12,24 @@ import { and, desc, eq, gte, ne, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getAuthUser } from '@/lib/auth/server';
 import { generateCallId } from '@/lib/tutors/rooms';
-import { BOOKING_DURATIONS_MINUTES, DEFAULT_CALL_TYPE } from '@/lib/tutors/config';
+import { BOOKING_DURATIONS_MINUTES, DEFAULT_CALL_TYPE, TUTORS_ENABLED } from '@/lib/tutors/config';
 import { createNotification } from '@/lib/notifications';
+import { learnerMayUseTutor, TUTOR_NOT_AVAILABLE } from '@/lib/organizations/tutor-access';
 
 /** Rolls the booking transaction back and maps to the 409 response. */
 class SlotTakenError extends Error {}
 
+/** The learner already has a lesson that overlaps the requested slot. */
+class LearnerBusyError extends Error {}
+
 function isExclusionViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23P01';
+}
+
+/** Which exclusion constraint fired — the tutor's (0036) or the learner's (0056). */
+function violatedConstraint(err: unknown): string | undefined {
+  const e = err as { constraint?: string; cause?: { constraint?: string } } | null;
+  return e?.constraint ?? e?.cause?.constraint;
 }
 
 /** Bookings the signed-in user is part of, as either learner or tutor. */
@@ -71,6 +81,8 @@ export async function GET() {
       purpose: booking.purpose,
       learnerNote: booking.learnerNote,
       chatRoomId: booking.chatRoomId,
+      learnerId: booking.learnerId,
+      notesFiled: booking.notesFiledAt != null,
       // The call id is intentionally not exposed here. It is only ever
       // handed out alongside a token from /api/live/token, after the
       // join-window and membership checks have passed.
@@ -80,6 +92,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!TUTORS_ENABLED) {
+    return Response.json({ error: 'Live tutoring is not enabled.' }, { status: 404 });
+  }
+
   const user = await getAuthUser();
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -116,11 +132,16 @@ export async function POST(req: Request) {
   }
 
   const [tutor] = await db.select().from(tutors).where(eq(tutors.id, tutorId));
-  if (!tutor || tutor.verificationStatus !== 'verified' || !tutor.isAcceptingBookings) {
-    return Response.json({ error: 'Tutor is not available for booking' }, { status: 404 });
+  if (!tutor || tutor.userId === user.id) {
+    return Response.json(
+      { error: tutor ? 'You cannot book yourself' : TUTOR_NOT_AVAILABLE },
+      { status: tutor ? 400 : 404 },
+    );
   }
-  if (tutor.userId === user.id) {
-    return Response.json({ error: 'You cannot book yourself' }, { status: 400 });
+  // Organization permission is decided here, when the booking is created.
+  // Joining it later does not ask again.
+  if (!(await learnerMayUseTutor(user.id, tutorId))) {
+    return Response.json({ error: TUTOR_NOT_AVAILABLE }, { status: 404 });
   }
 
   // An evaluation booking must reference a session the learner actually owns —
@@ -156,11 +177,25 @@ export async function POST(req: Request) {
           gte(tutorBookings.scheduledAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
         ));
 
-      const clashes = existing.some((b) => {
+      const overlaps = (b: { scheduledAt: Date; durationMinutes: number }) => {
         const start = b.scheduledAt.getTime();
         return scheduledAt.getTime() < start + b.durationMinutes * 60 * 1000 && requestedEnd > start;
-      });
-      if (clashes) throw new SlotTakenError();
+      };
+      if (existing.some(overlaps)) throw new SlotTakenError();
+
+      // The learner's own calendar too. tutor_bookings_no_overlap only covers
+      // the tutor, so a learner could book two different tutors for the same
+      // half hour and miss one of them. tutor_bookings_learner_no_overlap
+      // (migration 0056) enforces the same rule under concurrent requests.
+      const learnerExisting = await tx
+        .select({ scheduledAt: tutorBookings.scheduledAt, durationMinutes: tutorBookings.durationMinutes })
+        .from(tutorBookings)
+        .where(and(
+          eq(tutorBookings.learnerId, user.id),
+          ne(tutorBookings.status, 'cancelled'),
+          gte(tutorBookings.scheduledAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+        ));
+      if (learnerExisting.some(overlaps)) throw new LearnerBusyError();
 
       // Tutor↔learner chat reuses the existing messaging tables, including their
       // per-member preferredLanguage translation — a good fit when the two people
@@ -198,6 +233,12 @@ export async function POST(req: Request) {
       return booking?.id ?? null;
     });
   } catch (err) {
+    if (
+      err instanceof LearnerBusyError
+      || (isExclusionViolation(err) && violatedConstraint(err) === 'tutor_bookings_learner_no_overlap')
+    ) {
+      return Response.json({ error: 'You already have a lesson booked at that time' }, { status: 409 });
+    }
     // 23P01 = exclusion_violation, raised by tutor_bookings_no_overlap when a
     // concurrent request won the same slot between the check and the insert.
     if (err instanceof SlotTakenError || isExclusionViolation(err)) {

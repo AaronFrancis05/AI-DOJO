@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Frown, Lightbulb, AlertCircle, XCircle, RotateCcw, ArrowRight, LogOut, Target, MessagesSquare, Mic, Star, Heart } from 'lucide-react';
+import { Frown, Lightbulb, AlertCircle, XCircle, RotateCcw, ArrowRight, ClipboardList, Target, MessagesSquare, Mic, Star, Heart } from 'lucide-react';
 import { prefersReducedMotion } from '@/lib/hooks/useCelebrationConfetti';
 import { ResultsAvatarBackdrop } from '@/components/roleplay/ResultsAvatarBackdrop';
 import type { SessionMetrics } from '@/lib/roleplay/session-metrics';
@@ -13,7 +13,7 @@ interface LessonIncompleteScreenProps {
   whatWentWrong: string[];
   onRepeat: () => void;
   onNext: () => void;
-  onLeave: () => void;
+  onViewReport: () => void;
 }
 
 const BAR_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; barClass: string; iconClass: string; iconBgClass: string }> = [
@@ -30,7 +30,7 @@ function scoreTier(score: number): string {
   return score < 40 ? 'Needs Practice' : 'Needs Improvement';
 }
 
-export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics, whatWentWrong, onRepeat, onNext, onLeave }: LessonIncompleteScreenProps) {
+export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics, whatWentWrong, onRepeat, onNext, onViewReport }: LessonIncompleteScreenProps) {
   const reduced = prefersReducedMotion();
   const [filled, setFilled] = useState(reduced);
 
@@ -79,7 +79,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-3xl font-extrabold text-dojo-danger">{compositeScore}%</span>
-                  <span className="text-[11px] font-medium text-dojo-text-muted">{scoreTier(compositeScore)}</span>
+                  <span className="text-xs font-medium text-dojo-text-muted">{scoreTier(compositeScore)}</span>
                 </div>
               </div>
             </div>
@@ -88,7 +88,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-dojo-danger" />
               <div>
                 <p className="text-sm font-bold text-dojo-text-primary">You&apos;re close!</p>
-                <p className="text-xs text-dojo-text-muted">Review the weak areas and try again to improve your score.</p>
+                <p className="text-sm text-dojo-text-muted">Review the weak areas and try again to improve your score.</p>
               </div>
             </div>
           </div>
@@ -146,7 +146,7 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
           <Lightbulb className="h-4 w-4 shrink-0 text-dojo-warning" />
           <div>
             <p className="text-sm font-bold text-dojo-text-primary">Mistakes help you grow!</p>
-            <p className="text-[11px] text-dojo-text-muted">Review, practice, and you&apos;ll do even better next time.</p>
+            <p className="text-sm text-dojo-text-muted">Review, practice, and you&apos;ll do even better next time.</p>
           </div>
         </div>
 
@@ -165,9 +165,9 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
               <span className="flex items-center gap-2 font-semibold text-dojo-danger">
                 <RotateCcw className="h-4 w-4" />
                 Repeat Lesson
-                <span className="rounded-full bg-dojo-danger px-2 py-0.5 text-[10px] font-bold text-white">Recommended</span>
+                <span className="rounded-full bg-dojo-danger px-2 py-0.5 text-xs font-bold text-white">Recommended</span>
               </span>
-              <span className="text-[11px] text-dojo-text-muted">Review and try again</span>
+              <span className="text-sm text-dojo-text-muted">Review and try again</span>
             </button>
             <button
               type="button"
@@ -178,23 +178,23 @@ export function LessonIncompleteScreen({ scenarioTitle, compositeScore, metrics,
                 <ArrowRight className="h-4 w-4" />
                 Next Lesson
               </span>
-              <span className="text-[11px] text-dojo-text-muted">Continue to the next lesson</span>
+              <span className="text-sm text-dojo-text-muted">Continue to the next lesson</span>
             </button>
             <button
               type="button"
-              onClick={onLeave}
+              onClick={onViewReport}
               className="flex flex-col items-center gap-1 rounded-xl border border-dojo-border bg-dojo-surface-raised/85 px-4 py-3 text-center backdrop-blur-md transition-colors hover:bg-dojo-surface-hover"
             >
               <span className="flex items-center gap-2 font-semibold text-dojo-text-primary">
-                <LogOut className="h-4 w-4" />
-                Leave Session
+                <ClipboardList className="h-4 w-4" />
+                View Report
               </span>
-              <span className="text-[11px] text-dojo-text-muted">End and exit for now</span>
+              <span className="text-sm text-dojo-text-muted">See scores and the transcript</span>
             </button>
           </div>
         </div>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 pb-6 text-center text-xs text-dojo-text-muted safe-bottom">
+        <p className="mt-6 flex items-center justify-center gap-1.5 pb-6 text-center text-sm text-dojo-text-muted safe-bottom">
           <Heart className="h-3.5 w-3.5 text-dojo-danger" />
           Tip: You can always revisit this lesson from your progress dashboard.
         </p>

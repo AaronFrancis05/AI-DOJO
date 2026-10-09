@@ -2,6 +2,7 @@ import { db } from '@/src/db';
 import { tutorAvailability, tutorBookings, tutors } from '@/src/schema';
 import { and, eq, gte, lte, ne } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth/server';
+import { learnerMayUseTutor, TUTOR_NOT_AVAILABLE } from '@/lib/organizations/tutor-access';
 
 /**
  * Bookable slots for one tutor over the next `days` days.
@@ -86,8 +87,8 @@ export async function GET(
   }
 
   const [tutor] = await db.select().from(tutors).where(eq(tutors.id, tutorId));
-  if (!tutor || tutor.verificationStatus !== 'verified') {
-    return Response.json({ error: 'Tutor not found' }, { status: 404 });
+  if (!tutor || tutor.verificationStatus !== 'verified' || !(await learnerMayUseTutor(user.id, tutorId))) {
+    return Response.json({ error: TUTOR_NOT_AVAILABLE }, { status: 404 });
   }
 
   const days = Math.min(30, Math.max(1, Number(new URL(req.url).searchParams.get('days')) || 14));

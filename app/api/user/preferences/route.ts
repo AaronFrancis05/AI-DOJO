@@ -3,6 +3,8 @@ import { db } from '../../../../src/db';
 import { users } from '../../../../src/schema';
 import { eq } from 'drizzle-orm';
 import { isLanguageEnabled } from '../../../../lib/language-registry';
+import { cacheDel, cacheKeys } from '../../../../lib/cache';
+import { parseInterests, sanitizeOccupation, serializeInterests } from '../../../../lib/study-packs/profile';
 
 export async function GET() {
   const authUser = await getAuthUser();
@@ -17,6 +19,8 @@ export async function GET() {
       preferredMode: users.preferredMode,
       dailyGoalMinutes: users.dailyGoalMinutes,
       level: users.level,
+      occupation: users.occupation,
+      interests: users.interests,
     })
     .from(users)
     .where(eq(users.id, authUser.id));
@@ -25,7 +29,7 @@ export async function GET() {
     return Response.json({ error: 'User not found' }, { status: 404 });
   }
 
-  return Response.json({ preferences: user });
+  return Response.json({ preferences: { ...user, interests: parseInterests(user.interests) } });
 }
 
 export async function PUT(req: Request) {
@@ -62,11 +66,17 @@ export async function PUT(req: Request) {
     updateData.dailyGoalMinutes = body.dailyGoalMinutes;
   }
 
+  // Personalization for learner-owned scenarios. An empty value clears it.
+  if ('occupation' in body) updateData.occupation = sanitizeOccupation(body.occupation);
+  if ('interests' in body) updateData.interests = Array.isArray(body.interests) ? serializeInterests(body.interests) : null;
+
   if (Object.keys(updateData).length === 0) {
     return Response.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
   await db.update(users).set(updateData).where(eq(users.id, authUser.id));
+  // The UI locale follows the native language (lib/i18n/server.ts).
+  if ('nativeLanguage' in updateData) await cacheDel(cacheKeys.uiNativeLanguage(authUser.id));
 
   return Response.json({ success: true });
 }

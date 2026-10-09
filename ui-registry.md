@@ -12,7 +12,7 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Sidebar bg | `--color-sidebar` | `bg-dojo-sidebar` | `#EFE8D8` | `#130F0C` |
 | Surface bg | `--color-surface` | `bg-dojo-surface` | `#FAF6EE` | `#241C17` |
 | Surface raised | `--color-surface-raised` | `bg-dojo-surface-raised` | `#FFFFFF` | `#2C2119` |
-| Border | `--color-border` | `border-dojo-border` | `#E3D9C4` | `#3C2E24` |
+| Border | `--color-border` | `border-dojo-border` | `#D4C5A8` | `#524033` |
 | Accent (primary) | `--color-accent` | `bg-dojo-accent` | `#C1392B` | `#DD5B47` |
 | Accent soft | `--color-accent-soft` | `bg-dojo-accent-soft` | `#F5DAD3` | `#472922` |
 | Success | `--color-success` | `bg-dojo-success` | `#16A34A` | `#2FAE66` |
@@ -22,14 +22,14 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Evaluation | `--color-evaluation` | `bg-dojo-evaluation` | `#8B5CF6` | `#8B5CF6` |
 | Icebreaker | `--color-icebreaker` | `bg-dojo-icebreaker` | `#D946EF` | `#D946EF` |
 | Text primary | `--color-text-primary` | `text-dojo-text-primary` | `#221A14` | `#F5F0E6` |
-| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#6B6153` | `#A99C8B` |
+| Text muted | `--color-text-muted` | `text-dojo-text-muted` | `#584F44` | `#B8AB9A` |
 
 **Text-safe (`-strong`) status variants.** The status/phase hues above are tuned for fills, dots and borders. Used as small text they fall under 4.5:1 on the light canvas (and read dim on the dark one), so every *label* rendered in a status colour uses the `-strong` variant instead. Fills, dots and borders keep the base token.
 
 | Token | CSS Variable | Tailwind Class | Hex (light) | Hex (dark) |
 |-------|-------------|----------------|-----|-----|
 | Success text | `--color-success-strong` | `text-dojo-success-strong` | `#15803D` | `#4ADE80` |
-| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#B45309` | `#FBBF24` |
+| Warning text | `--color-warning-strong` | `text-dojo-warning-strong` | `#A14008` | `#FBBF24` |
 | Danger text | `--color-danger-strong` | `text-dojo-danger-strong` | `#B91C1C` | `#F87171` |
 | Streak text | `--color-streak-strong` | `text-dojo-streak-strong` | `#C2410C` | `#F5B65C` |
 | Icebreaker text | `--color-icebreaker-strong` | `text-dojo-icebreaker-strong` | `#A21CAF` | `#E879F9` |
@@ -38,10 +38,19 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 
 **Fonts:** `--font-sans` (Inter, body/UI), `--font-mono` (Geist Mono), `--font-display` (Playfair Display, `font-display` utility) — used for hero/section headings on the marketing site.
 
+**Type scale (readable floor).** Copy never goes below `text-xs` (12px). Do not use `text-[9px]`, `text-[10px]`, `text-[11px]`. Do not restack `text-dojo-text-muted` with `/50` `/60` `/70` `/80` or `opacity-*` — muted is already the secondary colour.
+
+| Role | Class | Use for |
+|------|-------|---------|
+| Learning speech | `text-base leading-relaxed text-dojo-text-primary` | Target-language line in a sitting bubble |
+| Sentence / gloss | `text-sm leading-relaxed` | Native gloss, phonetic, coach explanation, home body copy |
+| Caption / kicker | `text-xs` | Uppercase section labels, timestamps, Mute/Chat, badges |
+| Chrome on 3D | `text-xs text-white/70 drop-shadow-sm` | Avatar overlay labels only — the backdrop is a photo, not a token surface |
+
 ## UI Primitives (`/components/ui/`)
 | Component | Props | Usage Notes |
 |-----------|-------|-------------|
-| `Badge` | `variant: beginner\|intermediate\|advanced\|accent\|default` | Skill level badges, status labels |
+| `Badge` | `variant: beginner\|intermediate\|advanced\|accent\|default\|premium\|outline\|success\|warning` | Skill level badges and status labels. `success` and `warning` are a rounded-full border with a light fill (`bg-dojo-success/10`, `bg-dojo-warning/10`) |
 | `Pill` | `variant: standard\|trouble\|default`, `active`, `onClick` | Outlined toggle pills, practice focus tags |
 | `Card` | `raised`, `hoverable`, `onClick`, `id` | Surface container with border; raised uses `surface-raised` bg. `id` is for link/scroll anchors (e.g. the `#unit-{id}` a finished lesson lands on) |
 | `Button` | `variant: primary\|secondary\|ghost\|danger`, `size`, `loading` | Primary uses accent, secondary uses border+surface |
@@ -52,19 +61,23 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | `HexBadge` | `icon: LucideIcon`, `label`, `unlocked`, `size` | SVG hexagon clip path around lucide icon |
 | `TrendValue` | `value`, `trend: up\|down\|neutral`, `trendLabel` | Number + ▲/▼ arrow with colour |
 | `LiveBadge` | — | Pulsing red dot + "Live" text |
-| `Avatar` | `name`, `src?`, `size`, `color` | Initials fallback with optional image |
+| `Avatar` | `name`, `src?`, `size`, `color` | Initials fallback with optional image. `src` is user-supplied (catalog path, OAuth host, or data URI) so it stays a native `<img>` with `@next/next/no-img-element` disabled |
 | `RadarChart` | `data: RadarDataPoint[]`, `size`, `levels`, `color` | SVG-based radar/spider chart with labels |
 | `BehaviorModeToggle` | `value`, `onChange` | Standard/Trouble pill toggle |
 | `SliderRow` | `label`, `value`, `min/max`, `onChange` | Labelled range slider for settings |
+| `LanguageSelector` | `label`, `value`, `options`, `onChange`, `compact?` | The dropdown inside `LanguagePicker`, exported for single-language choices. Reuse it for any language select — do not build another |
+| `UiLanguageSwitcher` | `compact?` | Interface-language picker (Settings, and inside `UiLocaleNotice`). POSTs `/api/ui-locale`, then `router.refresh()`. Never touches the learning pair |
+| `UiLocaleNotice` | — | "Viewing in 日本語 · change" bar, shown only while the UI locale is a guess (`source` country/browser). Mounted in `AppShell` `<main>` and the marketing layout |
+| `TranslatedText` | `text`, `className?`, `toggleClassName?` | User-written text (tutor bios, lesson titles, announcements) in the reader's UI language via `/api/translate-text`, with a "Show original" toggle. Never for the language being taught |
 
 ## Marketing Components (`/components/marketing/`)
 | Component | Props | Notes |
 |-----------|-------|-------|
-| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar |
+| `NavActions` | — | Theme toggle + Sign in / Get Started links, rendered in the marketing navbar. Signed-in appearance is Settings → Preferences (`Toggle` "Dark mode"), not a sidebar item — the nav already scrolls on short laptops. Both write `ai-dojo-theme` in localStorage via `ThemeProvider`. |
 | `DemoVideoDialog` | — | Fullscreen modal with custom video controls, triggered from the hero |
 | `TryoutPanel` | — | Client-side target/native language picker on the hero; pulls target languages from `lib/language.ts` `TARGET_LANGUAGES` and native languages from `NATIVE_LANGUAGES`. Links to `/tryout?targetLanguage=..&nativeLanguage=..`, which runs a real (unauthenticated) guest roleplay preview — see `app/tryout/`, `app/api/tryout/{start,turn}/route.ts`, `lib/hooks/useGuestRoleplaySession.ts` |
-| `TryoutCompleteScreen` | `targetLanguage`, `nativeLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/onboarding/level?targetLanguage=..&nativeLanguage=..` — **not** `/auth`; the old shortcut skipped the wizard, so the account got preferences but no level, goal or course enrolment |
-| `TryoutBlockedScreen` | `targetLanguage?`, `nativeLanguage?`, `retryAfterMs` | Shown when the 24h tryout gate is closed. Live `HH:MM:SS` countdown driven off `retryAfterMs`, with onboarding as the primary action — signing up doesn't shorten the window, it makes it irrelevant |
+| `TryoutCompleteScreen` | `targetLanguage`, `nativeLanguage`, `turnCount` | Confetti + CTA at the end of a preview. Links to `/auth/signup?targetLanguage=&nativeLanguage=` so the wizard prefills even if sessionStorage is gone. The wizard is only for a signed-in account that has not been set up; sending a guest into it put account creation at the end of a questionnaire |
+| `TryoutBlockedScreen` | `retryAfterMs` | Shown when the 24h tryout gate is closed. Live `HH:MM:SS` countdown driven off `retryAfterMs`, with sign-up as the primary action — signing up doesn't shorten the window, it makes it irrelevant |
 | `FooterNewsletter` | — | "Stay in the loop" email capture in the marketing footer's 6th column. **No backend**: there is no newsletter route under `app/api/`, so submit only flips to a local acknowledgement — wire the handler when an endpoint exists |
 | `PartnerBadge` (local to `app/(marketing)/page.tsx`) | `name`, `logo?` | Marquee tile in the Partners section. Tile is `h-16 w-24 / sm:h-20 sm:w-28` — deliberately wider than tall, because the assets in `public/brands/` range from a 4:1 wordmark to detailed university crests that were unreadable in the old 56px square. Uses **hardcoded `bg-white`** (documented exception): every logo file has a baked-in white background, so a themed surface only framed a white rectangle in dark mode. Partners with no `logo` fall back to an initial badge |
 
@@ -81,22 +94,92 @@ Values below are light mode (`:root`); `.dark` mirrors the same tokens in a warm
 | Component | Notes |
 |-----------|-------|
 | `AppShell` | Wraps every (app) route; sidebar + UserCard + content |
-| `Sidebar` | **Two navs, chosen by `users.role`.** Learner: Home, Tutors, Hub, Courses, Review, Sessions, Progress, Leaderboard, Messages, Calendar, Settings. Tutor: Teaching, Messages, Calendar, Settings — the learner entries are all surfaces of someone's own practice, which a tutor has none of. `admin` keeps the learner nav with `Teaching` and `Admin` appended (admin satisfies every role). The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. Hiding a link is convenience only — `/tutor` and `/admin` re-check the role server-side |
+| `Sidebar` | **Two navs, chosen by `users.role`.** Learner items grouped under section headings (not collapsible): unlabeled Home; **Practice** (Library, Courses, Tutors, Review); **Results** (Sessions, Progress, Leaderboard); unlabeled Calendar, Messages, then **Settings always last**. Tutors is omitted unless `user.canBrowseTutors` (a private organization with no bookable tutor, or a public organization with nobody accepting). Tutor: Teaching, Calendar, Messages, Settings — still a flat list; four items do not need headings. `admin` keeps the learner destinations (they moderate those surfaces) and leads with **Admin**, then **Teaching** only if they have a `tutors` row, then **Home**. Nav feature flags come from `UserProvider.tutorsEnabled` (server-resolved), not from the client-inlined `NEXT_PUBLIC_TUTORS_ENABLED`. Organization (`user.organizationAdmin`) still sits before Settings. Under the display name, a learner sees their organization name only (`text-xs text-dojo-text-muted`, truncated). Groups are listed on Settings. The footer follows the same split: level/XP bar for a learner, `Verified`/`Pending review` badge (`user.tutorStatus`) for a tutor. The identity row (avatar, name, organization) links to `/profile`, which renders inside this shell (display name, email, and password, `Card` + `Button`, same page padding as Settings). The level/XP bar and the tutor badge stay static — that page does not show them. Sign Out stays a separate control. `/auth/profile` redirects to `/profile`. Hiding a link is convenience only — `/tutor`, `/admin`, `/organization` and the tutor catalogue re-check server-side |
 | `NotificationBell` | Unread badge + dropdown above the user card. Subscribes to the signed-in user's own realtime topic; opens upward so the panel clears the sidebar's bottom edge |
 | `UserCard` | Avatar + name + tier badge + level/XP bar — rendered at sidebar bottom |
+
+### Sidebar nav section heading
+
+File: `components/shell/Sidebar.tsx`
+Last updated: 2026-09-30
+
+| Property | Class |
+| -------- | ----- |
+| Size / weight | `text-xs font-semibold` |
+| Transform / tracking | `uppercase tracking-wide` |
+| Color | `text-dojo-text-muted` |
+| Inset | `px-3 pb-1` — same horizontal inset as the nav links, so the label shares the icon column's left edge |
+| Group gap | `space-y-4` between sections, `space-y-1` inside a section (same as the old flat list) |
+
+**Pattern notes:** Headings are labels only — they are not links and not collapsible. Match `RoomDetailsPanel` section titles (`text-xs font-semibold uppercase tracking-wide text-dojo-text-muted`). Do not add a divider between groups; the 16px gap is the separator. Tutor nav omits headings. Groups with a label use `role="group"` + `aria-labelledby`.
+
+### Page heading (app-shell destinations)
+
+File: any `(app)` route whose title is also in the sidebar (Home, Tutors, Library, Courses, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Teaching, Admin, Organization, Profile)
+Last updated: 2026-09-30
+
+| Property | Class |
+| -------- | ----- |
+| Size | `text-3xl` |
+| Weight | `font-bold` |
+| Tracking | `tracking-tight` |
+| Leading | `leading-none` |
+| Color | `text-dojo-text-primary` |
+| Description | `mt-2 text-base text-dojo-text-muted leading-relaxed` — one or two sentences under the `h1`. Visible on mobile too (the `h1` is not). Sessions keeps a live count (`text-sm`) *below* the heading block, above the list, not as the blurb |
+| Desktop visibility | `hidden md:block` — mobile title is the `AppShell` top bar (`text-base font-semibold`) |
+| Page padding | `p-6 lg:p-10` on the page wrapper — this is the heading's top inset. Do not use `p-6` alone |
+| Page width | Outer wrapper is always `mx-auto w-full max-w-7xl`. Headings share one left edge. Pages that need a narrower reading measure wrap only the body in `max-w-3xl` or `max-w-2xl` with **no** `mx-auto` (left-aligned under the heading) |
+
+**Pattern notes:** The HTML tag is always `h1`; size comes from Tailwind, not the tag. Render it in every page state (loading, empty, error, complete), not only the main content return — Review used to omit it on early returns. Feature blurbs under the `h1` share `mt-2 text-base text-dojo-text-muted leading-relaxed` (Library, Courses, Tutors, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Profile). Sessions also shows a `text-sm` count (`N total · M in progress`) above the list, not under the heading. Nested pages (course detail, session report, live rooms, not-found states) are not this pattern — leave those as they are. Messages is a split-pane and does not use this wrapper.
+
+## Interface language (i18n) (`/lib/i18n/`, `/messages/`)
+
+In-house, no dependency (agreed for PLAN.md 2.4). One provider: `LanguageCatalogProvider` takes `ui={await loadUiLocaleContext()}` in every section layout.
+
+| Piece | Where | Notes |
+|---|---|---|
+| Catalogs | `messages/<lang>.json` | `en.json` is the source of truth. Dotted keys, `{name}` placeholders. Other locales are machine-filled by `npm run i18n:translate` (hashes of the English each string came from live in `messages/.sources/`, so only missing/changed keys are re-sent) |
+| Client | `useT()`, `useUiLocale()` from `lib/language-context.tsx` | `t('nav.home')`, `t('sidebar.level', { level })`. Outside a provider: English |
+| Server | `getTranslations()`, `getUiLocale()` from `lib/i18n/server.ts` | Per-request cached; the root layout uses it for `<html lang dir>` |
+| Resolution | `lib/i18n/config.ts` `resolveUiLocale` | `ui-locale` cookie (switcher only) → signed-in `nativeLanguage` → non-English browser → country header (`cf-ipcountry` / `x-vercel-ip-country` / `x-country-code`) via `countries.defaultNativeLanguage` → browser → `en` |
+| Formatting | `lib/i18n/format.ts` | `formatDate/Time/Number/Currency/RelativeTime(value, locale)`. The one formatter — pass `useUiLocale().locale`, never the target language |
+| CI gate | `lib/i18n/catalogs.test.ts` (runs in `npm test`) | Fails on a literal `t()` / `labelKey:` key missing from `en.json`, a catalog key `en.json` lacks, or changed placeholders. Missing translations are allowed (render English) |
+
+**Rules:**
+- **Logical direction only.** `ms-/me-/ps-/pe-/start-/end-/border-s/border-e/text-start/text-end/rounded-ss…`, never `ml-/mr-/pl-/pr-/left-/right-`. `dir="rtl"` (ar, he, fa, ur — `isRtlLanguage`) mirrors the app through them. Exceptions that stay physical: centring (`left-1/2 -translate-x-1/2`) and percentage offsets. Slide-in drawers add `rtl:translate-x-full` next to `-translate-x-full`.
+- **`translate="no"` on the language being taught** — role-play bubbles, chat-drawer utterances and corrections, flashcards, icebreaker words, vocab lists. Browser translate (and ours) must never turn the English lesson into the learner's language.
+- New strings go into `en.json` first; extract by wave (1 shell/learner chrome · 2 marketing/tryout · 3 tutor/org consoles/settings · 4 admin, may stay English).
+
+## Organizations
+
+A learner belongs to exactly one organization. Groups are subsets inside that organization. Tutors are not members. The default organization (`slug` `ai-dojo`) is where sign-up and retirement land. Another organization invites only someone who is currently there; acceptance is what moves them. A private organization allows specific tutors for new sessions (`organization_tutor_permissions`). With none allowed, members do not see Tutors. The public organization does not use that table. Removing an allowance does not cancel a booking already made.
+
+| Surface | Notes |
+|---------|-------|
+| `components/admin/OrganizationsPanel.tsx` | Admin console tab. Creates an organization and appoints its first administrator by email. Same shell as the other admin panels: `max-w-7xl` page, `Card`, `Button`, `adminInputClass` |
+| `components/organization/OrganizationConsole.tsx` | `/organization`, organization administrators only. Tabs: People, Groups, Invitations, Tutors, Progress. Tutors is absent on the public organization. It lists allowed tutors and the same bookable catalogue learners see (name, headline, languages, rate), and Remove asks for confirmation. A group name is edited in place (Rename, then Save). Retirement asks for confirmation, and is hidden on the public organization. Removing someone from a group also asks for confirmation. Deleting the group itself asks for confirmation and is refused while anyone is still in it; the button stays disabled with that reason. The last administrator's Retire control stays disabled, with the note to appoint another administrator first |
+| `components/organization/InvitationsPanel.tsx` | `/organization/invitations`, any signed-in learner. Accept moves them and refreshes the app shell so the sidebar shows the new organization; decline leaves them where they are |
+| `components/organization/OrganizationCard.tsx` | Settings card. The frame is visible immediately; Organization and Groups show "Loading…" until `/api/organization/me` returns, then separate labeled rows (an empty group list reads "None"). A link appears when an invitation is waiting |
+
+Membership changes live in `lib/organizations/membership.ts`. Invite refusals that would name another organization collapse to one sentence in `lib/organizations/rules.ts`.
 
 ## Roleplay Components (`/components/roleplay/`)
 | Component | Notes |
 |-----------|-------|
-| `RoleplaySidePanel` | Goals checklist + vocabulary + Pause/Resume/End Session controls. Extracted as shared component rendered both inline (desktop sidebar, `hidden lg:flex`) and inside a mobile right-drawer (`lg:hidden`). |
+| `RoleplaySidePanel` | Goals checklist + vocabulary + Pause/Resume/End Session controls. Extracted as shared component rendered both inline (desktop sidebar, `hidden lg:flex`) and inside a mobile right-drawer (`lg:hidden`). Live voice/avatar leave controls sit in the header: **Save Session** (back arrow) and **End Session** (`text-dojo-danger`) side by side. `SessionInfoPanel` repeats End Session. |
+| `SessionInfoPanel` | Session facts drawer. **End Session** (`text-dojo-danger`, `border-dojo-danger/40`, `bg-dojo-danger/10`) abandons the attempt and routes to the ended report — it is not a pause. |
+| Abandoned session report | `/sessions/[id]/report` when `status === 'abandoned'`. Card `border-dojo-warning/30`; icon well `h-12 w-12 rounded-full bg-dojo-warning/10` with `text-dojo-warning`; title `text-xl font-bold tracking-tight`; body `text-sm leading-relaxed text-dojo-text-muted`. Optional reason chips: `rounded-full border px-3 py-1.5 text-xs font-medium`, selected `border-dojo-accent bg-dojo-accent/20 text-dojo-accent`, idle `border-dojo-border bg-dojo-surface`. Primary **Resume Session** restores to `paused` and opens `/session/[id]` (Voice/Avatar chooser). Secondary **Save Session** restores and goes `/home`. Header **Back to Sessions** is the way out while leaving it abandoned — there is no **Back to Home** on this card. Do not label Resume as "Back to session". |
 | `RoleplayInputBar` | Text/voice toggle input + send button. Input has `min-w-0 flex-1` for proper shrink on narrow viewports. |
 | `ConversationBubble` | Message display with speaker avatar, Japanese + romaji + English + emotion/gesture hints. |
 | `AvatarStage` | Full desktop 3D avatar stage with name/role/emotion display; `compact` prop for smaller variant. |
-| `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
+| `AvatarPicker` | Searchable catalog grid (2→4 cols) of 43 avatars from `lib/avatar/catalog.ts`; `selectedId` + `onSelect(avatar)`; thumbnails from `/ai-avatars/thumbnails/*.webp` via `next/image` `fill`; ported from `ai-avatar-ui/src/components/AvatarPickerCore.js`. |
 | `AvatarCaptionsOverlay` | Translucent `bg-black/30 border-white/10 backdrop-blur-sm` pill, absolutely positioned at `bottom-6` (override via `className`, e.g. `bottom-32` to clear the mic controls); `caption:string\|null` from `useAvatarCaptions.playCaption`; `aria-live=polite`. Always floats — never render it in flow, a reserved caption band crops the avatar viewport above it. |
 | `AvatarViewport3D` | Adds `caption?:string\|null` prop (renders `AvatarCaptionsOverlay`). Nothing is shown until the character is both framed AND standing in its idle animation — until then a DOM-level progress bar ("Preparing {name}") sits over a fully transparent canvas, and the 3D content fades in over 500 ms. Calls `preloadAnimationClips()` on mount so the clips download alongside the model. |
 | `PhaseTransitionCard` | Phase-change card, `aspect-[11/10] max-w-md`. The coach art from `PHASE_META.portraitSrc` is the card itself (full-bleed `background-image`, framed by `artSize`/`artPosition`), with the title/description over a top-left scrim and a numbered 1→6 stepper over a bottom scrim. Copy is `text-white` because it always sits on the dark artwork. |
-| `ResultsAvatarBackdrop` | Shared backdrop for `LessonCompleteScreen` / `LessonIncompleteScreen`. Layers: blurred+dimmed copy of the art → radial mood glow → the art itself at full opacity, height-fitted and centred so the coach is never cropped or washed out → scrims limited to the top/bottom strips and the outer quarter of each side (where the stat panels sit). `fit="portrait"` caps and feathers small square art (`lesson-incomplete.png`, 380×380) instead of upscaling it to full height. Never put a full-screen scrim over the character. |
+| `ResultsAvatarBackdrop` | Shared backdrop for `LessonCompleteScreen` / `LessonIncompleteScreen`. Layers: blurred+dimmed copy of the art (`next/image` `fill`) → radial mood glow → the art itself at full opacity, height-fitted and centred so the coach is never cropped or washed out → scrims limited to the top/bottom strips and the outer quarter of each side (where the stat panels sit). `fit="portrait"` caps and feathers small square art (`lesson-incomplete.png`, 380×380) instead of upscaling it to full height. Never put a full-screen scrim over the character. Callers pass local `/characters/...` paths only. |
+| `LessonCompleteScreen` | Full-screen pass overlay. Actions: **Continue Learning** (`continueHref` → next course lesson or `/library`) and **View Report** (`/sessions/[id]/report`). No **Try Another Lesson**. Secondary button is `border-dojo-border bg-dojo-surface-raised/85` with `ClipboardList`. |
+| `QuickExchangeDrill` | One prompt → typed reply → checked exchange per item (`QuickDrillItem`, field names from `quick_drills`; `promptJa` is the target-language prompt whatever the language). Speaks only the target prompt, never the native gloss. `onSubmitResponse(text, drill)` decides right/wrong. Used by `DialoguePractice`. Target text is `translate="no"`. |
+| `LessonIncompleteScreen` | Full-screen fail overlay. Actions: **Repeat Lesson** (POST a new session, same lesson/avatar/languages, then `/session/{newId}/voice` or `/avatar`), **Next Lesson** (`continueHref`, kept even on fail), **View Report**. Do not reuse the completed session id for Repeat. |
 
 ## Speech & Avatar Runtime (`/lib/roleplay/`, `/components/roleplay/three/`)
 
@@ -126,7 +209,7 @@ Session pages derive `avatarMode` (`'idle' | 'listening' | 'talking'`) at render
 
 **The character's lines are spoken by the views, not by the session hook.** `useRoleplaySession` only ever hands reply text to the views (streaming callbacks, or the `recap` event); the views own mute state, captions and the TTS voices, so anything the character should *say* has to reach them. Appending a turn to `conversations` renders it in the transcript and nothing more. The welcome-back recap of a resumed session is raised as `recap` / `dismissRecap` for exactly this reason.
 
-**The session clock is anchored on `session.startedAt`, never on page mount.** `/session/[id]/avatar` and `/session/[id]/voice` are two views of one session under a shared `RoleplaySessionProvider` (in `session/[sessionId]/layout.tsx`), so a mount-time anchor restarts "Session Time" at 00:00 every time the learner switches mode or reloads.
+**The session clock accumulates visible play time, not wall-clock from `startedAt`.** `activeDurationSeconds` on the session row is the source of truth. The clock lives in `useRoleplaySession` (via `useSessionClock`) under `RoleplaySessionProvider`, so voice ⇄ avatar does not reset it. It advances only on `/session/[id]/voice` and `/session/[id]/avatar` while the tab is visible. Header **Save Session** pauses (`paused`); header **End Session** (`text-dojo-danger`, beside Save) abandons (`abandoned`) and opens the dedicated ended report, which can restore to Save Session.
 
 **Scores are six independent 0-100 dimensions.** Never render them against a per-dimension max, and never sum-and-divide to get an overall figure — call `sessionCompositePct`.
 
@@ -155,7 +238,7 @@ tab cares about.
 
 | Module | Notes |
 |--------|-------|
-| `lib/realtime/topics.ts` | Topic builders (`chat:{id}`, `user:{id}`, `class:{id}`, `assessment:{id}`) and the `RealtimeEvent` union. Client-safe — no server imports. |
+| `lib/realtime/topics.ts` | Topic builders (`chat:{id}`, `user:{id}`, `lesson:{id}`, `assessment:{id}`) and the `RealtimeEvent` union. Client-safe — no server imports. |
 | `lib/realtime/bus.ts` | Server fan-out over Upstash Redis pub/sub (`POST /publish/{ch}`, `GET /subscribe/{a,b,c}` returning `text/event-stream`). Payloads are base64 so a comma or newline cannot split a frame. Falls back to an in-process emitter when Redis is unconfigured; `isFanOutDurable()` reports which. |
 | `lib/realtime/authorize.ts` | The only place a subscription is checked. One topic failing is dropped, not fatal to the connection. |
 | `app/api/realtime/route.ts` | `GET ?topics=a,b` gives SSE. 25s heartbeat, deliberate close 15s before `maxDuration` so the client reconnects on its own terms. |
@@ -188,18 +271,18 @@ import a Stream chat client.
 | `lib/tutors/rooms.ts` | `generateCallId()` (random, never derived from a row id), `canJoinBooking()` server-side time gate shared by all three room types, `streamUserId()`, `createCallToken()` — a **call**-scoped token, so the call id's secrecy is a second line of defence rather than the only one. `role: 'admin'` only for the tutor. |
 | `lib/tutors/join.ts` | `buildJoinPayload()` — the one payload all three room types hand a joiner. Also upserts the joining user and pre-creates the call **as the tutor**, so the first learner through the door does not become its creator. |
 | `lib/tutors/bookings.ts` | `loadBookingForUser()` — collapses "not found" and "not yours" into one null so booking ids cannot be probed. |
-| `lib/tutors/rooms-data.ts` | The same for classes and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for classes so a class id cannot collide with a session id). `closeAssessmentIfDrained()` runs the AI examiner's auto-close — drain check and status update in one transaction under the same advisory lock `startInterview` takes. |
+| `lib/tutors/rooms-data.ts` | The same for live lessons and assessments, plus `enrolLearner()` and the queue mechanics: `joinQueue`/`leaveQueue`/`admitNext`/`finishCurrent`, each in a transaction under `pg_advisory_xact_lock` (namespaced `(id, 1)` for live lessons so a live-lesson id cannot collide with a session id). `closeAssessmentIfDrained()` runs the AI examiner's auto-close — drain check and status update in one transaction under the same advisory lock `startInterview` takes. |
 | `lib/tutors/live.ts` | `announceLive()` — the go-live fan-out for both room types. Resolves recipients through `resolveAudience()` (the pinned course's cohort, else all this tutor's learners) and never throws. |
-| `lib/curriculum/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
-| `lib/curriculum/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
+| `lib/courses/room-anchor.ts` | `resolveRoomAnchor()` — server-side check that a room's `unitId` really belongs to its `courseId`, and fills the course in from the unit when only the unit is given. |
+| `lib/courses/room-title.ts` | `composeRoomTitle()` — the default room name from a unit (`Unit 2 · Ordering food — speaking check`). Pure and DB-free so the console can prefill with it client-side. |
 | `components/tutors/CallStage.tsx` | The Stream video surface, shared by all three rooms. Token fetch, connect, participants + controls. Always tears the call down on unmount. |
-| `components/tutors/ClassRoom.tsx` | Grid layout, tutor mute-all and `pinForEveryone` spotlight, roster, chat sidebar. |
+| `components/tutors/LiveLessonRoom.tsx` | Grid layout, tutor mute-all and `pinForEveryone` spotlight, roster, chat sidebar. |
 | `components/tutors/AssessmentRoom.tsx` | Speaker layout + `WaitingQueue` + the tutor's grading form for whoever is admitted. |
 | `components/tutors/WaitingQueue.tsx` | Two audiences, one component: the tutor sees the line and admits from it; a learner sees only their own place and estimate. The split is enforced server-side — the API returns an empty `queue` to a learner. |
 | `components/tutors/RoomChatPanel.tsx` | The in-room text chat. Backed by `chat_rooms` + UgaJapa, live over the realtime provider. Callers key it by `roomId`. |
 | `components/tutors/EvaluationForm.tsx` | The tutor's verdict on the AI's own six 0-100 dimensions. One form, two endpoints (`/api/bookings/[id]/evaluation`, `/api/assessments/[id]/evaluate`). |
 | `components/tutors/AvailabilityEditor.tsx` | The weekly bookable-hours editor over `GET`/`PUT /api/tutor/availability` (a wholesale replace — see the route). Shared by the console's Availability tab and the tutor onboarding wizard; `onSaved` is what lets the wizard advance on a successful save. |
-| `components/tutors/TutorConsole.tsx` | `/tutor`: schedule, classes, assessments, weekly availability editor. Assessments carry an examiner choice (me / AI) with an interviewer picker and a brief. The create form opens with a **Course → Level → Unit** picker that prefills the title via `composeRoomTitle()` (and stops once the tutor types), and a **Start now / Schedule** pair that swaps the date field for an instant open. The Schedule tab confirms and declines bookings inline. |
+| `components/tutors/TutorConsole.tsx` | `/tutor`: schedule, live lessons, assessments, weekly availability editor. Assessments carry an examiner choice (me / AI) with an interviewer picker and a brief. The create form opens with a **Course → Level → Unit** picker that prefills the title via `composeRoomTitle()` (and stops once the tutor types), and a **Start now / Schedule** pair that swaps the date field for an instant open. The Schedule tab confirms and declines bookings inline. |
 | `components/tutors/ExaminerSwitch.tsx` | Tutor-only, on the assessment page: hand the room to the AI examiner or take it back, pick the interviewer, edit the brief. Lives here rather than only in the scheduling form because "I can't make it" is learned after scheduling. |
 | `components/tutors/AiInterviewRoom.tsx` | The AI-examined assessment, chosen by the page on `assessment.examiner`. Tutor → results; learner → their own interview. |
 | `components/tutors/AiInterviewStage.tsx` | The learner's live surface: still portrait, mic meter, countdown, running transcript, result. **Not** built on `CallStage` — there is no Stream call. |
@@ -209,7 +292,7 @@ A Stream token **is** access to a call, so membership and the join window are
 both checked in the token route before one is minted. The call id is only ever
 returned alongside a valid token, never in a listing.
 
-**A room can be opened on the spot.** `startNow: true` on `POST /api/classes`
+**A room can be opened on the spot.** `startNow: true` on `POST /api/live-lessons`
 or `POST /api/assessments` skips the future-date rule, inserts at
 `status: 'live'`, stamps `wentLiveAt`, and announces it. A scheduled room does
 the same on its first `PATCH` to `'live'` — `wentLiveAt` is the idempotency
@@ -219,11 +302,11 @@ guard, so toggling live → scheduled → live does not notify twice.
 joinable and `'completed'` never is, whatever the window says: a tutor who
 opens a room early or on the spot has decided people may come in, and a fixed
 time gate would answer "this has not opened yet". Live rooms also survive the
-one-hour cutoff in both list routes, so a 90-minute class does not vanish from
+one-hour cutoff in both list routes, so a 90-minute live lesson does not vanish from
 the page while it is still running.
 
-**A class enrols on the way in.** The class token route no longer refuses a
-learner without a seat — an instant class has no roster by definition — it
+**A live lesson enrols on the way in.** The live-lesson token route no longer refuses a
+learner without a seat — an instant live lesson has no roster by definition — it
 calls `enrolLearner()` (same capacity rule, same advisory lock) after the
 window check. The assessment rule below is unchanged.
 
@@ -347,8 +430,8 @@ only discover a confirmation by going back and looking.
 **A room going live notifies through `announceLive()`**, never with a
 membership query of its own. `resolveAudience()` stays the single definition of
 "my learners", so the bell reaches exactly the people the announcements console
-would. A class roster passed in as `extraLearnerIds` goes through the same
-`activeLearners()` filter before it is used: `class_enrollments.status`
+would. A live-lesson roster passed in as `extraLearnerIds` goes through the same
+`activeLearners()` filter before it is used: `live_lesson_enrollments.status`
 describes the seat, not the account behind it, so a suspended learner keeps
 their row and would otherwise be notified about a room they cannot join.
 
@@ -357,7 +440,7 @@ their row and would otherwise be notified about a room they cannot join.
 `calendar_tasks` is the only table the calendar owns: a user's own to-dos
 (`kind: 'task'`) and the lesson-plan reminders seeded right after onboarding
 (`kind: 'lesson_reminder'`, pointing at `sourceLessonId`). Everything else on
-the page — practice sessions, tutor bookings, classes, assessments — already
+the page — practice sessions, tutor bookings, live lessons, assessments — already
 has a dated row of its own, so `GET /api/calendar` reads those live and
 normalises all five kinds into one `CalendarItem` shape rather than copying
 them in. A caller who has a `tutors` row gets their teaching schedule folded
@@ -369,8 +452,61 @@ in beside their learner rows, so the one page serves both.
 | `GET /api/calendar?from&to` | Aggregates the five kinds. `from`/`to` default to a month either side of today; the page passes the displayed month so stepping months refetches. |
 | `POST /api/calendar/tasks`, `PATCH`/`DELETE /api/calendar/tasks/[id]` | To-do CRUD, ownership-checked against the caller. |
 | All-day bucketing | All-day rows are stored at **UTC midnight** and bucketed onto the grid by their **UTC** date (`toDateStr(iso, allDay)`); timed rows bucket by local date. Reading an all-day row in local time would push it to the previous day for every viewer west of UTC. |
-| Correlated subqueries | Don't. "My enrolment" / "my queue slot" use a `leftJoin` narrowed to the user. Drizzle only qualifies column names once a query has a join — in a join-less query, `where class_session_id = id` emits `id` unqualified and Postgres resolves it against the *subquery's own* table, so the correlation silently never matches. |
+| Correlated subqueries | Don't. "My enrolment" / "my queue slot" use a `leftJoin` narrowed to the user. Drizzle only qualifies column names once a query has a join — in a join-less query, `where live_lesson_id = id` emits `id` unqualified and Postgres resolves it against the *subquery's own* table, so the correlation silently never matches. |
 | Checkbox nesting | The done/undone button is a **sibling** of the row's `<Link>`, never inside it: a `<button>` in an `<a>` is invalid nesting and hydrates badly. |
+
+## Personalized learning (`/lib/study-packs/`, `components/study-packs/`, `app/(app)/study-packs/`)
+
+PLAN.md Phase 3, gated by `NEXT_PUBLIC_STUDY_PACKS_ENABLED` (`lib/study-packs/config.ts`, same literal-read rule as the tutors flag). Everything it writes is owned by one learner; nothing lands in a shared catalogue table.
+
+**The loop.** A session reaching `completed` (`/api/chat/stream` or `PATCH /api/sessions/[id]`) calls `announceSessionCompleted()` *after* the commit, which sends `session/completed` with id `session-completed-{sessionId}` (Inngest dedupes a second send). `generateStudyPack` (`lib/inngest/functions/generateStudyPack.ts`) runs load → classify → generate → save → notify as steps, so a retry never pays for an AI call twice. The save is one transaction keyed on `study_packs.session_id` (unique): a retried save finds the pack and writes nothing.
+
+| Piece | Notes |
+|-------|-------|
+| `learner_weak_points` | (user, target language, category, pattern). Category is grammar / vocab / pronunciation / register. The classifier is shown the learner's existing labels and must reuse them verbatim, which is what lets `count` grow across sessions. Absent for `WEAK_POINT_RESOLVE_AFTER` (3) completed sessions → `resolvedAt`; seen again → reopened. Pure logic in `weak-points.ts`. |
+| `study_packs` / `study_pack_items` | Explanation (native language), then items of kind `focus` (rule per weak point), `drill` (fix-the-sentence), `dialogue`. Payload JSON in a text column, shapes in `types.ts`. The next-scenario pick is constrained to a server-supplied list; an invented id is dropped. |
+| `srs_cards.card_type` | `vocab` (unchanged) · `sentence` (from a drill) · `grammar` (from a focus rule). Pack cards have NULL `vocabulary_id` and a `payload` (`SrsCardPayload`); `/api/review/due` serves them only for the pack's target language. `/review` renders all three; the instruction line per type is UI copy (`CARD_PROMPTS`), not stored. |
+| `calendar_tasks.kind = 'study_pack'` | Due the next day (UTC all-day), links to `/study-packs/[id]`; marking the pack done ticks it. |
+| `ai_usage` | Ledger of every learner-attributable AI call (`usageRecorder()` in `lib/ai-usage.ts`, fed by `GenerateOptions.onUsage`). Batch routes (`study-pack`, `scenario/personalized`) are gated by `DAILY_TOKEN_QUOTA[users.tier]`; live turns are recorded but never blocked (plans arrive with Phase 5). `costMicros` comes from a list-price table; verify it before a pricing decision. |
+| `scenarios.owner_user_id` | Learner-owned scenarios (`POST /api/scenarios/personalized`). Every library listing filters `IS NULL` (`/api/scenarios`, the export, the localization backfill); `POST /api/sessions` and `/api/scenario/[id]` treat someone else's owned row as not found. Rows follow the library's localization layout: base English, target scene in `scenario_localizations` (target ≠ en), native explanation in the (target, native) tables, word meanings via `vocabulary_localizations[native]` + `vocabulary_native_notes`. |
+| `users.occupation` / `users.interests` | From the onboarding `about-you` step (only in the flow while the flag is on) and `PUT /api/user/preferences`. Interests are a JSON array in text; read and write only through `profile.ts`. |
+| `GenerateOptions` (`lib/ai-providers/types.ts`) | `modelTier: 'fast' \| 'batch'` (batch reads `*_BATCH_MODEL`, falls back to the main model; a tier rather than a model id because failover crosses providers), `maxTokens`, `onUsage`. Azure needs a client per deployment: the SDK bakes the deployment into the URL. |
+
+| Component | Notes |
+|-----------|-------|
+| `StudyPackLink` | On the session report for a completed session. Polls `GET /api/study-packs?sessionId=` (8 s × 15) and becomes **Open your study pack**; renders nothing if no pack appears (a session with nothing to work on gets none). |
+| `PersonalizedScenarioCard` | Optional topic input → `POST /api/scenarios/personalized` → `POST /api/sessions` → `/session/[id]`. Shows the 429 quota message inline. |
+| `DialoguePractice` | Maps each partner→learner line pair to a `QuickDrillItem`; answers checked locally by `checkAnswer()` (token F1 ≥ 0.75, characters for unspaced scripts), so practice costs no AI call. |
+
+## Hybrid tutoring (`lib/tutors/`, `lib/interview/cefr.ts`, `lib/courses/syllabus*.ts`, `components/tutors/`)
+
+PLAN.md Phase 4, gated by `NEXT_PUBLIC_HYBRID_ENABLED` (`HYBRID_ENABLED` in `lib/tutors/config.ts`, same literal-read rule). The learner-facing lesson tools (briefing, plan, panel, captions, explain) are further gated **per organization** by `organizations.hybrid_tutoring_enabled`, read through `hybridEnabledForLearner()` (`lib/tutors/hybrid.ts`). The learner's organization decides, because tutors belong to none. An admin turns it on in Admin → Organizations. Off for every organization by default, including the public one.
+
+| Piece | Notes |
+|-------|-------|
+| `cefr_placements` | A spoken CEFR interview with no assessment room: `purpose` `placement` (learner, monthly re-test) or `tutor_vetting` (applicant). Same examiner, token and grader as `ai_interviews`; the grader runs with `cefr: true` (`CEFR_RUBRIC` in `lib/interview/cefr.ts`, "never on accent"). A graded placement writes `users.cefr_level` and `users.level` (`proficiencyForCefr`) and confirms tutor-marked "achieved" can-dos at or below that level. A vetting interview writes `tutors.cefr_level` and `vetting_placement_id`. Only a GRADED interview starts the 30-day re-test clock. Route: `/api/placement`. `useAiInterview(endpoint, startBody)` and `AiInterviewStage` now take an endpoint, so the same stage serves rooms and placements |
+| Briefing | `GET /api/tutor/learners/[id]/briefing?bookingId=`, `lib/tutors/briefing.ts`. **403 without a non-cancelled booking with that tutor.** Contents: CEFR level, next syllabus step, top 5 open weak points, last 3 completed sessions with scores and the most severe corrections, study-pack status, and this tutor's last filed notes (never another tutor's) |
+| Lesson notes → homework | `PUT /api/bookings/[id]/notes` (tutor, after the lesson start): notes + corrections on `tutor_bookings`. The first filing sends `tutor-lesson/notes-filed` (`announceLessonNotesFiled`), and `generateStudyPack` builds a pack from it (`study_packs.booking_id`, unique; `session_id` is now nullable). A lesson pack only adds to weak points. It never bumps clean-session counts, because a pattern the tutor did not write down was not shown to be fixed |
+| `tutor_reviews` | `PUT /api/bookings/[id]/review`: learner only, once the lesson has happened, one per booking (revisable). Each review and each tutor evaluation runs `evaluateTutorQuality()`, which flags (`tutors.review_flagged_at`) below 4.0★ or 60% AI agreement over ≥5 samples. Never auto-cleared: an admin clears it with `clearReviewFlag` |
+| Vetting | `/tutor/vetting` + `GET/PUT /api/tutor/vetting`: proficiency interview (C1+, no dimension below B2), clarity read-aloud (`assessPronunciation` over `CLARITY_PASSAGES`, ≥80; **client-measured**, shown to the admin as self-measured), teaching module + quiz (checked server-side), trial lesson (admin enters the 1–5 rubric in `TutorVettingSection`). `PATCH /api/admin/tutors/[id]` refuses `verified` while `vettingGaps()` is non-empty |
+| Syllabus | `courses.target_language`, `course_levels.cefr_level`, `units.can_do` (JSON array). `npm run db:seed-english-syllabus` seeds `english-cefr` (A0 Classroom English starter + 2 units per level A1–C1). Each unit has a self-study lesson (adds the `reading_writing` phase) and a tutor lesson whose phases are `TUTOR_LESSON_TEMPLATE`. **Seeded inactive** (draft content, needs teacher review); plans, briefings and the map read it directly. `can_do_progress` is marked by the tutor (`PUT /api/bookings/[id]/can-do`) |
+| `lesson_plans` | `POST/PATCH /api/bookings/[id]/lesson-plan`: the AI drafts from the next syllabus step, top 3 weak points and CEFR level. Phase minutes come from `lessonTimings()` (sum = booked duration, fix share 15/25/35% by level), never from the model. A fix for a pattern the learner does not have is dropped. Redrafting over tutor edits needs `{ replace: true }`. The learner's GET returns only the slides and `currentSlide` |
+| Realtime `booking:{id}` | Tutor and learner of that booking. `booking.plan` (slide moved or plan edited) and `booking.explain` (pointer only; the explanation is never broadcast) |
+| Captions | `GET/POST /api/bookings/[id]/captions`: default mode by level (`translated` A0–A1, `transcript` A2, `off` B1+; the learner can always switch), daily cap 90/60/30 min. Time is recorded in `ai_usage` route `lesson/captions` with SECONDS in `input_tokens` (`recordCaptionSeconds`) |
+| Explain | `POST /api/bookings/[id]/explain` (learner): two sentences in the native language about the last caption line or the current slide. Rate-limited 30 per 10 min, recorded as `lesson/explain` |
+| Matching | `/api/tutors` (flag on): `rankBySharedLanguage` puts tutors who explain in the learner's language first for A0–A1/unplaced learners, and adds `trust` and `sharesLanguage` per tutor plus `warnBeforeBooking` for A0 |
+
+| Component | Notes |
+|-----------|-------|
+| `BriefingPanel` | The briefing card. TutorConsole **Briefings** tab (confirmed/completed lessons in the last 14 days and upcoming) and the tutor's side of `/live/[bookingId]` |
+| `LessonPlanEditor` | Draft/redraft and per-phase activity editing; the template and its timings are fixed |
+| `LessonPanel` | The slide beside the video. The tutor gets Back/Next and the "learner asked for an explanation" cue (20 s). The learner gets the native translation under each phrase and **Explain in my language** |
+| `LiveCaptions` | Renders inside `CallStage`'s `tools` (needs the call state for the tutor's `audioStream`). Azure `TranslationRecognizer` / `SpeechRecognizer` over the remote MediaStream, token from `/api/speech/token`. On the dark call surface it uses `text-white` + italic for partial lines (no opacity restacking) |
+| `LessonNotesForm` | Notes, corrections and can-do marking (introduced / practised / achieved) after the lesson |
+| `LessonReviewForm` | 1–5 stars + comment, shown to the learner once the lesson has happened |
+| `TrustBadge` | "Verified C1 English · clarity 92 · 4.8★ (120 lessons)" from stored values only; parts without data are omitted |
+| `CefrProgressMap` | Units achieved per CEFR level with each can-do statement's standing; on `/placement`. Renders nothing when the language has no syllabus |
+| `TutorVettingChecklist` / `TutorVettingSection` | The applicant's four steps / the admin's evidence, gaps, trial rubric and quality flag |
 
 ## Admin Console (`/app/(app)/admin/`, `components/admin/`, `/app/api/admin/`)
 
@@ -387,9 +523,8 @@ the role before anything renders and sends a non-admin to `/home`, matching
 | Overview | `OverviewPanel` | `GET /api/admin/stats` | Ten counts in **one** round trip — every figure is a scalar subquery on a single row, because eight `count(*)` queries over an HTTP driver is eight requests. Figures that want acting on carry a hint naming the tab that acts on them; `pendingTutors` turns `text-dojo-warning-strong` when non-zero |
 | Users | `UsersPanel` | `/api/admin/users`, `/api/admin/users/create`, `/api/admin/users/[id]/purge`, `/api/admin/users/reconcile` | Search + role/status filters, role change, suspend with a reason, soft-delete, guarded purge. Self-protection is re-applied server-side; the disabled buttons are a courtesy. **Add account pre-provisions the `users` row only** — Neon Auth owns credentials, so no invitation is sent and the person claims it by signing up with that email. The form says so rather than implying an invite |
 | Tutors | `TutorsPanel` | `/api/admin/tutors`, `/api/admin/tutors/[id]` | Verify/reject, accepting-bookings toggle, and full profile editing. Both language sets matter: every scheduling route validates against them, so a wrong one silently blocks the tutor from working. Edited through the same `LanguagePillGroup` the tutor's own form uses |
-| Courses | `CoursesPanel` | `/api/admin/courses` | The publish board, and **the only place `courses.isActive` is written**. Curriculum edits the same rows' structure; a control that exists twice is a control nobody trusts, so `EntityTree`'s archive toggle is left off the course level there |
-| Curriculum | `CurriculumPanel` → `EntityTree` | `/api/admin/curriculum/[entity]` | `courses → levels → units → lessons → phases` |
-| Catalogue | `CataloguePanel` → `EntityTree` | `/api/admin/catalogue/[entity]` | `domains → situations → scenarios` |
+| Courses | `CoursesPanel` → `EntityTree` | `/api/admin/courses/[entity]` | `courses → levels → units → lessons → phases`. Publishing a course is the Published toggle on the course row, and **the only place `courses.isActive` is written** |
+| Library | `LibraryPanel` → `EntityTree` | `/api/admin/library/[entity]` | `domains → situations → scenarios` |
 | Languages | `LanguagesPanel` | `/api/admin/languages` | Not an `EntityTree`: keyed by `code`, no parent, and its real content is the BCP47 tags and Azure voice ids |
 
 ### `EntityTree` — one drill-down editor, two content tabs
@@ -407,10 +542,10 @@ matches that shape instead of eight near-identical panels that would drift.
   through `Number()`, so an empty string would arrive as `0` and silently
   rewrite a sequence position. `nullable: true` is the opt-in for "blank clears
   the column" (a lesson detached from its scenario).
-- **Reorder is curriculum-only.** `sequenceOrder` is half of a unique index
+- **Reorder is course-tree-only.** `sequenceOrder` is half of a unique index
   there, so a swap is a transaction through a free slot — hence the route's
   `{ move: 'up' | 'down' }`, which the tree sends instead of writing positions.
-  Catalogue rows carry a plain `displayOrder` with no constraint, so position is
+  Library rows carry a plain `displayOrder` with no constraint, so position is
   just a field to edit.
 - **Delete escalates only when the route offers it.** `AdminApiError`
   (`components/admin/shared.tsx`) keeps the 409 body alive through the throw; a
@@ -423,10 +558,10 @@ matches that shape instead of eight near-identical panels that would drift.
 
 ### `/api/domains/create-custom` is admin-only
 
-It writes `domains` + `situations` + `scenarios` — the **shared** catalogue
-every learner's hub lists — so a learner inventing a scenario for themselves
+It writes `domains` + `situations` + `scenarios` — the **shared** library
+every learner's Library page lists — so a learner inventing a scenario for themselves
 was publishing it to everyone, with an LLM-generated vocabulary list and no
-review. `displayOrder = 999` only kept it last, not out of sight. The hub's
+review. `displayOrder = 999` only kept it last, not out of sight. The Library page's
 "Create Custom" card is hidden for non-admins so the button does not 404, but
 the gate is `requireRole('admin')` in the route. Per-learner custom practice, if
 it returns, needs an owned-and-private shape rather than this endpoint reopened.
@@ -444,26 +579,30 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | Route | Panel | Status |
 |-------|-------|--------|
 | `/home` | Home Dashboard | Learner dashboard. `app/(app)/home/layout.tsx` redirects `role === 'tutor'` to `/tutor` — `/home` is `roleHome('learner')`, the fallback for any account whose role does not name a console, and a tutor's XP/streak/session history are permanently empty |
-| `/hub` | Domain Grid | Listicle of 8 domain cards |
+| `/library` | Domain Grid | Listicle of 8 domain cards |
 | `/dojo/[domainSlug]` | Domain Detail | Hero + situation list |
 | `/dojo/[domainSlug]/[situationId]` | Situation Picker | Focus pills + mode toggle |
 | `/dojo/[...]/character` | Character Selection | Grid + preview panel |
 | `/session/new` | Roleplay Room Shell | Static chat layout (wireframe) |
-| `/review` | Spaced Repetition | Due-card drill over `srsCards`; grade → `/api/review/answer` |
+| `/review` | Spaced Repetition | Due-card drill over `srsCards` (vocab words plus study-pack sentence/grammar cards); grade → `/api/review/answer` |
+| `/study-packs` | Study packs | Open weak points, `PersonalizedScenarioCard`, and the learner's packs newest first. Gated by `NEXT_PUBLIC_STUDY_PACKS_ENABLED` |
+| `/study-packs/[id]` | Study pack | Explanation, rules, fix-the-sentence drills (reveal), dialogues (read or practise via `DialoguePractice`), recommended next scenario, **Mark as done**. Opening it marks the pack `opened` |
 | `/tutors` | Tutor Discovery | Verified tutor list + upcoming bookings. Gated by `NEXT_PUBLIC_TUTORS_ENABLED` |
 | `/tutors/[id]` | Booking | Slot picker from `/api/tutors/[id]/availability` → `POST /api/bookings` |
-| `/live/[bookingId]` | Live Session (1:1) | `CallStage` video + `RoomChatPanel` + the tutor's `EvaluationForm` |
-| `/live/class/[classId]` | Live Class | `ClassRoom` — grid, roster, tutor mute-all/spotlight, translated chat sidebar |
+| `/live/[bookingId]` | Live Session (1:1) | `CallStage` video + `RoomChatPanel` + the tutor's `EvaluationForm`. With hybrid tutoring on for the learner's organization: tutor gets `BriefingPanel`, `LessonPlanEditor`, `LessonNotesForm`; both get `LessonPanel`; the learner gets `LiveCaptions` in the call and `LessonReviewForm` after |
+| `/placement` | Your level | CEFR placement interview (`AiInterviewStage` on `/api/placement`), monthly re-test, `CefrProgressMap`. Gated by `NEXT_PUBLIC_HYBRID_ENABLED` |
+| `/tutor/vetting` | Tutor vetting | Role-gated (`tutor`\|`admin`), server-checked. `TutorVettingChecklist`. Gated by both tutoring flags |
+| `/live/lesson/[lessonId]` | Live lesson | `LiveLessonRoom` — grid, roster, tutor mute-all/spotlight, translated chat sidebar |
 | `/live/assessment/[assessmentId]` | Assessment Room | `AssessmentRoom` — one learner at a time, `WaitingQueue`, per-learner grading |
-| `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, class/assessment creation, availability editor |
-| `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Tutors, Courses, Curriculum, Catalogue, Languages |
+| `/tutor` | Teaching console | Role-gated (`tutor`\|`admin`), server-checked. Schedule, live-lesson/assessment creation, availability editor, **Briefings** tab and a vetting banner for pending tutors (hybrid flag) |
+| `/admin` | Admin console | Role-gated (`admin`), server-checked before render; a non-admin is redirected to `/home`. Seven tabs — Overview, Users, Organizations, Tutors, Courses, Library, Languages |
 | `/courses/[slug]/grades` | Grades | The AI's verdict per lesson beside the human tutor verdicts |
 | `/sessions/[id]/report` | Session Summary | Verdict card + score breakdown + transcript |
-| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished curriculum lesson lands — see `continueHref()` in `lib/curriculum/continue-href.ts`; free-form sessions still exit to `/home`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live class or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
+| `/courses/[slug]#unit-{id}` · `#lesson-{id}` | Course Detail anchors | Where a finished course lesson lands — see `continueHref()` in `lib/courses/continue-href.ts`; free-form sessions continue to `/library`. Each unit's footer carries two independently gated things: "Mark unit as finished" (needs every lesson done) and the live lesson or assessment pinned to that unit (does **not** — a room running now is only joinable now). A `'live'` room shows as a red *Join now*, a scheduled one as a dated accent link |
 | `/progress` | Progress Analytics | Radar chart + activity tabs |
 | `/leaderboard` | Leaderboard | Global/Friends/School tabs |
 | `/messages` | Messages | Thread list + message view |
-| `/calendar` | Calendar | Month grid + day agenda, backed by `GET /api/calendar`: to-dos, lesson-plan reminders, practice sessions, and (tutoring enabled) bookings/classes/assessments for learner and tutor alike |
+| `/calendar` | Calendar | Month grid + day agenda, backed by `GET /api/calendar`: to-dos, lesson-plan reminders, study-pack homework, practice sessions, and (tutoring enabled) bookings/live lessons/assessments for learner and tutor alike |
 | `/settings` | Settings | Preferences + Notifications + Privacy |
 | `/settings/avatar` | Avatar & Character | Tabbed: avatar presets + voice prefs |
 | `/settings/billing` | Subscription | Plan cards |
@@ -478,8 +617,8 @@ it returns, needs an owned-and-private shape rather than this endpoint reopened.
 | `/auth/reset` | Set a new password | Landing page for the emailed reset link |
 | `/auth/suspended` | Account access paused | Where a suspended or closed account lands. The `(app)` layout sends them here rather than to `/auth`, because bouncing someone to a sign-in page they *can* sign into is a loop with no explanation in it — `getAuthUser()` is what refuses them, not their credentials. Reads `users.status` / `suspendedReason` through `getAuthUserReadOnly`, since `getAuthUser()` returns null for exactly the accounts this page serves |
 | `/auth/verify-email` | Verify your email | The shared step between creating an account and being let in. `?email=` (required), `?sent=1` (a code was already mailed — do not auto-send), `?next=` (where to land) |
-| `/onboarding/[step]` | Learner wizard | Level → goal → domain → mode → age → languages → frequency → account |
-| `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/level`). welcome → native-language → availability → ready |
+| `/onboarding/[step]` | Learner wizard | Session required (guest → `/auth/signup`), or `?preview=1` dry run. welcome → languages → level → social-proof → goal → frequency → mode → almost-set-up → domain → age → about-you (only with `NEXT_PUBLIC_STUDY_PACKS_ENABLED`) → let’s-get-started → **practice** (icebreaker only). Finish POSTs `/api/user/onboarding` |
+| `/onboarding/tutor/[step]` | Tutor wizard | Server-gated on the role (learners are sent to `/onboarding/welcome`). welcome → native-language → availability → ready |
 
 ### Email verification is not optional
 
@@ -503,9 +642,47 @@ The profile stays in component state the whole way, so verification never costs 
 
 **Do not post the profile straight after sign-up.** That was the original shape and it 401'd every first-time applicant, leaving an account behind with no `tutors` row.
 
+### Learner onboarding (`/onboarding/[step]`)
+
+The learner wizard is for a **signed-in account that has not finished setup**. `app/onboarding/[step]/layout.tsx` sends a guest to `/auth/signup` and a tutor to `/onboarding/tutor/welcome`. `/onboarding` redirects to `/onboarding/welcome`, carrying `?preview=1` and `targetLanguage` / `nativeLanguage` when present.
+
+`?preview=1` is a dry run of the same screens: the gate lets a guest (or a signed-in reviewer) through, every step keeps the query, and finish does **not** `POST /api/user/onboarding` — it loops back to welcome. Local `next dev` also lets a guest in without the query so the flow can be reviewed without minting an account. A real sign-up in development still POSTs as usual.
+
+Tryout does not skip the wizard. `TryoutCompleteScreen` and `TryoutBlockedScreen` go to `/auth/signup` (complete carries the language pair on the URL). After the account exists (and the email is verified), sign-up lands on `/onboarding?targetLanguage=&nativeLanguage=` like any other new learner. `lib/onboarding/context.tsx` prefills from that query first, then from tryout sessionStorage.
+
+Steps are defined once in `ONBOARDING_STEPS` (`lib/onboarding/steps.ts`). The first is `welcome`. Question order: target language → native language → level → goal → daily minutes → interface mode → first domain → age. Interstitials sit where the copy matches the moment: `social-proof` ("You're in good company") after level, `transition-2` ("You're almost set up!") after interface mode, `transition-1` ("Great! Let's get you started!") after age. The last is `practice`: a 5-phrase **icebreaker** in the chosen domain on `/api/onboarding/turn` (Tryout-sibling JSON, not `/api/chat/stream`). It teaches vocabulary from that scenario one phrase per turn and does **not** open the scene. Chat mode is Voice with the transcript panel open. The sample is rewindable — back / "Change setup" remounts it; nothing is written until finish. Finish `POST`s `/api/user/onboarding` (unless preview) and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST so Courses and the calendar are populated; it is only the fallback landing when the domain cannot be resolved. There is no account-creation step in the wizard — that used to sit at the end so a guest could walk the questions first.
+
+### OnboardingPractice
+
+File: `components/onboarding/OnboardingPractice.tsx`
+Last updated: 2026-10-05
+
+| Property         | Class           |
+| ---------------- | --------------- |
+| Background       | `bg-dojo-canvas` |
+| Header           | `border-b border-dojo-border/60 bg-dojo-surface/50 px-4 py-3 backdrop-blur-md sm:px-6` |
+| Header title     | `text-sm font-bold tracking-tight text-dojo-text-primary` |
+| Back / change    | `text-dojo-text-muted hover:text-dojo-text-primary` |
+| Chat toggle      | `rounded-lg border border-dojo-border/60 bg-dojo-surface-raised/80 px-3 py-2 text-xs font-semibold` |
+| Complete card    | `rounded-2xl border border-dojo-border bg-dojo-surface-raised p-8 shadow-2xl` (same as `TryoutCompleteScreen`) |
+| Complete CTA     | `rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white hover:bg-dojo-accent/90` |
+| Greeting overlay | Same as session/tryout greeting overlay (`bg-dojo-canvas/90`, icon well `h-16 w-16 rounded-full bg-dojo-accent/20 ring-1 ring-dojo-accent/30`, CTA `rounded-xl bg-dojo-accent px-8 py-4`) |
+| Chat panel       | `w-80 max-w-[85vw] sm:w-96 border-r border-dojo-border/60 bg-dojo-surface/95` |
+| AI bubble        | `rounded-2xl rounded-tl-sm border border-dojo-border/60 bg-dojo-surface-raised/90` |
+| User bubble      | `rounded-2xl rounded-tr-sm border border-dojo-accent/20 bg-dojo-accent/15` |
+| Target speech    | `text-base leading-relaxed text-dojo-text-primary` |
+| Native gloss     | `text-sm italic leading-relaxed text-dojo-text-muted` |
+| Mic well         | Voice: `border-dojo-border/60 bg-dojo-surface/80 shadow-2xl backdrop-blur-xl`; Avatar: `border-white/10 bg-black/10 backdrop-blur-[2px]` (matches tryout avatar chrome) |
+
+**Pattern notes:**
+- Full-bleed, no `OnboardingShell` — the sample is a sitting, not a questionnaire card.
+- `preferredMode === 'chat'` starts with the transcript open (`practiceChatStartsOpen`); the stage is still Voice (or Avatar).
+- Situation is the domain's `skillLevel` match, else first active row. The sitting is that scenario's icebreaker (up to 5 vocab phrases), not the scene.
+- Preview shows a "Preview" label in the header; finish loops to welcome without writing.
+
 ### Tutor onboarding (`/onboarding/tutor/[step]`)
 
-**A tutor does not walk the learner wizard.** The `(app)` gate in `app/(app)/layout.tsx` redirects any account with `onboardingCompletedAt === null`, and it branches on the role: `tutor` → `/onboarding/tutor/welcome`, everyone else → `/onboarding/level`. Before this branch existed, every new tutor was asked for a level, a learning goal, a domain to practise, a practice mode and a daily practice target — none of which any teaching surface reads.
+**A tutor does not walk the learner wizard.** The `(app)` gate in `app/(app)/layout.tsx` redirects any account with `onboardingCompletedAt === null`, and it branches on the role: `tutor` → `/onboarding/tutor/welcome`, everyone else → `/onboarding/welcome`. Before this branch existed, every new tutor was asked for a level, a learning goal, a domain to practise, a practice mode and a daily practice target — none of which any teaching surface reads.
 
 Four steps, defined once in `TUTOR_ONBOARDING_STEPS` (`lib/onboarding/steps.ts`):
 
@@ -519,15 +696,15 @@ Two rules the flow depends on:
 - **The teaching profile is not re-collected.** Headline, bio, languages taught, timezone and rate are written once by `POST /api/tutors/apply` at application time. The wizard asks only for what that form does not cover.
 - **`ready` must not navigate on failure.** The gate reads `onboardingCompletedAt`, so pushing to `/tutor` without it lands straight back in the wizard. It shows the error with a retry instead.
 
-`POST /api/user/onboarding` skips `enrollInCourse` + `seedLessonPlan` for `role === 'tutor'` — a tutor has no course to be enrolled in, and seeding one would put a curriculum they never chose on their calendar. `admin` keeps the learner path.
+`POST /api/user/onboarding` skips `enrollInCourse` + `seedLessonPlan` for `role === 'tutor'` — a tutor has no course to be enrolled in, and seeding one would put a course they never chose on their calendar. `admin` keeps the learner path.
 
-`OnboardingShell` takes the wizard it is rendering (`steps`, `basePath`, `exitHref`), defaulting to the learner one — the progress bar, the back button and the interstitial layout all derive from `StepConfig`, so a wizard declares its steps in exactly one place.
+`OnboardingShell` takes the wizard it is rendering (`steps`, `basePath`, `exitHref`, `preview`), defaulting to the learner one — the progress bar, the back button and the interstitial layout all derive from `StepConfig`, so a wizard declares its steps in exactly one place. `preview` keeps `?preview=1` on back navigation and shows a "answers are not saved" banner.
 
 ### One account system, three doors
 
 There is one set of credentials and one `users` table. `users.role` decides what an account opens. What is split is the **door**, not the identity: `/auth/signin`, `/auth/tutor/signin` and `/auth/admin/signin` (plus their `signup` twins) render the same `components/auth/AuthScreen` with different copy, showcase and defaults.
 
-**The role of the door never decides the landing.** After a successful sign-in the page asks the server (`GET /api/user/role`) and routes through `roleHome()` in `lib/auth/destinations.ts` — `admin` → `/admin`, `tutor` → `/tutor`, everyone else → `/home`. This is the whole point of the split: a tutor who signs in on the learner form is still a tutor, and the old behaviour (always `/home`, plus an in-component `isLogin` toggle that no URL described) is what made the app disagree with itself about who was signing in. The Google callback in `app/api/auth/[...path]/route.ts` routes the same way, off the `users.role` it already reads.
+**The role of the door never decides the landing.** After a successful sign-in the page asks the server (`GET /api/user/role`) and routes through `roleHome()` in `lib/auth/destinations.ts` — `admin` → `/admin`, `tutor` → `/tutor`, everyone else → `/home`. This is the whole point of the split: a tutor who signs in on the learner form is still a tutor, and the old behaviour (always `/home`, plus an in-component `isLogin` toggle that no URL described) is what made the app disagree with itself about who was signing in. The Google callback in `app/api/auth/[...path]/route.ts` does the same: it `syncUser()`s the session (so a first Google visit has a `users` row), promotes an allowlisted admin, then lands on `roleHome`. Incomplete learners still reach the wizard because `(app)/layout` gates on `onboardingCompletedAt === null` — the callback itself must not send them to `/onboarding` without a row.
 
 `lib/auth/destinations.ts` is the single source for all of it — `roleHome`, `roleSignInPath`, `roleSignUpPath`, `safeNext`, `fetchUserRole` — and it is client-safe (no Drizzle). **Do not add a second copy of `safeNext`**; `/auth/verify-email` used to carry one.
 
@@ -542,7 +719,7 @@ Unlinked, `noindex` (`app/auth/admin/layout.tsx`), and reachable only by typing 
 - `POST /api/auth/admin/claim` promotes the signed-in account to `role: 'admin'` only if its address is on the list. It **fails closed**: an unset or empty `ADMIN_EMAILS` allows nobody, because a missing env var must not turn the sign-up into an open door.
 - Both the admin sign-in and sign-up call it, and it is idempotent. That is not redundancy — the Neon project will not issue a session until the email is verified, so a fresh admin's first *session* is often their second visit, by which time the sign-up call is long gone.
 - It also stamps `onboardingCompletedAt`, and `app/(app)/layout.tsx` skips the onboarding gate for `admin`. Neither wizard collects anything the console reads.
-- No Google button on the admin pages: the OAuth callback has nowhere to carry an allowlist decision, so promotion stays on the password path where the claim route can answer for it.
+- No Google button on the admin pages: the claim UX lives on the password path. An allowlisted address that signs in with Google on another door is still promoted in the OAuth callback (`promoteAllowlistedAdmin`) so they land on `/admin` instead of the learner wizard.
 
 Admins can still be created the other way, by an existing admin via `POST /api/admin/users/create` — that writes a `users` row which `syncUser()` picks up by email on first sign-in.
 
@@ -586,6 +763,7 @@ Accounts deleted in the console *before* `auth_user_id` existed stay NULL and
 are indistinguishable from invitations; clear those with the purge route.
 
 ## Design Pattern Notes
+- Local raster assets (`/logo.png`, `/landing/*`, `/ai-avatars/thumbnails/*`, `/characters/*`) use `next/image`. Unsplash domain photos (`images.unsplash.com`) and Dicebear SVG portraits (`api.dicebear.com`) use `next/image` with `unoptimized`, both listed in `next.config.ts` `images.remotePatterns`. The `Avatar` primitive keeps a native `<img>` because `src` is not a closed host set
 - All cards use `bg-dojo-surface` with `border-dojo-border` by default
 - Interactive cards: add `hoverable` prop for `hover:border-dojo-accent`
 - Active/highlighted cards: use `raised` prop OR `ring-2 ring-dojo-accent`
@@ -694,6 +872,24 @@ Last updated: 2026-07-25
 - Each mode card has a distinct accent color: Chat=accent, Voice=#3FB27F, Avatar=#8B5CF6
 - Cards are links via `router.push` — no `<a>` tags
 - Footer shows "View Report" link when session.status === 'completed'
+
+### Greeting overlay (Start conversation)
+
+File: `app/(app)/session/[sessionId]/avatar/page.tsx` (same structure on voice + tryout)
+Last updated: 2026-10-02
+
+| Property         | Class / Value                                   |
+| ---------------- | ----------------------------------------------- |
+| Overlay          | `absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6` |
+| Card             | `text-center max-w-xs`                          |
+| Icon well        | `h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30` |
+| Heading          | `text-lg font-bold leading-none text-dojo-text-primary mb-2` |
+| Body             | `text-sm text-dojo-text-muted mb-6 leading-relaxed` |
+| CTA              | `inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95` |
+
+**Pattern notes:**
+- Overlay is a sibling of the stage column, not inside it — `absolute inset-0` must cover the full main area (stage + `w-80` coach panel) or the CTA sits left of the session viewport center.
+- CTA is `inline-flex`, not `flex`. Parent `text-center` does not center a block-level `display:flex` button; the icon well needs `mx-auto` for the same reason.
 
 ### PhaseIndicator
 

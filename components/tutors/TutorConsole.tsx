@@ -1,11 +1,12 @@
 /* ───────────────────────────────────────────────
    Tutor console — schedule, availability, and the two room types a tutor
-   can create. Consumes /api/classes, /api/assessments, /api/bookings and
+   can create. Consumes /api/live-lessons, /api/assessments, /api/bookings and
    /api/tutor/availability, every one of which re-checks the role server-side.
    ─────────────────────────────────────────────── */
 
 'use client';
 
+import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
@@ -15,16 +16,17 @@ import { Tabs } from '@/components/ui/Tabs';
 import { AvailabilityEditor } from '@/components/tutors/AvailabilityEditor';
 import { AnnouncementsPanel } from '@/components/tutors/AnnouncementsPanel';
 import { LearnersPanel } from '@/components/tutors/LearnersPanel';
+import { BriefingPanel } from '@/components/tutors/BriefingPanel';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
 import { useLanguageCatalog } from '@/lib/language-context';
 import { useTutorProfile, type TutorProfile } from '@/lib/hooks/useTutorProfile';
-import { CLASS_DURATIONS_MINUTES, MAX_CLASS_CAPACITY } from '@/lib/tutors/config';
+import { HYBRID_ENABLED, LIVE_LESSON_DURATIONS_MINUTES, MAX_LIVE_LESSON_CAPACITY } from '@/lib/tutors/config';
 import { interviewerChoices } from '@/lib/interview/persona';
-import { composeRoomTitle } from '@/lib/curriculum/room-title';
+import { composeRoomTitle } from '@/lib/courses/room-title';
 import { cn } from '@/lib/design-tokens';
-import { Bot, Calendar, Check, ClipboardCheck, Plus, Radio, Users, Video, X } from 'lucide-react';
+import { Bot, Calendar, Check, ClipboardCheck, ClipboardList, Plus, Radio, ShieldCheck, Users, Video, X } from 'lucide-react';
 
 const INTERVIEWER_CHOICES = interviewerChoices();
 
@@ -37,6 +39,8 @@ interface BookingRow {
   status: string;
   purpose: string;
   isTutor: boolean;
+  learnerId: string;
+  notesFiled: boolean;
 }
 
 /** What each booking status means to the person reading it, in plain words. */
@@ -50,7 +54,7 @@ function describeBookingStatus(status: string, isTutor: boolean): string {
   return status;
 }
 
-interface ClassRow {
+interface LiveLessonRow {
   id: number;
   title: string;
   targetLanguage: string;
@@ -110,7 +114,7 @@ function localInputToIso(value: string): string | null {
 
 /* ── Room creation ───────────────────────────────────────────────────── */
 
-type RoomKind = 'class' | 'assessment';
+type RoomKind = 'live_lesson' | 'assessment';
 
 /** The slice of /api/courses and /api/courses/[slug] the unit picker needs. */
 interface CourseOption {
@@ -169,11 +173,11 @@ function CreateRoomForm({
   );
   // A drop-in opens the moment it is created; a scheduled room needs a date.
   // One flag rather than a sentinel date, because it also decides the status
-  // the row is born in — see the `startNow` branch in POST /api/classes.
+  // the row is born in — see the `startNow` branch in POST /api/live-lessons.
   const [startNow, setStartNow] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
 
-  // Where in the curriculum this room sits. All three optional: a standalone
+  // Where in the course this room sits. All three optional: a standalone
   // conversation hour belongs to no unit.
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [levels, setLevels] = useState<LevelOption[]>([]);
@@ -266,7 +270,7 @@ function CreateRoomForm({
 
     setSaving(true);
     try {
-      const res = await fetch(kind === 'class' ? '/api/classes' : '/api/assessments', {
+      const res = await fetch(kind === 'live_lesson' ? '/api/live-lessons' : '/api/assessments', {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/json' },
@@ -280,7 +284,7 @@ function CreateRoomForm({
           courseId: selectedCourseId,
           unitId,
           durationMinutes,
-          ...(kind === 'class'
+          ...(kind === 'live_lesson'
             ? { capacity }
             : {
                 minutesPerLearner,
@@ -312,17 +316,17 @@ function CreateRoomForm({
     <Card className="!p-5">
       <h3 className="text-sm font-bold text-dojo-text-primary">
         {startNow
-          ? (kind === 'class' ? 'Start a class now' : 'Start an assessment now')
-          : (kind === 'class' ? 'Schedule a class' : 'Schedule an assessment')}
+          ? (kind === 'live_lesson' ? 'Start a live lesson now' : 'Start an assessment now')
+          : (kind === 'live_lesson' ? 'Schedule a live lesson' : 'Schedule an assessment')}
       </h3>
       <p className="mt-1 text-xs leading-relaxed text-dojo-text-muted">
-        {kind === 'class'
+        {kind === 'live_lesson'
           ? 'Everyone joins together. Good for a conversation hour or the live lesson for a unit.'
           : 'Learners queue and you admit them one at a time, grading each as you go — or an AI examiner interviews each of them for you.'}
       </p>
 
       <div className="mt-4 space-y-4">
-        {/* Where in the curriculum this sits. Above the title because it names
+        {/* Where in the course this sits. Above the title because it names
             the title — and because a room pinned to a unit is the one that
             reaches learners where they finished it, on the course page. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -400,7 +404,7 @@ function CreateRoomForm({
               setTitleDirty(true);
             }}
             maxLength={150}
-            placeholder={kind === 'class' ? 'Ordering food — live practice' : 'Unit 2 speaking check'}
+            placeholder={kind === 'live_lesson' ? 'Ordering food — live practice' : 'Unit 2 speaking check'}
             className={inputClass}
           />
           {selectedUnit && !titleDirty && (
@@ -509,22 +513,22 @@ function CreateRoomForm({
               onChange={(e) => setDurationMinutes(Number(e.target.value))}
               className={inputClass}
             >
-              {CLASS_DURATIONS_MINUTES.map((d) => (
+              {LIVE_LESSON_DURATIONS_MINUTES.map((d) => (
                 <option key={d} value={d}>{d} min</option>
               ))}
             </select>
           </div>
 
-          {kind === 'class' ? (
+          {kind === 'live_lesson' ? (
             <div>
-              <label htmlFor="class-capacity" className="mb-2 block text-sm text-dojo-text-primary">
+              <label htmlFor="lesson-capacity" className="mb-2 block text-sm text-dojo-text-primary">
                 Capacity
               </label>
               <input
-                id="class-capacity"
+                id="lesson-capacity"
                 type="number"
                 min={1}
-                max={MAX_CLASS_CAPACITY}
+                max={MAX_LIVE_LESSON_CAPACITY}
                 value={capacity}
                 onChange={(e) => setCapacity(Number(e.target.value))}
                 className={inputClass}
@@ -594,17 +598,18 @@ function CreateRoomForm({
                             : 'border-dojo-border hover:border-dojo-accent',
                         )}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- catalogue portrait, fixed local asset */}
-                        <img
+                        <Image
                           src={choice.imageSrc}
                           alt=""
+                          width={48}
+                          height={48}
                           className="mx-auto h-12 w-12 rounded-full object-cover"
                         />
                         <span className="mt-2 block truncate text-[11px] text-dojo-text-primary">
                           {choice.name}
                         </span>
                         {interviewerAvatarId === choice.avatarId && (
-                          <Check className="absolute right-1 top-1 h-3.5 w-3.5 text-dojo-accent" />
+                          <Check className="absolute end-1 top-1 h-3.5 w-3.5 text-dojo-accent" />
                         )}
                       </button>
                     ))}
@@ -655,7 +660,11 @@ export function TutorConsole() {
   usePageTitle('Teaching');
 
   const [bookings, setBookings] = useState<BookingRow[]>([]);
-  const [classes, setClasses] = useState<ClassRow[]>([]);
+  // The briefings tab looks back as well as forward: notes are filed after
+  // the lesson, so a booking stays there for a fortnight once it is over.
+  const [briefingBookings, setBriefingBookings] = useState<BookingRow[]>([]);
+  const [openBriefing, setOpenBriefing] = useState<number | null>(null);
+  const [liveLessons, setLiveLessons] = useState<LiveLessonRow[]>([]);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   // The scheduling forms are constrained by it, so they only render once it is
@@ -666,7 +675,7 @@ export function TutorConsole() {
     () =>
       Promise.all([
         fetch('/api/bookings', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
-        fetch('/api/classes?mine=1', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+        fetch('/api/live-lessons?mine=1', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
         fetch('/api/assessments?mine=1', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       ]).then(([b, c, a]) => {
         setLoading(false);
@@ -674,6 +683,18 @@ export function TutorConsole() {
           // Filtered here rather than during render: "is this still upcoming?"
           // reads the clock, which is not a pure value to read while rendering.
           const cutoff = Date.now() - 60 * 60 * 1000;
+          const lookback = Date.now() - 14 * 24 * 60 * 60 * 1000;
+          setBriefingBookings(
+            (b.bookings as BookingRow[])
+              .filter(
+                (x) =>
+                  x.isTutor &&
+                  x.purpose === 'lesson' &&
+                  (x.status === 'confirmed' || x.status === 'completed') &&
+                  new Date(x.scheduledAt).getTime() > lookback,
+              )
+              .reverse(),
+          );
           setBookings(
             (b.bookings as BookingRow[]).filter(
               (x) =>
@@ -683,7 +704,7 @@ export function TutorConsole() {
             ),
           );
         }
-        if (Array.isArray(c.classes)) setClasses((c.classes as ClassRow[]).filter((x) => x.isTutor));
+        if (Array.isArray(c.liveLessons)) setLiveLessons((c.liveLessons as LiveLessonRow[]).filter((x) => x.isTutor));
         if (Array.isArray(a.assessments)) {
           setAssessments((a.assessments as AssessmentRow[]).filter((x) => x.isTutor));
         }
@@ -724,24 +745,36 @@ export function TutorConsole() {
 
   const tabs = [
     { id: 'schedule', label: 'Schedule' },
-    { id: 'classes', label: 'Classes' },
+    { id: 'lessons', label: 'Live lessons' },
     { id: 'assessments', label: 'Assessments' },
+    ...(HYBRID_ENABLED ? [{ id: 'briefings', label: 'Briefings' }] : []),
     { id: 'learners', label: 'Learners' },
     { id: 'announcements', label: 'Announcements' },
     { id: 'availability', label: 'Availability' },
   ];
 
-  // Both panels offer "one of my classes" as a scope, from the list already
+  // Both panels offer "one of my live lessons" as a scope, from the list already
   // loaded above rather than a second fetch.
-  const classOptions = classes.map((c) => ({ id: c.id, title: c.title }));
+  const lessonOptions = liveLessons.map((c) => ({ id: c.id, title: c.title }));
 
   const emptyClass = 'rounded-(--radius-md) border border-dashed border-dojo-border px-4 py-8 text-center text-sm text-dojo-text-muted';
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <h1 className="mb-8 hidden text-2xl font-bold leading-none tracking-tight text-dojo-text-primary md:block">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <h1 className="mb-8 hidden text-3xl font-bold leading-none tracking-tight text-dojo-text-primary md:block">
         Teaching
       </h1>
+
+      {HYBRID_ENABLED && profile?.verificationStatus === 'pending' && (
+        <Link href="/tutor/vetting" className="mb-6 block">
+          <Card hoverable className="!p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-dojo-text-primary">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-dojo-accent" />
+              Finish your vetting checklist to be listed for learners
+            </p>
+          </Card>
+        </Link>
+      )}
 
       <Tabs
         tabs={tabs}
@@ -818,15 +851,15 @@ export function TutorConsole() {
             );
           }
 
-          if (tabId === 'classes') {
+          if (tabId === 'lessons') {
             return (
               <div className="mt-6 space-y-6">
                 <div className="space-y-3">
-                  {classes.length === 0 ? (
-                    <p className={emptyClass}>No classes scheduled.</p>
+                  {liveLessons.length === 0 ? (
+                    <p className={emptyClass}>No live lessons scheduled.</p>
                   ) : (
-                    classes.map((c) => (
-                      <Link key={c.id} href={`/live/class/${c.id}`} className="block">
+                    liveLessons.map((c) => (
+                      <Link key={c.id} href={`/live/lesson/${c.id}`} className="block">
                         <Card hoverable className="!p-4">
                           <div className="flex items-center gap-4">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
@@ -848,7 +881,7 @@ export function TutorConsole() {
                     ))
                   )}
                 </div>
-                {profile && <CreateRoomForm kind="class" onCreated={load} profile={profile} />}
+                {profile && <CreateRoomForm kind="live_lesson" onCreated={load} profile={profile} />}
               </div>
             );
           }
@@ -895,13 +928,57 @@ export function TutorConsole() {
             );
           }
 
+          if (tabId === 'briefings') {
+            return (
+              <div className="mt-6 space-y-3">
+                {briefingBookings.length === 0 ? (
+                  <p className={emptyClass}>No confirmed lessons in the last two weeks or coming up.</p>
+                ) : (
+                  briefingBookings.map((b) => (
+                    <div key={b.id} className="space-y-3">
+                      <Card className="!p-4">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
+                            <ClipboardList className="h-5 w-5 text-dojo-accent" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-dojo-text-primary">
+                              {b.learnerName ?? 'A learner'}
+                            </p>
+                            <p className="text-xs text-dojo-text-muted">
+                              {formatWhen(b.scheduledAt)} · {b.durationMinutes} min
+                              {b.notesFiled ? ' · notes filed' : ''}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setOpenBriefing(openBriefing === b.id ? null : b.id)}
+                          >
+                            {openBriefing === b.id ? 'Hide' : 'Briefing'}
+                          </Button>
+                          <Link href={`/live/${b.id}`} className="text-sm text-dojo-accent">
+                            Plan & room
+                          </Link>
+                        </div>
+                      </Card>
+                      {openBriefing === b.id && (
+                        <BriefingPanel learnerId={b.learnerId} bookingId={b.id} />
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            );
+          }
+
           if (tabId === 'learners') {
-            return <LearnersPanel classes={classOptions} />;
+            return <LearnersPanel liveLessons={lessonOptions} />;
           }
 
           if (tabId === 'announcements') {
             return profile ? (
-              <AnnouncementsPanel profile={profile} classes={classOptions} />
+              <AnnouncementsPanel profile={profile} liveLessons={lessonOptions} />
             ) : null;
           }
 
@@ -915,7 +992,7 @@ export function TutorConsole() {
 
       <p className="mt-8 flex items-center gap-2 text-xs text-dojo-text-muted">
         <Calendar className="h-3.5 w-3.5 shrink-0" />
-        Learners find your classes and assessments from their course units and the tutors page.
+        Learners find your live lessons and assessments from their course units and the tutors page.
       </p>
     </div>
   );

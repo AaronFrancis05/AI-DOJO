@@ -102,12 +102,14 @@ export type AdminClaimResult =
 /**
  * Promotes an allowlisted address to admin, best effort.
  *
- * Lives here rather than on the sign-in form because three moments now owe
- * the same call and none of them can be the only one: the admin sign-up has
- * no session yet (the project will not issue one before the address is
- * verified), the verification page may be where the first session appears,
- * and a returning admin arrives already signed in. A copy that any of them
- * skipped is an allowlisted operator left sitting in the learner wizard.
+ * Lives here rather than on the sign-in form because several moments now owe
+ * the same call and none of them can be the only one: the admin password
+ * sign-up has no session yet (the project will not issue one before the
+ * address is verified), the verification page may be where the first session
+ * appears, and a returning admin arrives already signed in. Google never
+ * returns to that form — the OAuth callback runs `promoteAllowlistedAdmin`
+ * itself. A copy that any of them skipped is an allowlisted operator left
+ * sitting in the learner wizard.
  *
  * `/api/auth/admin/claim` is the gate and is idempotent, so calling it more
  * than once costs nothing — which is what makes a retry the right answer to

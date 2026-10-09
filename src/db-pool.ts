@@ -11,9 +11,11 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const dbPool = drizzle(pool, { schema });
 
+type DbTransaction = Parameters<Parameters<typeof dbPool.transaction>[0]>[0];
+
 export async function withSessionLock<T>(
   sessionId: number,
-  fn: (tx: any) => Promise<T>,
+  fn: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
   return await dbPool.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${sessionId})`);

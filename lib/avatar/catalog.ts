@@ -94,6 +94,16 @@ export function resolveAvatarModelUrl(url: string | null | undefined): string | 
 }
 
 /**
+ * Portrait for a stored model URL (`/ai-avatars/models/<id>.glb` →
+ * `/ai-avatars/thumbnails/<id>.webp`), for rows saved without a thumbnail.
+ * Undefined for anything that is not a catalog model path.
+ */
+export function thumbnailForModelUrl(url: string | null | undefined): string | undefined {
+  const id = url?.match(/\/ai-avatars\/models\/([^/]+)\.glb$/)?.[1];
+  return id ? thumbnailUrl(`${id}.webp`) : undefined;
+}
+
+/**
  * Concise role line for a catalog avatar: the first sentence of its persona,
  * trimmed to fit scenarios.aiCharacterRole (varchar 150). Session creation,
  * the session GET route and turn loading all derive the role this way — keep

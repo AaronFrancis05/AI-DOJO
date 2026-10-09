@@ -51,7 +51,7 @@ export function VoiceCoachPanel({
 
       {!hasContent ? (
         <div className="px-4 py-5 text-center">
-          <p className="text-xs text-dojo-text-muted leading-relaxed">
+          <p className="text-sm text-dojo-text-muted leading-relaxed">
             Your coach listens in on every exchange. Corrections and suggested replies will appear here.
           </p>
         </div>
@@ -59,11 +59,11 @@ export function VoiceCoachPanel({
         <div className="space-y-3 px-4 py-3">
           {retryTarget && (
             <div className="rounded-xl border border-dojo-accent/30 bg-dojo-accent/10 p-3 space-y-2">
-              <p className="text-[11px] font-medium text-dojo-text-muted">Try this instead:</p>
-              <p className="text-xs font-medium text-dojo-text-primary leading-relaxed">
+              <p className="text-xs font-medium text-dojo-text-muted">Try this instead:</p>
+              <p className="text-sm font-medium text-dojo-text-primary leading-relaxed">
                 {retryTarget.correctedText}
                 {retryTarget.correctedPhonetic ? (
-                  <span className="ml-1 italic text-dojo-text-muted">({retryTarget.correctedPhonetic})</span>
+                  <span className="ms-1 italic text-dojo-text-muted">({retryTarget.correctedPhonetic})</span>
                 ) : null}
               </p>
               {onRetry && (
@@ -71,7 +71,7 @@ export function VoiceCoachPanel({
                   type="button"
                   onClick={onRetry}
                   disabled={disabled}
-                  className="flex items-center gap-1.5 rounded-xl bg-dojo-accent px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:active:scale-100 transition-all"
+                  className="flex items-center gap-1.5 rounded-xl bg-dojo-accent px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:active:scale-100 transition-all"
                 >
                   <Check className="h-3.5 w-3.5" />
                   Try this
@@ -82,7 +82,7 @@ export function VoiceCoachPanel({
 
           {corrections.length > 0 && (
             <div className="space-y-2.5">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-dojo-text-muted">Corrections</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-dojo-text-muted">Corrections</p>
               {corrections.map((c, i) => (
                 <div key={i} className="flex items-start gap-2 rounded-xl border border-dojo-border/40 bg-dojo-surface-raised/70 px-3 py-2.5">
                   <AlertCircle className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
@@ -93,7 +93,7 @@ export function VoiceCoachPanel({
                       <span className="font-medium text-dojo-text-primary">{c.correctedText}</span>
                       <SeverityDot severity={c.severity} />
                     </div>
-                    <p className="text-xs text-dojo-text-muted/80 mt-1 leading-relaxed">{c.explanation}</p>
+                    <p className="text-sm text-dojo-text-muted mt-1 leading-relaxed">{c.explanation}</p>
                   </div>
                 </div>
               ))}
@@ -104,7 +104,7 @@ export function VoiceCoachPanel({
             <div>
               <div className="flex items-center gap-1.5 mb-2">
                 <Lightbulb className="h-3.5 w-3.5 text-dojo-warning" />
-                <span className="text-[11px] font-bold uppercase tracking-wider text-dojo-text-muted">You could say</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-dojo-text-muted">You could say</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {suggestedReplies.map((r, i) => (
@@ -113,7 +113,7 @@ export function VoiceCoachPanel({
                     type="button"
                     onClick={() => onPickSuggestion?.(r)}
                     disabled={disabled}
-                    className="rounded-full border border-dojo-border bg-dojo-surface-raised px-2.5 py-1 text-[11px] text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/10 active:scale-95 disabled:opacity-40 disabled:active:scale-100 transition-all"
+                    className="rounded-full border border-dojo-border bg-dojo-surface-raised px-2.5 py-1 text-sm text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/10 active:scale-95 disabled:opacity-40 disabled:active:scale-100 transition-all"
                   >
                     {r}
                   </button>

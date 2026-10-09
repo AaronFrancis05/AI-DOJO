@@ -50,7 +50,7 @@ export function Tabs({ tabs, defaultTab, onChange, className, renderPanel, child
           >
             {tab.label}
             {activeTab === tab.id && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-dojo-accent" />
+              <span className="absolute bottom-0 start-0 end-0 h-0.5 bg-dojo-accent" />
             )}
           </button>
         ))}

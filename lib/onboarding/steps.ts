@@ -1,3 +1,5 @@
+import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
+
 export interface StepConfig {
   key: string;
   title: string;
@@ -6,22 +8,33 @@ export interface StepConfig {
   skippable?: boolean;
 }
 
-export const ONBOARDING_STEPS: StepConfig[] = [
+/**
+ * Every learner step, in order, including ones a feature flag can hide. The
+ * step page destructures this list by position; the shell's progress reads
+ * ONBOARDING_STEPS below, which leaves the hidden ones out.
+ */
+export const ONBOARDING_STEP_DEFINITIONS: StepConfig[] = [
+  { key: 'welcome', title: 'Welcome to AI DOJO', subtitle: 'Let\'s set up your learning — a few questions so we can match practice to you.', transition: true },
+  { key: 'target-language', title: 'What language do you want to learn?', subtitle: 'This is the language you\'ll practise in every scenario.' },
+  { key: 'native-language', title: 'What\'s your native language?', subtitle: 'This is the language you\'ll see translations in.' },
   { key: 'level', title: 'What\'s your current level?', subtitle: 'This helps us match scenarios to your skill.' },
   { key: 'social-proof', title: 'You\'re in good company', subtitle: '', transition: true },
   { key: 'goal', title: 'What are you looking to achieve?', subtitle: 'We\'ll tailor your experience based on your goal.' },
-  { key: 'transition-1', title: 'Great! Let\'s get you started!', subtitle: '', transition: true },
-  { key: 'domain', title: 'What do you want to practice first?', subtitle: 'Pick a real-world scenario to start with.' },
+  { key: 'frequency', title: 'How often do you want to practice?', subtitle: 'Set your daily practice goal.' },
   { key: 'mode', title: 'How do you want to practice?', subtitle: 'Choose your preferred way to interact.' },
   { key: 'transition-2', title: 'You\'re almost set up!', subtitle: '', transition: true },
+  { key: 'domain', title: 'What do you want to practice first?', subtitle: 'Pick a real-world scenario to start with.' },
   { key: 'age', title: 'How old are you?', subtitle: 'We\'ll adjust content difficulty accordingly.', skippable: true },
-  { key: 'target-language', title: 'What language do you want to learn?', subtitle: 'This is the language you\'ll practise in every scenario.' },
-  { key: 'native-language', title: 'What\'s your native language?', subtitle: 'This is the language you\'ll see translations in.' },
-  { key: 'frequency', title: 'How often do you want to practice?', subtitle: 'Set your daily practice goal.' },
-  { key: 'personalizing', title: 'Personalization in progress', subtitle: '', transition: true },
-  { key: 'plan-ready', title: 'Your personalized plan is ready!', subtitle: '', transition: true },
-  { key: 'account', title: 'Almost there!', subtitle: 'Create your account to save your progress.' },
+  // Feeds learner-owned scenarios and study-pack dialogues (PLAN.md 3.4).
+  { key: 'about-you', title: 'Tell us a little about you', subtitle: 'We\'ll write practice conversations about your own work and interests.', skippable: true },
+  { key: 'transition-1', title: 'Great! Let\'s get you started!', subtitle: '', transition: true },
+  { key: 'practice', title: 'Your first conversation', subtitle: 'A few key phrases from the domain you picked.' },
 ];
+
+/** The steps a learner actually walks: `about-you` only while personalized learning is on. */
+export const ONBOARDING_STEPS: StepConfig[] = ONBOARDING_STEP_DEFINITIONS.filter(
+  (s) => s.key !== 'about-you' || STUDY_PACKS_ENABLED,
+);
 
 /**
  * The tutor wizard.
@@ -45,6 +58,12 @@ export const TUTOR_ONBOARDING_STEPS: StepConfig[] = [
 ];
 
 export const TUTOR_STEP_KEYS = TUTOR_ONBOARDING_STEPS.map((s) => s.key);
+
+/** Step URL. `preview` keeps the dry-run query across back/forward. */
+export function onboardingStepPath(basePath: string, key: string, preview = false): string {
+  const path = `${basePath}/${key}`;
+  return preview ? `${path}?preview=1` : path;
+}
 
 export const LEVEL_OPTIONS = [
   { value: 'beginner', label: 'Beginner', description: 'I know a few basic words and phrases.' },

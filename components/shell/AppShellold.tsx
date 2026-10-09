@@ -8,7 +8,6 @@
 
 import { useState } from 'react';
 import { Sidebar } from './Sidebar';
-import { useUser } from '@/lib/auth/user-context';
 import { Menu, X } from 'lucide-react';
 
 interface AppShellProps {
@@ -17,14 +16,13 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const user = useUser();
 
   return (
     <div className="flex h-dvh w-screen bg-dojo-canvas text-dojo-text-primary overflow-hidden">
       {/* Mobile hamburger toggle */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="fixed left-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-sidebar border border-dojo-border md:hidden"
+        className="fixed start-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-lg bg-dojo-sidebar border border-dojo-border md:hidden"
         aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
       >
         {sidebarOpen ? <X className="h-5 w-5 text-dojo-text-primary" /> : <Menu className="h-5 w-5 text-dojo-text-primary" />}
@@ -42,7 +40,7 @@ export function AppShell({ children }: AppShellProps) {
       <div
         className={`${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } fixed inset-y-0 left-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
+        } fixed inset-y-0 start-0 z-40 transition-transform duration-200 md:relative md:translate-x-0`}
       >
         <Sidebar onNavigate={() => setSidebarOpen(false)} />
       </div>

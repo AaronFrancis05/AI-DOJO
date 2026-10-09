@@ -8,13 +8,13 @@ import { TUTORS_ENABLED } from '@/lib/tutors/config';
 export const runtime = 'nodejs';
 
 /**
- * Everyone this tutor teaches, across classes, bookings and assessments.
+ * Everyone this tutor teaches, across live lessons, bookings and assessments.
  *
  * The roster the console's Learners tab renders, and the same membership
  * `resolveAudience` uses for announcements and cohort rooms — so the list a
  * tutor is looking at is exactly who a message would reach.
  *
- * `?audienceKind=` narrows it (`class` with `classSessionId`, `course` with
+ * `?audienceKind=` narrows it (`live_lesson` with `liveLessonId`, `course` with
  * `courseId`); the default is every learner they have ever taught.
  */
 export async function GET(req: Request) {
@@ -42,11 +42,11 @@ export async function GET(req: Request) {
     return Response.json({ error: 'Unknown audience' }, { status: 400 });
   }
 
-  const classSessionId = url.searchParams.get('classSessionId');
+  const liveLessonId = url.searchParams.get('liveLessonId');
   const courseId = url.searchParams.get('courseId');
 
   const audience = await resolveAudience(profile.id, rawKind, {
-    classSessionId: classSessionId ? Number(classSessionId) : null,
+    liveLessonId: liveLessonId ? Number(liveLessonId) : null,
     courseId: courseId ? Number(courseId) : null,
     targetLanguage: url.searchParams.get('targetLanguage'),
   });

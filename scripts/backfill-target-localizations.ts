@@ -26,6 +26,13 @@
       npm run db:backfill-target-localizations -- --only=scenarios  # or --only=situations / --only=goals
       npm run db:backfill-target-localizations -- --dry-run         # print generated JSON, insert nothing
 
+      # Native-language explanations of the TARGET scene, per (target, native)
+      # pair, into the *_native_* tables. --target defaults to English; every
+      # enabled native language is covered unless --lang narrows it.
+      npm run db:backfill-target-localizations -- --only=native
+      npm run db:backfill-target-localizations -- --only=native --lang=ja --limit=2 --dry-run
+      npm run db:backfill-target-localizations -- --only=native --target=fr --lang=en
+
    Idempotent — skips any (id, languageCode) that already has a row, so
    reruns only fill gaps. Failures are logged per id/language and do not
    halt the run.
@@ -38,14 +45,22 @@ import {
   situationLocalizations,
   scenarioGoals,
   scenarioGoalLocalizations,
+  scenarioNativeLocalizations,
+  situationNativeLocalizations,
+  scenarioGoalNativeLocalizations,
+  vocabulary,
+  vocabularyLocalizations,
+  vocabularyNativeNotes,
 } from '../src/schema';
-import { eq, and, inArray, asc } from 'drizzle-orm';
-import { TARGET_LANGUAGES } from '../lib/language';
+import { eq, and, inArray, asc, isNull } from 'drizzle-orm';
+import { TARGET_LANGUAGES, NATIVE_LANGUAGES, BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '../lib/language';
 import { loadLanguageCatalog } from '../lib/language-registry';
 import { getAIProvider, type AIProvider } from '../lib/ai-providers';
 import { cacheDel, cacheKeys } from '../lib/cache';
 
-const BASE_LANG = 'ja'; // nothing to backfill for the base language itself
+// Target content: nothing to backfill for the base language itself. Native
+// explanations (--only=native) do cover it — see runNativeBackfill.
+const BASE_LANG = BASE_CONTENT_LANGUAGE;
 
 function parseArg(name: string): string | null {
   const prefix = `--${name}=`;
@@ -77,6 +92,10 @@ interface GeneratedSituation {
 interface GeneratedGoal {
   goalText?: string;
   targetPhrase?: string;
+}
+
+function sanitizeGeneratedText(value: string | undefined): string | undefined {
+  return value?.replace(/___/g, '').trim();
 }
 
 function buildScenarioPrompt(langName: string, langCode: string, sc: typeof scenarios.$inferSelect): string {
@@ -173,7 +192,7 @@ async function backfillScenarios(
   limit: number | null,
   dryRun: boolean,
 ): Promise<{ processed: number; written: number }> {
-  const scenarioRows = await db.select().from(scenarios).orderBy(scenarios.id);
+  const scenarioRows = await db.select().from(scenarios).where(isNull(scenarios.ownerUserId)).orderBy(scenarios.id);
 
   const existing = await db
     .select({ scenarioId: scenarioLocalizations.scenarioId })
@@ -204,9 +223,13 @@ async function backfillScenarios(
         continue;
       }
 
-      for (const k of Object.keys(parsed) as Array<keyof GeneratedScenario>) {
-        if (typeof parsed[k] === 'string') parsed[k] = (parsed[k] as string).replace(/___/g, '').trim() as any;
-      }
+      parsed.title = sanitizeGeneratedText(parsed.title);
+      parsed.context = sanitizeGeneratedText(parsed.context);
+      parsed.learningGoals = sanitizeGeneratedText(parsed.learningGoals);
+      parsed.aiCharacterName = sanitizeGeneratedText(parsed.aiCharacterName);
+      parsed.aiCharacterRole = sanitizeGeneratedText(parsed.aiCharacterRole);
+      parsed.userCharacterName = sanitizeGeneratedText(parsed.userCharacterName);
+      parsed.userCharacterRole = sanitizeGeneratedText(parsed.userCharacterRole);
 
       await db.insert(scenarioLocalizations).values({
         scenarioId: sc.id,
@@ -268,9 +291,10 @@ async function backfillSituations(
         continue;
       }
 
-      for (const k of Object.keys(parsed) as Array<keyof GeneratedSituation>) {
-        if (typeof parsed[k] === 'string') parsed[k] = (parsed[k] as string).replace(/___/g, '').trim() as any;
-      }
+      parsed.title = sanitizeGeneratedText(parsed.title);
+      parsed.context = sanitizeGeneratedText(parsed.context);
+      parsed.learningGoals = sanitizeGeneratedText(parsed.learningGoals);
+      parsed.focusPills = sanitizeGeneratedText(parsed.focusPills);
 
       await db.insert(situationLocalizations).values({
         situationId: st.id,
@@ -298,7 +322,7 @@ async function backfillGoals(
   limit: number | null,
   dryRun: boolean,
 ): Promise<{ processed: number; written: number }> {
-  const scenarioRows = await db.select().from(scenarios).orderBy(scenarios.id);
+  const scenarioRows = await db.select().from(scenarios).where(isNull(scenarios.ownerUserId)).orderBy(scenarios.id);
   const goalsByScenario = new Map<number, Array<typeof scenarioGoals.$inferSelect>>();
   const allGoals = await db
     .select()
@@ -378,6 +402,312 @@ async function backfillGoals(
   return { processed, written };
 }
 
+// ── --only=native: explanations for one (target, native) pair ──────────────
+//
+// Everything above writes TARGET content (the scene a learner of that language
+// plays). This mode writes the text a speaker of each native language reads to
+// understand that scene: scenario/situation/goal descriptions and a usage tip
+// per word, keyed by (target, native) in the *_native_* tables. It translates
+// the target scene's own text, so the explanation always matches what the AI
+// plays — it never reimagines anything.
+//
+// One request per scenario covers its description, goals and word tips, so a
+// full run is (#scenarios + #situations) × #native languages requests.
+
+interface GeneratedNativeScenario {
+  title?: string;
+  context?: string;
+  learningGoals?: string;
+  aiCharacterRole?: string;
+  userCharacterRole?: string;
+  goals?: string[];
+  vocabularyTips?: Array<{ id?: number; usageTip?: string }>;
+}
+
+function buildNativeScenarioPrompt(
+  targetName: string,
+  nativeName: string,
+  nativeCode: string,
+  scene: { title: string; context: string; learningGoals: string; aiCharacterRole: string; userCharacterRole: string },
+  goals: Array<{ goalText: string; targetPhrase: string | null }>,
+  words: Array<{ id: number; word: string; meaning: string; tip: string | null }>,
+): string {
+  const goalList = goals.map((g, i) => `${i + 1}. ${g.goalText}${g.targetPhrase ? ` (learner says: "${g.targetPhrase}")` : ''}`).join('\n');
+  const wordList = words.map((w) => `- id ${w.id}: "${w.word}" = ${w.meaning}${w.tip ? ` (existing English tip: ${w.tip})` : ''}`).join('\n');
+  return `You write the instructions a ${nativeName} (${nativeCode}) speaker reads while learning ${targetName} in a roleplay app.
+
+Translate the scene description below into natural ${nativeName}. Translate faithfully — do not change the setting, the place names or what happens. Keep proper names as they are. Write for a learner: clear, warm, short sentences.
+
+Scene:
+Title: ${scene.title}
+Context: ${scene.context}
+Learning goals: ${scene.learningGoals}
+AI character role: ${scene.aiCharacterRole}
+Learner's role: ${scene.userCharacterRole}
+
+Goals (exactly ${goals.length}, keep the order; translate the goal description only — never translate the quoted ${targetName} phrase):
+${goalList || '(none)'}
+
+Words the learner practises (exactly ${words.length}). For each, write ONE usage tip in ${nativeName} for a ${nativeName} speaker using this ${targetName} word: when to use it, register/politeness, and the mistake a ${nativeName} speaker typically makes with it (false friends, word order, pronunciation). Quote the ${targetName} word itself unchanged.
+${wordList || '(none)'}
+
+Return strictly a JSON object (no markdown, no code fences):
+{
+  "title": "...",
+  "context": "...",
+  "learningGoals": "...",
+  "aiCharacterRole": "...",
+  "userCharacterRole": "...",
+  "goals": ["... exactly ${goals.length} strings, same order ..."],
+  "vocabularyTips": [{"id": 123, "usageTip": "..."}]
+}
+Write every value in ${nativeName}. CRITICAL: never output "___" or bracketed placeholders.`;
+}
+
+function buildNativeSituationPrompt(
+  targetName: string,
+  nativeName: string,
+  nativeCode: string,
+  st: { title: string; context: string; learningGoals: string; focusPills: string },
+): string {
+  return `You write the instructions a ${nativeName} (${nativeCode}) speaker reads while learning ${targetName} in a roleplay app.
+
+Translate this situation description faithfully into natural ${nativeName}. Do not change the setting or what happens; keep proper names as they are.
+
+Title: ${st.title}
+Context: ${st.context}
+Learning goals: ${st.learningGoals}
+Focus pills ("|||"-delimited): ${st.focusPills}
+
+Return strictly a JSON object (no markdown, no code fences):
+{"title": "...", "context": "...", "learningGoals": "...", "focusPills": "... same '|||'-delimited format and count ..."}
+Write every value in ${nativeName}. CRITICAL: never output "___" or bracketed placeholders.`;
+}
+
+async function backfillNativeScenarios(
+  provider: AIProvider,
+  targetCode: string,
+  targetName: string,
+  nativeCode: string,
+  nativeName: string,
+  limit: number | null,
+  dryRun: boolean,
+): Promise<{ processed: number; written: number }> {
+  const scenarioRows = await db.select().from(scenarios).where(isNull(scenarios.ownerUserId)).orderBy(scenarios.id);
+  const done = new Set((await db
+    .select({ scenarioId: scenarioNativeLocalizations.scenarioId })
+    .from(scenarioNativeLocalizations)
+    .where(and(
+      eq(scenarioNativeLocalizations.targetLanguage, targetCode),
+      eq(scenarioNativeLocalizations.nativeLanguage, nativeCode),
+    ))).map((r) => r.scenarioId));
+
+  let processed = 0;
+  let written = 0;
+  for (const sc of scenarioRows) {
+    if (done.has(sc.id)) continue;
+    if (limit != null && processed >= limit) break;
+    processed++;
+
+    try {
+      const isBaseTarget = targetCode === BASE_LANG;
+      const [scLoc] = isBaseTarget ? [] : await db
+        .select()
+        .from(scenarioLocalizations)
+        .where(and(eq(scenarioLocalizations.scenarioId, sc.id), eq(scenarioLocalizations.languageCode, targetCode)))
+        .limit(1);
+      const goals = await db.select().from(scenarioGoals)
+        .where(eq(scenarioGoals.scenarioId, sc.id)).orderBy(asc(scenarioGoals.sequenceOrder));
+      const goalLocs = isBaseTarget || goals.length === 0 ? [] : await db.select().from(scenarioGoalLocalizations)
+        .where(and(
+          inArray(scenarioGoalLocalizations.scenarioGoalId, goals.map((g) => g.id)),
+          eq(scenarioGoalLocalizations.languageCode, targetCode),
+        ));
+      const goalLocById = new Map(goalLocs.map((g) => [g.scenarioGoalId, g]));
+      const vocabRows = await db.select().from(vocabulary)
+        .where(and(eq(vocabulary.scenarioId, sc.id), eq(vocabulary.languageCode, BASE_LANG)))
+        .orderBy(asc(vocabulary.id));
+      const vocabLocs = isBaseTarget || vocabRows.length === 0 ? [] : await db.select().from(vocabularyLocalizations)
+        .where(and(
+          inArray(vocabularyLocalizations.vocabularyId, vocabRows.map((v) => v.id)),
+          eq(vocabularyLocalizations.languageCode, targetCode),
+        ));
+      const vocabLocById = new Map(vocabLocs.map((v) => [v.vocabularyId, v]));
+
+      // The target scene — the same layering the session route applies.
+      const scene = {
+        title: scLoc?.title ?? sc.title,
+        context: scLoc?.context ?? sc.context,
+        learningGoals: scLoc?.learningGoals ?? sc.learningGoals,
+        aiCharacterRole: scLoc?.aiCharacterRole ?? sc.aiCharacterRole,
+        userCharacterRole: scLoc?.userCharacterRole ?? sc.userCharacterRole,
+      };
+      const sceneGoals = goals.map((g) => ({
+        goalText: goalLocById.get(g.id)?.goalText ?? g.goalText,
+        targetPhrase: goalLocById.get(g.id)?.targetPhrase ?? g.targetPhrase,
+      }));
+      const words = vocabRows.map((v) => {
+        const loc = vocabLocById.get(v.id);
+        return {
+          id: v.id,
+          word: loc?.translation ?? (targetCode === 'en' ? v.translation : v.targetText),
+          meaning: v.translation,
+          tip: loc?.usageTip ?? v.usageTip,
+        };
+      });
+
+      const raw = await provider.generateJSON(
+        buildNativeScenarioPrompt(targetName, nativeName, nativeCode, scene, sceneGoals, words), [],
+      );
+      const parsed = JSON.parse(raw) as GeneratedNativeScenario;
+      if (dryRun) {
+        console.log(`  [dry-run] scenario "${sc.title}" (${targetCode}→${nativeCode}):`, JSON.stringify(parsed, null, 2));
+        continue;
+      }
+
+      await db.insert(scenarioNativeLocalizations).values({
+        scenarioId: sc.id,
+        targetLanguage: targetCode,
+        nativeLanguage: nativeCode,
+        title: sanitizeGeneratedText(parsed.title)?.slice(0, 120) ?? null,
+        context: sanitizeGeneratedText(parsed.context) ?? null,
+        learningGoals: sanitizeGeneratedText(parsed.learningGoals) ?? null,
+        aiCharacterRole: sanitizeGeneratedText(parsed.aiCharacterRole)?.slice(0, 150) ?? null,
+        userCharacterRole: sanitizeGeneratedText(parsed.userCharacterRole)?.slice(0, 150) ?? null,
+      }).onConflictDoNothing();
+
+      // Goals are matched by position; a count mismatch means the model lost
+      // the order, and a shifted goal list is worse than an English one.
+      const goalTexts = Array.isArray(parsed.goals) ? parsed.goals : [];
+      if (goals.length > 0 && goalTexts.length === goals.length) {
+        await db.insert(scenarioGoalNativeLocalizations).values(goals.map((g, i) => ({
+          scenarioGoalId: g.id,
+          targetLanguage: targetCode,
+          nativeLanguage: nativeCode,
+          goalText: sanitizeGeneratedText(goalTexts[i]) ?? null,
+        }))).onConflictDoNothing();
+      } else if (goals.length > 0) {
+        console.warn(`  [WARN] scenario "${sc.title}": expected ${goals.length} goal(s), got ${goalTexts.length} — goals skipped`);
+      }
+
+      // Tips are matched by id, so a dropped or reordered tip only loses itself.
+      const validIds = new Set(vocabRows.map((v) => v.id));
+      const tips = (Array.isArray(parsed.vocabularyTips) ? parsed.vocabularyTips : [])
+        .filter((t) => typeof t.id === 'number' && validIds.has(t.id) && t.usageTip);
+      if (tips.length > 0) {
+        await db.insert(vocabularyNativeNotes).values(tips.map((t) => ({
+          vocabularyId: t.id!,
+          targetLanguage: targetCode,
+          nativeLanguage: nativeCode,
+          usageTip: sanitizeGeneratedText(t.usageTip) ?? null,
+        }))).onConflictDoNothing();
+      }
+
+      await Promise.all([
+        cacheDel(cacheKeys.scenarioNativeLocalization(sc.id, targetCode, nativeCode)),
+        cacheDel(cacheKeys.goalNativeLocalizations(sc.id, targetCode, nativeCode)),
+        cacheDel(cacheKeys.vocabNativeNotes(sc.id, targetCode, nativeCode)),
+      ]);
+      written++;
+      console.log(`  [ok] scenario "${sc.title}" (${targetCode}→${nativeCode}): ${goalTexts.length} goal(s), ${tips.length}/${vocabRows.length} tip(s)`);
+    } catch (err) {
+      console.warn(`  [ERR] scenario "${sc.title}" (${targetCode}→${nativeCode}):`, err instanceof Error ? err.message : String(err));
+    }
+  }
+  return { processed, written };
+}
+
+async function backfillNativeSituations(
+  provider: AIProvider,
+  targetCode: string,
+  targetName: string,
+  nativeCode: string,
+  nativeName: string,
+  limit: number | null,
+  dryRun: boolean,
+): Promise<{ processed: number; written: number }> {
+  const situationRows = await db.select().from(situations).orderBy(situations.id);
+  const done = new Set((await db
+    .select({ situationId: situationNativeLocalizations.situationId })
+    .from(situationNativeLocalizations)
+    .where(and(
+      eq(situationNativeLocalizations.targetLanguage, targetCode),
+      eq(situationNativeLocalizations.nativeLanguage, nativeCode),
+    ))).map((r) => r.situationId));
+
+  let processed = 0;
+  let written = 0;
+  for (const st of situationRows) {
+    if (done.has(st.id)) continue;
+    if (limit != null && processed >= limit) break;
+    processed++;
+
+    try {
+      const [stLoc] = targetCode === BASE_LANG ? [] : await db
+        .select()
+        .from(situationLocalizations)
+        .where(and(eq(situationLocalizations.situationId, st.id), eq(situationLocalizations.languageCode, targetCode)))
+        .limit(1);
+      const scene = {
+        title: stLoc?.title ?? st.title,
+        context: stLoc?.context ?? st.context ?? '',
+        learningGoals: stLoc?.learningGoals ?? st.learningGoals ?? '',
+        focusPills: stLoc?.focusPills ?? st.focusPills ?? '',
+      };
+      const raw = await provider.generateJSON(buildNativeSituationPrompt(targetName, nativeName, nativeCode, scene), []);
+      const parsed = JSON.parse(raw) as GeneratedSituation;
+      if (dryRun) {
+        console.log(`  [dry-run] situation "${st.title}" (${targetCode}→${nativeCode}):`, JSON.stringify(parsed, null, 2));
+        continue;
+      }
+      await db.insert(situationNativeLocalizations).values({
+        situationId: st.id,
+        targetLanguage: targetCode,
+        nativeLanguage: nativeCode,
+        title: sanitizeGeneratedText(parsed.title)?.slice(0, 120) ?? null,
+        context: sanitizeGeneratedText(parsed.context) ?? null,
+        learningGoals: sanitizeGeneratedText(parsed.learningGoals) ?? null,
+        focusPills: sanitizeGeneratedText(parsed.focusPills) ?? null,
+      }).onConflictDoNothing();
+      await cacheDel(cacheKeys.situationNativeLocalization(st.id, targetCode, nativeCode));
+      written++;
+      console.log(`  [ok] situation "${st.title}" (${targetCode}→${nativeCode}) -> "${parsed.title}"`);
+    } catch (err) {
+      console.warn(`  [ERR] situation "${st.title}" (${targetCode}→${nativeCode}):`, err instanceof Error ? err.message : String(err));
+    }
+  }
+  return { processed, written };
+}
+
+async function runNativeBackfill(
+  provider: AIProvider,
+  langFilter: string | null,
+  limit: number | null,
+  dryRun: boolean,
+): Promise<void> {
+  const targetCode = parseArg('target') ?? DEFAULT_TARGET_LANGUAGE;
+  const target = TARGET_LANGUAGES.find((l) => l.code === targetCode);
+  if (!target) throw new Error(`Unknown --target=${targetCode}`);
+  // Every native language, the base content language included — Japanese
+  // speakers need explanations of the English scenes as much as anyone.
+  const natives = NATIVE_LANGUAGES.filter((l) => l.code !== targetCode && (!langFilter || l.code === langFilter));
+  if (natives.length === 0) {
+    console.log('No matching native languages to backfill.');
+    return;
+  }
+
+  let scenariosWritten = 0;
+  let situationsWritten = 0;
+  for (const native of natives) {
+    console.log(`\n=== ${target.name} explained in ${native.name} (${target.code}→${native.code}) ===`);
+    console.log(' Scenarios (with goals and word tips):');
+    scenariosWritten += (await backfillNativeScenarios(provider, target.code, target.name, native.code, native.name, limit, dryRun)).written;
+    console.log(' Situations:');
+    situationsWritten += (await backfillNativeSituations(provider, target.code, target.name, native.code, native.name, limit, dryRun)).written;
+  }
+  console.log(`\n=== Done. Wrote ${scenariosWritten} scenario and ${situationsWritten} situation explanation(s). ===`);
+}
+
 async function main(): Promise<void> {
   // Hydrates lib/language.ts from the `languages` table, so this script covers
   // languages an admin added as well as the compiled-in ones. Without it the
@@ -385,7 +715,7 @@ async function main(): Promise<void> {
   await loadLanguageCatalog();
 
   const langFilter = parseArg('lang');
-  const only = parseArg('only'); // 'scenarios' | 'situations' | 'goals' | null (all)
+  const only = parseArg('only'); // 'scenarios' | 'situations' | 'goals' | 'native' | null (all target content)
   const limitRaw = parseArg('limit');
   let limit: number | null = null;
   if (limitRaw !== null && limitRaw !== undefined) {
@@ -408,6 +738,11 @@ async function main(): Promise<void> {
     console.error('Failed to construct an AI provider. Set AI_PROVIDER + its API key in the environment first.');
     console.error(String(err));
     process.exit(1);
+  }
+
+  if (only === 'native') {
+    await runNativeBackfill(provider, langFilter, limit, dryRun);
+    return;
   }
 
   const langs = TARGET_LANGUAGES.filter((l) => l.code !== BASE_LANG && (!langFilter || l.code === langFilter));

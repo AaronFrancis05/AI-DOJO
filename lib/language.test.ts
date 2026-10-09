@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BUILT_IN_NATIVE_LANGUAGES,
+  DEFAULT_TARGET_LANGUAGE,
+  isRtlLanguage,
+  matchAcceptLanguage,
   BUILT_IN_TARGET_LANGUAGES,
   NATIVE_LANGUAGES,
   TARGET_LANGUAGES,
@@ -93,4 +96,32 @@ test('an unknown code still falls back to the first target language', () => {
   restore();
   // Long-standing behaviour that prompts and TTS depend on: never undefined.
   assert.ok(getTargetLangConfig('definitely-not-a-language').code.length > 0);
+});
+
+test('an unknown code falls back to the default target language, English', () => {
+  restore();
+  assert.equal(DEFAULT_TARGET_LANGUAGE, 'en');
+  assert.equal(getTargetLangConfig('definitely-not-a-language').code, 'en');
+});
+
+test('Accept-Language picks the highest-ranked supported primary subtag', () => {
+  const supported = ['en', 'ja', 'pt', 'zh', 'tl'];
+  assert.equal(matchAcceptLanguage('ja-JP,ja;q=0.9,en-US;q=0.8', supported), 'ja');
+  assert.equal(matchAcceptLanguage('pt-BR', supported), 'pt');
+  assert.equal(matchAcceptLanguage('zh-Hant-TW,en;q=0.5', supported), 'zh');
+  assert.equal(matchAcceptLanguage('de;q=1, en;q=0.4', supported), 'en');
+  assert.equal(matchAcceptLanguage('en;q=0.2, ja;q=0.8', supported), 'ja');
+  assert.equal(matchAcceptLanguage('fil-PH', supported), 'tl');
+});
+
+test('Accept-Language with nothing supported, q=0 or a wildcard returns null', () => {
+  assert.equal(matchAcceptLanguage('de-DE,fr;q=0.9', ['en', 'ja']), null);
+  assert.equal(matchAcceptLanguage('ja;q=0', ['ja']), null);
+  assert.equal(matchAcceptLanguage('*', ['en']), null);
+  assert.equal(matchAcceptLanguage(null, ['en']), null);
+});
+
+test('right-to-left scripts are detected by code, region subtags included', () => {
+  for (const code of ['ar', 'he', 'fa', 'ur', 'ar-EG']) assert.equal(isRtlLanguage(code), true, code);
+  for (const code of ['en', 'ja', 'sw', '', null]) assert.equal(isRtlLanguage(code), false, String(code));
 });

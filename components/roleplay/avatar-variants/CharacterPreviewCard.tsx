@@ -37,7 +37,6 @@ interface CharacterPreviewCardProps {
 
 export function CharacterPreviewCard({
   name,
-  role,
   accentColor,
   modelUrl,
   domainSlug,

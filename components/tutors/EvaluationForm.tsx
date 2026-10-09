@@ -15,7 +15,7 @@
 
 import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
 import { cn } from '@/lib/design-tokens';
 import { Check } from 'lucide-react';
 

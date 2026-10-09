@@ -85,9 +85,21 @@ export default async function middleware(request: NextRequest) {
     );
   }
 
-  // Allow unauthenticated access to onboarding
+  // Onboarding stays out of the generic auth middleware so the tutor wizard
+  // can bounce an unsigned visitor to `/auth/tutor/signin` rather than the
+  // learner door. Learner `/onboarding` is gated in
+  // `app/onboarding/[step]/layout.tsx` (no session → `/auth/signup`, unless
+  // `?preview=1` — a dry run that never writes). The preview flag is copied
+  // onto a request header because layouts cannot read searchParams.
   if (pathname.startsWith('/onboarding')) {
-    return NextResponse.next();
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.delete('x-onboarding-preview');
+    if (searchParams.get('preview') === '1') {
+      requestHeaders.set('x-onboarding-preview', '1');
+    }
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
   }
 
   // Allow unauthenticated access to tryout guest preview (no DB session)

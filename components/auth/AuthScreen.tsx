@@ -31,6 +31,7 @@ import {
   safeNext,
 } from '@/lib/auth/destinations';
 import type { UserRole } from '@/lib/auth/roles';
+import { languagePairQuery, sanitizeLanguageCode } from '@/lib/tryout/guest-params';
 import {
   MailIcon,
   LoaderIcon,
@@ -77,7 +78,7 @@ const COPY: Record<UserRole, {
     showcaseBody: 'Run live lessons and assessments alongside the AI, with the learner’s whole practice history in front of you.',
     showcasePoints: [
       { icon: <CalendarClock className="h-4 w-4 text-dojo-accent" />, text: 'Publish your availability' },
-      { icon: <Users className="h-4 w-4 text-dojo-accent" />, text: 'Live classes and 1-to-1 lessons' },
+      { icon: <Users className="h-4 w-4 text-dojo-accent" />, text: 'Live lessons and 1-to-1 lessons' },
       { icon: <ClipboardList className="h-4 w-4 text-dojo-accent" />, text: 'Assessments and grading' },
       { icon: <Wallet className="h-4 w-4 text-dojo-accent" />, text: 'Set your own hourly rate' },
     ],
@@ -88,11 +89,11 @@ const COPY: Record<UserRole, {
     signupTitle: 'Create an admin account',
     signupSubtitle: 'Only pre-authorised addresses can complete this.',
     showcaseTitle: 'Operations Console',
-    showcaseBody: 'The catalogue, the curriculum, tutor verification and account administration.',
+    showcaseBody: 'The library, the courses, tutor verification and account administration.',
     showcasePoints: [
       { icon: <ShieldCheck className="h-4 w-4 text-dojo-accent" />, text: 'Tutor verification' },
       { icon: <Users className="h-4 w-4 text-dojo-accent" />, text: 'Account administration' },
-      { icon: <ClipboardList className="h-4 w-4 text-dojo-accent" />, text: 'Catalogue and curriculum' },
+      { icon: <ClipboardList className="h-4 w-4 text-dojo-accent" />, text: 'Library and courses' },
       { icon: <BarChart3 className="h-4 w-4 text-dojo-accent" />, text: 'Platform statistics' },
     ],
   },
@@ -105,10 +106,11 @@ export interface AuthScreenProps {
 
 /**
  * `role` is the door, not a claim. Nothing here grants anything: the account
- * created by an admin sign-up is a plain learner until
- * `POST /api/auth/admin/claim` checks its address against `ADMIN_EMAILS`
- * server-side, and a sign-in routes off the role the *server* reports rather
- * than off which page was open.
+ * created by an admin sign-up is a plain learner until the allowlist says
+ * otherwise. Password sign-in calls `POST /api/auth/admin/claim`; Google
+ * returns through the OAuth callback, which runs the same promotion. A
+ * sign-in then routes off the role the *server* reports rather than off
+ * which page was open.
  */
 export function AuthScreen({ role, mode }: AuthScreenProps) {
   const router = useRouter();
@@ -141,6 +143,9 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
   const displayedError = error || redirectError;
 
   const next = safeNext(searchParams.get('next'));
+  const targetLanguage = sanitizeLanguageCode(searchParams.get('targetLanguage'));
+  const nativeLanguage = sanitizeLanguageCode(searchParams.get('nativeLanguage'));
+  const languageQuery = { targetLanguage, nativeLanguage };
 
   // Someone arriving from /auth/verify-email on a project without auto-sign-in:
   // the account is verified but they still have to sign in, and without saying
@@ -148,8 +153,8 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
   const justVerified = searchParams.has('verified');
   const signedOut = searchParams.has('signed_out');
 
-  const signInHref = withQuery(roleSignInPath(role), next);
-  const signUpHref = withQuery(roleSignUpPath(role), next);
+  const signInHref = withQuery(roleSignInPath(role), next, languageQuery);
+  const signUpHref = withQuery(roleSignUpPath(role), next, languageQuery);
 
   // Already signed in? Send them where their *role* belongs, not where this
   // page's role says. This is the flip-flop the split doors were meant to fix:
@@ -244,8 +249,12 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
       // created-but-stranded. Check rather than assume.
       //
       // Every new learner goes through onboarding; an admin does not, and the
-      // claim route stamps `onboardingCompletedAt` for them.
-      const destination = role === 'admin' ? '/admin' : '/onboarding';
+      // claim route stamps `onboardingCompletedAt` for them. Language codes
+      // from tryout ride the query so `/onboarding` can prefill even if
+      // sessionStorage was cleared between tabs.
+      const destination = role === 'admin'
+        ? '/admin'
+        : `/onboarding${languagePairQuery(languageQuery)}`;
 
       const { data } = await authClient.getSession();
       if (!data?.user) {
@@ -450,27 +459,20 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
             </button>
           </form>
 
-          {/* Google is a learner/tutor convenience. The OAuth callback cannot
-              carry an allowlist decision, so admin promotion stays on the
-              password path where the claim route can answer for it. */}
-          {role !== 'admin' && (
-            <>
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-dojo-border" />
-                <span className="text-xs text-dojo-text-muted">or continue with</span>
-                <div className="h-px flex-1 bg-dojo-border" />
-              </div>
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-dojo-border" />
+            <span className="text-xs text-dojo-text-muted">or continue with</span>
+            <div className="h-px flex-1 bg-dojo-border" />
+          </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleAuth}
-                className="flex w-full items-center justify-center gap-3 rounded-lg border border-dojo-border bg-dojo-surface py-3 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
-              >
-                <GoogleLogo />
-                Continue with Google
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={handleGoogleAuth}
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-dojo-border bg-dojo-surface py-3 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
+          >
+            <GoogleLogo />
+            Continue with Google
+          </button>
 
           {role === 'learner' && (
             <p className="mt-6 text-center text-xs text-dojo-text-muted">
@@ -513,7 +515,7 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
             <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
 
             <div className="absolute inset-0 z-10 flex flex-col justify-between p-10">
-              <div className="ml-auto max-w-xs rounded-2xl rounded-tr-none border border-white/10 bg-black/50 p-4 shadow-xl backdrop-blur-xl">
+              <div className="ms-auto max-w-xs rounded-2xl rounded-se-none border border-white/10 bg-black/50 p-4 shadow-xl backdrop-blur-xl">
                 <div className="text-sm font-medium leading-relaxed text-white">おかえり！</div>
                 <div className="mt-1 text-xs text-white/70">Welcome back!</div>
                 <div className="my-2 h-px bg-white/10" />
@@ -570,7 +572,18 @@ export function AuthScreen({ role, mode }: AuthScreenProps) {
   );
 }
 
-/** Keeps a `?next=` on the link that switches between sign-in and sign-up. */
-function withQuery(path: string, next: string | null): string {
-  return next ? `${path}?next=${encodeURIComponent(next)}` : path;
+/** Keeps `?next=` and the tryout language pair on the sign-in / sign-up toggle. */
+function withQuery(
+  path: string,
+  next: string | null,
+  languages?: { targetLanguage: string | null; nativeLanguage: string | null },
+): string {
+  const params = new URLSearchParams();
+  if (next) params.set('next', next);
+  const pair = languagePairQuery(languages ?? {});
+  if (pair) {
+    new URLSearchParams(pair.slice(1)).forEach((value, key) => params.set(key, value));
+  }
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
 }

@@ -170,7 +170,7 @@ function VerifyEmailContent() {
           <h1 className="text-xl font-bold tracking-tight text-dojo-text-primary">Email verified</h1>
           <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">Taking you through…</p>
           {claimProblem && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-left text-sm text-dojo-danger">
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-start text-sm text-dojo-danger">
               <AlertCircleIcon className="h-4 w-4 shrink-0" />
               {claimProblem}
             </div>

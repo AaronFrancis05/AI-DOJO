@@ -6,6 +6,7 @@ import { loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { tutorLanguageError } from '@/lib/tutors/languages';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { learnerMayUseTutor } from '@/lib/organizations/tutor-access';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
 import { announceLive } from '@/lib/tutors/live';
@@ -37,6 +38,10 @@ export async function GET(
 
   const found = await loadAssessmentForUser(assessmentId, user.id);
   if (!found) return Response.json({ error: 'Assessment not found' }, { status: 404 });
+
+  if (!found.isTutor && !found.slot && !(await learnerMayUseTutor(user.id, found.assessment.tutorId))) {
+    return Response.json({ error: 'Assessment not found' }, { status: 404 });
+  }
 
   const decision = canJoinBooking({
     scheduledAt: found.assessment.scheduledAt,
@@ -176,7 +181,7 @@ export async function PATCH(
     .set(patch)
     .where(eq(assessmentSessions.id, assessmentId));
 
-  // Same rule as a class, and claimed the same way: `IS NULL` in the WHERE
+  // Same rule as a live lesson, and claimed the same way: `IS NULL` in the WHERE
   // rather than a decision made from the row read above, so two racing PATCHes
   // cannot both announce. Only the request that gets a row back has opened it.
   let isFirstOpen = false;

@@ -5,6 +5,9 @@ import {
   flushStreamTts,
   resetStreamingTts,
   speakMixedText,
+  startTurnCapture,
+  commitTurnCapture,
+  discardTurnCapture,
 } from './tts';
 
 /* ── Overview ───────────────────────────────────────────────────────────
@@ -69,27 +72,46 @@ export function createReplySpeaker(options: ReplySpeakerOptions): ReplySpeaker {
   let fed = false;
 
   resetStreamingTts();
+  startTurnCapture();
+  let mutedGap = false;
 
   return {
     feed(delta: string): void {
-      if (!streaming || !delta || isMuted()) return;
+      if (!streaming || !delta) return;
+      if (isMuted()) {
+        mutedGap = true;
+        return;
+      }
       fed = true;
       feedStreamTts(delta, targetBcp47, nativeBcp47, phase);
     },
 
     async finish(fullText: string): Promise<void> {
-      if (isMuted()) return;
-
-      if (streaming) {
-        // A non-streaming source (tryout) delivers the whole reply here. Push
-        // it through the same buffer so both kinds of surface speak by one
-        // path, then flush.
-        if (!fed && fullText) feedStreamTts(fullText, targetBcp47, nativeBcp47, phase);
-        await flushStreamTts(targetBcp47, nativeBcp47, phase);
+      if (isMuted()) {
+        discardTurnCapture();
         return;
       }
 
-      if (fullText) await speakMixedText(fullText, targetBcp47, nativeBcp47, phase);
+      const storeClips = !mutedGap;
+      if (!storeClips) discardTurnCapture();
+
+      try {
+        if (streaming) {
+          // A non-streaming source (tryout) delivers the whole reply here. Push
+          // it through the same buffer so both kinds of surface speak by one
+          // path, then flush.
+          if (!fed && fullText) feedStreamTts(fullText, targetBcp47, nativeBcp47, phase);
+          await flushStreamTts(targetBcp47, nativeBcp47, phase);
+        } else if (fullText) {
+          await speakMixedText(fullText, targetBcp47, nativeBcp47, phase);
+        }
+
+        if (isMuted() || !storeClips) discardTurnCapture();
+        else commitTurnCapture(fullText);
+      } catch (err) {
+        discardTurnCapture();
+        throw err;
+      }
     },
   };
 }

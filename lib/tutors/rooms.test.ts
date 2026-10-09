@@ -37,7 +37,7 @@ test('the window stays open 30 minutes past the end', () => {
 });
 
 test('going live opens the door regardless of the clock', () => {
-  // The case the feature exists for: a tutor starts a class on the spot, or
+  // The case the feature exists for: a tutor starts a live lesson on the spot, or
   // hours early. The time check would answer "this has not opened yet".
   assert.equal(canJoinBooking(room(240, 'live')).allowed, true);
   assert.equal(canJoinBooking(room(-240, 'live')).allowed, true);

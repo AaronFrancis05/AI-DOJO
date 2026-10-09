@@ -9,10 +9,12 @@ export const metadata: Metadata = {
 /**
  * Reachable only by typing the URL — nothing links here.
  *
- * The page itself grants nothing: it takes the same credentials as every other
- * door, and the promotion behind it is decided by `ADMIN_EMAILS` server-side
- * in `POST /api/auth/admin/claim`. Someone who finds this URL and signs in
- * with a learner account gets sent to `/home` like any other learner.
+ * The page itself grants nothing: password and Google take the same
+ * credentials as every other door, and the promotion behind them is decided
+ * by `ADMIN_EMAILS` server-side. Password goes through
+ * `POST /api/auth/admin/claim`; Google is claimed in the OAuth callback.
+ * Someone who finds this URL and signs in with a learner account gets sent
+ * to `/home` like any other learner.
  */
 export default function AdminSignInPage() {
   return (

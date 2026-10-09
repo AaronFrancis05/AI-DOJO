@@ -1,11 +1,14 @@
 import { db } from '../../../src/db';
 import { dbPool } from '../../../src/db-pool';
-import { sessions, scenarios, evaluations, situations, domains, characters, userPreferences, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
+import { sessions, scenarios, situations, domains, characters, vocabulary, users, scenarioLocalizations, lessons } from '../../../src/schema';
 import { getAuthUser } from '../../../lib/auth/server';
 import { getAIProvider } from '../../../lib/ai-providers';
-import { getTargetLangConfig } from '../../../lib/language';
+import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '../../../lib/language';
+import { parseGeneratedVocab, type VocabRow } from '../../../lib/roleplay/generated-vocab';
 import { eq, and, count, desc } from 'drizzle-orm';
 import { AVATAR_SOURCES, FEMALE_AVATAR_IDS, avatarRoleLine } from '../../../lib/avatar/catalog';
+
+const MAX_SESSIONS_PAGE = 200;
 
 export async function GET(req: Request) {
   const user = await getAuthUser();
@@ -19,10 +22,22 @@ export async function GET(req: Request) {
   const lang = url.searchParams.get('lang') ?? '';
 
   const conditions = [eq(sessions.userId, user.id)];
-  if (scenarioIdFilter) conditions.push(eq(sessions.scenarioId, Number(scenarioIdFilter)));
+  if (scenarioIdFilter) {
+    // Number('abc') is NaN, which Postgres rejected as a 500.
+    const scenarioId = Number(scenarioIdFilter);
+    if (!Number.isInteger(scenarioId) || scenarioId <= 0) {
+      return Response.json({ error: 'Invalid scenarioId' }, { status: 400 });
+    }
+    conditions.push(eq(sessions.scenarioId, scenarioId));
+  }
+  // Opt-in page size. Not a default: home, /sessions and lib/data/sessions.ts
+  // derive totals from the full list, and a silent default cap would make
+  // those totals wrong once a learner passed it.
+  const limitParam = url.searchParams.get('limit');
+  const limit = limitParam ? Math.min(MAX_SESSIONS_PAGE, Math.max(1, Math.floor(Number(limitParam)) || 1)) : null;
   if (statusFilter) conditions.push(eq(sessions.status, statusFilter));
 
-  const rows = await db
+  const query = db
     .select({
       session: sessions,
       scenarioTitle: scenarios.title,
@@ -32,7 +47,9 @@ export async function GET(req: Request) {
     .leftJoin(scenarios, eq(sessions.scenarioId, scenarios.id))
     .leftJoin(situations, eq(sessions.situationId, situations.id))
     .where(and(...conditions))
-    .orderBy(desc(sessions.startedAt));
+    .orderBy(desc(sessions.startedAt))
+    .$dynamic();
+  const rows = await (limit ? query.limit(limit) : query);
 
   const localizedTitles = lang && lang !== 'en'
     ? new Map(
@@ -61,7 +78,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { situationId, characterId, behaviorMode, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId } = body;
+  const { situationId, characterId, scenarioId, targetLanguage, nativeLanguage, lessonId, avatarId, behaviorMode } = body;
 
   const [profile] = await db
     .select({
@@ -94,8 +111,6 @@ export async function POST(req: Request) {
     }
 
     const resolvedCharacterId = characterId ? Number(characterId) : null;
-    const resolvedMode = behaviorMode ?? 'standard';
-
     const [existingScenario] = await db
       .select()
       .from(scenarios)
@@ -142,10 +157,10 @@ export async function POST(req: Request) {
         }
       }
 
-      const lang = targetLanguage ?? 'ja';
+      const lang = targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
       const langName = getTargetLangConfig(lang).name;
 
-      let vocabRows: Array<{ targetText: string; phonetic: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+      let vocabRows: VocabRow[] = [];
 
       const focusPills = situation.focusPills?.split('|||').map((s: string) => s.trim()).filter(Boolean) ?? [];
 
@@ -167,16 +182,12 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   "formalityLevel": "casual, polite, or formal"
 }`;
         const raw = await provider.generateJSON(vocabSystemPrompt, []);
-        const parsed = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          vocabRows = parsed.slice(0, 8).map((v: any) => ({
-            targetText: String(v.targetText ?? ''),
-            phonetic: String(v.phonetic ?? ''),
-            translation: String(v.translation ?? ''),
-            category: String(v.category ?? 'general'),
-            usageTip: String(v.usageTip ?? ''),
-            formalityLevel: ['casual', 'polite', 'formal'].includes(v.formalityLevel) ? v.formalityLevel : 'polite',
-          })).filter((v: any) => v.targetText && v.translation);
+          vocabRows = parsed
+            .slice(0, 8)
+            .map(parseGeneratedVocab)
+            .filter((v): v is VocabRow => v !== null);
         }
       } catch {
         // AI call failed — fall through to fallback below
@@ -237,7 +248,8 @@ Each item must be a single ${langName} word or short phrase that is directly rel
   }
 
   const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, numericScenarioId));
-  if (!scenario) {
+  // A learner-owned scenario is private to its owner: to anyone else it does not exist.
+  if (!scenario || (scenario.ownerUserId !== null && scenario.ownerUserId !== user.id)) {
     return Response.json({ error: 'Scenario not found' }, { status: 404 });
   }
 
@@ -289,7 +301,7 @@ Each item must be a single ${langName} word or short phrase that is directly rel
     selectedAvatarId: avatarForVoice?.id ?? null,
     behaviorMode: behaviorMode ?? 'standard',
     phase: 'orientation',
-    targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? 'ja',
+    targetLanguage: targetLanguage ?? profile?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE,
     nativeLanguage: nativeLanguage ?? profile?.nativeLanguage ?? 'en',
     voiceGender,
     sessionNumber,

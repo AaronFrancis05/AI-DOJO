@@ -3,8 +3,15 @@
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Target, Lightbulb, BookOpen, User, Flag } from 'lucide-react';
-import { behaviorModeClass, skillLevelBadgeClass, type SkillLevel } from '@/lib/design-tokens';
+import { Target, Lightbulb, BookOpen, Flag } from 'lucide-react';
+import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
+import type {
+  CharacterDto,
+  DomainDto,
+  ScenarioDto,
+  SessionDto,
+  SituationDto,
+} from '@/lib/roleplay/api-types';
 
 interface GoalData {
   id: number;
@@ -19,20 +26,24 @@ interface VocabData {
   english: string;
 }
 
+function isSkillLevel(value: string | undefined): value is SkillLevel {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced';
+}
+
 export interface RoleplaySidePanelProps {
   goals: GoalData[];
   completedGoals: number[];
   vocabulary: VocabData[];
-  situation: any;
-  scenario: any;
-  session: any;
+  situation: SituationDto | null;
+  scenario: ScenarioDto | null;
+  session: SessionDto | null;
   isActive: boolean;
   isCompleted: boolean;
   onPause: () => void;
   onEnd: () => void;
   onViewReport: () => void;
-  domain?: any;
-  character?: any;
+  domain?: DomainDto | null;
+  character?: CharacterDto | null;
   charName?: string;
   charRole?: string;
   charColor?: string;
@@ -51,11 +62,11 @@ export function RoleplaySidePanel({
   onEnd,
   onViewReport,
   domain,
-  character,
   charName,
-  charRole,
   charColor,
 }: RoleplaySidePanelProps) {
+  const skillLevel = situation?.skillLevel;
+
   return (
     <>
       {/* ── Session Information summary ── */}
@@ -74,7 +85,7 @@ export function RoleplaySidePanel({
           {(situation?.title ?? scenario?.title) && (
             <div className="flex items-center justify-between">
               <span className="text-dojo-text-muted">Situation</span>
-              <span className="text-dojo-text-primary font-medium text-right max-w-[60%] truncate">
+              <span className="text-dojo-text-primary font-medium text-end max-w-[60%] truncate">
                 {situation?.title ?? scenario?.title}
               </span>
             </div>
@@ -83,14 +94,14 @@ export function RoleplaySidePanel({
             <span className="text-dojo-text-muted">Characters</span>
             <span className="flex items-center gap-1.5">
               <span
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[8px] font-bold text-white"
+                className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
                 style={{ backgroundColor: charColor ?? '#2D3BC5' }}
               >
                 {(charName ?? 'A')[0]}
               </span>
               <span className="text-dojo-text-primary font-medium">{charName ?? 'AI'}</span>
               <span className="text-dojo-text-muted mx-0.5">+</span>
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-[8px] text-dojo-text-muted">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-xs text-dojo-text-muted">
                 U
               </span>
             </span>
@@ -98,17 +109,17 @@ export function RoleplaySidePanel({
           {session?.behaviorMode && (
             <div className="flex items-center justify-between">
               <span className="text-dojo-text-muted">Difficulty</span>
-              <span className={`px-2 py-0.5 rounded-[--radius-pill] text-[10px] border ${
+              <span className={`px-2 py-0.5 rounded-[--radius-pill] text-xs border ${
                 behaviorModeClass[session.behaviorMode as keyof typeof behaviorModeClass] ?? behaviorModeClass.standard
               }`}>
                 {session.behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
               </span>
             </div>
           )}
-          {(situation?.skillLevel as SkillLevel) && (
+          {isSkillLevel(skillLevel) && (
             <div className="flex items-center justify-between">
               <span className="text-dojo-text-muted">Skill Level</span>
-              <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
+              <Badge variant={skillLevel}>{skillLevel}</Badge>
             </div>
           )}
           {(situation?.learningGoals ?? scenario?.learningGoals) && (
@@ -139,13 +150,13 @@ export function RoleplaySidePanel({
               return (
                 <li key={goal.id} className="flex items-start gap-2">
                   <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       done ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'
                     }`}
                   >
                     {done ? '✓' : goal.sequenceOrder}
                   </span>
-                  <span className={`text-xs ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
+                  <span className={`text-sm leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
                     {goal.goalText}
                   </span>
                 </li>
@@ -164,7 +175,7 @@ export function RoleplaySidePanel({
           <div className="space-y-2">
             {vocabulary.map((v) => (
               <div key={v.id} className="flex justify-between text-xs">
-                <span className="text-dojo-text-primary font-medium">{v.japanese}</span>
+                <span translate="no" className="text-dojo-text-primary font-medium">{v.japanese}</span>
                 <span className="text-dojo-text-muted">{v.english}</span>
               </div>
             ))}

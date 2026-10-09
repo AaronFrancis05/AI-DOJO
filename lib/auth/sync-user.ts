@@ -1,6 +1,8 @@
 import { db } from '@/src/db';
 import { users } from '@/src/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
+import { ensureLearnerMembership } from '@/lib/organizations/membership';
+import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
 
 export type AuthUser = {
   id: string;
@@ -16,29 +18,96 @@ function realName(name: string | null | undefined): string {
   return trimmed;
 }
 
-export async function syncUser(authUser: AuthUser): Promise<string> {
-  // Look up by email — the auth provider's id may differ from the DB row's id
-  // (e.g. after a Neon auth provider key rotation), but the email is stable.
-  const [existing] = await db
-    .select({ id: users.id, authUserId: users.authUserId })
+/**
+ * Membership is repaired on every sign-in. A failure here must not block the session.
+ *
+ * syncUser runs on every authenticated request, not only at sign-in, so the
+ * two membership queries are skipped for a few minutes after one succeeds.
+ * A learner removed from an organization is still re-placed in the public
+ * one — at most TTL.USER_PROFILE later rather than on the very next request.
+ */
+async function placeLearner(userId: string): Promise<void> {
+  const key = cacheKeys.membershipChecked(userId);
+  if (await cacheGet<boolean>(key)) return;
+  try {
+    await ensureLearnerMembership(userId);
+    await cacheSet(key, true, TTL.USER_PROFILE);
+  } catch (err) {
+    console.error('[sync-user] organization membership failed', err);
+  }
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const cause = (err as { cause?: { code?: string } } | null)?.cause;
+  return (err as { code?: string } | null)?.code === '23505' || cause?.code === '23505';
+}
+
+const identityColumns = {
+  id: users.id,
+  email: users.email,
+  name: users.name,
+  authUserId: users.authUserId,
+};
+
+/**
+ * The auth id is the usual key. Email is the fallback for a provider-key
+ * rotation, where the id is reissued and the address is what still matches.
+ * Email cannot be the only key: a confirmed address change would miss the
+ * row and insert a second account, splitting sessions off the person.
+ */
+async function findExistingUser(authUser: AuthUser) {
+  const [byIdentity] = await db
+    .select(identityColumns)
     .from(users)
-    .where(eq(users.email, authUser.email))
+    .where(or(eq(users.authUserId, authUser.id), eq(users.id, authUser.id))!)
     .limit(1);
+  if (byIdentity) return byIdentity;
+
+  const email = authUser.email.trim();
+  if (!email) return undefined;
+  const [byEmail] = await db
+    .select(identityColumns)
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  return byEmail;
+}
+
+export async function syncUser(authUser: AuthUser): Promise<string> {
+  const existing = await findExistingUser(authUser);
 
   if (existing) {
     // Keep the existing id so FK refs from sessions stay intact. Only touch
     // the display name when the provider actually has one — previously this
     // wrote the caller's fallback string (e.g. 'Learner') over real names.
-    const name = realName(authUser.name);
+    // Compared with the stored name: this runs on every authenticated request,
+    // and writing an unchanged name turned each one into an UPDATE.
+    const providerName = realName(authUser.name);
+    const name = providerName && providerName !== existing.name ? providerName : undefined;
     // Stamp the auth identity if it is missing or has moved (a provider key
     // rotation reissues ids). Without it the row looks like an unclaimed
     // invitation to reconcileDeletedAuthUsers() and outlives its own account.
     const authUserId = existing.authUserId !== authUser.id ? authUser.id : undefined;
-    if (!name && !authUserId) return existing.id;
-    await db
-      .update(users)
-      .set({ ...(name ? { name } : {}), ...(authUserId ? { authUserId } : {}) })
-      .where(eq(users.id, existing.id));
+    const nextEmail = authUser.email.trim();
+    const email = nextEmail && existing.email !== nextEmail ? nextEmail : undefined;
+    if (name || authUserId || email) {
+      try {
+        await db
+          .update(users)
+          .set({
+            ...(name ? { name } : {}),
+            ...(authUserId ? { authUserId } : {}),
+            ...(email ? { email } : {}),
+          })
+          .where(eq(users.id, existing.id));
+      } catch (err) {
+        // Another account already holds the new address. Stay on this row
+        // rather than inserting a duplicate under the new address.
+        if (!(email && isUniqueViolation(err))) throw err;
+        console.error('[sync-user] email change collided with another account', existing.id);
+      }
+    }
+    await placeLearner(existing.id);
     return existing.id;
   }
 
@@ -50,5 +119,6 @@ export async function syncUser(authUser: AuthUser): Promise<string> {
     name: realName(authUser.name),
     email: authUser.email,
   });
+  await placeLearner(authUser.id);
   return authUser.id;
 }

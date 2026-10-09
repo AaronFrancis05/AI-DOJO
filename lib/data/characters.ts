@@ -1,10 +1,20 @@
 import { characters as fixtureCharacters, type CharacterFixture } from '@/lib/mock-data/characters';
+import { characters as charactersTable } from '@/src/schema';
 import type { DataSource } from './result';
 
 export { fixtureCharacters as characters };
 export type { CharacterFixture };
 
-function adaptDbCharacter(d: any): CharacterFixture {
+type CharacterRow = typeof charactersTable.$inferSelect;
+type CharacterApiRow = Pick<
+  CharacterRow,
+  'id' | 'name' | 'role' | 'personality' | 'avatarColor' | 'avatarIcon'
+  | 'voiceType' | 'gender' | 'avatarModelUrl' | 'displayOrder'
+> & {
+  defaultForDomain?: string | null;
+};
+
+function adaptDbCharacter(d: CharacterApiRow): CharacterFixture {
   return {
     id: d.id,
     name: d.name,

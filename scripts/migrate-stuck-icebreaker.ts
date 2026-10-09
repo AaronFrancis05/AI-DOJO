@@ -1,6 +1,6 @@
 import { db } from '../src/db';
 import { sessions } from '../src/schema';
-import { eq, sql, inArray } from 'drizzle-orm';
+import { sql, inArray } from 'drizzle-orm';
 
 async function migrateStuckIcebreaker() {
   console.log('🔍 Finding sessions stuck in icebreaker phase with zero vocabulary...');

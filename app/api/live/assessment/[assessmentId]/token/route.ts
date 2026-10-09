@@ -3,13 +3,14 @@ import { loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { buildJoinPayload } from '@/lib/tutors/join';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { tutorHoldBlock } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
 /**
  * Mints a Stream call token for one assessment room.
  *
- * The rule that makes this an examination rather than a class lives here: a
+ * The rule that makes this an examination rather than a live lessons here: a
  * learner gets a token only while their queue slot is `admitted`. Enforcing
  * it in the UI would mean a learner who knew the endpoint could sit in on
  * someone else's exam, so the queue state is checked at the only point that
@@ -65,6 +66,9 @@ export async function POST(
   if (!decision.allowed) {
     return Response.json({ error: decision.reason }, { status: 403 });
   }
+
+  const held = await tutorHoldBlock(found.assessment.tutorId);
+  if (held) return held;
 
   const payload = await buildJoinPayload({
     callId: found.assessment.callId,

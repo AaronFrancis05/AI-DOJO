@@ -3,6 +3,22 @@ import { sessions, conversations, corrections, evaluations, scenarioGoals, users
 import { verifyExportApiKey } from '../../../../../../lib/exportAuth';
 import { eq, and, asc } from 'drizzle-orm';
 
+type ExportCorrection = Pick<
+  typeof corrections.$inferSelect,
+  'correctionType' | 'originalText' | 'correctedText' | 'explanation' | 'severity'
+>;
+
+interface ExportConversationEntry {
+  turnNo: number;
+  speaker: string;
+  messageTarget: string;
+  messageNative: string | null;
+  messagePhonetic: string | null;
+  emotionTone?: string;
+  gestureHint?: string;
+  corrections?: ExportCorrection[];
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ scenarioId: string }> }
@@ -71,7 +87,7 @@ export async function GET(
             .from(corrections)
             .where(eq(corrections.conversationId, conv.id));
 
-          const entry: any = {
+          const entry: ExportConversationEntry = {
             turnNo: conv.turnNo,
             speaker: conv.speaker,
             messageTarget: conv.messageTarget,

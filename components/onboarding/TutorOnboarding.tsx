@@ -87,7 +87,7 @@ export function TutorOnboarding({ step }: { step: string }) {
         <div className="grid grid-cols-3 gap-4 text-center">
           <div className="rounded-xl border border-dojo-border bg-dojo-surface/50 p-4">
             <Users className="mx-auto h-6 w-6 text-dojo-accent" />
-            <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">Run group classes</p>
+            <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">Run live lessons</p>
           </div>
           <div className="rounded-xl border border-dojo-border bg-dojo-surface/50 p-4">
             <ClipboardCheck className="mx-auto h-6 w-6 text-dojo-accent" />

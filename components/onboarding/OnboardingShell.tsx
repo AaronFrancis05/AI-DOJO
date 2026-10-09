@@ -1,22 +1,29 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ONBOARDING_STEPS, type StepConfig } from '@/lib/onboarding/steps';
+import { ONBOARDING_STEPS, onboardingStepPath, type StepConfig } from '@/lib/onboarding/steps';
 import { ArrowLeft } from 'lucide-react';
 
-function OnboardingShellInner({ children, stepIndex, totalSteps, isTransition, navigateBack }: {
+function OnboardingShellInner({ children, stepIndex, totalSteps, isTransition, navigateBack, preview }: {
   children: React.ReactNode;
   stepIndex: number;
   totalSteps: number;
   isTransition: boolean;
   navigateBack: () => void;
+  preview: boolean;
 }) {
   const progressPercent = ((stepIndex + 1) / totalSteps) * 100;
 
   return (
     <div className="flex min-h-dvh flex-col bg-gradient-to-br from-dojo-accent/5 via-dojo-canvas to-dojo-success/5">
       <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-6 pt-8">
+        {preview && (
+          <p className="mb-4 text-center text-xs font-medium text-dojo-text-muted">
+            Preview — answers are not saved
+          </p>
+        )}
         <div className="mb-8 flex items-center gap-3">
           <button
             type="button"
@@ -47,7 +54,7 @@ function OnboardingShellInner({ children, stepIndex, totalSteps, isTransition, n
 
         <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-1.5">
-            <img src="/logo.png" alt="" className="h-4 w-4" />
+            <Image src="/logo.png" alt="" width={16} height={16} className="h-4 w-4" />
             <p className="text-xs text-dojo-text-muted">AI DOJO</p>
           </div>
         </div>
@@ -67,6 +74,8 @@ interface OnboardingShellProps {
   basePath?: string;
   /** Where "back" goes from the first step. */
   exitHref?: string;
+  /** Dry-run walk — back keeps `?preview=1`, and the banner says so. */
+  preview?: boolean;
 }
 
 export function OnboardingShell({
@@ -75,10 +84,15 @@ export function OnboardingShell({
   steps = ONBOARDING_STEPS,
   basePath = '/onboarding',
   exitHref = '/auth/signin',
+  preview = false,
 }: OnboardingShellProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    // Client-only rendering prevents server/client hydration differences.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const stepKeys = steps.map((s) => s.key);
   const currentIndex = stepKeys.indexOf(currentStep);
@@ -99,7 +113,7 @@ export function OnboardingShell({
     // on. The key immediately before it is often another transition, which
     // would re-run the animation the tutor was trying to leave.
     if (isTransition && prevStepRef.current !== currentStep) {
-      router.push(`${basePath}/${prevStepRef.current}`);
+      router.push(onboardingStepPath(basePath, prevStepRef.current, preview));
       return;
     }
     const idx = stepKeys.indexOf(currentStep);
@@ -107,7 +121,7 @@ export function OnboardingShell({
       router.push(exitHref);
       return;
     }
-    router.push(`${basePath}/${stepKeys[idx - 1]}`);
+    router.push(onboardingStepPath(basePath, stepKeys[idx - 1], preview));
   };
 
   if (!mounted) return null;
@@ -118,6 +132,7 @@ export function OnboardingShell({
       totalSteps={stepKeys.length}
       isTransition={isTransition}
       navigateBack={navigateBack}
+      preview={preview}
     >
       {children}
     </OnboardingShellInner>

@@ -13,13 +13,17 @@ import { Button } from '@/components/ui/Button';
 import { Tabs, type Tab } from '@/components/ui/Tabs';
 import { BehaviorModeToggle } from '@/components/ui/BehaviorModeToggle';
 import { LanguagePicker } from '@/components/ui/LanguagePicker';
+import { UiLanguageSwitcher } from '@/components/ui/UiLanguageSwitcher';
 import { useState } from 'react';
 import { type BehaviorMode } from '@/lib/design-tokens';
 import { ChevronRight, User, CreditCard, Check, LoaderIcon } from 'lucide-react';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
+import { useTheme } from '@/components/theme/ThemeProvider';
 import { AvatarSettingsDialog } from '@/components/settings/AvatarSettingsDialog';
 import { BillingDialog } from '@/components/settings/BillingDialog';
+import { OrganizationCard } from '@/components/organization/OrganizationCard';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 const tabs: Tab[] = [
   { id: 'preferences', label: 'Preferences' },
@@ -30,6 +34,7 @@ const tabs: Tab[] = [
 export default function SettingsPage() {
   usePageTitle('Settings');
   const user = useUser();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [difficulty, setDifficulty] = useState(50);
   const [responseSpeed, setResponseSpeed] = useState(70);
   const [defaultMode, setDefaultMode] = useState<BehaviorMode>('standard');
@@ -40,7 +45,7 @@ export default function SettingsPage() {
     progressReports: true,
     weeklyDigest: false,
   });
-  const [targetLanguage, setTargetLanguage] = useState(user?.preferredTargetLanguage ?? 'ja');
+  const [targetLanguage, setTargetLanguage] = useState(user?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE);
   const [nativeLanguage, setNativeLanguage] = useState(user?.nativeLanguage ?? 'en');
   const [languageDirty, setLanguageDirty] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
@@ -74,20 +79,24 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="max-w-3xl">
       <div className="mb-8">
-        <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">Settings</h1>
-        <p className="mt-1 text-sm text-dojo-text-muted">
-          Manage your preferences, account, and subscription
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">Settings</h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          Appearance, languages, notifications, privacy, avatar, and billing —
+          the preferences for how you practise.
         </p>
       </div>
+
+      <OrganizationCard />
 
       {/* Links to sub-sections (opened as dialogue sections) */}
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => setAvatarOpen(true)}
-          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent rounded-[--radius-lg]"
+          className="w-full text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent rounded-[--radius-lg]"
         >
           <Card hoverable>
             <div className="flex items-center justify-between">
@@ -107,7 +116,7 @@ export default function SettingsPage() {
         <button
           type="button"
           onClick={() => setBillingOpen(true)}
-          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent rounded-[--radius-lg]"
+          className="w-full text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-dojo-accent rounded-[--radius-lg]"
         >
           <Card hoverable>
             <div className="flex items-center justify-between">
@@ -133,6 +142,18 @@ export default function SettingsPage() {
             case 'preferences':
               return (
                 <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Appearance</h4>
+                    <Toggle
+                      label="Dark mode"
+                      description="Stays on this device. The marketing site uses the same preference."
+                      enabled={theme === 'dark'}
+                      onChange={(enabled) => {
+                        if (enabled !== (theme === 'dark')) toggleTheme();
+                      }}
+                    />
+                  </div>
+
                   <div>
                     <h4 className="text-sm font-semibold text-dojo-text-primary mb-3">Language</h4>
                     <div className="rounded-2xl border border-dojo-border bg-dojo-surface/60 p-5">
@@ -174,6 +195,11 @@ export default function SettingsPage() {
                           Saved — your paths are now personalized.
                         </span>
                       )}
+                    </div>
+                    {/* Saves on pick, unlike the learning pair above: it only
+                        changes what the buttons say, not any course or path. */}
+                    <div className="mt-4 rounded-2xl border border-dojo-border bg-dojo-surface/60 p-5">
+                      <UiLanguageSwitcher />
                     </div>
                   </div>
 
@@ -267,6 +293,7 @@ export default function SettingsPage() {
 
       <AvatarSettingsDialog open={avatarOpen} onClose={() => setAvatarOpen(false)} />
       <BillingDialog open={billingOpen} onClose={() => setBillingOpen(false)} />
+      </div>
     </div>
   );
 }

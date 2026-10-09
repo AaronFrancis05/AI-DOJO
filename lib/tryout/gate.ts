@@ -45,6 +45,76 @@ export const MAX_TRYOUT_REQUESTS_PER_IP_PER_HOUR = 36;
 /** User turns in one tryout, counted server-side against an issued id. */
 export const MAX_GUEST_TURNS = 8;
 
+/** Five icebreaker phrases occupy priorUserTurns 0..4. */
+export const ICEBREAKER_USER_TURNS = 5;
+
+/** Roleplay occupies the two turns after the icebreaker (priorUserTurns 5..6). */
+export const ROLEPLAY_USER_TURNS = 2;
+
+const CLOSING_AFTER_USER_TURNS = ICEBREAKER_USER_TURNS + ROLEPLAY_USER_TURNS;
+
+export type GuestTryoutPhase = 'icebreaker' | 'roleplay' | 'closing';
+
+/**
+ * Which prompt the next reply uses.
+ *
+ * Advancement is by user-turn count, not by whether the phrase was correct.
+ * `wordIndex` is the phrase the learner just attempted (or 0 on the greeting).
+ * `nextWordIndex` is the phrase this same reply must teach next, so the
+ * learner is never left with feedback and nothing to say.
+ */
+export function guestTryoutPhase(
+  priorUserTurns: number,
+  isGreeting: boolean,
+): { phase: GuestTryoutPhase; wordIndex: number | null; nextWordIndex: number | null } {
+  if (isGreeting) {
+    return { phase: 'icebreaker', wordIndex: 0, nextWordIndex: null };
+  }
+  if (priorUserTurns < ICEBREAKER_USER_TURNS) {
+    const wordIndex = priorUserTurns;
+    const nextWordIndex = wordIndex + 1 < ICEBREAKER_USER_TURNS ? wordIndex + 1 : null;
+    return { phase: 'icebreaker', wordIndex, nextWordIndex };
+  }
+  if (priorUserTurns < CLOSING_AFTER_USER_TURNS) {
+    return { phase: 'roleplay', wordIndex: null, nextWordIndex: null };
+  }
+  return { phase: 'closing', wordIndex: null, nextWordIndex: null };
+}
+
+/**
+ * Most turns a guest history may carry: 8 user turns plus the replies to them
+ * and the greeting, with a little slack. Covers onboarding practice (5 turns) too.
+ */
+export const MAX_GUEST_HISTORY_TURNS = 24;
+
+/** Longest single turn kept — the same ceiling the signed-in chat route uses. */
+export const MAX_GUEST_TURN_CHARS = 1000;
+
+/**
+ * The posted guest history, cut down to what a real preview could contain.
+ *
+ * The turn budget lives server-side, but the history itself still comes from
+ * the client and is replayed to the model on every request. Unbounded, one
+ * request could carry a novel-length transcript (or invented AI turns) and
+ * multiply the token bill by orders of magnitude. Keeps the most recent turns,
+ * drops malformed entries, and truncates over-long text.
+ */
+export function boundGuestHistory<T extends { speaker: 'user' | 'ai'; text: string }>(history: unknown): T[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((t): t is T =>
+      typeof t === 'object' && t !== null
+      && (t.speaker === 'user' || t.speaker === 'ai')
+      && typeof t.text === 'string')
+    .slice(-MAX_GUEST_HISTORY_TURNS)
+    .map((t) => ({ ...t, text: t.text.slice(0, MAX_GUEST_TURN_CHARS) }));
+}
+
+/** User utterances already in the posted history (the current message is not in it). */
+export function countGuestUserTurns(history: { speaker?: string; text?: string }[]): number {
+  return history.filter((t) => t.speaker === 'user' && typeof t.text === 'string' && t.text.trim()).length;
+}
+
 export type TryoutBlockReason = 'device' | 'ip';
 
 export interface TryoutGateStatus {
@@ -92,10 +162,33 @@ export function readUsedCookieValue(raw: string | undefined): number | null {
   return Number.isFinite(at) ? at : null;
 }
 
+/**
+ * Reverse proxies between the internet and this app, each of which appends the
+ * address it received from to `X-Forwarded-For`. Production sits behind one
+ * (Traefik); set TRUSTED_PROXY_HOPS=2 if a CDN is added in front of it.
+ */
+function trustedProxyHops(): number {
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
+  return Number.isInteger(hops) && hops >= 1 ? hops : 1;
+}
+
+/**
+ * The caller's address as seen by our outermost trusted proxy.
+ *
+ * Read from the RIGHT of `X-Forwarded-For`: the leftmost entries are whatever
+ * the client sent, so taking the first hop let any guest reset every per-IP
+ * limit by sending a fresh made-up address on each request. The entry our own
+ * proxy appended is the only one the client cannot choose.
+ */
 export function clientIp(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || req.headers.get('x-real-ip')?.trim()
-    || 'unknown';
+  const forwarded = req.headers.get('x-forwarded-for')
+    ?.split(',')
+    .map((hop) => hop.trim())
+    .filter(Boolean);
+  if (forwarded?.length) {
+    return forwarded[Math.max(0, forwarded.length - trustedProxyHops())];
+  }
+  return req.headers.get('x-real-ip')?.trim() || 'unknown';
 }
 
 /**
@@ -211,8 +304,17 @@ export interface TurnBudget {
 /**
  * Consumes one user turn from an issued tryout id, or reads the budget
  * without consuming when `consume` is false (the greeting turn).
+ *
+ * `fallbackPriorUserTurns` is the user-turn count from the posted history.
+ * Production with Redis ignores it (the client can empty history to reset a
+ * history-based budget). Local dev without Redis has nothing else to count,
+ * so phase and the 8-turn cap use the fallback rather than staying on phrase 1.
  */
-export async function consumeTurn(tryoutId: string, consume: boolean): Promise<TurnBudget> {
+export async function consumeTurn(
+  tryoutId: string,
+  consume: boolean,
+  fallbackPriorUserTurns = 0,
+): Promise<TurnBudget> {
   const key = cacheKeys.tryoutTurns(tryoutId);
 
   if (!consume) {
@@ -220,15 +322,26 @@ export async function consumeTurn(tryoutId: string, consume: boolean): Promise<T
     if (current === null) {
       // Absent means the id was never issued, or its hour has passed. When
       // there is no Redis at all there is nothing to have issued against, so
-      // the id is taken at face value and the budget starts at zero.
-      return { priorUserTurns: 0, expired: isCacheConfigured(), exhausted: false };
+      // the signed cookie is taken at face value and phase follows history.
+      if (isCacheConfigured()) {
+        return { priorUserTurns: 0, expired: true, exhausted: false };
+      }
+      return { priorUserTurns: fallbackPriorUserTurns, expired: false, exhausted: false };
     }
     return { priorUserTurns: Number(current), expired: false, exhausted: false };
   }
 
   const count = await rateLimitIncrement(key, TTL.TRYOUT_SESSION);
   if (count === null) {
-    return { priorUserTurns: 0, expired: isCacheConfigured(), exhausted: false };
+    if (isCacheConfigured()) {
+      return { priorUserTurns: 0, expired: true, exhausted: false };
+    }
+    const next = fallbackPriorUserTurns + 1;
+    return {
+      priorUserTurns: fallbackPriorUserTurns,
+      expired: false,
+      exhausted: next > MAX_GUEST_TURNS,
+    };
   }
   // `incr` on a missing key starts at 1 rather than failing, so a count of 1
   // is ambiguous between "first turn" and "expired id, silently restarted".

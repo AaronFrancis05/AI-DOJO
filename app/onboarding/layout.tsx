@@ -1,15 +1,17 @@
 import { OnboardingProvider } from '@/lib/onboarding/context';
 import { LanguageCatalogProvider } from '@/lib/language-context';
 import { loadLanguageCatalog } from '@/lib/language-registry';
+import { loadUiLocaleContext } from '@/lib/i18n/server';
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
-  // The wizard's whole job includes picking a target/native pair, so it needs
-  // the admin-configured catalogue as much as the signed-in app does — and it
-  // runs before there is a session to hang it off.
-  const languageCatalog = await loadLanguageCatalog();
+  // Both wizards pick a language from the admin-configured catalogue, so it
+  // loads here rather than inside (app). Learner steps require a session
+  // (see [step]/layout.tsx); the tutor wizard still renders this layout on
+  // the way to its own role gate.
+  const [languageCatalog, ui] = await Promise.all([loadLanguageCatalog(), loadUiLocaleContext()]);
 
   return (
-    <LanguageCatalogProvider value={languageCatalog}>
+    <LanguageCatalogProvider value={languageCatalog} ui={ui}>
       <OnboardingProvider>{children}</OnboardingProvider>
     </LanguageCatalogProvider>
   );

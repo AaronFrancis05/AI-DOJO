@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { Clock, Sparkles } from 'lucide-react';
 
 interface TryoutBlockedScreenProps {
-  targetLanguage?: string;
-  nativeLanguage?: string;
   /** Milliseconds left on the 24h window; null when the server didn't say. */
   retryAfterMs: number | null;
 }
@@ -23,10 +21,10 @@ function formatCountdown(ms: number): string {
 /**
  * Shown when a guest has already used their free preview inside the 24-hour
  * window. The countdown is the honest answer to "when can I try again", and
- * the primary action is onboarding rather than the door being shut — signing
+ * the primary action is sign-up rather than the door being shut — signing
  * up doesn't shorten the window, it makes it irrelevant.
  */
-export function TryoutBlockedScreen({ targetLanguage, nativeLanguage, retryAfterMs }: TryoutBlockedScreenProps) {
+export function TryoutBlockedScreen({ retryAfterMs }: TryoutBlockedScreenProps) {
   // Seeded from the prop and then driven by the interval alone — the window
   // is fixed once the screen is on, so re-syncing to the prop on every render
   // would only ever re-announce the same deadline.
@@ -38,10 +36,6 @@ export function TryoutBlockedScreen({ targetLanguage, nativeLanguage, retryAfter
     const id = setInterval(() => setRemainingMs(Math.max(0, deadline - Date.now())), 1000);
     return () => clearInterval(id);
   }, [retryAfterMs]);
-
-  const onboardingHref = targetLanguage && nativeLanguage
-    ? `/onboarding/level?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`
-    : '/onboarding/level';
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-dojo-canvas px-4">
@@ -69,11 +63,11 @@ export function TryoutBlockedScreen({ targetLanguage, nativeLanguage, retryAfter
         )}
 
         <Link
-          href={onboardingHref}
+          href="/auth/signup"
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90"
         >
           <Sparkles className="h-4 w-4" />
-          Keep learning — set up your plan
+          Create a free account
         </Link>
         <Link
           href="/auth/signin"

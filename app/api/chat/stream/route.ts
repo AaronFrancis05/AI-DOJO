@@ -3,7 +3,7 @@ import { withSessionLock } from '../../../../src/db-pool';
 import { sessions, conversations, corrections, evaluations, goalCompletions, lessons, users, vocabularyEncounters, srsCards } from '../../../../src/schema';
 import { analyzeTurn, loadSessionTurnData } from '../../../../lib/roleplay/analyze-turn';
 import { getAIProvider, AIProviderError, AIQuotaError, AIModelError } from '../../../../lib/ai-providers';
-import { getTargetLangConfig, getNativeLangName, getBCP47 } from '../../../../lib/language';
+import { getTargetLangConfig, getNativeLangName, getBCP47, BASE_CONTENT_LANGUAGE } from '../../../../lib/language';
 import {
   advancePhaseState,
   computeCompositeScore,
@@ -16,13 +16,18 @@ import {
   type PhaseStep,
 } from '../../../../lib/roleplay/phase-engine';
 import { buildEvaluationSummary } from '../../../../lib/roleplay/evaluation-summary';
-import { recordLessonActivity } from '../../../../lib/curriculum/lesson-progress';
+import { recordLessonActivity } from '../../../../lib/courses/lesson-progress';
+import { announceSessionCompleted } from '../../../../lib/study-packs/server';
+import { usageRecorder } from '../../../../lib/ai-usage';
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
+import { rateLimitIncrement, cacheKeys, TTL } from '../../../../lib/cache';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { sanitizeStreamedChunk, createStreamTextSanitizer, parseVocabMarker } from '../../../../lib/roleplay/stream-sanitizer';
 import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
 import { inferGesture } from '../../../../lib/roleplay/gesture';
+import { isSessionEnded } from '../../../../lib/roleplay/session-lifecycle';
+import { persistableUserUtterance } from '../../../../lib/roleplay/conversation-history';
 import {
   buildTurnSystemPrompt,
   buildTurnUserMessage,
@@ -62,6 +67,10 @@ import {
 
 export const runtime = 'nodejs';
 
+const MAX_USER_INPUT_CHARS = 1000;
+/** Turns per user per CHAT_TURN_RATE_LIMIT window — about one every 10s, far above real speech. */
+const MAX_TURNS_PER_USER_PER_WINDOW = 60;
+
 export async function POST(req: Request) {
   try {
     const user = await getAuthUser();
@@ -79,7 +88,13 @@ export async function POST(req: Request) {
     const rawSessionId = body.sessionId;
     const rawUserInput = body.userRawInput;
     const isRetryOfPreviousMistake = body.isRetryOfPreviousMistake === true;
-    const accuracyScore = typeof body.accuracyScore === 'number' ? body.accuracyScore : null;
+    // Measured in the browser (Azure assessment runs client-side, the server
+    // never has the audio), so it can't be re-derived here. It only decides
+    // whether to ask for a retry, so clamping is enough: a forged score
+    // cheats no one but the learner sending it.
+    const accuracyScore = typeof body.accuracyScore === 'number' && Number.isFinite(body.accuracyScore)
+      ? Math.min(100, Math.max(0, body.accuracyScore))
+      : null;
     const responseTimeMs = typeof body.responseTimeMs === 'number' ? body.responseTimeMs : null;
 
     if (!rawSessionId || !rawUserInput) {
@@ -88,6 +103,20 @@ export async function POST(req: Request) {
 
     const sessionId = String(rawSessionId);
     const userRawInput = String(rawUserInput);
+    // One spoken or typed turn; anything longer is a pasted document, and
+    // every character is sent to the model again on every later turn.
+    if (userRawInput.length > MAX_USER_INPUT_CHARS) {
+      return Response.json({ error: 'That message is too long. Please keep it to a few sentences.' }, { status: 413 });
+    }
+
+    // Each turn is several billed model calls. Signed-in users only, so a
+    // cache outage fails open here (unlike the guest routes): blocking every
+    // learner because Redis blinked is the worse failure.
+    const turnCount = await rateLimitIncrement(cacheKeys.chatTurnRateLimit(user.id), TTL.CHAT_TURN_RATE_LIMIT);
+    if (turnCount !== null && turnCount > MAX_TURNS_PER_USER_PER_WINDOW) {
+      return Response.json({ error: 'You are sending messages very quickly. Please wait a moment.' }, { status: 429 });
+    }
+
     const numericSessionId = Number(sessionId);
     if (isNaN(numericSessionId)) {
       return Response.json({ error: 'Invalid sessionId' }, { status: 400 });
@@ -102,7 +131,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    if (session.status === 'completed') {
+    if (isSessionEnded(session.status)) {
       return Response.json({ error: 'Session is already completed' }, { status: 400 });
     }
 
@@ -187,7 +216,7 @@ export async function POST(req: Request) {
     // The base `phonetic` column stores Japanese romaji. Once vocab is
     // localized into a non-Japanese target language that romaji is wrong, so
     // only surface phonetics for genuinely Japanese-target lessons.
-    const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+    const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === BASE_CONTENT_LANGUAGE;
 
     const scenarioTitle = turnData.scenarioLocalized
       ? currentScenario.title
@@ -280,6 +309,9 @@ export async function POST(req: Request) {
 
         try {
           const provider = await getAIProvider();
+          // Live turns are recorded for the cost-per-learner metric but are
+          // not gated by the batch quota (lib/ai-usage.ts).
+          const usage = usageRecorder(user.id, 'chat/stream');
           let fullAiText = '';
           const streamSanitizer = createStreamTextSanitizer();
 
@@ -295,7 +327,7 @@ export async function POST(req: Request) {
             for await (const chunk of provider.generateStream(streamSystemPrompt, [
               ...conversationHistory,
               { role: 'user', content: streamUserMsg },
-            ])) {
+            ], { onUsage: usage.onUsage })) {
               fullAiText += chunk;
               const delta = streamSanitizer.push(chunk);
               if (delta) send(JSON.stringify({ type: 'token', text: delta }));
@@ -401,9 +433,8 @@ export async function POST(req: Request) {
 
           // Validate ⟦ ⟧ delimiter usage when languages differ
           const targetBcp47 = getBCP47(targetLanguage, 'tts');
-          const nativeBcp47 = getBCP47(nativeLanguage, 'tts');
           if (!isSameLanguage) {
-            const validation = validateDelimiters(fullAiText, targetBcp47, nativeBcp47);
+            const validation = validateDelimiters(fullAiText, targetBcp47);
             if (!validation.valid) {
               console.warn('[SPAN VALIDATOR] delimiter issues:', validation.issues);
             }
@@ -413,7 +444,7 @@ export async function POST(req: Request) {
           if (isSessionStart) {
             const { newPhase: sessionStartPhase, phaseChanged } = await withSessionLock(numericSessionId, async (tx) => {
               const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-              if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
+              if (isSessionEnded(freshSession.status)) throw new Error('Session was completed by another request');
 
               const existingGreeting = await tx.select({ id: conversations.id })
                 .from(conversations)
@@ -480,6 +511,7 @@ export async function POST(req: Request) {
             aiReplyText: fullAiText,
             scenario: currentScenario,
             data: turnData,
+            onUsage: usage.onUsage,
           });
 
           const correctionItems = analysis.corrections ?? [];
@@ -496,9 +528,6 @@ export async function POST(req: Request) {
           const hasCorrections = (correctionItems.length > 0 && correctionItems.some(c => c.correctedText)) || hasLowPronunciation;
 
           // ── Phase-agnostic retry gate (bounded to exactly 1 retry) ──
-          let pendingRetryCorrectionId: number | null = null;
-          let retryEarlyExit = false;
-
           // Orientation predates any target-language production, and the
           // debrief and farewell come after the scene has ended — holding the
           // learner back for a retry in any of them would stall the session on
@@ -525,9 +554,9 @@ export async function POST(req: Request) {
             } else if (!prevPendingId && !isRetryOfPreviousMistake) {
               const validCorrections = correctionItems.filter(c => c.correctedText);
               if (validCorrections.length > 0) {
-                const { newPendingRetryId, userConvId } = await withSessionLock(numericSessionId, async (tx) => {
+                await withSessionLock(numericSessionId, async (tx) => {
                   const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-                  if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
+                  if (isSessionEnded(freshSession.status)) throw new Error('Session was completed by another request');
 
                   const existingTurn = await tx.select({ id: conversations.id })
                     .from(conversations)
@@ -542,8 +571,7 @@ export async function POST(req: Request) {
                     sessionId: numericSessionId,
                     turnNo: currentTurnNo,
                     speaker: 'user',
-                    messageTarget: analysis.messageTarget,
-                    messageNative: analysis.messageNative,
+                    ...persistableUserUtterance(analysis, userRawInput),
                     messagePhonetic: analysis.messagePhonetic,
                     emotionTone: analysis.emotionTone ?? null,
                     gestureHint: analysis.gestureHint ?? null,
@@ -618,18 +646,13 @@ export async function POST(req: Request) {
                     sessionUpdate.icebreakerVocabAttempts = newVocabAttempts;
                   }
                   await tx.update(sessions).set(sessionUpdate).where(eq(sessions.id, numericSessionId));
-
-                  return { newPendingRetryId: newPendingId, userConvId: userConversation.id };
                 });
-
-                pendingRetryCorrectionId = newPendingRetryId;
               }
 
               send(JSON.stringify({
                 type: 'retry',
                 analysis: {
-                  messageTarget: analysis.messageTarget,
-                  messageNative: analysis.messageNative,
+                  ...persistableUserUtterance(analysis, userRawInput),
                   messagePhonetic: analysis.messagePhonetic,
                   emotionTone: analysis.emotionTone,
                   gestureHint: analysis.gestureHint,
@@ -649,7 +672,7 @@ export async function POST(req: Request) {
           // ── Wrap all writes in a transaction with session lock ──
           const writeResult = await withSessionLock(numericSessionId, async (tx) => {
             const [freshSession] = await tx.select().from(sessions).where(eq(sessions.id, numericSessionId));
-            if (freshSession.status === 'completed') throw new Error('Session was completed by another request');
+            if (isSessionEnded(freshSession.status)) throw new Error('Session was completed by another request');
 
             const existingTurn = await tx.select({ id: conversations.id })
               .from(conversations)
@@ -666,8 +689,7 @@ export async function POST(req: Request) {
               sessionId: numericSessionId,
               turnNo: currentTurnNo,
               speaker: 'user',
-              messageTarget: analysis.messageTarget,
-              messageNative: analysis.messageNative,
+              ...persistableUserUtterance(analysis, userRawInput),
               messagePhonetic: analysis.messagePhonetic,
               emotionTone: analysis.emotionTone ?? null,
               gestureHint: analysis.gestureHint ?? null,
@@ -877,7 +899,7 @@ export async function POST(req: Request) {
 
               // Every word met in this session enters the spaced-repetition
               // queue. Card seeding previously lived only in
-              // recordLessonActivity, so it fired for curriculum lessons and
+              // recordLessonActivity, so it fired for course lessons and
               // never for a freeform session — meaning most practice produced
               // nothing to review later. onConflictDoNothing keeps an existing
               // card's schedule intact rather than resetting it.
@@ -988,7 +1010,7 @@ export async function POST(req: Request) {
             }));
           }
 
-          // A curriculum lesson is only credited here, on a real finish. This
+          // A course lesson is only credited here, on a real finish. This
           // used to run exclusively from PATCH /api/sessions/[id], which the
           // client sends when the learner *leaves* a session — so playing a
           // lesson all the way through never recorded it and never unlocked
@@ -1015,6 +1037,11 @@ export async function POST(req: Request) {
             }
           }
 
+          // After the commit above, so the job reads a completed session.
+          if (writeResult.shouldComplete) {
+            await announceSessionCompleted({ sessionId: numericSessionId, userId: user.id });
+          }
+
           const responseCorrections = currentPhase === 'unguided' ? [] : (correctionItems ?? []);
 
           // ── Send final event ──
@@ -1030,8 +1057,7 @@ export async function POST(req: Request) {
             xpGained: writeResult.xpGained,
             newStreak: writeResult.newStreak,
             analysis: {
-              messageTarget: analysis.messageTarget,
-              messageNative: analysis.messageNative,
+              ...persistableUserUtterance(analysis, userRawInput),
               messagePhonetic: analysis.messagePhonetic,
               emotionTone: analysis.emotionTone,
               gestureHint: analysis.gestureHint,

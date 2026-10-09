@@ -22,7 +22,7 @@ export interface TutorProfile {
  *
  * The scheduling forms need it before they can render: both language pickers
  * are constrained to what this tutor actually holds, so offering the whole
- * catalogue would let them schedule a class the API then refuses.
+ * catalogue would let them schedule a live lesson the API then refuses.
  */
 export function useTutorProfile(): {
   profile: TutorProfile | null;

@@ -8,6 +8,9 @@ process.env.TRYOUT_COOKIE_SECRET ||= 'test-tryout-secret';
 const {
   checkTryoutGate,
   clientIp,
+  consumeTurn,
+  countGuestUserTurns,
+  guestTryoutPhase,
   issueSessionCookieValue,
   issueUsedCookieValue,
   readSessionCookieValue,
@@ -74,11 +77,73 @@ test('a tryout id the client made up is not accepted', () => {
   assert.equal(readSessionCookieValue(undefined), null);
 });
 
-test('clientIp takes the first hop of x-forwarded-for', () => {
+test('icebreaker occupies the first five user turns, then roleplay, then closing', () => {
+  const greeting = guestTryoutPhase(0, true);
+  assert.equal(greeting.phase, 'icebreaker');
+  assert.equal(greeting.wordIndex, 0);
+  assert.equal(greeting.nextWordIndex, null);
+
+  const firstAttempt = guestTryoutPhase(0, false);
+  assert.equal(firstAttempt.phase, 'icebreaker');
+  assert.equal(firstAttempt.wordIndex, 0);
+  assert.equal(firstAttempt.nextWordIndex, 1);
+
+  const lastAttempt = guestTryoutPhase(4, false);
+  assert.equal(lastAttempt.phase, 'icebreaker');
+  assert.equal(lastAttempt.wordIndex, 4);
+  assert.equal(lastAttempt.nextWordIndex, null);
+
+  assert.equal(guestTryoutPhase(5, false).phase, 'roleplay');
+  assert.equal(guestTryoutPhase(6, false).phase, 'roleplay');
+  assert.equal(guestTryoutPhase(5, false).wordIndex, null);
+
+  assert.equal(guestTryoutPhase(7, false).phase, 'closing');
+});
+
+test('countGuestUserTurns ignores empty and non-user rows', () => {
+  assert.equal(countGuestUserTurns([]), 0);
+  assert.equal(
+    countGuestUserTurns([
+      { speaker: 'ai', text: 'Hello' },
+      { speaker: 'user', text: 'Hi' },
+      { speaker: 'user', text: '   ' },
+      { speaker: 'user', text: 'Nice to meet you' },
+    ]),
+    2,
+  );
+});
+
+const redisConfigured = Boolean(process.env.UPSTASH_REDIS_URL && process.env.UPSTASH_REDIS_TOKEN);
+
+test('without Redis, consumeTurn advances phase from the history fallback', { skip: redisConfigured }, async () => {
+  const fifth = await consumeTurn('local-id', true, 4);
+  assert.equal(fifth.priorUserTurns, 4);
+  assert.equal(fifth.expired, false);
+  assert.equal(fifth.exhausted, false);
+  assert.equal(guestTryoutPhase(fifth.priorUserTurns, false).phase, 'icebreaker');
+
+  const sixth = await consumeTurn('local-id', true, 5);
+  assert.equal(sixth.priorUserTurns, 5);
+  assert.equal(guestTryoutPhase(sixth.priorUserTurns, false).phase, 'roleplay');
+});
+
+test('without Redis, the ninth user turn is exhausted', { skip: redisConfigured }, async () => {
+  const ninth = await consumeTurn('local-id', true, 8);
+  assert.equal(ninth.priorUserTurns, 8);
+  assert.equal(ninth.exhausted, true);
+});
+
+test('clientIp takes the hop our proxy appended, not the one the client sent', () => {
+  // The client spoofed 203.0.113.99; Traefik appended the address it really saw.
   const req = new Request('https://example.test/', {
-    headers: { 'x-forwarded-for': '198.51.100.7, 10.0.0.1, 10.0.0.2' },
+    headers: { 'x-forwarded-for': '203.0.113.99, 198.51.100.7' },
   });
   assert.equal(clientIp(req), '198.51.100.7');
+
+  const single = new Request('https://example.test/', {
+    headers: { 'x-forwarded-for': '198.51.100.7' },
+  });
+  assert.equal(clientIp(single), '198.51.100.7');
 
   assert.equal(clientIp(new Request('https://example.test/')), 'unknown');
   assert.equal(

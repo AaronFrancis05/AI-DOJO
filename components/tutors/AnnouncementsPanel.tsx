@@ -1,7 +1,7 @@
 'use client';
 
 /* ───────────────────────────────────────────────
-   Tutor announcements — compose to a class, a course cohort, or every
+   Tutor announcements — compose to a live lesson, a course cohort, or every
    learner, and see what has already been sent. Backed by
    /api/tutor/announcements, which re-checks the role and the tutor's own
    language sets server-side.
@@ -16,7 +16,7 @@ import { useLanguageCatalog } from '@/lib/language-context';
 import type { TutorProfile } from '@/lib/hooks/useTutorProfile';
 import { Megaphone, Send } from 'lucide-react';
 
-export interface AnnouncementClassOption {
+export interface AnnouncementLessonOption {
   id: number;
   title: string;
 }
@@ -38,23 +38,23 @@ interface CourseOption {
   title: string;
 }
 
-type AudienceKind = 'class' | 'course' | 'all_my_learners';
+type AudienceKind = 'live_lesson' | 'course' | 'all_my_learners';
 
 const inputClass =
   'w-full rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted focus:border-dojo-accent focus:outline-none';
 
 function describeAudience(a: SentAnnouncement): string {
-  if (a.audienceKind === 'class') return a.audienceName ?? 'a class';
+  if (a.audienceKind === 'live_lesson') return a.audienceName ?? 'a live lesson';
   if (a.audienceKind === 'course') return a.audienceName ?? 'a course';
   return 'all my learners';
 }
 
 export function AnnouncementsPanel({
   profile,
-  classes,
+  liveLessons,
 }: {
   profile: TutorProfile;
-  classes: AnnouncementClassOption[];
+  liveLessons: AnnouncementLessonOption[];
 }) {
   const catalog = useLanguageCatalog();
 
@@ -66,7 +66,7 @@ export function AnnouncementsPanel({
   const [loading, setLoading] = useState(true);
 
   const [audienceKind, setAudienceKind] = useState<AudienceKind>('all_my_learners');
-  const [classSessionId, setClassSessionId] = useState<number | null>(null);
+  const [liveLessonId, setLiveLessonId] = useState<number | null>(null);
   const [courseId, setCourseId] = useState<number | null>(null);
   const [targetLanguage, setTargetLanguage] = useState(teachOptions[0]?.code ?? '');
   const [instructionLanguage, setInstructionLanguage] = useState(explainOptions[0]?.code ?? '');
@@ -101,7 +101,7 @@ export function AnnouncementsPanel({
    * `resolveAudience` the send uses — counting it client-side from a roster
    * would be a second definition of "my learners" and would drift.
    */
-  const previewKey = JSON.stringify({ audienceKind, classSessionId, courseId, targetLanguage });
+  const previewKey = JSON.stringify({ audienceKind, liveLessonId, courseId, targetLanguage });
   const recipientCount = preview?.key === previewKey ? preview.count : null;
 
   useEffect(() => {
@@ -143,7 +143,7 @@ export function AnnouncementsPanel({
           title: title.trim(),
           body: body.trim(),
           audienceKind,
-          classSessionId,
+          liveLessonId,
           courseId,
           targetLanguage,
           instructionLanguage,
@@ -183,24 +183,24 @@ export function AnnouncementsPanel({
                 className={inputClass}
               >
                 <option value="all_my_learners">Everyone I teach</option>
-                <option value="class">One class</option>
+                <option value="live_lesson">One live lesson</option>
                 <option value="course">A course cohort</option>
               </select>
             </div>
 
-            {audienceKind === 'class' && (
+            {audienceKind === 'live_lesson' && (
               <div>
-                <label htmlFor="ann-class" className="mb-2 block text-sm text-dojo-text-primary">
-                  Class
+                <label htmlFor="ann-lesson" className="mb-2 block text-sm text-dojo-text-primary">
+                  Live lesson
                 </label>
                 <select
-                  id="ann-class"
-                  value={classSessionId ?? ''}
-                  onChange={(e) => setClassSessionId(e.target.value ? Number(e.target.value) : null)}
+                  id="ann-lesson"
+                  value={liveLessonId ?? ''}
+                  onChange={(e) => setLiveLessonId(e.target.value ? Number(e.target.value) : null)}
                   className={inputClass}
                 >
-                  <option value="">Pick a class…</option>
-                  {classes.map((c) => (
+                  <option value="">Pick a live lesson…</option>
+                  {liveLessons.map((c) => (
                     <option key={c.id} value={c.id}>{c.title}</option>
                   ))}
                 </select>
@@ -270,7 +270,7 @@ export function AnnouncementsPanel({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={160}
-              placeholder="Thursday's class moves to 18:00"
+              placeholder="Thursday's live lesson moves to 18:00"
               className={inputClass}
             />
           </div>

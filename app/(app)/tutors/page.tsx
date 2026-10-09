@@ -17,6 +17,10 @@ import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { useUiLocale } from '@/lib/language-context';
+import { formatCurrency, formatDate } from '@/lib/i18n/format';
+import { TranslatedText } from '@/components/ui/TranslatedText';
+import { TrustBadge, type TutorTrustBadge } from '@/components/tutors/TrustBadge';
 import { Video, Calendar, ArrowRight, GraduationCap, Users, ClipboardCheck, Bot } from 'lucide-react';
 
 interface TutorRow {
@@ -30,6 +34,9 @@ interface TutorRow {
   currency: string;
   timezone: string;
   avatarSrc: string | null;
+  // Present while hybrid tutoring is on (PLAN.md 4.4, 4.8).
+  trust?: TutorTrustBadge | null;
+  sharesLanguage?: boolean;
 }
 
 interface BookingRow {
@@ -43,7 +50,7 @@ interface BookingRow {
   isTutor: boolean;
 }
 
-interface ClassRow {
+interface LiveLessonRow {
   id: number;
   title: string;
   tutorName: string;
@@ -72,13 +79,13 @@ interface AssessmentRow {
   status: string;
 }
 
-function formatMoney(cents: number, currency: string): string {
+function formatMoney(cents: number, currency: string, locale: string): string {
   if (cents === 0) return 'Free';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(cents / 100);
+  return formatCurrency(cents / 100, currency, locale);
 }
 
-function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+function formatWhen(iso: string, locale: string): string {
+  return formatDate(iso, locale, {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
@@ -92,6 +99,9 @@ function liveFirst<T extends { status: string }>(rows: T[]): T[] {
   ];
 }
 
+const TUTORS_BLURB =
+  'Book a live tutor, join a group lesson, or sit an assessment — human practice alongside the AI.';
+
 const STATUS_VARIANT: Record<string, 'accent' | 'success' | 'default' | 'outline'> = {
   requested: 'outline',
   confirmed: 'accent',
@@ -100,12 +110,15 @@ const STATUS_VARIANT: Record<string, 'accent' | 'success' | 'default' | 'outline
 };
 
 export default function TutorsPage() {
+  const { locale } = useUiLocale();
   usePageTitle('Tutors');
   const router = useRouter();
   const user = useUser();
   const [tutors, setTutors] = useState<TutorRow[]>([]);
+  // An A0 learner is pointed at the AI and the starter unit before booking (PLAN.md 4.8 part 2).
+  const [warnBeforeBooking, setWarnBeforeBooking] = useState(false);
   const [upcoming, setUpcoming] = useState<BookingRow[]>([]);
-  const [classes, setClasses] = useState<ClassRow[]>([]);
+  const [liveLessons, setLiveLessons] = useState<LiveLessonRow[]>([]);
   const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
   // Starts false when the feature is off, so the disabled path never has to
   // call setState from inside an effect just to stop a spinner.
@@ -116,14 +129,15 @@ export default function TutorsPage() {
     Promise.all([
       fetch('/api/tutors', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       fetch('/api/bookings', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
-      fetch('/api/classes', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
+      fetch('/api/live-lessons', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
       fetch('/api/assessments', { credentials: 'include' }).then((r) => r.json()).catch(() => ({})),
     ]).then(([t, b, c, a]) => {
       if (Array.isArray(t.tutors)) setTutors(t.tutors);
+      setWarnBeforeBooking(Boolean(t.warnBeforeBooking));
       // Rooms already running come first. Both lists arrive soonest-first,
       // which is the right order for a diary and the wrong one for a room the
       // learner can only walk into while it is open.
-      if (Array.isArray(c.classes)) setClasses(liveFirst(c.classes as ClassRow[]));
+      if (Array.isArray(c.liveLessons)) setLiveLessons(liveFirst(c.liveLessons as LiveLessonRow[]));
       if (Array.isArray(a.assessments)) {
         setAssessments(liveFirst(a.assessments as AssessmentRow[]));
       }
@@ -145,7 +159,16 @@ export default function TutorsPage() {
   // flow that cannot connect would be worse than showing nothing.
   if (!TUTORS_ENABLED) {
     return (
-      <div className="mx-auto w-full max-w-2xl p-6">
+      <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+        <div className="mb-8">
+          <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
+            Tutors
+          </h1>
+          <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+            {TUTORS_BLURB}
+          </p>
+        </div>
+        <div className="max-w-2xl">
         <Card className="py-12 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent/10">
             <GraduationCap className="h-6 w-6 text-dojo-accent" />
@@ -158,15 +181,21 @@ export default function TutorsPage() {
             teaching you. Not available on this deployment yet.
           </p>
         </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-6">
-      <h1 className="mb-8 hidden text-2xl font-bold tracking-tight text-dojo-text-primary md:block">
-        Tutors
-      </h1>
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="mb-8">
+        <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
+          Tutors
+        </h1>
+        <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+          {TUTORS_BLURB}
+        </p>
+      </div>
 
       {upcoming.length > 0 && (
         <section className="mb-10">
@@ -186,7 +215,7 @@ export default function TutorsPage() {
                       {b.purpose === 'evaluation' && ' · Evaluation'}
                     </p>
                     <p className="text-xs text-dojo-text-muted">
-                      {formatWhen(b.scheduledAt)} · {b.durationMinutes} min
+                      {formatWhen(b.scheduledAt, locale)} · {b.durationMinutes} min
                     </p>
                   </div>
                   <Badge variant={STATUS_VARIANT[b.status] ?? 'default'} className="capitalize">
@@ -200,18 +229,18 @@ export default function TutorsPage() {
         </section>
       )}
 
-      {classes.length > 0 && (
+      {liveLessons.length > 0 && (
         <section className="mb-10">
           <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
-            Live classes
+            Live lessons
           </h2>
           <div className="space-y-3">
-            {classes.map((c) => (
+            {liveLessons.map((c) => (
               <Card
                 key={c.id}
                 hoverable
                 className="p-4! cursor-pointer"
-                onClick={() => router.push(`/live/class/${c.id}`)}
+                onClick={() => router.push(`/live/lesson/${c.id}`)}
               >
                 <div className="flex items-center gap-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-dojo-accent/10">
@@ -221,7 +250,7 @@ export default function TutorsPage() {
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{c.title}</p>
                     <p className="text-xs text-dojo-text-muted">
                       {c.tutorName} ·{' '}
-                      {c.status === 'live' ? 'running now' : formatWhen(c.scheduledAt)} ·{' '}
+                      {c.status === 'live' ? 'running now' : formatWhen(c.scheduledAt, locale)} ·{' '}
                       {c.enrolledCount}/{c.capacity} enrolled
                     </p>
                   </div>
@@ -263,7 +292,7 @@ export default function TutorsPage() {
                     <p className="truncate text-sm font-semibold text-dojo-text-primary">{a.title}</p>
                     <p className="text-xs text-dojo-text-muted">
                       {a.tutorName} ·{' '}
-                      {a.status === 'live' ? 'open now' : formatWhen(a.scheduledAt)} ·{' '}
+                      {a.status === 'live' ? 'open now' : formatWhen(a.scheduledAt, locale)} ·{' '}
                       {a.examiner === 'ai'
                         ? `AI examiner · ${a.minutesPerLearner} min`
                         : `${a.waitingCount} waiting`}
@@ -290,6 +319,15 @@ export default function TutorsPage() {
         </section>
       )}
 
+      {!loading && !user?.canBrowseTutors && upcoming.length === 0 && liveLessons.length === 0 && assessments.length === 0 && (
+        <Card className="py-12 text-center">
+          <p className="text-sm text-dojo-text-muted">
+            Tutoring isn&apos;t available for your organization yet.
+          </p>
+        </Card>
+      )}
+
+      {user?.canBrowseTutors && (
       <section>
         <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
           Available tutors
@@ -313,6 +351,15 @@ export default function TutorsPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {warnBeforeBooking && (
+              <Card className="p-5! sm:col-span-2">
+                <p className="text-sm leading-relaxed text-dojo-text-primary">
+                  You are just starting out. Practise with the AI first and finish the Classroom English
+                  starter unit — then a tutor lesson will go much further.{' '}
+                  <Link href="/placement" className="text-dojo-accent">See your level</Link>
+                </p>
+              </Card>
+            )}
             {tutors.map((t) => (
               <Card key={t.id} hoverable className="p-5!">
                 <div className="flex items-start gap-3">
@@ -335,6 +382,16 @@ export default function TutorsPage() {
                   ))}
                 </div>
 
+                {t.trust && (
+                  <div className="mt-2">
+                    <TrustBadge trust={t.trust} languageName={getTargetLangConfig(t.languages[0] ?? 'en').name} />
+                  </div>
+                )}
+
+                {t.sharesLanguage && (
+                  <Badge variant="success" className="mt-2">Speaks your language</Badge>
+                )}
+
                 {t.instructionLanguages.length > 0 && (
                   <p className="mt-2 text-xs leading-relaxed text-dojo-text-muted">
                     Explains in{' '}
@@ -343,12 +400,14 @@ export default function TutorsPage() {
                 )}
 
                 {t.bio && (
-                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-dojo-text-muted">{t.bio}</p>
+                  <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-dojo-text-muted">
+                    <TranslatedText text={t.bio} />
+                  </p>
                 )}
 
                 <div className="mt-4 flex items-center justify-between">
                   <span className="text-sm font-semibold text-dojo-text-primary">
-                    {formatMoney(t.hourlyRateCents, t.currency)}
+                    {formatMoney(t.hourlyRateCents, t.currency, locale)}
                     {t.hourlyRateCents > 0 && (
                       <span className="text-xs font-normal text-dojo-text-muted"> / hr</span>
                     )}
@@ -365,6 +424,7 @@ export default function TutorsPage() {
           </div>
         )}
       </section>
+      )}
 
       {user == null && (
         <p className="mt-6 text-xs text-dojo-text-muted">Sign in to book a session.</p>

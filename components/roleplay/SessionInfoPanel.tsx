@@ -1,19 +1,26 @@
 'use client';
 
+import Image from 'next/image';
 import { Flag } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-import { behaviorModeClass, type SkillLevel } from '@/lib/design-tokens';
+import { behaviorModeClass, type BehaviorMode, type SkillLevel } from '@/lib/design-tokens';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import type { DomainDto, SessionDto, SituationDto } from '@/lib/roleplay/api-types';
 
 /* ── Types (mirrors page.tsx) ──────────────────── */
 interface GoalData  { id: number; sequenceOrder: number; goalText: string; goalType: string; }
 
+interface ScenarioInfo {
+  title: string;
+  learningGoals: string;
+}
+
 interface SessionInfoPanelProps {
-  domain: any;
-  situation: any;
-  scenario: any;
-  session: any;
-  character: any;
+  domain: Pick<DomainDto, 'name'> | null;
+  situation: Pick<SituationDto, 'title' | 'learningGoals' | 'skillLevel'> | null;
+  scenario: ScenarioInfo | null;
+  session: Pick<SessionDto, 'behaviorMode'> | null;
+  character: unknown;
   charName: string;
   charColor: string;
   goals: GoalData[];
@@ -27,8 +34,16 @@ interface SessionInfoPanelProps {
   correctionCount?: number;
 }
 
+function isBehaviorMode(value: string | undefined): value is BehaviorMode {
+  return value === 'standard' || value === 'trouble';
+}
+
+function isSkillLevel(value: string | undefined): value is SkillLevel {
+  return value === 'beginner' || value === 'intermediate' || value === 'advanced';
+}
+
 export function SessionInfoPanel({
-  domain, situation, scenario, session, character,
+  domain, situation, scenario, session,
   charName, charColor, goals, completedGoals, isActive, isCompleted,
   onEnd, onViewReport, targetLanguage, nativeLanguage, correctionCount,
 }: SessionInfoPanelProps) {
@@ -36,6 +51,12 @@ export function SessionInfoPanel({
     situation?.learningGoals ?? scenario?.learningGoals ?? '';
   const targetName = targetLanguage ? getTargetLangConfig(targetLanguage).name : '';
   const nativeName = nativeLanguage ? getNativeLangName(nativeLanguage) : '';
+  const behaviorMode = isBehaviorMode(session?.behaviorMode)
+    ? session.behaviorMode
+    : undefined;
+  const skillLevel = isSkillLevel(situation?.skillLevel)
+    ? situation.skillLevel
+    : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -48,7 +69,7 @@ export function SessionInfoPanel({
           {domain?.name && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Scenario</span>
-              <span className="text-dojo-text-primary font-medium text-right capitalize">
+              <span className="text-dojo-text-primary font-medium text-end capitalize">
                 {domain.name.replace('_', ' ')}
               </span>
             </div>
@@ -56,7 +77,7 @@ export function SessionInfoPanel({
           {(situation?.title ?? scenario?.title) && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Situation</span>
-              <span className="text-dojo-text-primary font-medium text-right">
+              <span className="text-dojo-text-primary font-medium text-end">
                 {situation?.title ?? scenario?.title}
               </span>
             </div>
@@ -65,14 +86,14 @@ export function SessionInfoPanel({
           {targetName && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Target</span>
-              <span className="text-dojo-text-primary font-medium text-right">{targetName}</span>
+              <span className="text-dojo-text-primary font-medium text-end">{targetName}</span>
             </div>
           )}
 
           {nativeName && (
             <div className="flex items-start justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Native</span>
-              <span className="text-dojo-text-primary font-medium text-right">{nativeName}</span>
+              <span className="text-dojo-text-primary font-medium text-end">{nativeName}</span>
             </div>
           )}
 
@@ -83,32 +104,38 @@ export function SessionInfoPanel({
                 className="flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-dojo-border overflow-hidden"
                 style={{ backgroundColor: charColor }}
               >
-                <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${charName}&backgroundColor=${charColor.replace('#','')}`} alt={charName} className="h-full w-full object-cover" />
+                <Image
+                  src={`https://api.dicebear.com/7.x/bottts/svg?seed=${charName}&backgroundColor=${charColor.replace('#','')}`}
+                  alt={charName}
+                  width={24}
+                  height={24}
+                  unoptimized
+                  className="h-full w-full object-cover"
+                />
               </span>
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-[9px] font-medium text-dojo-text-muted">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border text-xs font-medium text-dojo-text-muted">
                 U
               </span>
             </div>
           </div>
 
-          {session?.behaviorMode && (
+          {behaviorMode && (
             <div className="flex items-center justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Difficulty</span>
               <span
-                className={`px-2.5 py-0.5 rounded-[--radius-pill] text-[11px] font-medium border ${
-                  behaviorModeClass[session.behaviorMode as keyof typeof behaviorModeClass] ??
-                  behaviorModeClass.standard
+                className={`px-2.5 py-0.5 rounded-[--radius-pill] text-xs font-medium border ${
+                  behaviorModeClass[behaviorMode]
                 }`}
               >
-                {session.behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
+                {behaviorMode === 'trouble' ? 'Trouble' : 'Standard'}
               </span>
             </div>
           )}
 
-          {situation?.skillLevel && (
+          {skillLevel && (
             <div className="flex items-center justify-between gap-3">
               <span className="text-dojo-text-muted shrink-0">Skill Level</span>
-              <Badge variant={situation.skillLevel as SkillLevel}>{situation.skillLevel}</Badge>
+              <Badge variant={skillLevel}>{skillLevel}</Badge>
             </div>
           )}
         </div>
@@ -117,7 +144,7 @@ export function SessionInfoPanel({
           <div className="mt-4 pt-4 border-t border-dojo-border">
             <div className="flex items-start gap-2">
               <Flag className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-0.5" />
-              <p className="text-xs text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
+              <p className="text-sm text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
             </div>
           </div>
         )}
@@ -129,13 +156,13 @@ export function SessionInfoPanel({
               return (
                 <div key={goal.id} className="flex items-start gap-2">
                   <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       done ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'
                     }`}
                   >
                     {done ? '✓' : goal.sequenceOrder}
                   </span>
-                  <span className={`text-[11px] leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
+                  <span className={`text-sm leading-relaxed ${done ? 'text-dojo-success line-through' : 'text-dojo-text-primary'}`}>
                     {goal.goalText}
                   </span>
                 </div>
@@ -147,8 +174,8 @@ export function SessionInfoPanel({
         {correctionCount !== undefined && correctionCount > 0 && (
           <div className="mt-4 pt-4 border-t border-dojo-border">
             <div className="flex items-center gap-2">
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-dojo-warning/20 text-[9px] font-bold text-dojo-warning">!</span>
-              <span className="text-[11px] text-dojo-text-muted">{correctionCount} tip{correctionCount !== 1 ? 's' : ''} this session</span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-dojo-warning/20 text-xs font-bold text-dojo-warning">!</span>
+              <span className="text-sm text-dojo-text-muted">{correctionCount} tip{correctionCount !== 1 ? 's' : ''} this session</span>
             </div>
           </div>
         )}

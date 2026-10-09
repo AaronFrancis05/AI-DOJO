@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { thumbnailForModelUrl } from '@/lib/avatar/catalog';
 
 export interface UserAvatarRow {
   id: number;
@@ -41,7 +42,11 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { fetchAvatars(); }, [fetchAvatars]);
+  useEffect(() => {
+    // Load the authenticated user's external avatar collection on provider mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchAvatars();
+  }, [fetchAvatars]);
 
   const selectedAvatar = avatars.find(a => a.isSelected) ?? null;
 
@@ -81,7 +86,6 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
   }, [fetchAvatars]);
 
   const deleteAvatar = useCallback(async (id: number) => {
-    const deleted = avatars.find(a => a.id === id);
     setAvatars(prev => prev.filter(a => a.id !== id));
     try {
       const res = await fetch(`/api/user/avatars/${id}`, { method: 'DELETE', credentials: 'include' });
@@ -89,7 +93,7 @@ export function AvatarProvider({ children }: { children: ReactNode }) {
     } catch {
       await fetchAvatars();
     }
-  }, [avatars, fetchAvatars]);
+  }, [fetchAvatars]);
 
   return (
     <AvatarContext.Provider value={{ avatars, selectedAvatar, loading, selectAvatar, addAvatar, deleteAvatar, refresh: fetchAvatars }}>
@@ -112,4 +116,11 @@ export function useCurrentAvatar(): string | null {
 export function useCurrentAvatarModel(): string | null {
   const ctx = useContext(AvatarContext);
   return ctx?.selectedAvatar?.avatarUrl ?? null;
+}
+
+/** The selected avatar's portrait: its stored thumbnail, or the catalog one for its model. */
+export function useCurrentAvatarThumbnail(): string | null {
+  const ctx = useContext(AvatarContext);
+  const selected = ctx?.selectedAvatar;
+  return selected?.thumbnailUrl ?? thumbnailForModelUrl(selected?.avatarUrl) ?? null;
 }

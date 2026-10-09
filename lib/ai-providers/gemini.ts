@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import type { AIProvider, ChatTurn } from './types';
-import { AIProviderError, categorizeProviderError } from './types';
+import type { AIProvider, ChatTurn, GenerateOptions } from './types';
+import { AIProviderError, categorizeProviderError, modelForTier } from './types';
 
 interface GeminiMessage {
   role: 'user' | 'model';
@@ -31,6 +31,7 @@ export function createGeminiProvider(): AIProvider {
   }
 
   const modelName = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+  const batchModelName = process.env.GEMINI_BATCH_MODEL;
   const ai = new GoogleGenAI({ apiKey });
 
   // Roleplay replies are specified as 1-3 sentences. Capping output keeps a
@@ -46,22 +47,35 @@ export function createGeminiProvider(): AIProvider {
   // Only the 2.5 Flash family accepts a zero budget. Gemini 2.5 Pro cannot
   // have thinking turned off and rejects the request outright, so a `2.5`
   // substring test would have taken the whole provider down for a Pro model.
-  const canDisableThinking = /2\.5-flash/.test(modelName);
-  const thinkingConfig = canDisableThinking ? { thinkingBudget: 0 } : undefined;
+  const thinkingConfigFor = (model: string) =>
+    /2\.5-flash/.test(model) ? { thinkingBudget: 0 } : undefined;
+
+  type UsageMetadata = { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
+  const reportUsage = (options: GenerateOptions | undefined, model: string, usage: UsageMetadata) => {
+    if (!options?.onUsage || !usage) return;
+    options.onUsage({
+      provider: 'gemini',
+      model,
+      inputTokens: usage.promptTokenCount ?? 0,
+      outputTokens: usage.candidatesTokenCount ?? 0,
+    });
+  };
 
   return {
     name: 'gemini',
 
-    async generateJSON(systemInstruction: string, history: ChatTurn[]): Promise<string> {
+    async generateJSON(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): Promise<string> {
+      const model = modelForTier(options?.modelTier, modelName, batchModelName);
       try {
         const contents = toContents(history);
 
         const response = await ai.models.generateContent({
-          model: modelName,
+          model,
           contents,
           config: {
             systemInstruction,
             responseMimeType: 'application/json',
+            ...(options?.maxTokens ? { maxOutputTokens: options.maxTokens } : {}),
           },
         });
 
@@ -69,33 +83,40 @@ export function createGeminiProvider(): AIProvider {
           throw new AIProviderError('gemini', 'Received empty response from Gemini API');
         }
 
+        reportUsage(options, model, response.usageMetadata);
         return response.text;
       } catch (err) {
         if (err instanceof AIProviderError) throw err;
-        throw categorizeProviderError('gemini', modelName, err);
+        throw categorizeProviderError('gemini', model, err);
       }
     },
 
-    async *generateStream(systemInstruction: string, history: ChatTurn[]): AsyncIterable<string> {
+    async *generateStream(systemInstruction: string, history: ChatTurn[], options?: GenerateOptions): AsyncIterable<string> {
+      const model = modelForTier(options?.modelTier, modelName, batchModelName);
+      const thinkingConfig = thinkingConfigFor(model);
       try {
         const contents = toContents(history);
 
         const stream = await ai.models.generateContentStream({
-          model: modelName,
+          model,
           contents,
           config: {
             systemInstruction,
-            maxOutputTokens: REPLY_MAX_OUTPUT_TOKENS,
+            maxOutputTokens: options?.maxTokens ?? REPLY_MAX_OUTPUT_TOKENS,
             ...(thinkingConfig ? { thinkingConfig } : {}),
           },
         });
 
+        // Every chunk carries the running totals; the last one is the call's.
+        let usage: UsageMetadata;
         for await (const chunk of stream) {
+          if (chunk.usageMetadata) usage = chunk.usageMetadata;
           if (chunk.text) yield chunk.text;
         }
+        reportUsage(options, model, usage);
       } catch (err) {
         if (err instanceof AIProviderError) throw err;
-        throw categorizeProviderError('gemini', modelName, err);
+        throw categorizeProviderError('gemini', model, err);
       }
     },
   };

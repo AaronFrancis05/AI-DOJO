@@ -50,15 +50,15 @@ export function ConnectionLatencyIndicator({
       className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${config.bg} ${config.border} ${className}`}
     >
       <span className={`h-2 w-2 rounded-full ${config.dot} ${status === 'degraded' ? 'animate-pulse' : ''}`} />
-      <span className={`text-[11px] font-semibold ${config.text}`}>{config.label}</span>
+      <span className={`text-xs font-semibold ${config.text}`}>{config.label}</span>
       {estimatedLatency !== undefined && (
-        <span className="text-[10px] text-dojo-text-muted font-mono">{estimatedLatency}ms</span>
+        <span className="text-xs text-dojo-text-muted font-mono">{estimatedLatency}ms</span>
       )}
       {turnLatency !== undefined && (
         // The number the learner actually feels: their release to the
         // character's first sound. The ping above only measures the network.
         <span
-          className="text-[10px] text-dojo-text-muted font-mono"
+          className="text-xs text-dojo-text-muted font-mono"
           title="Mic release to first audio"
         >
           🎙{(turnLatency / 1000).toFixed(1)}s

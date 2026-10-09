@@ -98,7 +98,7 @@ export default function SituationPickerPage() {
 
       <Button variant="primary" size="lg" className="w-full" onClick={() => setPartnerOpen(true)}>
         Choose Your Partner
-        <ChevronRight className="h-4 w-4 ml-1" />
+        <ChevronRight className="h-4 w-4 ms-1" />
       </Button>
 
       <CharacterSelectDialog

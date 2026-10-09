@@ -21,7 +21,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { EvaluationForm } from './EvaluationForm';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
 import type { InterviewTurn } from '@/lib/interview/transcript';
 import { cn } from '@/lib/design-tokens';
 import { ChevronDown, Loader2 } from 'lucide-react';
@@ -115,7 +115,7 @@ export function AiInterviewResults({
               type="button"
               onClick={() => open(row.id)}
               aria-expanded={isOpen}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-dojo-surface-raised"
+              className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-dojo-surface-raised"
             >
               <Avatar name={row.learnerName} src={row.avatarSrc ?? undefined} size="sm" />
               <div className="min-w-0 flex-1">

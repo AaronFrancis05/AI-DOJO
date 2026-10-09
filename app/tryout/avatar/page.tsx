@@ -7,16 +7,17 @@ import { ArrowLeft, Mic, Volume2, VolumeX, MessageSquare, X, Send } from 'lucide
 import { AvatarViewport3D, DEFAULT_AVATAR_MODEL_URL } from '@/components/roleplay/AvatarViewport3D';
 import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useGuestRoleplaySession } from '@/lib/hooks/useGuestRoleplaySession';
-import { stop as stopTts, setOnSpeakingChange, unlockAudio } from '@/lib/roleplay/tts';
+import { stop as stopTts, setOnSpeakingChange, unlockAudio, clearTurnCache } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { TryoutCompleteScreen } from '@/components/marketing/TryoutCompleteScreen';
 import { TryoutBlockedScreen } from '@/components/marketing/TryoutBlockedScreen';
 import { loadTryoutParams } from '@/lib/tryout/guest-params';
+import { TRYOUT_CHARACTER_NAME } from '@/lib/tryout/character';
 import { useTryoutGate } from '@/lib/hooks/useTryoutGate';
 
-const CHAR_NAME = 'Sam';
 const CHAR_COLOR = '#2D3BC5';
 
 export default function TryoutAvatarPage() {
@@ -70,14 +71,17 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const mutedRef = useRef(false);
 
-  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => {
+    mutedRef.current = muted;
+    if (muted) stopTts();
+  }, [muted]);
 
   // Microphone acquisition is handled once by the recognizer prewarm in
   // useVoiceInput, which holds the stream open for the whole session.
 
   useEffect(() => {
     setOnSpeakingChange((speaking) => setAvatarMode(speaking ? 'talking' : 'idle'));
-    return () => { setOnSpeakingChange(null); stopTts(); };
+    return () => { setOnSpeakingChange(null); stopTts(); clearTurnCache(); };
   }, []);
 
   useEffect(() => {
@@ -101,14 +105,14 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
         // sentences so the first one starts without waiting for the rest.
         onTextDone: (t: string) => {
           setStreamingText(null);
-          speaker.finish(cleanDisplay(t)).catch(() => {});
+          return speaker.finish(cleanDisplay(t)).catch(() => {});
         },
       });
     } catch (e) {
       console.error(e);
       stopTts();
     }
-  }, [sending, limitReached, completed, submitTurnStream, targetLanguage, nativeLanguage]);
+  }, [sending, limitReached, submitTurnStream, targetLanguage, nativeLanguage]);
 
   const handleChatSend = useCallback(() => {
     const trimmed = chatInput.trim();
@@ -130,8 +134,6 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
   if (gate.state === 'blocked' || blocked) {
     return (
       <TryoutBlockedScreen
-        targetLanguage={targetLanguage}
-        nativeLanguage={nativeLanguage}
         retryAfterMs={gate.state === 'blocked' ? gate.retryAfterMs : blockedRetryAfterMs}
       />
     );
@@ -169,7 +171,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
                   <Volume2 className="h-8 w-8 text-dojo-accent" />
                 </div>
-                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {CHAR_NAME}</h2>
+                <h2 className="text-lg font-bold text-dojo-text-primary mb-2">Start conversation with {TRYOUT_CHARACTER_NAME}</h2>
                 <p className="text-sm text-dojo-text-muted mb-6 leading-relaxed">
                   A quick preview of what real practice feels like.
                 </p>
@@ -189,11 +191,11 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                       onToken: (t) => setStreamingText(t ? cleanDisplay(t) : null),
                       onTextDone: (t) => {
                         setStreamingText(null);
-                        speaker.finish(cleanDisplay(t)).catch(() => {});
+                        return speaker.finish(cleanDisplay(t)).catch(() => {});
                       },
                     }).catch(() => setGreetingSent(false));
                   }}
-                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
+                  className="inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40"
                 >
                   <Volume2 className="h-5 w-5" />
                   Start conversation
@@ -204,7 +206,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
 
           <div className="flex-1 flex items-center justify-center relative">
             <AvatarViewport3D
-              name={CHAR_NAME}
+              name={TRYOUT_CHARACTER_NAME}
               accentColor={CHAR_COLOR}
               mode={avatarMode}
               modelUrl={DEFAULT_AVATAR_MODEL_URL}
@@ -213,7 +215,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
           </div>
 
           {voice.partialTranscript && (
-            <div className="absolute bottom-44 left-0 right-0 flex justify-center z-10 px-4">
+            <div className="absolute bottom-44 start-0 end-0 flex justify-center z-10 px-4">
               <div className="flex items-start gap-2 rounded-xl bg-dojo-surface/85 backdrop-blur-md border border-dojo-border/70 px-4 py-2.5 max-w-md shadow-lg">
                 <Mic className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-1" />
                 <p className="text-sm text-dojo-text-primary/90 italic leading-relaxed">{voice.partialTranscript}</p>
@@ -222,17 +224,20 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
           )}
 
           {error && (
-            <div className="absolute top-4 left-0 right-0 flex justify-center z-10 px-4">
+            <div className="absolute top-4 start-0 end-0 flex justify-center z-10 px-4">
               <p className="rounded-lg bg-dojo-danger/15 border border-dojo-danger/30 px-3 py-1.5 text-xs text-dojo-danger">{error}</p>
             </div>
           )}
 
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-8 safe-bottom z-10 px-4 pointer-events-none">
+          <div className="absolute bottom-0 start-0 end-0 flex justify-center pb-8 safe-bottom z-10 px-4 pointer-events-none">
             <div className="flex items-center justify-center gap-6 sm:gap-8 rounded-2xl bg-black/10 backdrop-blur-[2px] border border-white/10 px-6 sm:px-8 py-3 pointer-events-auto">
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setMuted(v => !v)}
+                  onClick={() => {
+                    if (!muted) stopTts();
+                    setMuted(v => !v);
+                  }}
                   className={`tap-target flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 ${
                     muted
                       ? 'bg-dojo-danger/30 text-dojo-danger border-dojo-danger/50 backdrop-blur-md'
@@ -242,7 +247,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 >
                   {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                 </button>
-                <span className="text-[10px] text-white/70 font-medium drop-shadow-sm">Mute</span>
+                <span className="text-xs text-white/70 font-medium drop-shadow-sm">Mute</span>
               </div>
 
               <div className="flex flex-col items-center gap-2">
@@ -261,7 +266,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 >
                   <Mic className="h-7 w-7 text-white" />
                 </button>
-                <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
+                <span className={`text-xs font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-white/70'
                 }`}>
                   {voice.isListening ? 'Listening...' : 'Hold to Speak'}
@@ -277,13 +282,13 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 >
                   <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className="text-[10px] text-white/70 font-medium drop-shadow-sm">Chat</span>
+                <span className="text-xs text-white/70 font-medium drop-shadow-sm">Chat</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className={`absolute top-0 left-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-r border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute top-0 start-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-e border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'}`}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border/60 shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-dojo-accent" />
@@ -296,23 +301,23 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
 
           <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4 space-y-4 overscroll-contain">
             {conversations.length === 0 && (
-              <p className="text-center text-xs text-dojo-text-muted/60 py-8">No messages yet</p>
+              <p className="text-center text-sm text-dojo-text-muted py-8">No messages yet</p>
             )}
             {conversations.map((turn) => {
               const isAi = turn.speaker === 'ai';
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: isAi ? CHAR_COLOR : '#6366f1' }}>
-                    {isAi ? CHAR_NAME[0] : 'U'}
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: isAi ? CHAR_COLOR : '#6366f1' }}>
+                    {isAi ? TRYOUT_CHARACTER_NAME[0] : 'U'}
                   </div>
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? CHAR_NAME : 'You'}</span>
+                      <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? TRYOUT_CHARACTER_NAME : 'You'}</span>
                     </div>
-                    <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
-                      <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                    <div className={`px-4 py-3 shadow-sm ${isAi ? 'rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60' : 'rounded-2xl rounded-se-sm bg-dojo-accent/15 border border-dojo-accent/20'}`}>
+                      <p translate="no" className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
                       {isAi && turn.messageNative && (
-                        <p className="mt-1 text-[11px] text-dojo-text-muted italic">{turn.messageNative}</p>
+                        <p className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messageNative}</p>
                       )}
                     </div>
                   </div>
@@ -321,14 +326,14 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
             })}
             {streamingText && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: CHAR_COLOR }}>
-                  {CHAR_NAME[0]}
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: CHAR_COLOR }}>
+                  {TRYOUT_CHARACTER_NAME[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
-                  <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
-                    <p className="text-sm text-dojo-text-primary leading-relaxed">
+                  <div className="rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
+                    <p className="text-base text-dojo-text-primary leading-relaxed">
                       {streamingText}
-                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
+                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ms-0.5 animate-pulse align-middle" />
                     </p>
                   </div>
                 </div>
@@ -346,7 +351,7 @@ function TryoutAvatarSession({ targetLanguage, nativeLanguage }: { targetLanguag
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
                 placeholder="Type a message..."
                 disabled={sending || !greetingSent}
-                className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+                className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none"
               />
               <button
                 onClick={handleChatSend}

@@ -10,7 +10,7 @@ import {
 /**
  * A call id that is unguessable and stable for the life of a room.
  *
- * Generated when the booking/class/assessment is created and stored on the
+ * Generated when the booking/live lesson/assessment is created and stored on the
  * row, so every participant resolves the same call without negotiating one.
  * Deliberately NOT derived from the row id: a sequential call id would let
  * anyone holding a valid token for their own room guess someone else's.
@@ -39,7 +39,7 @@ export type JoinDecision =
  * the only thing standing between a participant and the call, so the check
  * cannot live in the UI.
  *
- * Shared by all three room types. A class or an assessment has no
+ * Shared by all three room types. A live lesson or an assessment has no
  * 'requested' state, so that branch simply never fires for them.
  */
 export function canJoinBooking(booking: BookingWindow, now: Date = new Date()): JoinDecision {
@@ -53,7 +53,7 @@ export function canJoinBooking(booking: BookingWindow, now: Date = new Date()): 
   //
   // 'completed' is the tutor saying the room is finished; the grace window
   // would otherwise keep letting people back into a session that is over.
-  // 'live' is the tutor saying it has opened — a class started on the spot, or
+  // 'live' is the tutor saying it has opened — a live lesson started on the spot, or
   // early — and a time check that still answered "this has not opened yet"
   // would make going live mean nothing.
   if (booking.status === 'completed') {

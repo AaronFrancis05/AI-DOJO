@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Mic, CheckCircle2, XCircle, ArrowRight, Volume2 } from 'lucide-react';
 import { speakWithVisemes, speak as ttsSpeak, setVoiceGender } from '@/lib/roleplay/tts';
-import { getBCP47 } from '@/lib/language';
+import { getBCP47, getTargetLangConfig } from '@/lib/language';
 
 interface VocabWord {
   id: number;
@@ -45,6 +45,8 @@ export function IcebreakerDrill({
   }, [voiceGender]);
 
   useEffect(() => {
+    // A parent advances the word; reset this drill's local attempt state for it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPhase('intro');
     setAttemptNo(1);
     setTranscript('');
@@ -55,7 +57,7 @@ export function IcebreakerDrill({
 
   const handlePlayIntro = useCallback(async () => {
     setBusy(true);
-    const intro = `Let's learn the word for "${word.english}". In ${targetLanguage === 'ja' ? 'Japanese' : 'the target language'}, you say:`;
+    const intro = `Let's learn the word for "${word.english}". In ${getTargetLangConfig(targetLanguage).name}, you say:`;
     await ttsSpeak(intro, 'en-US');
     await speakWithVisemes(word.japanese, bcp47).catch(() => ttsSpeak(word.japanese, bcp47));
     setBusy(false);
@@ -96,7 +98,7 @@ export function IcebreakerDrill({
     } finally {
       setBusy(false);
     }
-  }, [word.id, transcript, accuracy, attemptNo, onAttempt]);
+  }, [word.id, word.japanese, transcript, accuracy, attemptNo, onAttempt, busy]);
 
   const handleNext = useCallback(() => {
     if (wordIndex + 1 >= vocabCount) {
@@ -140,9 +142,9 @@ export function IcebreakerDrill({
 
               <div className="border-t border-dojo-border/40 pt-4 space-y-2">
                 <p className="text-xs text-dojo-text-muted uppercase tracking-wider font-medium">
-                  In {targetLanguage === 'ja' ? 'Japanese' : 'the target language'}
+                  In {getTargetLangConfig(targetLanguage).name}
                 </p>
-                <p className="text-2xl font-bold text-dojo-text-primary">
+                <p translate="no" className="text-2xl font-bold text-dojo-text-primary">
                   {word.japanese}
                 </p>
                 {word.phonetic && (
@@ -153,7 +155,7 @@ export function IcebreakerDrill({
               </div>
 
               {word.usageTip && (
-                <p className="text-xs text-dojo-text-muted/70 bg-dojo-surface rounded-lg px-3 py-2">
+                <p className="text-sm text-dojo-text-muted bg-dojo-surface rounded-lg px-3 py-2">
                   {word.usageTip}
                 </p>
               )}
@@ -176,11 +178,11 @@ export function IcebreakerDrill({
           {(phase === 'recording' || phase === 'retry') && (
             <div className="space-y-6">
               <div className="space-y-2">
-                <p className="text-2xl font-bold text-dojo-text-primary">{word.japanese}</p>
+                <p translate="no" className="text-2xl font-bold text-dojo-text-primary">{word.japanese}</p>
                 <p className="text-sm text-dojo-text-muted italic">{word.phonetic}</p>
-                <p className="text-xs text-dojo-text-muted">({word.english})</p>
+                <p className="text-sm text-dojo-text-muted">({word.english})</p>
                 {word.usageTip && (
-                  <p className="text-xs text-dojo-text-muted/70 mt-2">{word.usageTip}</p>
+                  <p className="text-sm text-dojo-text-muted mt-2">{word.usageTip}</p>
                 )}
               </div>
 
@@ -207,7 +209,7 @@ export function IcebreakerDrill({
                 >
                   <Mic className="h-8 w-8 text-white" />
                 </button>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
+                <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
                   {busy ? 'Listening...' : phase === 'retry' ? 'Try Again' : 'Tap & Say the Word'}
                 </span>
               </div>
@@ -221,7 +223,7 @@ export function IcebreakerDrill({
                   <CheckCircle2 className="h-12 w-12 text-dojo-success" />
                   <p className="text-lg font-semibold text-dojo-success">Great job!</p>
                   <p className="text-sm text-dojo-text-muted">
-                    You said: <span className="text-dojo-text-primary font-medium">{word.japanese}</span>
+                    You said: <span translate="no" className="text-dojo-text-primary font-medium">{word.japanese}</span>
                   </p>
                 </div>
               ) : (
@@ -229,7 +231,7 @@ export function IcebreakerDrill({
                   <XCircle className="h-12 w-12 text-dojo-warning" />
                   <p className="text-lg font-semibold text-dojo-warning">Keep practicing</p>
                   <p className="text-sm text-dojo-text-muted">
-                    The word is: <span className="text-dojo-text-primary font-medium">{word.japanese}</span>
+                    The word is: <span translate="no" className="text-dojo-text-primary font-medium">{word.japanese}</span>
                     <br />
                     <span className="italic">{word.phonetic}</span>
                   </p>

@@ -34,7 +34,7 @@ class AvatarErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="absolute top-0 left-0 z-50 bg-red-900/90 text-white text-[11px] p-2 max-w-[320px] rounded-br">
+        <div className="absolute top-0 start-0 z-50 bg-red-900/90 text-white text-xs p-2 max-w-[320px] rounded-ee">
           Avatar crashed: {this.state.error.message}
         </div>
       );
@@ -54,7 +54,7 @@ function DevOverlay() {
   }, []);
   if (warnings.length === 0) return null;
   return (
-    <div className="absolute top-0 left-0 z-50 bg-red-900/80 text-white text-[10px] p-2 max-w-[300px] rounded-br pointer-events-none">
+    <div className="absolute top-0 start-0 z-50 bg-red-900/80 text-white text-xs p-2 max-w-[300px] rounded-ee pointer-events-none">
       {warnings.map((w, i) => <div key={i}>{w}</div>)}
     </div>
   );
@@ -75,7 +75,7 @@ function AvatarLoadingIndicator({ name }: { name: string }) {
             style={{ width: `${Math.max(8, Math.min(100, progress))}%` }}
           />
         </div>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-dojo-text-muted">
+        <p className="text-xs font-medium uppercase tracking-wider text-dojo-text-muted">
           Preparing {name}
         </p>
       </div>
@@ -185,7 +185,11 @@ export function AvatarViewport3D({
     framedRef.current = framed;
   }, [framed]);
 
-  useEffect(() => { setWebglSupported(detectWebGLSupport()); }, []);
+  useEffect(() => {
+    // WebGL can only be detected after the browser environment is available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWebglSupported(detectWebGLSupport());
+  }, []);
 
   // Starts the clip download alongside the character GLB instead of after it:
   // the manager can only ask for clips once the model has finished parsing.

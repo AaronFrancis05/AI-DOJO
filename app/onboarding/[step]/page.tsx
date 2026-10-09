@@ -1,50 +1,66 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   useOnboarding,
   clearPersistedOnboarding,
-  markOnboardingResume,
-  takeOnboardingResume,
 } from '@/lib/onboarding/context';
 import {
-  ONBOARDING_STEPS, LEVEL_OPTIONS, GOAL_OPTIONS,
+  ONBOARDING_STEP_DEFINITIONS, LEVEL_OPTIONS, GOAL_OPTIONS,
   MODE_OPTIONS, AGE_OPTIONS, FREQUENCY_OPTIONS,
+  onboardingStepPath,
 } from '@/lib/onboarding/steps';
-import { SingleSelectStep, InterstitialStep, OnboardingShell } from '@/components/onboarding';
+import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
+import { INTEREST_OPTIONS, MAX_INTERESTS, MAX_OCCUPATION_LENGTH } from '@/lib/study-packs/profile';
+import { Button } from '@/components/ui/Button';
+import { cn } from '@/lib/design-tokens';
+import { SingleSelectStep, InterstitialStep, OnboardingShell, OnboardingPractice } from '@/components/onboarding';
 import { LanguageSelectionPanel } from '@/components/ui/LanguageSelectionPanel';
 import { useLanguageCatalog } from '@/lib/language-context';
-import { Sparkles, MessageSquare, Mic, User, BookOpen, Clock, CheckCircle2, LoaderIcon } from 'lucide-react';
-import { authClient } from '@/lib/auth/client';
-import { getAuthErrorMessage } from '@/lib/auth/errors';
+import { Sparkles, MessageSquare, BookOpen, CheckCircle2, LoaderIcon } from 'lucide-react';
+
+const [
+  WELCOME,
+  TARGET_LANGUAGE,
+  NATIVE_LANGUAGE,
+  LEVEL,
+  SOCIAL_PROOF,
+  GOAL,
+  FREQUENCY,
+  MODE,
+  TRANSITION_2,
+  DOMAIN,
+  AGE,
+  ABOUT_YOU,
+  TRANSITION_1,
+  PRACTICE,
+] = ONBOARDING_STEP_DEFINITIONS;
+
+/** The step after age: about-you while personalized learning is on, else straight on. */
+const AFTER_AGE = STUDY_PACKS_ENABLED ? ABOUT_YOU : TRANSITION_1;
 
 type StepComponent = React.ReactNode;
 
 export default function OnboardingStepPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isPreview = searchParams.get('preview') === '1';
   const step = params.step as string;
-  const { state, dispatch } = useOnboarding();
+  const { state, dispatch, hydrated } = useOnboarding();
   const catalog = useLanguageCatalog();
-  const [modeValue, setModeValue] = useState(state.preferredMode);
   const [saving, setSaving] = useState(false);
-  const [accountCreated, setAccountCreated] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [error, setError] = useState('');
   const [dbDomains, setDbDomains] = useState<{ id: number; name: string; icon: string; description: string }[]>([]);
   const [loadingDomains, setLoadingDomains] = useState(false);
-  const [checkingAuth, setCheckingAuth] = useState(step === 'account');
-  const autoAdvanceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // One completion POST per sitting — the finish button and skip share this.
+  const completing = useRef(false);
 
   useEffect(() => {
-    return () => autoAdvanceTimers.current.forEach(clearTimeout);
-  }, []);
-
-  useEffect(() => {
-    if (step === 'domain' && dbDomains.length === 0 && !loadingDomains) {
+    if (step === DOMAIN.key && dbDomains.length === 0 && !loadingDomains) {
+      // This marks the externally loaded domain request in flight, preventing
+      // duplicate requests while its promise is pending.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadingDomains(true);
       fetch('/api/domains', { credentials: 'include' })
         .then(r => r.json())
@@ -69,19 +85,30 @@ export default function OnboardingStepPage() {
   /**
    * Saves the wizard's answers and hands the learner off.
    *
-   * The route enrols them into a course as part of finishing onboarding, so
-   * the destination is that course rather than /home — landing on a dashboard
-   * with no path to follow was the whole gap. It falls back to /home when no
-   * course could be resolved (an install with no active courses).
+   * The first practice pick is a Library domain, so that is the landing.
+   * Enrolment still runs in the same POST (Courses / calendar stay populated)
+   * and is the fallback when the domain cannot be resolved. /home is last.
    */
   const submitOnboarding = useCallback(async () => {
+    // A dry run never writes. Loop to welcome so the screens can be walked
+    // again without minting an account or overwriting a real profile.
+    if (isPreview) {
+      clearPersistedOnboarding();
+      router.push(onboardingStepPath('/onboarding', WELCOME.key, true));
+      return;
+    }
+
     const onboardingPayload: Record<string, unknown> = {};
     if (state.level) onboardingPayload.level = state.level;
     if (state.learningGoal) onboardingPayload.learningGoal = state.learningGoal;
     if (state.preferredDomainId) onboardingPayload.preferredDomainId = state.preferredDomainId;
     if (state.preferredMode) onboardingPayload.preferredMode = state.preferredMode;
     if (state.ageRange) onboardingPayload.ageRange = state.ageRange;
-    if (state.targetLanguage) onboardingPayload.preferredTargetLanguage = state.targetLanguage;
+    if (state.occupation.trim()) onboardingPayload.occupation = state.occupation.trim();
+    if (state.interests.length > 0) onboardingPayload.interests = state.interests;
+    // `targetLanguage` is the key /api/user/onboarding reads. This used to be sent
+    // as `preferredTargetLanguage`, which the route ignored, so the pick was lost.
+    if (state.targetLanguage) onboardingPayload.targetLanguage = state.targetLanguage;
     if (state.nativeLanguage) onboardingPayload.nativeLanguage = state.nativeLanguage;
     if (state.dailyGoalMinutes) onboardingPayload.dailyGoalMinutes = state.dailyGoalMinutes;
 
@@ -93,8 +120,15 @@ export default function OnboardingStepPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardingPayload),
       });
+      if (res.status === 401) {
+        clearPersistedOnboarding();
+        router.push(onboardingStepPath('/onboarding', WELCOME.key));
+        return;
+      }
       const data = await res.json().catch(() => null);
-      if (data?.courseSlug) {
+      if (data?.domainSlug) {
+        destination = `/dojo/${data.domainSlug}`;
+      } else if (data?.courseSlug) {
         destination = `/courses/${data.courseSlug}?target=${data.targetLanguage ?? state.targetLanguage}&native=${data.nativeLanguage ?? state.nativeLanguage}`;
       }
     } catch {
@@ -104,41 +138,18 @@ export default function OnboardingStepPage() {
 
     clearPersistedOnboarding();
     router.push(destination);
-  }, [state, router]);
+  }, [state, router, isPreview]);
 
-  useEffect(() => {
-    if (step === 'account') {
-      authClient.getSession().then(({ data }) => {
-        if (data?.user) {
-          setSaving(true);
-          setAccountCreated(true);
-          submitOnboarding();
-        } else {
-          setCheckingAuth(false);
-        }
-      });
-    }
-  }, [step, submitOnboarding]);
-
-  useEffect(() => {
-    if (step === 'personalizing') {
-      const t = setTimeout(() => router.push('/onboarding/plan-ready'), 2000);
-      autoAdvanceTimers.current.push(t);
-      return () => clearTimeout(t);
-    }
-  }, [step, router]);
-
-  useEffect(() => {
-    if (step === 'plan-ready') {
-      const t = setTimeout(() => router.push('/onboarding/account'), 2500);
-      autoAdvanceTimers.current.push(t);
-      return () => clearTimeout(t);
-    }
-  }, [step, router]);
+  const finishPractice = useCallback(() => {
+    if (completing.current) return;
+    completing.current = true;
+    setSaving(true);
+    void submitOnboarding();
+  }, [submitOnboarding]);
 
   const goToStep = useCallback((key: string) => {
-    router.push(`/onboarding/${key}`);
-  }, [router]);
+    router.push(onboardingStepPath('/onboarding', key, isPreview));
+  }, [router, isPreview]);
 
   const selectAndAdvance = useCallback((type: string, payload: unknown, nextStep: string) => {
     dispatch({ type: type as never, payload: payload as never });
@@ -146,53 +157,27 @@ export default function OnboardingStepPage() {
     goToStep(nextStep);
   }, [dispatch, goToStep]);
 
-  const handleEmailSignup = async () => {
-    setError('');
-    setSaving(true);
-    try {
-      const { error: authError } = await authClient.signUp.email({ email, password, name });
-      if (authError) {
-        setError(
-          getAuthErrorMessage(authError, 'Something went wrong. Please try again.', 'sign-up'),
-        );
-        return;
-      }
-      setAccountCreated(true);
-      await submitOnboarding();
-    } catch (err) {
-      setError(getAuthErrorMessage(err, 'Network error. Please try again.', 'sign-up'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleGoogleAuth = async () => {
-    markOnboardingResume();
-    window.location.href = '/api/auth/google/init';
-  };
-
-  // The OAuth callback can only send a new signup to the first step. If the
-  // learner left from the account step, put them back on it — their answers
-  // are still in sessionStorage and are about to be submitted.
-  useEffect(() => {
-    if (step !== 'level') return;
-    if (takeOnboardingResume()) router.replace('/onboarding/account');
-  }, [step, router]);
-
   const stepContent: Record<string, StepComponent> = {
-    'level': (
+    [WELCOME.key]: (
+      <InterstitialStep
+        title={WELCOME.title}
+        subtitle={WELCOME.subtitle}
+        onContinue={() => goToStep(TARGET_LANGUAGE.key)}
+      />
+    ),
+    [LEVEL.key]: (
       <SingleSelectStep
         options={LEVEL_OPTIONS}
         value={state.level}
-        onChange={(v) => selectAndAdvance('SET_LEVEL', v, 'social-proof')}
-        title={ONBOARDING_STEPS[0].title}
-        subtitle={ONBOARDING_STEPS[0].subtitle}
+        onChange={(v) => selectAndAdvance('SET_LEVEL', v, SOCIAL_PROOF.key)}
+        title={LEVEL.title}
+        subtitle={LEVEL.subtitle}
       />
     ),
-    'social-proof': (
+    [SOCIAL_PROOF.key]: (
       <InterstitialStep
         title="You're in good company"
-        onContinue={() => goToStep('goal')}
+        onContinue={() => goToStep(GOAL.key)}
       >
         <div className="grid grid-cols-3 gap-4 text-center">
           <div className="rounded-xl border border-dojo-border bg-dojo-surface/50 p-4">
@@ -213,26 +198,26 @@ export default function OnboardingStepPage() {
         </div>
       </InterstitialStep>
     ),
-    'goal': (
+    [GOAL.key]: (
       <SingleSelectStep
         options={GOAL_OPTIONS}
         value={state.learningGoal}
-        onChange={(v) => selectAndAdvance('SET_LEARNING_GOAL', v, 'transition-1')}
-        title={ONBOARDING_STEPS[2].title}
-        subtitle={ONBOARDING_STEPS[2].subtitle}
+        onChange={(v) => selectAndAdvance('SET_LEARNING_GOAL', v, FREQUENCY.key)}
+        title={GOAL.title}
+        subtitle={GOAL.subtitle}
       />
     ),
-    'transition-1': (
+    [TRANSITION_1.key]: (
       <InterstitialStep
         title="Great! Let's get you started!"
-        onContinue={() => goToStep('domain')}
+        onContinue={() => goToStep(PRACTICE.key)}
       />
     ),
-    'domain': (
+    [DOMAIN.key]: (
       <div className="flex flex-col gap-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[4].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[4].subtitle}</p>
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{DOMAIN.title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{DOMAIN.subtitle}</p>
         </div>
         {loadingDomains ? (
           <div className="flex items-center justify-center py-8">
@@ -247,9 +232,9 @@ export default function OnboardingStepPage() {
                   key={d.id}
                   type="button"
                   onClick={() => {
-                    dispatch({ type: 'SET_PREFERRED_DOMAIN', payload: { id: d.id, name: d.name } });
-                    dispatch({ type: 'COMPLETE_STEP', payload: 'mode' });
-                    goToStep('mode');
+                    dispatch({ type: 'SET_PREFERRED_DOMAIN', payload: { id: Number(d.id), name: d.name } });
+                    dispatch({ type: 'COMPLETE_STEP', payload: AGE.key });
+                    goToStep(AGE.key);
                   }}
                   className={`flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all ${
                     selected
@@ -269,53 +254,113 @@ export default function OnboardingStepPage() {
         )}
       </div>
     ),
-    'mode': (
+    [MODE.key]: (
       <SingleSelectStep
         options={MODE_OPTIONS}
         value={state.preferredMode}
-        onChange={(v) => selectAndAdvance('SET_PREFERRED_MODE', v, 'transition-2')}
-        title={ONBOARDING_STEPS[5].title}
-        subtitle={ONBOARDING_STEPS[5].subtitle}
+        onChange={(v) => selectAndAdvance('SET_PREFERRED_MODE', v, TRANSITION_2.key)}
+        title={MODE.title}
+        subtitle={MODE.subtitle}
       />
     ),
-    'transition-2': (
+    [TRANSITION_2.key]: (
       <InterstitialStep
         title="You're almost set up!"
-        onContinue={() => goToStep('age')}
+        onContinue={() => goToStep(DOMAIN.key)}
       />
     ),
-    'age': (
+    [AGE.key]: (
       <SingleSelectStep
         options={AGE_OPTIONS}
         value={state.ageRange}
-        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, 'target-language')}
-        title={ONBOARDING_STEPS[7].title}
-        subtitle={ONBOARDING_STEPS[7].subtitle}
+        onChange={(v) => selectAndAdvance('SET_AGE_RANGE', v, AFTER_AGE.key)}
+        title={AGE.title}
+        subtitle={AGE.subtitle}
         skippable={true}
-        onSkip={() => goToStep('target-language')}
+        onSkip={() => goToStep(AFTER_AGE.key)}
       />
     ),
-    'target-language': (
+    [ABOUT_YOU.key]: (
       <div className="flex flex-col gap-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[8].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[8].subtitle}</p>
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{ABOUT_YOU.title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{ABOUT_YOU.subtitle}</p>
+        </div>
+        <label className="flex flex-col gap-2">
+          <span className="text-sm font-semibold text-dojo-text-primary">What do you do?</span>
+          <input
+            type="text"
+            value={state.occupation}
+            maxLength={MAX_OCCUPATION_LENGTH}
+            onChange={(e) => dispatch({ type: 'SET_OCCUPATION', payload: e.target.value })}
+            placeholder="e.g. nurse, software engineer, student"
+            className="rounded-xl border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary outline-none transition-colors placeholder:text-dojo-text-muted focus:border-dojo-accent"
+          />
+        </label>
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-semibold text-dojo-text-primary">What are you into?</span>
+          <div className="flex flex-wrap gap-2">
+            {INTEREST_OPTIONS.map((interest) => {
+              const selected = state.interests.includes(interest);
+              const full = !selected && state.interests.length >= MAX_INTERESTS;
+              return (
+                <button
+                  key={interest}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={full}
+                  onClick={() => dispatch({ type: 'TOGGLE_INTEREST', payload: interest })}
+                  className={cn(
+                    'rounded-full border px-4 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                    selected
+                      ? 'border-dojo-accent bg-dojo-accent/10 text-dojo-text-primary'
+                      : 'border-dojo-border bg-dojo-surface text-dojo-text-muted hover:border-dojo-accent/50',
+                  )}
+                >
+                  {interest}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <Button
+          onClick={() => {
+            dispatch({ type: 'COMPLETE_STEP', payload: TRANSITION_1.key });
+            goToStep(TRANSITION_1.key);
+          }}
+        >
+          Continue
+        </Button>
+        <button
+          type="button"
+          onClick={() => goToStep(TRANSITION_1.key)}
+          className="text-center text-sm text-dojo-text-muted hover:text-dojo-text-primary underline underline-offset-2"
+        >
+          Skip for now
+        </button>
+      </div>
+    ),
+    [TARGET_LANGUAGE.key]: (
+      <div className="flex flex-col gap-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{TARGET_LANGUAGE.title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{TARGET_LANGUAGE.subtitle}</p>
         </div>
         <LanguageSelectionPanel
           value={state.targetLanguage}
           onSelect={(code) => {
             dispatch({ type: 'SET_TARGET_LANGUAGE', payload: code });
-            dispatch({ type: 'COMPLETE_STEP', payload: 'native-language' });
-            goToStep('native-language');
+            dispatch({ type: 'COMPLETE_STEP', payload: NATIVE_LANGUAGE.key });
+            goToStep(NATIVE_LANGUAGE.key);
           }}
         />
       </div>
     ),
-    'native-language': (
+    [NATIVE_LANGUAGE.key]: (
       <div className="flex flex-col gap-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[9].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[9].subtitle}</p>
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{NATIVE_LANGUAGE.title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{NATIVE_LANGUAGE.subtitle}</p>
         </div>
         <LanguageSelectionPanel
           value={state.nativeLanguage}
@@ -323,17 +368,17 @@ export default function OnboardingStepPage() {
           searchPlaceholder="Search your native language..."
           onSelect={(code) => {
             dispatch({ type: 'SET_NATIVE_LANGUAGE', payload: code });
-            dispatch({ type: 'COMPLETE_STEP', payload: 'frequency' });
-            goToStep('frequency');
+            dispatch({ type: 'COMPLETE_STEP', payload: LEVEL.key });
+            goToStep(LEVEL.key);
           }}
         />
       </div>
     ),
-    'frequency': (
+    [FREQUENCY.key]: (
       <div className="flex flex-col gap-6">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[10].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[10].subtitle}</p>
+          <h2 className="text-2xl font-bold text-dojo-text-primary">{FREQUENCY.title}</h2>
+          <p className="mt-2 text-sm text-dojo-text-muted">{FREQUENCY.subtitle}</p>
         </div>
         <div className="flex flex-col gap-3">
           {FREQUENCY_OPTIONS.map((opt) => {
@@ -344,10 +389,10 @@ export default function OnboardingStepPage() {
                 type="button"
                 onClick={() => {
                   dispatch({ type: 'SET_DAILY_GOAL_MINUTES', payload: opt.value });
-                  dispatch({ type: 'COMPLETE_STEP', payload: 'personalizing' });
-                  goToStep('personalizing');
+                  dispatch({ type: 'COMPLETE_STEP', payload: MODE.key });
+                  goToStep(MODE.key);
                 }}
-                className={`flex items-center gap-4 rounded-xl border p-4 text-left transition-all ${
+                className={`flex items-center gap-4 rounded-xl border p-4 text-start transition-all ${
                   selected
                     ? 'border-dojo-accent bg-dojo-accent/5 ring-2 ring-dojo-accent/20'
                     : 'border-dojo-border bg-dojo-surface hover:border-dojo-accent/50'
@@ -370,119 +415,25 @@ export default function OnboardingStepPage() {
         </div>
       </div>
     ),
-    'personalizing': (
-      <InterstitialStep
-        title="Personalization in progress"
-        loading={true}
-        autoAdvance={true}
-      />
-    ),
-    'plan-ready': (
-      <InterstitialStep
-        title="Your personalized plan is ready!"
-        autoAdvance={true}
-      >
-        <div className="flex flex-col items-center gap-2 text-sm text-dojo-text-muted">
-          <p>Scenarios chosen for your level</p>
-          <p>Preferred mode: {state.preferredMode || 'no preference'}</p>
-          <p>Daily goal: {state.dailyGoalMinutes} minutes</p>
-        </div>
-      </InterstitialStep>
-    ),
-    'account': (
-      <div className="flex flex-col gap-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-dojo-text-primary">{ONBOARDING_STEPS[13].title}</h2>
-          <p className="mt-2 text-sm text-dojo-text-muted">{ONBOARDING_STEPS[13].subtitle}</p>
-        </div>
-
-        {accountCreated ? (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <CheckCircle2 className="h-12 w-12 text-dojo-success" />
-            <p className="text-lg font-semibold text-dojo-text-primary">Account created!</p>
-            <p className="text-sm text-dojo-text-muted">Redirecting to your dashboard...</p>
-          </div>
-        ) : checkingAuth ? (
-          <div className="flex flex-col items-center gap-4 py-8">
-            <LoaderIcon className="h-8 w-8 animate-spin text-dojo-accent" />
-            <p className="text-sm text-dojo-text-muted">Checking your session...</p>
-          </div>
-        ) : (
-          <form onSubmit={(e) => { e.preventDefault(); handleEmailSignup(); }} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-dojo-text-muted">Full name</label>
-              <input
-                type="text"
-                placeholder="Alex Kim"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full rounded-lg border border-dojo-border bg-dojo-surface px-4 py-3 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-dojo-text-muted">Email address</label>
-              <input
-                type="email"
-                placeholder="alex@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full rounded-lg border border-dojo-border bg-dojo-surface px-4 py-3 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-dojo-text-muted">Password</label>
-              <input
-                type="password"
-                placeholder="Password (min 6 characters)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="w-full rounded-lg border border-dojo-border bg-dojo-surface px-4 py-3 text-sm text-dojo-text-primary outline-none transition placeholder:text-dojo-text-muted/50 focus:border-dojo-accent focus:ring-2 focus:ring-dojo-accent/20"
-              />
-            </div>
-
-            {error && (
-              <div className="rounded-lg border border-dojo-danger/30 bg-dojo-danger/10 px-3 py-2.5 text-sm text-dojo-danger">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-dojo-accent py-3 font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {saving && <LoaderIcon className="h-4 w-4 animate-spin" />}
-              {saving ? 'Creating account...' : 'Create Account'}
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-dojo-border" />
-              <span className="text-xs text-dojo-text-muted">or</span>
-              <div className="h-px flex-1 bg-dojo-border" />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGoogleAuth}
-              className="flex w-full items-center justify-center gap-3 rounded-lg border border-dojo-border bg-dojo-surface py-3 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
-            >
-              Continue with Google
-            </button>
-          </form>
-        )}
-      </div>
-    ),
   };
 
-  const stepConfig = ONBOARDING_STEPS.find(s => s.key === step);
   if (!step) return null;
 
+  if (step === PRACTICE.key) {
+    return (
+      <OnboardingPractice
+        state={state}
+        hydrated={hydrated}
+        preview={isPreview}
+        finishing={saving}
+        onBack={() => goToStep(TRANSITION_1.key)}
+        onFinish={finishPractice}
+      />
+    );
+  }
+
   return (
-    <OnboardingShell currentStep={step}>
+    <OnboardingShell currentStep={step} exitHref="/" preview={isPreview}>
       {stepContent[step] ?? (
         <div className="py-12 text-center">
           <p className="text-dojo-text-muted">Step not found</p>

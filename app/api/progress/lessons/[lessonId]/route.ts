@@ -1,8 +1,9 @@
 import { getAuthUser } from '@/lib/auth/server';
-import { recordLessonActivity } from '@/lib/curriculum/lesson-progress';
+import { recordLessonActivity } from '@/lib/courses/lesson-progress';
 import { lessons } from '@/src/schema';
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export async function POST(
   req: Request,
@@ -28,7 +29,7 @@ export async function POST(
   const phaseKey = typeof body.phaseKey === 'string' ? body.phaseKey : null;
   const complete = body.complete === true;
   const score = typeof body.score === 'number' ? Math.max(0, Math.min(100, Math.round(body.score))) : null;
-  const targetLanguage = typeof body.targetLanguage === 'string' && body.targetLanguage ? body.targetLanguage : 'ja';
+  const targetLanguage = typeof body.targetLanguage === 'string' && body.targetLanguage ? body.targetLanguage : DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage = typeof body.nativeLanguage === 'string' && body.nativeLanguage ? body.nativeLanguage : 'en';
 
   const [lesson] = await db.select().from(lessons).where(eq(lessons.id, numericLessonId));

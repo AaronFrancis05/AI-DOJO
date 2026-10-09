@@ -34,7 +34,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-!.env.example
+
 
 # vercel
 .vercel
@@ -56,3 +56,10 @@ inngest-dev.log
 /context/**
 ui-registry.md
 MEMORY.md
+PLAN.md
+PRODUCT.md
+
+/docs/**
+
+# Database backups hold user PII and password hashes - never commit
+/backups/

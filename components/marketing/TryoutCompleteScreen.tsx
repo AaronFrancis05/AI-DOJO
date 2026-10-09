@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { PartyPopper, Sparkles } from 'lucide-react';
 import { getTargetLangConfig } from '@/lib/language';
 import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
+import { languagePairQuery } from '@/lib/tryout/guest-params';
 
 interface TryoutCompleteScreenProps {
   targetLanguage: string;
@@ -32,15 +33,18 @@ export function TryoutCompleteScreen({ targetLanguage, nativeLanguage, turnCount
           Create a free account to keep learning with full lessons, corrections, and progress tracking.
         </p>
 
-        {/* Into onboarding, not straight to /auth — the wizard is what sets a
-            level, a goal and a course enrolment, and the old shortcut skipped
-            all of it. The tryout's language pair rides along as a prefill. */}
+        {/* Sign up first. The learner wizard is only for an account that exists
+            but has not been set up yet — sending a guest into it put account
+            creation at the end of a questionnaire, which made both this screen
+            and onboarding harder to read. The tryout language pair is on this
+            URL and in sessionStorage so the wizard can prefill after they have
+            an account. */}
         <Link
-          href={`/onboarding/level?targetLanguage=${targetLanguage}&nativeLanguage=${nativeLanguage}`}
+          href={`/auth/signup${languagePairQuery({ targetLanguage, nativeLanguage })}`}
           className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-dojo-accent px-6 py-3 font-semibold text-white transition-all hover:bg-dojo-accent/90"
         >
           <Sparkles className="h-4 w-4" />
-          Build my learning plan
+          Create a free account
         </Link>
         <Link
           href="/"

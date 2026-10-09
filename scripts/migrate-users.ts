@@ -4,6 +4,12 @@ import { users } from '../src/schema';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 
+type MigrationMapRow = {
+  old_user_id: number;
+  new_user_id: string;
+  email: string;
+};
+
 const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL;
 const COOKIE_SECRET = process.env.NEON_AUTH_COOKIE_SECRET;
 
@@ -102,9 +108,9 @@ async function main() {
 
         await storeMapping(user.id, newId, user.email);
         console.log(`OK (id: ${newId})`);
-      } catch (err: any) {
+      } catch (err) {
         console.log(`FAILED`);
-        failed.push({ email: user.email, error: err.message || String(err) });
+        failed.push({ email: user.email, error: err instanceof Error ? err.message : String(err) });
       }
     }
 
@@ -143,14 +149,14 @@ async function main() {
   }
 
   console.log('\nUsers and their new Neon Auth IDs:');
-  const mapRows = await db.execute(sql`
+  const mapRows = await db.execute<MigrationMapRow>(sql`
     SELECT m.old_user_id, m.new_user_id, m.email, u.name
     FROM user_id_migration_map m
     LEFT JOIN users u ON u.id = m.old_user_id
     ORDER BY m.old_user_id;
   `);
   for (const row of mapRows.rows) {
-    console.log(`  ${(row as any).old_user_id} → ${(row as any).new_user_id}  (${(row as any).email})`);
+    console.log(`  ${row.old_user_id} → ${row.new_user_id}  (${row.email})`);
   }
 }
 

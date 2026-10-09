@@ -1,10 +1,11 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { countries, units, users } from '@/src/schema';
+import { units } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
 import { closeAssessmentIfDrained, loadAssessmentForUser } from '@/lib/tutors/rooms-data';
 import { canJoinBooking } from '@/lib/tutors/rooms';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
+import { learnerMayUseTutor, tutorHoldBlock, tutorUnavailableResponse } from '@/lib/organizations/tutor-access';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
 import { createNotification } from '@/lib/notifications';
@@ -20,6 +21,7 @@ import {
   interviewScores,
   loadInterviewById,
   loadInterviewForLearner,
+  loadInterviewLearnerProfile as loadLearnerProfile,
   loadInterviewsForAssessment,
   startInterview,
 } from '@/lib/interview/data';
@@ -57,34 +59,6 @@ async function loadContext(assessmentId: number, userId: string) {
     };
   }
   return { found };
-}
-
-/**
- * The learner facts both the examiner's brief and the marking rubric need.
- *
- * Country resolves through `countries` rather than off the raw code, matching
- * `lib/roleplay/analyze-turn.ts` — the identity guard in the prompt wants a
- * country a model can name, not "UG".
- */
-async function loadLearnerProfile(userId: string) {
-  const [row] = await db
-    .select({
-      name: users.name,
-      level: users.level,
-      nativeLanguage: users.nativeLanguage,
-      countryName: countries.name,
-    })
-    .from(users)
-    .leftJoin(countries, eq(users.countryCode, countries.code))
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  return {
-    name: row?.name ?? '',
-    level: row?.level ?? 'beginner',
-    nativeLanguage: row?.nativeLanguage ?? 'en',
-    countryName: row?.countryName ?? null,
-  };
 }
 
 async function loadUnitTitle(unitId: number | null): Promise<string | null> {
@@ -215,6 +189,12 @@ export async function POST(
   if (!decision.allowed) {
     return Response.json({ error: decision.reason }, { status: 403 });
   }
+
+  if (!found.slot && !(await learnerMayUseTutor(user.id, found.assessment.tutorId))) {
+    return tutorUnavailableResponse();
+  }
+  const held = await tutorHoldBlock(found.assessment.tutorId);
+  if (held) return held;
 
   const config = getInterviewConfig();
   if (!config) {

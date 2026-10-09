@@ -12,6 +12,7 @@ import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { createNotification } from '@/lib/notifications';
 import { publish } from '@/lib/realtime/bus';
 import { topics } from '@/lib/realtime/topics';
+import { learnerMayUseTutor, tutorUnavailableResponse } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
@@ -120,6 +121,10 @@ export async function POST(
   });
   if (!decision.allowed) {
     return Response.json({ error: decision.reason }, { status: 403 });
+  }
+
+  if (!found.slot && !(await learnerMayUseTutor(user.id, found.assessment.tutorId))) {
+    return tutorUnavailableResponse();
   }
 
   const slot = await joinQueue(assessmentId, user.id);

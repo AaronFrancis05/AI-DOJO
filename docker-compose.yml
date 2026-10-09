@@ -14,6 +14,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TUTORS_ENABLED: ${NEXT_PUBLIC_TUTORS_ENABLED:-}
+        NEXT_PUBLIC_STREAM_API_KEY: ${NEXT_PUBLIC_STREAM_API_KEY:-}
     image: ai-dojo:latest
     ports:
       - "${PORT:-3000}:3000"
@@ -22,5 +25,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      # Overrides Docker's auto HOSTNAME (container name). Required behind Traefik
+      # when the app is on both default and proxy networks — otherwise Next may bind
+      # only to 172.25.0.2 and Traefik's 172.19.0.3:3000 stays 502 for the container lifetime.
+      HOSTNAME: "0.0.0.0"
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
     restart: unless-stopped

@@ -1,9 +1,10 @@
 import { db } from '@/src/db';
-import { sessions, scenarios, situations, scenarioGoals, goalCompletions, vocabulary } from '@/src/schema';
+import { sessions, scenarios, situations, scenarioGoals, goalCompletions } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
 import { getAIProvider } from '@/lib/ai-providers';
-import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
-import { eq, and, asc } from 'drizzle-orm';
+import { getTargetLangConfig, getNativeLangName, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
+import { eq } from 'drizzle-orm';
+import { isSessionEnded } from '@/lib/roleplay/session-lifecycle';
 
 const RECAP_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -31,7 +32,7 @@ export async function POST(
   }
 
   // If orientation or already completed, no recap is needed
-  if (session.phase === 'orientation' || session.status === 'completed') {
+  if (session.phase === 'orientation' || isSessionEnded(session.status)) {
     return Response.json({ recapNeeded: false, phase: session.phase });
   }
 
@@ -64,7 +65,7 @@ export async function POST(
     return Response.json({ error: 'Scenario not found' }, { status: 404 });
   }
 
-  const targetLanguage = session.targetLanguage ?? 'ja';
+  const targetLanguage = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage = session.nativeLanguage ?? 'en';
   const targetLangName = getTargetLangConfig(targetLanguage).name;
   const nativeLangName = getNativeLangName(nativeLanguage);

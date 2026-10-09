@@ -6,8 +6,8 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -16,36 +16,80 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Avatar } from '@/components/ui/Avatar';
 import { sessionHistory } from '@/lib/data/sessions';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { computeCompositeScore, PASSING_SCORE_THRESHOLD } from '@/lib/roleplay/phase-engine';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
-import { ArrowLeft, ExternalLink, Trophy, Target, Repeat2, RotateCcw, Users } from 'lucide-react';
+import { STUDY_PACKS_ENABLED } from '@/lib/study-packs/config';
+import { StudyPackLink } from '@/components/study-packs/StudyPackLink';
+import { useUser } from '@/lib/auth/user-context';
+import {
+  isRecord,
+  isSessionDetailResponse,
+  type ConversationDto,
+  type EvaluationDto,
+  type GoalCompletionDto,
+  type GoalDto,
+  type ScenarioDto,
+  type SessionDto,
+} from '@/lib/roleplay/api-types';
+import { ArrowLeft, Trophy, Target, Repeat2, RotateCcw, Users, Flag, Play } from 'lucide-react';
+import {
+  ABANDONMENT_REASONS,
+  formatSessionClock,
+  isAbandonmentReason,
+  type AbandonmentReasonId,
+} from '@/lib/roleplay/session-lifecycle';
+
+type ReportSession = Pick<
+  SessionDto,
+  'id' | 'status' | 'totalTurns' | 'startedAt' | 'completedAt'
+> & Partial<Pick<
+  SessionDto,
+  | 'vocabularyScore'
+  | 'grammarScore'
+  | 'fluencyScore'
+  | 'culturalScore'
+  | 'taskScore'
+  | 'expressionAppropriatenessScore'
+  | 'feedback'
+  | 'activeDurationSeconds'
+  | 'abandonmentReason'
+>> & { scenarioTitle?: string };
 
 interface DataRecord {
-  session: any;
-  scenario: any;
-  conversations: any[];
-  evaluation: any | null;
-  goalCompletions: any[];
-  goals?: any[];
+  session: ReportSession;
+  scenario: (Partial<ScenarioDto> & { title: string }) | null;
+  conversations: ConversationDto[];
+  evaluation: EvaluationDto | null;
+  goalCompletions: GoalCompletionDto[];
+  goals?: GoalDto[];
 }
 
 export default function SessionReportPage() {
   const params = useParams();
+  const router = useRouter();
+  const user = useUser();
   const sessionId = Number(params.id);
 
   const [data, setData] = useState<DataRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  const [reasonSaving, setReasonSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch(`/api/sessions/${sessionId}`, { credentials: 'include' });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Not found'); }
-        const d = await res.json();
-        setData(d);
-      } catch (e: any) {
-        setError(e.message);
+        if (!res.ok) {
+          const body: unknown = await res.json();
+          throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'Not found');
+        }
+        const body: unknown = await res.json();
+        if (!isSessionDetailResponse(body)) throw new Error('Invalid session response');
+        setData(body);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load session');
         // Fallback: use mock
         const s = sessionHistory.find(x => x.id === sessionId);
         if (s) {
@@ -56,7 +100,7 @@ export default function SessionReportPage() {
             evaluation: null,
             goalCompletions: [],
             goals: [],
-          } as any);
+          });
         }
       } finally {
         setLoading(false);
@@ -64,6 +108,38 @@ export default function SessionReportPage() {
     }
     load();
   }, [sessionId]);
+
+  const pickAbandonmentReason = useCallback(async (id: AbandonmentReasonId) => {
+    setReasonSaving(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ abandonmentReason: id }),
+      });
+      if (res.ok) {
+        setData((prev) => (prev ? { ...prev, session: { ...prev.session, abandonmentReason: id } } : prev));
+      }
+    } finally {
+      setReasonSaving(false);
+    }
+  }, [sessionId]);
+
+  const restoreSavedSession = useCallback(async (href: string) => {
+    setRestoring(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'paused' }),
+      });
+      if (res.ok) router.push(href);
+    } finally {
+      setRestoring(false);
+    }
+  }, [sessionId, router]);
 
   if (loading) {
     return (
@@ -96,7 +172,9 @@ export default function SessionReportPage() {
   const { session, scenario, conversations, evaluation, goalCompletions, goals } = data;
 
   const userTurns = (conversations ?? []).filter((c: { speaker: string }) => c.speaker === 'user');
-  const responseTimes = userTurns.map((c: { responseTimeMs?: number }) => c.responseTimeMs).filter((t: number | undefined): t is number => typeof t === 'number' && t > 0);
+  const responseTimes = userTurns
+    .map((c) => c.responseTimeMs)
+    .filter((t): t is number => typeof t === 'number' && t > 0);
   const avgResponseTime = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a: number, b: number) => a + b, 0) / responseTimes.length) : null;
   const medianResponseTime = responseTimes.length > 0
     ? (() => { const sorted = [...responseTimes].sort((a: number, b: number) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2); })()
@@ -147,7 +225,16 @@ export default function SessionReportPage() {
 
   const feedbackText = evaluation?.feedback ?? session.feedback;
   const scenarioTitle = scenario?.title ?? session.scenarioTitle ?? `Session #${session.id}`;
-  const isActive = session.status === 'active';
+  const isActive = session.status === 'active' || session.status === 'paused';
+  const isAbandoned = session.status === 'abandoned';
+  const statusLabel = session.status === 'paused'
+    ? 'Saved'
+    : session.status === 'abandoned'
+      ? 'Ended'
+      : session.status === 'completed'
+        ? 'Completed'
+        : 'In Progress';
+  const selectedReason = isAbandonmentReason(session.abandonmentReason) ? session.abandonmentReason : null;
 
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
@@ -161,7 +248,7 @@ export default function SessionReportPage() {
             <h1 className="text-2xl font-bold text-dojo-text-primary">{scenarioTitle}</h1>
             <p className="text-sm text-dojo-text-muted mt-1">
               {new Date(session.startedAt).toLocaleDateString()} · {session.totalTurns} turns
-              {isActive ? ' · In Progress' : ' · Completed'}
+              {' · '}{statusLabel}
               {session.completedAt && ` · ${new Date(session.completedAt).toLocaleDateString()}`}
             </p>
           </div>
@@ -171,9 +258,72 @@ export default function SessionReportPage() {
         </div>
       </div>
 
+      {isAbandoned && (
+        <Card className="border-dojo-warning/30">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-dojo-warning/10">
+              <Flag className="h-6 w-6 text-dojo-warning" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">Session ended early</h2>
+              <p className="mt-1 text-sm leading-relaxed text-dojo-text-muted">
+                This attempt was stopped before the scenario finished. It does not count as a completed lesson, and it cannot be continued unless you restore it as a saved session.
+              </p>
+              <p className="mt-3 text-sm text-dojo-text-primary">
+                <span className="font-semibold">{formatSessionClock(session.activeDurationSeconds ?? 0)}</span>
+                <span className="text-dojo-text-muted"> session time · {session.totalTurns} turns</span>
+              </p>
+
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-dojo-text-muted">Why did you leave? (optional)</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {ABANDONMENT_REASONS.map((reason) => {
+                    const selected = selectedReason === reason.id;
+                    return (
+                      <button
+                        key={reason.id}
+                        type="button"
+                        disabled={reasonSaving}
+                        onClick={() => { void pickAbandonmentReason(reason.id); }}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'border-dojo-accent bg-dojo-accent/20 text-dojo-accent'
+                            : 'border-dojo-border bg-dojo-surface text-dojo-text-primary hover:bg-dojo-surface-raised'
+                        }`}
+                      >
+                        {reason.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={restoring}
+                  onClick={() => { void restoreSavedSession(`/session/${sessionId}`); }}
+                >
+                  <Play className="h-4 w-4" /> Resume Session
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={restoring}
+                  onClick={() => { void restoreSavedSession('/home'); }}
+                >
+                  Save Session
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Verdict — the answer to "did I actually learn this?", which is the
           question the report exists to settle. */}
-      {pct !== null && !isActive && (
+      {pct !== null && !isActive && !isAbandoned && (
         <Card className={passed ? 'border-dojo-success/30' : 'border-dojo-warning/30'}>
           <div className="flex items-start gap-4">
             <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${passed ? 'bg-dojo-success/10' : 'bg-dojo-warning/10'}`}>
@@ -203,16 +353,19 @@ export default function SessionReportPage() {
                 >
                   <Repeat2 className="h-4 w-4" /> Review the words
                 </Link>
+                {STUDY_PACKS_ENABLED && session.status === 'completed' && (
+                  <StudyPackLink sessionId={session.id} />
+                )}
                 {!passed && (
                   <Link
-                    href="/hub"
+                    href="/library"
                     className="inline-flex items-center gap-2 rounded-[--radius-md] bg-dojo-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
                   >
                     <RotateCcw className="h-4 w-4" /> Try it again
                   </Link>
                 )}
                 {/* A human second opinion on what the AI just assessed. */}
-                {TUTORS_ENABLED && (
+                {TUTORS_ENABLED && user?.canBrowseTutors && (
                   <Link
                     href={`/tutors?session=${session.id}`}
                     className="inline-flex items-center gap-2 rounded-[--radius-md] border border-dojo-border bg-dojo-surface px-4 py-2 text-sm font-medium text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"
@@ -226,6 +379,8 @@ export default function SessionReportPage() {
         </Card>
       )}
 
+      {!isAbandoned && (
+      <>
       {/* Score Overview */}
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -290,23 +445,25 @@ export default function SessionReportPage() {
           <p className="text-sm text-dojo-text-primary whitespace-pre-wrap leading-relaxed">{feedbackText}</p>
         </Card>
       )}
+      </>
+      )}
 
       {/* Goal Completions */}
       {goalCompletions?.length > 0 && (
         <Card>
           <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">Goals</h3>
           <div className="space-y-2">
-            {goalCompletions.map((gc: any, i: number) => (
+            {goalCompletions.map((gc, i) => (
               <div key={i} className="flex items-center gap-3 text-sm">
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold
                   ${gc.achieved ?? true ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'}`}>
                   {gc.achieved ?? true ? '✓' : i + 1}
                 </span>
                 <span className={gc.achieved ?? true ? 'text-dojo-text-primary' : 'text-dojo-text-muted'}>
-                  {gc.goalText ?? gc.goal_type}
+                  {gc.goalText}
                 </span>
                 {gc.goalType && (
-                  <Badge variant="default" className="ml-auto">{gc.goalType}</Badge>
+                  <Badge variant="default" className="ms-auto">{gc.goalType}</Badge>
                 )}
               </div>
             ))}
@@ -320,9 +477,11 @@ export default function SessionReportPage() {
           <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-4">Conversation</h3>
           <div className="space-y-4">
             {conversations
-              .sort((a: any, b: any) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
-              .map((msg: any, i: number) => {
+              .sort((a, b) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
+              .map((msg, i) => {
                 const isUser = msg.speaker === 'user';
+                const text = displayedUtterance(msg);
+                const native = (msg.messageNative ?? '').trim();
                 return (
                   <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
                     <Avatar name={isUser ? 'You' : (scenario?.aiCharacterName ?? 'AI')}
@@ -336,12 +495,12 @@ export default function SessionReportPage() {
                       )}
                       <div className={`rounded-2xl px-4 py-3 ${
                         isUser
-                          ? 'rounded-br-none bg-dojo-accent'
-                          : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
+                          ? 'rounded-ee-none bg-dojo-accent'
+                          : 'rounded-ss-none bg-dojo-surface-raised border border-dojo-border'
                       }`}>
-                        {(msg.messageTarget || msg.messageJp) && (
+                        {text && (
                           <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                            {cleanDisplay(msg.messageTarget ?? msg.messageJp)}
+                            {cleanDisplay(text)}
                           </p>
                         )}
                         {msg.messagePhonetic && (
@@ -349,9 +508,9 @@ export default function SessionReportPage() {
                             {msg.messagePhonetic}
                           </p>
                         )}
-                        {(msg.messageNative || msg.messageEn) && (
+                        {native && native !== text && (
                           <p className={`text-xs ${isUser ? 'text-white/60' : 'text-dojo-text-muted'}`}>
-                            {msg.messageNative ?? msg.messageEn}
+                            {msg.messageNative}
                           </p>
                         )}
                       </div>
@@ -363,7 +522,7 @@ export default function SessionReportPage() {
                       {/* Corrections inline */}
                       {msg.corrections?.length > 0 && (
                         <div className="mt-1 space-y-1">
-                          {msg.corrections.map((c: any, j: number) => (
+                          {msg.corrections.map((c, j) => (
                             <div key={j} className="rounded-lg bg-dojo-warning/10 border border-dojo-warning/30 px-3 py-2 text-xs">
                               <Badge variant="accent" className="mb-1">{c.correctionType}</Badge>
                               <p className="text-dojo-text-primary">
@@ -388,8 +547,8 @@ export default function SessionReportPage() {
       {scenario && (
         <div className="text-center text-xs text-dojo-text-muted">
           {scenario.aiCharacterName && <span>AI: {scenario.aiCharacterName} ({scenario.aiCharacterRole})</span>}
-          {scenario.userCharacterName && <span className="ml-4">You: {scenario.userCharacterName}</span>}
-          {scenario.difficulty && <span className="ml-4">Difficulty: {scenario.difficulty}</span>}
+          {scenario.userCharacterName && <span className="ms-4">You: {scenario.userCharacterName}</span>}
+          {scenario.difficulty && <span className="ms-4">Difficulty: {scenario.difficulty}</span>}
         </div>
       )}
     </div>

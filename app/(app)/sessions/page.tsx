@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -31,6 +31,10 @@ export default function SessionsPage() {
   usePageTitle('All Sessions');
   const router = useRouter();
   const user = useUser();
+  // Home's "View Full History" is a drill-down. The sidebar opens the same
+  // page as a top-level destination, so the return link only belongs to the
+  // home entry.
+  const fromHome = useSearchParams().get('from') === 'home';
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<Record<number, string>>({});
@@ -78,23 +82,27 @@ export default function SessionsPage() {
     finally { setDeleting(null); }
   }
 
-  const activeSessions = sessions.filter(s => s.status === 'active');
+  const activeSessions = sessions.filter(s => s.status === 'active' || s.status === 'paused');
+  const abandonedSessions = sessions.filter(s => s.status === 'abandoned');
   const completedSessions = sessions.filter(s => s.status === 'completed');
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="mb-6">
-        <Link href="/home" className="inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary mb-4">
-          <ArrowLeft className="h-4 w-4" /> Back to Home
-        </Link>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="hidden md:block text-2xl font-bold text-dojo-text-primary">All Sessions</h1>
-            <p className="text-sm text-dojo-text-muted mt-1">
-              {loading ? 'Loading...' : `${sessions.length} total · ${activeSessions.length} in progress`}
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="mb-8">
+        {fromHome && (
+          <Link href="/home" className="mb-4 inline-flex items-center gap-1 text-sm text-dojo-text-muted hover:text-dojo-text-primary">
+            <ArrowLeft className="h-4 w-4" /> Back to Home
+          </Link>
+        )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">All Sessions</h1>
+            <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+              Every conversation you have started. Resume one still in progress,
+              or open a finished report.
             </p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => router.push('/hub')}>
+          <Button variant="primary" size="sm" className="shrink-0" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> New Practice
           </Button>
         </div>
@@ -114,13 +122,17 @@ export default function SessionsPage() {
       ) : sessions.length === 0 ? (
         <Card className="text-center py-12">
           <p className="text-dojo-text-muted mb-2">No sessions yet</p>
-          <p className="text-xs text-dojo-text-muted">Start your first role-play from the Hub</p>
-          <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/hub')}>
+          <p className="text-xs text-dojo-text-muted">Start your first role-play from the Library</p>
+          <Button variant="primary" size="sm" className="mt-4" onClick={() => router.push('/library')}>
             <Sparkles className="h-4 w-4" /> Start Practicing
           </Button>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <>
+          <p className="mb-4 text-sm text-dojo-text-muted">
+            {sessions.length} total · {activeSessions.length} in progress
+          </p>
+          <div className="space-y-2">
           {/* Active sessions first */}
           {activeSessions.map(session => (
             <SessionCard key={session.id} session={session}
@@ -128,20 +140,29 @@ export default function SessionsPage() {
               sharing={sharing}
               onShare={handleShare}
               onDelete={handleDelete}
-              isActive
+              kind="playable"
             />
           ))}
-          {/* Completed sessions */}
+          {abandonedSessions.map(session => (
+            <SessionCard key={session.id} session={session}
+              deleting={deleting}
+              sharing={sharing}
+              onShare={handleShare}
+              onDelete={handleDelete}
+              kind="abandoned"
+            />
+          ))}
           {completedSessions.map(session => (
             <SessionCard key={session.id} session={session}
               deleting={deleting}
               sharing={sharing}
               onShare={handleShare}
               onDelete={handleDelete}
-              isActive={false}
+              kind="completed"
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -153,27 +174,30 @@ function SessionCard({
   sharing,
   onShare,
   onDelete,
-  isActive,
+  kind,
 }: {
   session: SessionRecord;
   deleting: number | null;
   sharing: Record<number, string>;
   onShare: (id: number) => void;
   onDelete: (id: number) => void;
-  isActive: boolean;
+  kind: 'playable' | 'abandoned' | 'completed';
 }) {
   const pct = computeTotalPct(session);
+  const isPlayable = kind === 'playable';
 
   return (
     <Card hoverable className={`!p-4 ${deleting === session.id ? 'opacity-50' : ''}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            {isActive ? (
+            {isPlayable ? (
               <>
-                <Badge variant="accent">In Progress</Badge>
-                <LiveBadge />
+                <Badge variant="accent">{session.status === 'paused' ? 'Saved' : 'In Progress'}</Badge>
+                {session.status === 'active' && <LiveBadge />}
               </>
+            ) : kind === 'abandoned' ? (
+              <Badge variant="warning">Ended</Badge>
             ) : (
               <>
                 <Badge variant="default">Completed</Badge>
@@ -189,13 +213,13 @@ function SessionCard({
           </p>
           <p className="text-xs text-dojo-text-muted mt-0.5">
             {new Date(session.startedAt).toLocaleDateString()} · {session.totalTurns} turns
-            {session.completedAt && ` · Completed ${new Date(session.completedAt).toLocaleDateString()}`}
+            {session.completedAt && ` · ${kind === 'abandoned' ? 'Ended' : 'Completed'} ${new Date(session.completedAt).toLocaleDateString()}`}
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {/* Primary action: Continue or View Report */}
-          {isActive ? (
+          {isPlayable ? (
             <Link href={`/session/${session.id}`}>
               <Button variant="primary" size="sm">
                 <Play className="h-4 w-4" /> Continue

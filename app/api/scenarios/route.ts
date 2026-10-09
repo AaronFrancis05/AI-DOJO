@@ -1,6 +1,6 @@
 import { db } from '@/src/db';
 import { scenarios, scenarioSettings } from '@/src/schema';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, isNull } from 'drizzle-orm';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -9,6 +9,8 @@ export async function GET(req: Request) {
   const list = await db
     .select()
     .from(scenarios)
+    // The shared library only: learner-owned scenarios are private.
+    .where(isNull(scenarios.ownerUserId))
     .orderBy(asc(scenarios.displayOrder));
 
   if (!countryCode) {

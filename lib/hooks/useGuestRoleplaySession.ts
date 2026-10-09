@@ -17,8 +17,8 @@ export interface UseGuestRoleplaySessionReturn {
   blocked: boolean;
   blockedRetryAfterMs: number | null;
   error: string;
-  sendGreeting: (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<void>;
-  submitTurnStream: (input: string, opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => Promise<void>;
+  sendGreeting: (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void | Promise<void> }) => Promise<void>;
+  submitTurnStream: (input: string, opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void | Promise<void> }) => Promise<void>;
 }
 
 /**
@@ -40,7 +40,7 @@ export function useGuestRoleplaySession({ targetLanguage, nativeLanguage }: UseG
 
   const requestTurn = useCallback(async (
     userMessage: string,
-    opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void },
+    opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void | Promise<void> },
   ) => {
     setSending(true);
     setError('');
@@ -80,22 +80,26 @@ export function useGuestRoleplaySession({ targetLanguage, nativeLanguage }: UseG
         }]);
       }
 
-      if (data.limitReached) {
-        setLimitReached(true);
-      }
-      if (data.completed) {
-        setCompleted(true);
-      }
-
       if (data.replyTarget) {
         opts?.onToken?.(data.replyTarget);
-        opts?.onTextDone?.(data.replyTarget);
         historyRef.current.push({ speaker: 'ai', text: data.replyTarget });
         setConversations(prev => [...prev, {
           id: Date.now() + 1, turnNo: prev.length + 1, speaker: 'ai',
           messageTarget: data.replyTarget, messageNative: data.replyNative ?? '', messagePhonetic: null,
           receivedAt: Date.now(),
         }]);
+        // TryoutCompleteScreen replaces the stage and stop()s TTS on unmount.
+        // Wait until the last line has been heard (same as the session
+        // celebration) so it is not cut off by Nice work.
+        const spoken = Promise.resolve(opts?.onTextDone?.(data.replyTarget)).catch(() => {});
+        if (data.completed || data.limitReached) await spoken;
+      }
+
+      if (data.limitReached) {
+        setLimitReached(true);
+      }
+      if (data.completed) {
+        setCompleted(true);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
@@ -105,13 +109,13 @@ export function useGuestRoleplaySession({ targetLanguage, nativeLanguage }: UseG
     }
   }, [targetLanguage, nativeLanguage]);
 
-  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void }) => {
+  const sendGreeting = useCallback(async (opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void | Promise<void> }) => {
     await requestTurn('', opts);
   }, [requestTurn]);
 
   const submitTurnStream = useCallback(async (
     input: string,
-    opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void },
+    opts?: { onToken?: (t: string) => void; onTextDone?: (t: string) => void | Promise<void> },
   ) => {
     const trimmed = input.trim();
     if (!trimmed || limitReached || blocked) return;

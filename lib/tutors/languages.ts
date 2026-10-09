@@ -10,8 +10,10 @@
  * Both are stored comma-separated on the row, which is the shape `languages`
  * already had — denormalised because they are read on every listing and never
  * queried independently.
+ *
+ * Database-free: catalogue membership lives in `language-catalog.ts`. This
+ * file must not import Drizzle — unit tests import it without DATABASE_URL.
  */
-import { loadLanguageCatalog } from '@/lib/language-registry';
 
 /** Accepts either the stored comma-separated string or a JSON array of codes. */
 export function parseLanguageCodes(value: unknown): string[] {
@@ -54,10 +56,10 @@ export function tutorLanguageSets(tutor: {
  * Whether this tutor may schedule in this language pair.
  *
  * Returns a message to send back as a 400, or null when the pair is fine.
- * Shared by every scheduling route so a class, an assessment and a booking
+ * Shared by every scheduling route so a live lesson, an assessment and a booking
  * cannot disagree about what a tutor is allowed to run — before this existed,
  * `targetLanguage` was only checked for being non-empty, so a tutor could
- * schedule a Japanese class without teaching Japanese.
+ * schedule a Japanese live lesson without teaching Japanese.
  *
  * `instructionLanguage` is optional: null means the pre-existing behaviour of
  * each learner reading in their own native language.
@@ -76,19 +78,4 @@ export function tutorLanguageError(
     return `You are not listed as explaining in ${instructionLanguage}. Add it to your profile first.`;
   }
   return null;
-}
-
-/**
- * Which of `codes` are not offered on that side of the configured catalogue.
- * Empty means every code is valid.
- */
-export async function unknownLanguageCodes(
-  codes: string[],
-  side: 'target' | 'native',
-): Promise<string[]> {
-  const catalog = await loadLanguageCatalog();
-  const known = new Set<string>(
-    (side === 'target' ? catalog.target : catalog.native).map((l) => l.code),
-  );
-  return codes.filter((c) => !known.has(c));
 }

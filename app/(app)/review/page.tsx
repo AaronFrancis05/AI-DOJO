@@ -1,12 +1,13 @@
 /* ───────────────────────────────────────────────
    Review — spaced-repetition drill over words the
-   learner has met in sessions.
+   learner has met in sessions, plus the sentence
+   and grammar cards from their study packs.
    Consumes /api/review/due + /api/review/answer.
    ─────────────────────────────────────────────── */
 
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -14,22 +15,48 @@ import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
-import { getBCP47 } from '@/lib/language';
+import { getBCP47, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import { speakWithVisemes, unlockAudio } from '@/lib/roleplay/tts';
 import { cn } from '@/lib/design-tokens';
 import { Volume2, RotateCcw, Check, Sparkles, ArrowRight } from 'lucide-react';
 
 interface DueCard {
   id: number;
-  vocabularyId: number;
-  targetText: string;
+  cardType: 'vocab' | 'sentence' | 'grammar';
+  vocabularyId: number | null;
+  /** Which faces are in the language being learned: those are translate="no" and spoken. */
+  front: string;
+  frontIsTarget: boolean;
+  back: string;
+  backIsTarget: boolean;
   phonetic: string | null;
-  translation: string;
   category: string | null;
-  usageTip: string | null;
+  /** Native-language tip or explanation shown with the answer. */
+  note: string | null;
+  /** Target-language example shown with the answer. */
+  example: string | null;
   state: string;
   intervalDays: number;
   reviewCount: number;
+}
+
+/** What the learner is asked to do with each kind of card. */
+const CARD_PROMPTS: Record<DueCard['cardType'], string> = {
+  vocab: 'Do you remember what this means?',
+  sentence: 'This sentence has a mistake. Can you correct it?',
+  grammar: 'Can you explain this rule and give an example?',
+};
+
+const CARD_LABELS: Record<Exclude<DueCard['cardType'], 'vocab'>, string> = {
+  sentence: 'Fix the sentence',
+  grammar: 'Grammar rule',
+};
+
+/** The target-language text worth hearing once the answer is shown. */
+function spokenText(card: DueCard): string | null {
+  if (card.cardType === 'vocab') return card.front;
+  if (card.backIsTarget) return card.back;
+  return card.example;
 }
 
 /**
@@ -52,7 +79,7 @@ export default function ReviewPage() {
   usePageTitle('Review');
   const router = useRouter();
   const user = useUser();
-  const targetLanguage = user?.preferredTargetLanguage ?? 'ja';
+  const targetLanguage = user?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE;
 
   const [cards, setCards] = useState<DueCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -82,9 +109,10 @@ export default function ReviewPage() {
   const isDone = !loading && total > 0 && index >= total;
 
   const speak = useCallback(() => {
-    if (!current) return;
+    const text = current ? spokenText(current) : null;
+    if (!text) return;
     unlockAudio();
-    speakWithVisemes(current.targetText, getBCP47(targetLanguage, 'tts')).catch(() => {});
+    speakWithVisemes(text, getBCP47(targetLanguage, 'tts')).catch(() => {});
   }, [current, targetLanguage]);
 
   // Hearing the word is most of the value of reviewing it, so play it as soon
@@ -122,178 +150,200 @@ export default function ReviewPage() {
     [index, total],
   );
 
+  let body: ReactNode = null;
   if (loading) {
-    return (
-      <div className="mx-auto w-full max-w-2xl p-6">
-        <Card className="animate-pulse">
-          <div className="h-4 w-24 rounded bg-dojo-surface-raised" />
-          <div className="mt-6 h-10 w-2/3 rounded bg-dojo-surface-raised" />
-          <div className="mt-4 h-4 w-1/3 rounded bg-dojo-surface-raised" />
-        </Card>
-      </div>
+    body = (
+      <Card className="animate-pulse">
+        <div className="h-4 w-24 rounded bg-dojo-surface-raised" />
+        <div className="mt-6 h-10 w-2/3 rounded bg-dojo-surface-raised" />
+        <div className="mt-4 h-4 w-1/3 rounded bg-dojo-surface-raised" />
+      </Card>
     );
-  }
-
-  if (error) {
-    return (
-      <div className="mx-auto w-full max-w-2xl p-6">
-        <Card className="text-center py-12">
-          <p className="text-sm text-dojo-text-muted">{error}</p>
-          <Button variant="secondary" className="mt-6" onClick={() => router.refresh()}>
-            Try again
-          </Button>
-        </Card>
-      </div>
+  } else if (error) {
+    body = (
+      <Card className="py-12 text-center">
+        <p className="text-sm text-dojo-text-muted">{error}</p>
+        <Button variant="secondary" className="mt-6" onClick={() => router.refresh()}>
+          Try again
+        </Button>
+      </Card>
     );
-  }
-
-  // Nothing due is a good outcome, not an empty state to apologise for.
-  if (total === 0) {
-    return (
-      <div className="mx-auto w-full max-w-2xl p-6">
-        <Card className="text-center py-12">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-success/10">
-            <Check className="h-6 w-6 text-dojo-success" />
-          </div>
-          <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">
-            Nothing due right now
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
-            Words you practise in a session show up here when it&apos;s time to see them again.
-          </p>
-          <Button variant="primary" className="mt-6" onClick={() => router.push('/hub')}>
-            <ArrowRight className="h-4 w-4" /> Start a session
-          </Button>
-        </Card>
-      </div>
+  } else if (total === 0) {
+    // Nothing due is a good outcome, not an empty state to apologise for.
+    body = (
+      <Card className="py-12 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-success/10">
+          <Check className="h-6 w-6 text-dojo-success" />
+        </div>
+        <h2 className="text-xl font-bold tracking-tight text-dojo-text-primary">
+          Nothing due right now
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
+          Words you practise in a session show up here when it&apos;s time to see them again.
+        </p>
+        <Button variant="primary" className="mt-6" onClick={() => router.push('/library')}>
+          <ArrowRight className="h-4 w-4" /> Start a session
+        </Button>
+      </Card>
     );
-  }
-
-  if (isDone) {
+  } else if (isDone) {
     const recalled = graded - lapsed;
-    return (
-      <div className="mx-auto w-full max-w-2xl p-6">
-        <Card className="text-center py-12">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent/10">
-            <Sparkles className="h-6 w-6 text-dojo-accent" />
+    body = (
+      <Card className="py-12 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-dojo-accent/10">
+          <Sparkles className="h-6 w-6 text-dojo-accent" />
+        </div>
+        <h2 className="text-2xl font-bold tracking-tight text-dojo-text-primary">
+          Review complete
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
+          {recalled} of {graded} recalled.{' '}
+          {lapsed > 0
+            ? `The ${lapsed} you missed will come back tomorrow.`
+            : 'Everything you saw is scheduled further out.'}
+        </p>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Button variant="secondary" onClick={() => router.push('/home')}>Back to home</Button>
+          <Button variant="primary" onClick={() => router.push('/library')}>
+            <ArrowRight className="h-4 w-4" /> Practise a scenario
+          </Button>
+        </div>
+      </Card>
+    );
+  } else if (current) {
+    body = (
+      <>
+        <div className="mb-6">
+          <div className="mb-2 flex items-center justify-end">
+            <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
+              {index + 1} of {total}
+            </span>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-dojo-text-primary">
-            Review complete
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
-            {recalled} of {graded} recalled.{' '}
-            {lapsed > 0
-              ? `The ${lapsed} you missed will come back tomorrow.`
-              : 'Everything you saw is scheduled further out.'}
-          </p>
-          <div className="mt-6 flex items-center justify-center gap-3">
-            <Button variant="secondary" onClick={() => router.push('/home')}>Back to home</Button>
-            <Button variant="primary" onClick={() => router.push('/hub')}>
-              <ArrowRight className="h-4 w-4" /> Practise a scenario
-            </Button>
+          <ProgressBar value={progressPct} color="accent" size="sm" />
+        </div>
+
+        <Card className="min-h-88">
+          <div className="mb-6 flex items-center gap-2">
+            {current.cardType !== 'vocab' && (
+              <Badge variant="accent">{CARD_LABELS[current.cardType]}</Badge>
+            )}
+            {current.category && (
+              <Badge variant="outline" className="capitalize">{current.category}</Badge>
+            )}
+            {current.state === 'relearning' && (
+              <Badge variant="default">
+                <RotateCcw className="me-1 inline h-3 w-3" /> Relearning
+              </Badge>
+            )}
+            {current.reviewCount > 0 && (
+              <span className="text-xs text-dojo-text-muted">
+                Seen {current.reviewCount}×
+              </span>
+            )}
           </div>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p
+                translate={current.frontIsTarget ? 'no' : undefined}
+                className={cn(
+                  'font-bold tracking-tight text-dojo-text-primary',
+                  current.cardType === 'vocab' ? 'text-3xl leading-tight' : 'text-2xl leading-snug',
+                )}
+              >
+                {current.front}
+              </p>
+              {current.phonetic && (
+                <p translate="no" className="mt-2 text-base text-dojo-text-muted">{current.phonetic}</p>
+              )}
+            </div>
+            {/* A vocab word is worth hearing before the answer; a wrong sentence is not. */}
+            {(current.cardType === 'vocab' || revealed) && spokenText(current) && (
+              <button
+                type="button"
+                onClick={speak}
+                aria-label="Play pronunciation"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dojo-border text-dojo-text-muted transition-colors hover:border-dojo-accent/40 hover:text-dojo-text-primary"
+              >
+                <Volume2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {!revealed ? (
+            <div className="mt-10">
+              <p className="mb-4 text-sm text-dojo-text-muted">
+                {CARD_PROMPTS[current.cardType]}
+              </p>
+              <Button variant="secondary" className="w-full" onClick={() => setRevealed(true)}>
+                Show answer
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-8">
+              <div className="rounded-(--radius-md) border border-dojo-border/60 bg-dojo-surface-raised p-4">
+                <p
+                  translate={current.backIsTarget ? 'no' : undefined}
+                  className="text-base leading-relaxed text-dojo-text-primary"
+                >
+                  {current.back}
+                </p>
+                {current.example && (
+                  <p translate="no" className="mt-2 text-base leading-relaxed text-dojo-text-primary">
+                    {current.example}
+                  </p>
+                )}
+                {current.note && (
+                  <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
+                    {current.note}
+                  </p>
+                )}
+              </div>
+
+              <p className="mt-6 mb-3 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
+                How well did you know it?
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {GRADES.map((g) => (
+                  <button
+                    key={g.quality}
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => grade(g.quality)}
+                    className={cn(
+                      'rounded-(--radius-md) border px-4 py-3 text-start transition-colors disabled:opacity-50',
+                      g.variant === 'danger' && 'border-dojo-danger/30 bg-dojo-danger/10 hover:bg-dojo-danger/20',
+                      g.variant === 'secondary' && 'border-dojo-border bg-dojo-surface hover:bg-dojo-surface-raised',
+                      g.variant === 'primary' && 'border-dojo-success/30 bg-dojo-success/10 hover:bg-dojo-success/20',
+                    )}
+                  >
+                    <span className="block text-sm font-semibold text-dojo-text-primary">{g.label}</span>
+                    <span className="block text-xs text-dojo-text-muted">{g.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl p-6">
-      <div className="mb-6">
-        <div className="mb-2 flex items-center justify-between">
-          <h1 className="hidden text-2xl font-bold tracking-tight text-dojo-text-primary md:block">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
+      <div className="max-w-2xl">
+        <div className="mb-8">
+          <h1 className="hidden md:block text-3xl font-bold tracking-tight leading-none text-dojo-text-primary">
             Review
           </h1>
-          <span className="text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
-            {index + 1} of {total}
-          </span>
+          <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
+            Words you have met in sessions, and the sentences and rules from
+            your study packs, come back here. Rate how well you knew each one,
+            and they return when it is time.
+          </p>
         </div>
-        <ProgressBar value={progressPct} color="accent" size="sm" />
+        {body}
       </div>
-
-      <Card className="min-h-88">
-        <div className="mb-6 flex items-center gap-2">
-          {current.category && (
-            <Badge variant="outline" className="capitalize">{current.category}</Badge>
-          )}
-          {current.state === 'relearning' && (
-            <Badge variant="default">
-              <RotateCcw className="mr-1 inline h-3 w-3" /> Relearning
-            </Badge>
-          )}
-          {current.reviewCount > 0 && (
-            <span className="text-xs text-dojo-text-muted">
-              Seen {current.reviewCount}×
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-3xl font-bold leading-tight tracking-tight text-dojo-text-primary">
-              {current.targetText}
-            </p>
-            {current.phonetic && (
-              <p className="mt-2 text-base text-dojo-text-muted">{current.phonetic}</p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={speak}
-            aria-label="Play pronunciation"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-dojo-border text-dojo-text-muted transition-colors hover:border-dojo-accent/40 hover:text-dojo-text-primary"
-          >
-            <Volume2 className="h-4 w-4" />
-          </button>
-        </div>
-
-        {!revealed ? (
-          <div className="mt-10">
-            <p className="mb-4 text-sm text-dojo-text-muted">
-              Do you remember what this means?
-            </p>
-            <Button variant="secondary" className="w-full" onClick={() => setRevealed(true)}>
-              Show answer
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-8">
-            <div className="rounded-(--radius-md) border border-dojo-border/60 bg-dojo-surface-raised p-4">
-              <p className="text-base leading-relaxed text-dojo-text-primary">
-                {current.translation}
-              </p>
-              {current.usageTip && (
-                <p className="mt-2 text-sm leading-relaxed text-dojo-text-muted">
-                  {current.usageTip}
-                </p>
-              )}
-            </div>
-
-            <p className="mt-6 mb-3 text-xs font-bold uppercase tracking-widest text-dojo-text-muted">
-              How well did you know it?
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {GRADES.map((g) => (
-                <button
-                  key={g.quality}
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => grade(g.quality)}
-                  className={cn(
-                    'rounded-(--radius-md) border px-4 py-3 text-left transition-colors disabled:opacity-50',
-                    g.variant === 'danger' && 'border-dojo-danger/30 bg-dojo-danger/10 hover:bg-dojo-danger/20',
-                    g.variant === 'secondary' && 'border-dojo-border bg-dojo-surface hover:bg-dojo-surface-raised',
-                    g.variant === 'primary' && 'border-dojo-success/30 bg-dojo-success/10 hover:bg-dojo-success/20',
-                  )}
-                >
-                  <span className="block text-sm font-semibold text-dojo-text-primary">{g.label}</span>
-                  <span className="block text-xs text-dojo-text-muted">{g.hint}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </Card>
     </div>
   );
 }

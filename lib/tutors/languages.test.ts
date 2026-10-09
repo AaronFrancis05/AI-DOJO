@@ -59,7 +59,7 @@ test('a pair the tutor holds is allowed', () => {
 
 test('a language they do not teach is refused, and named', () => {
   // Before this check existed, `targetLanguage` was only tested for being
-  // non-empty, so a tutor could schedule a Russian class without teaching it.
+  // non-empty, so a tutor could schedule a Russian live lesson without teaching it.
   const err = tutorLanguageError(POLYGLOT, 'ru', 'en');
   assert.ok(err, 'expected an error');
   assert.match(err, /ru/);
@@ -80,6 +80,6 @@ test('teaching and explaining are independent sets', () => {
 
 test('no instruction language is allowed — that is the pre-existing behaviour', () => {
   // Null means each learner reads in their own native language, which is what
-  // every class did before the column existed.
+  // every live lesson did before the column existed.
   assert.equal(tutorLanguageError(POLYGLOT, 'ja', null), null);
 });

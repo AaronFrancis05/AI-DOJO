@@ -3,21 +3,22 @@ import { db } from '@/src/db';
 import { assessmentQueue, assessmentSessions, tutors, units, users } from '@/src/schema';
 import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
 import { generateCallId } from '@/lib/tutors/rooms';
-import { CLASS_DURATIONS_MINUTES, DEFAULT_CALL_TYPE, TUTORS_ENABLED } from '@/lib/tutors/config';
+import { LIVE_LESSON_DURATIONS_MINUTES, DEFAULT_CALL_TYPE, TUTORS_ENABLED } from '@/lib/tutors/config';
 import {
   DEFAULT_INTERVIEWER_AVATAR_ID,
   isKnownInterviewerAvatarId,
 } from '@/lib/interview/persona';
 import { tutorLanguageError } from '@/lib/tutors/languages';
 import { announceLive } from '@/lib/tutors/live';
-import { resolveRoomAnchor } from '@/lib/curriculum/room-anchor';
+import { resolveRoomAnchor } from '@/lib/courses/room-anchor';
+import { loadTutorAccess, mayDiscoverWithAccess } from '@/lib/organizations/tutor-access';
 
 export const runtime = 'nodejs';
 
 /**
  * Scheduled assessment rooms.
  *
- * Same filters as /api/classes — `?mine=1`, `?unitId=N`, `?past=1` — because
+ * Same filters as /api/live-lessons — `?mine=1`, `?unitId=N`, `?past=1` — because
  * the surfaces that list them (the tutor console, the learner's tutors page,
  * a course unit) ask the same three questions of both.
  */
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
     conditions.push(eq(assessmentSessions.unitId, unitId));
   }
   if (!includePast) {
-    // As on /api/classes: a live room outlasts the cutoff.
+    // As on /api/live-lessons: a live room outlasts the cutoff.
     conditions.push(or(
       eq(assessmentSessions.status, 'live'),
       gte(assessmentSessions.scheduledAt, new Date(Date.now() - 60 * 60 * 1000)),
@@ -75,6 +76,9 @@ export async function GET(req: Request) {
           and ${assessmentQueue.learnerId} = ${user.id}
         limit 1
       )`,
+      verificationStatus: tutors.verificationStatus,
+      isAcceptingBookings: tutors.isAcceptingBookings,
+      accountStatus: users.status,
     })
     .from(assessmentSessions)
     .innerJoin(tutors, eq(assessmentSessions.tutorId, tutors.id))
@@ -84,11 +88,17 @@ export async function GET(req: Request) {
     .orderBy(includePast ? desc(assessmentSessions.scheduledAt) : asc(assessmentSessions.scheduledAt))
     .limit(100);
 
-  const visible = mine
+  const access = await loadTutorAccess(user.id);
+  const visible = (mine
     ? rows.filter(
         (r) => (tutorProfile && r.assessment.tutorId === tutorProfile.id) || r.myState != null,
       )
-    : rows;
+    : rows
+  ).filter((r) => {
+    const teaching = Boolean(tutorProfile && r.assessment.tutorId === tutorProfile.id);
+    const bookable = r.verificationStatus === 'verified' && r.isAcceptingBookings && r.accountStatus === 'active';
+    return mayDiscoverWithAccess(access, r.assessment.tutorId, bookable, teaching || r.myState != null);
+  });
 
   return Response.json({
     success: true,
@@ -157,7 +167,7 @@ export async function POST(req: Request) {
     : null;
   const durationMinutes = Number(body.durationMinutes ?? 60);
   const minutesPerLearner = Number(body.minutesPerLearner ?? 10);
-  // As on /api/classes: the tutor is opening the room now, not booking it.
+  // As on /api/live-lessons: the tutor is opening the room now, not booking it.
   const startNow = body.startNow === true;
   const scheduledAt = startNow ? new Date() : new Date(String(body.scheduledAt ?? ''));
   const examiner = body.examiner === 'ai' ? 'ai' : 'tutor';
@@ -169,7 +179,7 @@ export async function POST(req: Request) {
   if (!title || !targetLanguage) {
     return Response.json({ error: 'title and targetLanguage are required' }, { status: 400 });
   }
-  // Same rule as /api/classes, from the same helper — a tutor may only examine
+  // Same rule as /api/live-lessons, from the same helper — a tutor may only examine
   // in a pair they hold. It also reaches the AI examiner's locked brief.
   const languageError = tutorLanguageError(tutorProfile, targetLanguage, instructionLanguage);
   if (languageError) {
@@ -182,7 +192,7 @@ export async function POST(req: Request) {
   if (!anchor.ok) {
     return Response.json({ error: anchor.error }, { status: 400 });
   }
-  if (!(CLASS_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
+  if (!(LIVE_LESSON_DURATIONS_MINUTES as readonly number[]).includes(durationMinutes)) {
     return Response.json({ error: 'Unsupported duration' }, { status: 400 });
   }
   if (!Number.isInteger(minutesPerLearner) || minutesPerLearner < 2 || minutesPerLearner > 60) {

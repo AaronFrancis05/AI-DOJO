@@ -54,11 +54,7 @@ function TryoutChooserContent() {
 
   if (gate.state === 'blocked') {
     return (
-      <TryoutBlockedScreen
-        targetLanguage={targetLanguage}
-        nativeLanguage={nativeLanguage}
-        retryAfterMs={gate.retryAfterMs}
-      />
+      <TryoutBlockedScreen retryAfterMs={gate.retryAfterMs} />
     );
   }
 

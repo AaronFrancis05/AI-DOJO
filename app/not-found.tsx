@@ -18,11 +18,11 @@ export default function NotFound() {
           The page you&apos;re looking for doesn&apos;t exist or has been moved.
         </p>
         <Link
-          href="/hub"
+          href="/library"
           className="mt-8 inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-dojo-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-dojo-accent/90"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Hub
+          Back to Library
         </Link>
       </div>
     </div>

@@ -9,6 +9,8 @@ import {
   goalCompletions, vocabularyEncounters,
   scenarioLocalizations, situationLocalizations, vocabularyLocalizations,
   scenarioGoalLocalizations,
+  scenarioNativeLocalizations, situationNativeLocalizations,
+  scenarioGoalNativeLocalizations, vocabularyNativeNotes,
   countries, scenarioSettings,
   courses, courseLevels, units, lessons, lessonPhases,
   languages,
@@ -54,6 +56,15 @@ interface GoalLocFixtureRow {
   targetPhrase: string | null;
 }
 
+// Native-language explanations, keyed by (row, target, native) — see the
+// *_native_* tables in src/schema.ts. Optional so older fixtures still load.
+interface NativeLocFixture {
+  scenarios: Array<{ scenario: string; targetLanguage: string; nativeLanguage: string; title: string | null; context: string | null; learningGoals: string | null; aiCharacterRole: string | null; userCharacterRole: string | null }>;
+  situations: Array<{ domainSlug: string; situation: string; targetLanguage: string; nativeLanguage: string; title: string | null; context: string | null; learningGoals: string | null; focusPills: string | null }>;
+  goals: Array<{ scenario: string; sequenceOrder: number; targetLanguage: string; nativeLanguage: string; goalText: string | null }>;
+  vocabulary: Array<{ scenario: string; targetText: string; targetLanguage: string; nativeLanguage: string; usageTip: string | null }>;
+}
+
 interface LocalizationFixture {
   version: number;
   counts: { scenarios: number; situations: number; vocabulary: number; goals: number };
@@ -61,6 +72,26 @@ interface LocalizationFixture {
   situationLocalizations: SituationLocFixtureRow[];
   vocabularyLocalizations: VocabLocFixtureRow[];
   scenarioGoalLocalizations: GoalLocFixtureRow[];
+  nativeLocalizations?: NativeLocFixture;
+}
+
+// Chunked insert for fixture replay; returns how many rows were new.
+async function insertChunked(
+  table: typeof scenarioNativeLocalizations | typeof situationNativeLocalizations
+    | typeof scenarioGoalNativeLocalizations | typeof vocabularyNativeNotes,
+  values: Array<Record<string, unknown>>,
+): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < values.length; i += 200) {
+    const res = await db.insert(table)
+      // Each caller builds rows for exactly this table; the union type is
+      // what keeps one helper for all four.
+      .values(values.slice(i, i + 200) as never)
+      .onConflictDoNothing()
+      .returning({ id: table.id });
+    inserted += res.length;
+  }
+  return inserted;
 }
 
 async function seed() {
@@ -699,14 +730,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s1Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'はじめまして！私はハナです。日本へようこそ！お名前は何ですか？',
       messagePhonetic: 'Hajimemashite! Watashi wa Hana desu. Nihon e youkoso! O-namae wa nan desu ka?',
       messageNative: 'Nice to meet you! I am Hana. Welcome to Japan! What is your name?',
       emotionTone: 'warm-friendly', gestureHint: 'slight bow with a welcoming smile',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s1Turn1User = await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 1, speaker: 'user',
@@ -727,14 +758,14 @@ const [s1Row] = await db.insert(sessions).values({
       severity: 'minor',
     });
 
-    const s1Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'リネットさん、はじめまして！ウガンダからなんですね。どんなことを勉強していますか？',
       messagePhonetic: 'Rinetto-san, hajimemashite! Uganda kara nan desu ne. Donna koto o benkyou shite imasu ka?',
       messageNative: 'Lynnette, nice to meet you! So you are from Uganda. What are you studying?',
       emotionTone: 'curious-engaged', gestureHint: 'tilts head slightly with interest',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s1Turn2User = await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 2, speaker: 'user',
@@ -754,14 +785,14 @@ const [s1Row] = await db.insert(sessions).values({
       severity: 'minor',
     });
 
-    const s1Turn3Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 3, speaker: 'ai',
       messageTarget: '素晴らしいです！日本語で話すのはとても楽しいですね。今日は会えて本当に嬉しかったです。また会いましょう！',
       messagePhonetic: 'Subarashii desu! Nihongo de hanasu no wa totemo tanoshii desu ne. Kyou wa aete hontou ni ureshikatta desu. Mata aimashou!',
       messageNative: 'Wonderful! Speaking in Japanese is very fun, isn\'t it? I was truly happy to meet you today. Let\'s meet again!',
       emotionTone: 'warm-encouraging', gestureHint: 'small bow with both hands clasped',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s1Turn3User = await db.insert(conversations).values({
       sessionId: s1Row.id, turnNo: 3, speaker: 'user',
@@ -806,14 +837,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s2Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'いらっしゃいませ！何をお探しですか？',
       messagePhonetic: 'Irasshaimase! Nani o osagashi desu ka?',
       messageNative: 'Welcome! What are you looking for?',
       emotionTone: 'cheerful-service', gestureHint: 'friendly nod from behind the counter',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s2Turn1User = await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 1, speaker: 'user',
@@ -824,14 +855,14 @@ const [s1Row] = await db.insert(sessions).values({
       isEnglishWhenExpected: false, isValidInContext: true,
     }).returning();
 
-    const s2Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'かしこまりました。１本でよろしいですか？',
       messagePhonetic: 'Kashikomarimashita. Ippon de yoroshii desu ka?',
       messageNative: 'Certainly. Is one bottle okay?',
       emotionTone: 'polite-service', gestureHint: 'reaches toward the drink cooler',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s2Turn2User = await db.insert(conversations).values({
       sessionId: s2Row.id, turnNo: 2, speaker: 'user',
@@ -882,14 +913,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s3Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'どうぞお入りください。初めまして、採用担当の田中と申します。よろしくお願いいたします。',
       messagePhonetic: 'Douzo o-hairi kudasai. Hajimemashite, saiyou tantou no Tanaka to moushimasu. Yoroshiku onegai itashimasu.',
       messageNative: 'Please come in. Nice to meet you, I am Tanaka from recruitment. Pleased to meet you.',
       emotionTone: 'formal-respectful', gestureHint: 'gestures to the seat with open hand',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s3Turn1User = await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 1, speaker: 'user',
@@ -909,14 +940,14 @@ const [s1Row] = await db.insert(sessions).values({
       severity: 'minor',
     });
 
-    const s3Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'デザイアさん、これまでの職歴について教えていただけますか？',
       messagePhonetic: 'Dezaia-san, kore made no shokureki ni tsuite oshiete itadakemasu ka?',
       messageNative: 'Desire, could you tell me about your work experience so far?',
       emotionTone: 'polite-interview', gestureHint: 'sits forward with poised posture',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s3Turn2User = await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 2, speaker: 'user',
@@ -927,32 +958,32 @@ const [s1Row] = await db.insert(sessions).values({
       isEnglishWhenExpected: false, isValidInContext: true,
     }).returning();
 
-    const s3Turn3Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 3, speaker: 'ai',
       messageTarget: 'なるほど。では、日本語で仕事をする上で、一番大切だと思うことは何ですか？',
       messagePhonetic: 'Naruhodo. Dewa, nihongo de shigoto o suru ue de, ichiban taisetsu da to omou koto wa nan desu ka?',
       messageNative: 'I see. So, what do you think is the most important thing when working in Japanese?',
       emotionTone: 'thoughtful-probing', gestureHint: 'nods slowly while listening',
       isValidInContext: true,
-    }).returning();
+    });
 
-    const s3Turn3User = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 3, speaker: 'user',
       messageTarget: 'コミュニケーションだと思います。正しい敬語を使うことと、相手の気持ちを理解することが大事です。',
       messagePhonetic: 'Komyunikeeshon da to omoimasu. Tadashii keigo o tsukau koto to, aite no kimochi o rikai suru koto ga daiji desu.',
       messageNative: 'I think communication is. Using correct keigo and understanding the other person\'s feelings are important.',
       emotionTone: 'thoughtful-sincere', gestureHint: null,
       isEnglishWhenExpected: false, isValidInContext: true,
-    }).returning();
+    });
 
-    const s3Turn4Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 4, speaker: 'ai',
       messageTarget: '素晴らしい考えですね。では、最後に—この会社でどんなことを実現したいですか？',
       messagePhonetic: 'Subarashii kangae desu ne. Dewa, saigo ni — kono kaisha de donna koto o jitsugen shitai desu ka?',
       messageNative: 'That\'s a wonderful perspective. Then, finally — what do you want to achieve at this company?',
       emotionTone: 'impressed-warm', gestureHint: 'smiles appreciatively',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s3Turn4User = await db.insert(conversations).values({
       sessionId: s3Row.id, turnNo: 4, speaker: 'user',
@@ -1005,14 +1036,14 @@ const [s1Row] = await db.insert(sessions).values({
       completedAt: new Date(),
     }).returning();
 
-    const s4Turn1Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 1, speaker: 'ai',
       messageTarget: 'いらっしゃいませ！何名様ですか？',
       messagePhonetic: 'Irasshaimase! Nan-mei-sama desu ka?',
       messageNative: 'Welcome! How many people?',
       emotionTone: 'cheerful', gestureHint: 'holds out menu with both hands',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s4Turn1User = await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 1, speaker: 'user',
@@ -1023,14 +1054,14 @@ const [s1Row] = await db.insert(sessions).values({
       isEnglishWhenExpected: false, isValidInContext: true,
     }).returning();
 
-    const s4Turn2Ai = await db.insert(conversations).values({
+    await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 2, speaker: 'ai',
       messageTarget: 'かしこまりました。こちらがメニューでございます。ご注文がお決まりになりましたらお呼びください。',
       messagePhonetic: 'Kashikomarimashita. Kochira ga menyuu de gozaimasu. Go-chuumon ga o-kimari ni narimashitara o-yobi kudasai.',
       messageNative: 'Certainly. Here is our menu. Please call me when you have decided your order.',
       emotionTone: 'polite-service', gestureHint: 'places menu on table with both hands',
       isValidInContext: true,
-    }).returning();
+    });
 
     const s4Turn2User = await db.insert(conversations).values({
       sessionId: s4Row.id, turnNo: 2, speaker: 'user',
@@ -1289,6 +1320,39 @@ const [s1Row] = await db.insert(sessions).values({
       }
     }
 
+    // Native-language explanations. The unique (row, target, native) index
+    // makes onConflictDoNothing the existence check, so reruns insert nothing.
+    const nativeFixture = fixture.nativeLocalizations;
+    if (nativeFixture) {
+      const nativeSkipped: string[] = [];
+      const pick = <T, V>(rows: T[], resolve: (row: T) => number | undefined, label: (row: T) => string, build: (id: number, row: T) => V): V[] =>
+        rows.flatMap((row) => {
+          const id = resolve(row);
+          if (!id) { nativeSkipped.push(label(row)); return []; }
+          return [build(id, row)];
+        });
+      const nativeInserts: Array<[string, () => Promise<number>]> = [
+        ['scenario', async () => insertChunked(scenarioNativeLocalizations, pick(nativeFixture.scenarios,
+          (r) => scenarioIdByTitle.get(r.scenario), (r) => r.scenario,
+          (scenarioId, r) => ({ scenarioId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, title: r.title, context: r.context, learningGoals: r.learningGoals, aiCharacterRole: r.aiCharacterRole, userCharacterRole: r.userCharacterRole })))],
+        ['situation', async () => insertChunked(situationNativeLocalizations, pick(nativeFixture.situations,
+          (r) => situationIdByKey.get(`${r.domainSlug}\u0000${r.situation}`), (r) => `${r.domainSlug}/${r.situation}`,
+          (situationId, r) => ({ situationId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, title: r.title, context: r.context, learningGoals: r.learningGoals, focusPills: r.focusPills })))],
+        ['goal', async () => insertChunked(scenarioGoalNativeLocalizations, pick(nativeFixture.goals,
+          (r) => goalIdByKey.get(`${r.scenario}\u0000${r.sequenceOrder}`), (r) => `${r.scenario}/#${r.sequenceOrder}`,
+          (scenarioGoalId, r) => ({ scenarioGoalId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, goalText: r.goalText })))],
+        ['word tip', async () => insertChunked(vocabularyNativeNotes, pick(nativeFixture.vocabulary,
+          (r) => vocabIdByKey.get(`${r.scenario}\u0000${r.targetText}`), (r) => `${r.scenario}/${r.targetText}`,
+          (vocabularyId, r) => ({ vocabularyId, targetLanguage: r.targetLanguage, nativeLanguage: r.nativeLanguage, usageTip: r.usageTip })))],
+      ];
+      const counts: string[] = [];
+      for (const [label, run] of nativeInserts) counts.push(`${await run()} ${label}`);
+      console.log(`Native explanations replayed: ${counts.join(', ')} row(s) inserted.`);
+      if (nativeSkipped.length > 0) {
+        console.log(`  ${nativeSkipped.length} native entr(ies) skipped — parent not found yet, e.g. ${nativeSkipped.slice(0, 3).join('; ')}`);
+      }
+    }
+
     // ================================================================
     // 6. COUNTRIES (country-native layer)
     // ================================================================
@@ -1492,11 +1556,11 @@ const [s1Row] = await db.insert(sessions).values({
     ]).onConflictDoNothing();
 
     // ================================================================
-    // 8. CURRICULUM (single language-agnostic course template)
+    // 8. COURSES (single language-agnostic course template)
     //    A course is a template, not a language: the learner picks the
     //    target + native language when they enrol, so we seed ONE course.
     // ================================================================
-    console.log('Inserting sample curriculum...');
+    console.log('Inserting sample course...');
     const [courseRow] = await db.insert(courses).values({
       slug: 'survival-uganda',
       title: 'Survival Course for Uganda',

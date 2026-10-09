@@ -14,7 +14,8 @@ import { ConnectionLatencyIndicator, useLatencyMonitor } from '@/components/role
 import { usePushToTalk } from '@/lib/hooks/usePushToTalk';
 import { useRoleplaySessionContext } from '@/lib/hooks/RoleplaySessionContext';
 import type { TurnData } from '@/lib/hooks/useRoleplaySession';
-import { speakMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender } from '@/lib/roleplay/tts';
+import type { CorrectionItem } from '@/lib/ai-engine';
+import { speakMixedText, replayMixedText, stop as stopTts, setOnSpeakingChange, unlockAudio, speakWhenAudioUnlocked, setVoiceGender, startTurnCapture, commitTurnCapture, discardTurnCapture, clearTurnCache } from '@/lib/roleplay/tts';
 import { createReplySpeaker } from '@/lib/roleplay/reply-speech';
 import { useAvatarCaptions } from '@/lib/hooks/useAvatarCaptions';
 import { CelebrationOverlay } from '@/components/roleplay/CelebrationOverlay';
@@ -23,16 +24,17 @@ import { PhaseTransitionCard } from '@/components/roleplay/PhaseTransitionCard';
 import { LessonCompleteScreen } from '@/components/roleplay/LessonCompleteScreen';
 import { LessonIncompleteScreen } from '@/components/roleplay/LessonIncompleteScreen';
 import { buildSessionMetrics, buildWhatWentWrong } from '@/lib/roleplay/session-metrics';
-import { continueHref } from '@/lib/curriculum/continue-href';
+import { continueHref } from '@/lib/courses/continue-href';
 import { computeCompositeScore } from '@/lib/roleplay/phase-engine';
 import { EnvironmentBackdrop } from '@/components/roleplay/EnvironmentBackdrop';
-import { getBCP47, getNativeLangBcp47 } from '@/lib/language';
+import { getBCP47, getNativeLangBcp47, DEFAULT_TARGET_LANGUAGE, getTargetLangConfig } from '@/lib/language';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { cn } from '@/lib/design-tokens';
 import {
   ArrowLeft, Info, Mic, Volume2, VolumeX,
   MessageSquare, X, Send, Clock, Globe, CheckCircle2, Circle,
-  ChevronUp, Lightbulb, Flag,
+  ChevronUp, Lightbulb,
 } from 'lucide-react';
 
 interface CompletionResult {
@@ -57,9 +59,10 @@ export default function AvatarModePage() {
     phaseTransition, dismissPhaseTransition,
     recap, dismissRecap,
     unacknowledgedCompletion, acknowledgeCompletion,
+    elapsedLabel, saveSession, abandonSession, restartSession,
   } = useRoleplaySessionContext();
 
-  const [targetLanguage, setTargetLanguage] = useState('ja');
+  const [targetLanguage, setTargetLanguage] = useState<string>(DEFAULT_TARGET_LANGUAGE);
   const [nativeLanguage, setNativeLanguage] = useState('en');
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [sending, setSending] = useState(false);
@@ -67,14 +70,13 @@ export default function AvatarModePage() {
   const [greetingSent, setGreetingSent] = useState(false);
   const [muted, setMuted] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [lastCorrections, setLastCorrections] = useState<any[]>([]);
+  const [lastCorrections, setLastCorrections] = useState<CorrectionItem[]>([]);
   const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [coachOpen, setCoachOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [tipsOpen, setTipsOpen] = useState(false);
   const [chatTab, setChatTab] = useState<'all' | 'key' | 'notes'>('all');
-  const [elapsed, setElapsed] = useState('00:00');
 
   const [celebration, setCelebration] = useState<{ variant: CelebrationVariant; title: string; subtitle?: string } | null>(null);
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
@@ -82,6 +84,7 @@ export default function AvatarModePage() {
   const pendingCelebrationRef = useRef<CompletionResult | null>(null);
   const lastAiCompletedRef = useRef<number>(0);
   const emotionSystemRef = useRef<EmotionSystem | null>(null);
+  const exitBusyRef = useRef(false);
   const { status: connectionStatus, turnLatency } = useLatencyMonitor();
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const { caption, playCaption, showCaption, showLiveCaption, hideCaption, clear: clearCaption } = useAvatarCaptions();
@@ -99,7 +102,7 @@ export default function AvatarModePage() {
 
   const speakingRef = useRef(false);
   const mutedRef = useRef(false);
-  const targetLangRef = useRef('ja');
+  const targetLangRef = useRef<string>(DEFAULT_TARGET_LANGUAGE);
   const nativeLangRef = useRef('en');
   const phaseRef = useRef('');
   const sendingRef = useRef(false);
@@ -110,28 +113,13 @@ export default function AvatarModePage() {
   const charName = selectedAvatar?.name ?? character?.name ?? scenario?.aiCharacterName ?? 'Assistant';
   const charColor = character?.avatarColor ?? '#2D3BC5';
   const charRole = (selectedAvatar ? scenario?.aiCharacterRole : character?.role ?? scenario?.aiCharacterRole) ?? undefined;
-  const avatarModelUrl = selectedAvatar?.file ?? character?.avatarModelUrl ?? scenario?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
+  const avatarModelUrl = selectedAvatar?.file ?? character?.avatarModelUrl ?? DEFAULT_AVATAR_MODEL_URL;
 
-  // Anchored on the session's own start time rather than this page's mount:
-  // avatar and voice are two views of one session, so switching between them
-  // (or reloading) has to carry the clock over instead of restarting at 00:00.
-  const sessionStartTime: number | null = session?.startedAt
-    ? new Date(session.startedAt).getTime()
-    : null;
-
-  // Session timer
   useEffect(() => {
-    if (sessionStartTime === null) return;
-    const tick = () => {
-      const diff = Math.max(0, Math.floor((Date.now() - sessionStartTime) / 1000));
-      const m = String(Math.floor(diff / 60)).padStart(2, '0');
-      const s = String(diff % 60).padStart(2, '0');
-      setElapsed(`${m}:${s}`);
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [sessionStartTime]);
+    if (session?.status === 'abandoned') {
+      router.replace(`/sessions/${sessionId}/report`);
+    }
+  }, [session?.status, sessionId, router]);
 
   // Auto-scroll chat panel
   useEffect(() => {
@@ -145,22 +133,51 @@ export default function AvatarModePage() {
     const t = turn.messageTarget || turn.messageNative;
     if (!t) return;
     const bcp47 = getBCP47(targetLanguage, 'tts');
-    speakMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
+    replayMixedText(t, bcp47, targetLanguage === nativeLanguage ? bcp47 : getNativeLangBcp47(nativeLanguage), phase).catch(() => {});
   }, [muted, targetLanguage, nativeLanguage, phase]);
 
   const primaryGoal = situation?.learningGoals ?? scenario?.learningGoals ?? '';
 
-  const leaveSession = useCallback(async (redirectTo?: string) => {
+  const handleSaveSession = useCallback(async () => {
     stopTts();
-    await fetch(`/api/sessions/${sessionId}`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'completed' }),
-      signal: AbortSignal.timeout(3000),
-    }).catch(() => {});
-    router.push(redirectTo || `/sessions/${sessionId}/report`);
-  }, [sessionId, router]);
+    await saveSession();
+    router.push('/home');
+  }, [saveSession, router]);
+
+  const handleEndSession = useCallback(async () => {
+    stopTts();
+    await abandonSession();
+    router.push(`/sessions/${sessionId}/report`);
+  }, [abandonSession, router, sessionId]);
+
+  const handleContinue = useCallback(() => {
+    setCompletionResult(null);
+    void acknowledgeCompletion();
+    router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage }));
+  }, [acknowledgeCompletion, nativeLanguage, nextLesson, router, targetLanguage]);
+
+  const handleViewReport = useCallback(() => {
+    setCompletionResult(null);
+    void acknowledgeCompletion();
+    stopTts();
+    router.push(`/sessions/${sessionId}/report`);
+  }, [acknowledgeCompletion, router, sessionId]);
+
+  const handleRepeat = useCallback(() => {
+    if (exitBusyRef.current) return;
+    exitBusyRef.current = true;
+    void (async () => {
+      try {
+        const newId = await restartSession();
+        setCompletionResult(null);
+        await acknowledgeCompletion();
+        stopTts();
+        router.push(`/session/${newId}/avatar`);
+      } catch {
+        exitBusyRef.current = false;
+      }
+    })();
+  }, [acknowledgeCompletion, restartSession, router]);
 
   // Muting has to silence the line already playing, not just the next one —
   // the ref guard alone left the current utterance running to the end.
@@ -174,6 +191,9 @@ export default function AvatarModePage() {
   useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   useEffect(() => {
+    // Session data arrives asynchronously; these defaults must be replaced before
+    // speech recognition and synthesis are used.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (session?.targetLanguage) setTargetLanguage(session.targetLanguage);
     if (session?.nativeLanguage) setNativeLanguage(session.nativeLanguage);
     setVoiceGender(session?.voiceGender || character?.gender || 'Female');
@@ -193,7 +213,7 @@ export default function AvatarModePage() {
         emotionSystemRef.current?.stopTalking?.();
       }
     });
-    return () => { setOnSpeakingChange(null); stopTts(); };
+    return () => { setOnSpeakingChange(null); stopTts(); clearTurnCache(); };
   }, []);
 
   // Recite the welcome-back recap. It reaches the transcript on its own, so
@@ -210,6 +230,7 @@ export default function AvatarModePage() {
       // gesture was the mute button, the pre-check above is stale by now.
       if (mutedRef.current) { dismissRecap(); return; }
       playCaption(text, Math.max(3000, text.length * 65)).catch(() => {});
+      startTurnCapture();
       speakMixedText(
         text,
         getBCP47(targetLangRef.current, 'tts'),
@@ -217,7 +238,7 @@ export default function AvatarModePage() {
           ? getBCP47(targetLangRef.current, 'tts')
           : getNativeLangBcp47(nativeLangRef.current),
         phaseRef.current,
-      ).catch(() => {});
+      ).then(() => commitTurnCapture(text)).catch(() => discardTurnCapture());
       dismissRecap();
     });
     return cancel;
@@ -225,18 +246,20 @@ export default function AvatarModePage() {
 
   useEffect(() => {
     if (unacknowledgedCompletion && !completionResult) {
-      const source = evaluation ?? session ?? {};
+      const source = evaluation ?? session;
       const compositeScore = computeCompositeScore('completed', {
-        vocabularyScore: source.vocabularyScore ?? 0,
-        grammarScore: source.grammarScore ?? 0,
-        fluencyScore: source.fluencyScore ?? 0,
-        culturalScore: source.culturalScore ?? 0,
-        taskScore: source.taskScore ?? 0,
+        vocabularyScore: source?.vocabularyScore ?? 0,
+        grammarScore: source?.grammarScore ?? 0,
+        fluencyScore: source?.fluencyScore ?? 0,
+        culturalScore: source?.culturalScore ?? 0,
+        taskScore: source?.taskScore ?? 0,
         // Weighted at 0.10 by computeCompositeScore. Omitting it here scored
         // the same evaluation lower than the report page does, so a session
         // could celebrate as failed and read as passed.
-        expressionAppropriatenessScore: source.expressionAppropriatenessScore ?? 0,
+        expressionAppropriatenessScore: source?.expressionAppropriatenessScore ?? 0,
       });
+      // This is an externally persisted completion discovered after the session loads.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCompletionResult({ passed: compositeScore >= 70, compositeScore });
     }
   }, [unacknowledgedCompletion, completionResult, session, evaluation]);
@@ -270,7 +293,6 @@ export default function AvatarModePage() {
       isMuted: () => mutedRef.current,
     });
 
-    let fullText = '';
     const speechDoneRef = { current: false };
     const analysisDoneRef = { current: false };
     const tryShowCelebration = () => {
@@ -284,7 +306,6 @@ export default function AvatarModePage() {
       await submitTurnStream(text.trim(), {
         responseTimeMs,
         onToken: (t) => {
-          if (t) fullText = t;
           const cleaned = t ? cleanDisplay(t) : null;
           setStreamingText(cleaned);
           if (cleaned) showLiveCaption(cleaned);
@@ -343,7 +364,7 @@ export default function AvatarModePage() {
         setLastCorrections(latestUser.corrections);
         setCoachOpen(true);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       // Whatever was queued belongs to a turn that failed; leaving it to drain
       // talks over the learner's retry.
@@ -391,7 +412,7 @@ export default function AvatarModePage() {
     isAiSpeaking ? 'talking' : voice.isListening ? 'listening' : 'idle';
 
 
-  const langLabel = targetLanguage === 'ja' ? 'Japanese' : targetLanguage === 'en' ? 'English' : targetLanguage;
+  const langLabel = getTargetLangConfig(targetLanguage).name;
   const skillLevelLabel = situation?.skillLevel
     ? situation.skillLevel.charAt(0).toUpperCase() + situation.skillLevel.slice(1)
     : null;
@@ -432,10 +453,19 @@ export default function AvatarModePage() {
       {/* ── Top Header Bar ── */}
       <div className="relative z-20 flex items-center justify-between gap-2 px-4 sm:px-6 py-3 border-b border-dojo-border/60 shrink-0 backdrop-blur-md bg-dojo-surface/50">
         <div className="flex items-center gap-2 min-w-0">
-          <button onClick={() => { leaveSession('/home'); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
+          <button onClick={() => { void handleSaveSession(); }} className="flex items-center gap-2 rounded-lg text-dojo-text-muted hover:text-dojo-text-primary transition-colors">
             <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-medium hidden sm:inline">End Session</span>
+            <span className="text-sm font-medium hidden sm:inline">Save Session</span>
           </button>
+          {isActive && (
+            <button
+              type="button"
+              onClick={() => { void handleEndSession(); }}
+              className="shrink-0 rounded-lg px-2 py-1 text-sm font-medium text-dojo-danger hover:bg-dojo-danger/10 transition-colors"
+            >
+              End Session
+            </button>
+          )}
           <span className="text-sm font-bold text-dojo-text-primary tracking-tight truncate max-w-40 sm:max-w-xs">{scenario?.title ?? 'Avatar Session'}</span>
           <PhaseIndicator phase={phase} />
         </div>
@@ -480,12 +510,8 @@ export default function AvatarModePage() {
 
       {/* ── Main Content Area ── */}
       <div className="flex-1 relative z-10 overflow-hidden flex">
-        {/* Left: 3D Avatar Viewport Stage */}
-        <div className="flex-1 relative flex flex-col">
-          <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
-
-          {/* Greeting overlay */}
-          {isActive && conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
+        {/* Greeting overlay — covers stage + coach panel so the CTA is centered in the session viewport. */}
+        {isActive && conversations.length === 0 && (phase === 'orientation' || phase === 'icebreaker') && !greetingSent && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-dojo-canvas/90 backdrop-blur-sm px-6">
               <div className="text-center max-w-xs">
                 <div className="h-16 w-16 rounded-full bg-dojo-accent/20 mx-auto mb-4 flex items-center justify-center ring-1 ring-dojo-accent/30">
@@ -523,7 +549,7 @@ export default function AvatarModePage() {
                       })
                       .catch(() => { stopTts(); clearCaption(); setStreamingText(null); setGreetingSent(false); });
                   }}
-                  className="flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
+                  className="inline-flex items-center gap-3 rounded-xl bg-dojo-accent px-8 py-4 text-base font-semibold text-white shadow-lg shadow-dojo-accent/25 hover:opacity-90 active:scale-95 transition-all"
                 >
                   <Volume2 className="h-5 w-5" />
                   Start conversation
@@ -532,21 +558,25 @@ export default function AvatarModePage() {
             </div>
           )}
 
+        {/* Left: 3D Avatar Viewport Stage */}
+        <div className="flex-1 relative flex flex-col">
+          <PhaseTransitionCard transition={aiTurnActive ? null : phaseTransition} onDismiss={dismissPhaseTransition} />
+
           {/* Your Role card (top-left) */}
-          <div className="absolute top-4 left-4 z-10 hidden md:block">
+          <div className="absolute top-4 start-4 z-10 hidden md:block">
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 space-y-2 max-w-48">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-dojo-surface-raised border border-dojo-border/40">
                   <span className="text-xs text-dojo-text-muted">👤</span>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-dojo-text-muted/60 font-medium">Your Role</p>
+                  <p className="text-xs uppercase tracking-wider text-dojo-text-muted font-medium">Your Role</p>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{scenario?.userCharacterRole ?? 'Learner'}</p>
                 </div>
               </div>
               {primaryGoal && (
                 <div className="border-t border-dojo-border/30 pt-2">
-                  <p className="text-[10px] uppercase tracking-wider text-dojo-text-muted/60 font-medium mb-1">Goal</p>
+                  <p className="text-xs uppercase tracking-wider text-dojo-text-muted font-medium mb-1">Goal</p>
                   <p className="text-xs text-dojo-text-muted leading-relaxed">{primaryGoal}</p>
                 </div>
               )}
@@ -574,7 +604,7 @@ export default function AvatarModePage() {
 
           {/* Partial transcript */}
           {voice.partialTranscript && (
-            <div className="absolute bottom-44 left-0 right-0 flex justify-center z-10 px-4">
+            <div className="absolute bottom-44 start-0 end-0 flex justify-center z-10 px-4">
               <div className="flex items-start gap-2 rounded-xl bg-dojo-surface/85 backdrop-blur-md border border-dojo-border/70 px-4 py-2.5 max-w-md shadow-lg">
                 <Mic className="h-3.5 w-3.5 text-dojo-warning shrink-0 mt-1" />
                 <p className="text-sm text-dojo-text-primary/90 italic leading-relaxed">{voice.partialTranscript}</p>
@@ -583,11 +613,11 @@ export default function AvatarModePage() {
           )}
 
           {/* Session Progress card (bottom-left) */}
-          <div className="absolute bottom-28 left-4 z-10 hidden md:block">
+          <div className="absolute bottom-28 start-4 z-10 hidden md:block">
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold text-dojo-text-primary">Session Progress</p>
-                <span className="text-[10px] text-dojo-text-muted font-medium">{completedGoals?.length ?? 0} / {goals?.length ?? 0} Goals</span>
+                <span className="text-xs text-dojo-text-muted font-medium">{completedGoals?.length ?? 0} / {goals?.length ?? 0} Goals</span>
               </div>
               {/* Progress bar */}
               <div className="flex gap-1 mb-3">
@@ -613,7 +643,7 @@ export default function AvatarModePage() {
                       ) : (
                         <Circle className="h-3.5 w-3.5 text-dojo-text-muted/40 shrink-0" />
                       )}
-                      <span className={`text-[11px] leading-tight ${done ? 'text-dojo-text-muted line-through' : 'text-dojo-text-primary'}`}>
+                      <span className={`text-sm leading-relaxed ${done ? 'text-dojo-text-muted line-through' : 'text-dojo-text-primary'}`}>
                         {goal.goalText}
                       </span>
                     </div>
@@ -624,7 +654,7 @@ export default function AvatarModePage() {
           </div>
 
           {/* Character info card (bottom-right) */}
-          <div className="absolute bottom-28 right-4 z-10 hidden md:block">
+          <div className="absolute bottom-28 end-4 z-10 hidden md:block">
             <div className="rounded-xl bg-dojo-surface/70 backdrop-blur-md border border-dojo-border/40 px-4 py-3 max-w-56">
               <div className="flex items-center gap-3 mb-2">
                 <div
@@ -635,13 +665,13 @@ export default function AvatarModePage() {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-dojo-text-primary leading-none">{charName}</p>
-                  {charRole && <p className="text-[11px] text-dojo-text-muted mt-1">{charRole}</p>}
+                  {charRole && <p className="text-sm text-dojo-text-muted mt-1">{charRole}</p>}
                 </div>
               </div>
               {character?.personalityTraits && character.personalityTraits.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {character.personalityTraits.slice(0, 3).map((trait: string, i: number) => (
-                    <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-1 text-[10px] text-dojo-text-muted font-medium">
+                  {character.personalityTraits.slice(0, 3).map((trait, i) => (
+                    <span key={i} className="rounded-full bg-dojo-surface-raised border border-dojo-border/50 px-2 py-1 text-xs text-dojo-text-muted font-medium">
                       {trait}
                     </span>
                   ))}
@@ -651,12 +681,15 @@ export default function AvatarModePage() {
           </div>
 
           {/* ── Bottom Controls: Mute / Mic / Chat (Transparent to reveal avatar) ── */}
-          <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-6 safe-bottom z-10 px-4 pointer-events-none">
+          <div className="absolute bottom-0 start-0 end-0 flex justify-center pb-6 safe-bottom z-10 px-4 pointer-events-none">
             <div className="flex items-center justify-center gap-6 sm:gap-8 rounded-2xl bg-black/10 backdrop-blur-[2px] border border-white/10 px-6 sm:px-8 py-3 pointer-events-auto">
               <div className="flex flex-col items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setMuted(v => !v)}
+                  onClick={() => {
+                    if (!muted) stopTts();
+                    setMuted(v => !v);
+                  }}
                   className={`tap-target flex h-12 w-12 items-center justify-center rounded-full border transition-all duration-200 ${
                     muted
                       ? 'bg-dojo-danger/30 text-dojo-danger border-dojo-danger/50 backdrop-blur-md'
@@ -666,7 +699,7 @@ export default function AvatarModePage() {
                 >
                   {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                 </button>
-                <span className="text-[10px] text-white/70 font-medium drop-shadow-sm">Mute</span>
+                <span className="text-xs text-white/70 font-medium drop-shadow-sm">Mute</span>
               </div>
 
               <div className="flex flex-col items-center gap-2">
@@ -696,7 +729,7 @@ export default function AvatarModePage() {
                     <Mic className="h-7 w-7 text-white" />
                   </button>
                 </div>
-                <span className={`text-[10px] font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
+                <span className={`text-xs font-bold tracking-widest uppercase transition-all duration-300 drop-shadow-sm ${
                   voice.isListening ? 'text-dojo-warning animate-pulse' : 'text-white/70'
                 }`}>
                   {voice.isListening ? 'Listening...' : 'Hold to Speak'}
@@ -712,14 +745,14 @@ export default function AvatarModePage() {
                 >
                   <MessageSquare className="h-5 w-5" />
                 </button>
-                <span className="text-[10px] text-white/70 font-medium drop-shadow-sm">Chat</span>
+                <span className="text-xs text-white/70 font-medium drop-shadow-sm">Chat</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* ── Slide-out Chat Panel (left side) ── */}
-        <div className={`absolute top-0 left-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-r border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`absolute top-0 start-0 bottom-0 z-30 w-80 max-w-full sm:w-96 flex flex-col bg-dojo-surface/95 backdrop-blur-xl border-e border-dojo-border/60 shadow-2xl transition-transform duration-300 ease-in-out ${chatOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full'}`}>
           {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-dojo-border/60 shrink-0">
             <div className="flex items-center gap-2">
@@ -747,7 +780,7 @@ export default function AvatarModePage() {
                 key={key}
                 type="button"
                 onClick={() => setChatTab(key)}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                   chatTab === key
                     ? 'bg-dojo-accent text-white'
                     : 'text-dojo-text-muted hover:text-dojo-text-primary hover:bg-dojo-border/20'
@@ -761,7 +794,7 @@ export default function AvatarModePage() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto no-scrollbar px-4 py-4 space-y-4 overscroll-contain">
             {chatTurns.length === 0 && (
-              <p className="text-center text-xs text-dojo-text-muted/60 py-8">
+              <p className="text-center text-sm text-dojo-text-muted py-8">
                 {chatTab === 'notes' ? 'No corrections yet — keep speaking!' : 'No messages yet'}
               </p>
             )}
@@ -773,7 +806,7 @@ export default function AvatarModePage() {
               return (
                 <div key={turn.id} className={`flex items-start gap-3 ${!isAi ? 'flex-row-reverse' : 'flex-row'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                   <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10"
                     style={{ backgroundColor: isAi ? charColor : '#6366f1' }}
                   >
                     {isAi ? charName[0] : 'U'}
@@ -781,24 +814,24 @@ export default function AvatarModePage() {
                   <div className={`flex max-w-[80%] flex-col ${!isAi ? 'items-end' : 'items-start'}`}>
                     <div className={`flex items-center gap-2 px-1 mb-1 ${!isAi ? 'flex-row-reverse' : 'flex-row'}`}>
                       <span className="text-xs font-semibold text-dojo-text-primary">{isAi ? charName : 'You'}</span>
-                      {ts && <span className="text-[10px] text-dojo-text-muted/60">{ts}</span>}
+                      {ts && <span className="text-xs text-dojo-text-muted">{ts}</span>}
                     </div>
                     <div className={`px-4 py-3 shadow-sm ${
                       isAi
-                        ? 'rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60'
-                        : 'rounded-2xl rounded-tr-sm bg-dojo-accent/15 border border-dojo-accent/20'
+                        ? 'rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60'
+                        : 'rounded-2xl rounded-se-sm bg-dojo-accent/15 border border-dojo-accent/20'
                     }`}>
-                      <p className="text-sm text-dojo-text-primary leading-relaxed">{turn.messageTarget}</p>
+                      <p translate="no" className="text-base text-dojo-text-primary leading-relaxed">{displayedUtterance(turn)}</p>
                       {turn.messagePhonetic && (
-                        <p className="mt-1 text-[11px] text-dojo-text-muted italic">{turn.messagePhonetic}</p>
+                        <p translate="no" className="mt-1 text-sm italic leading-relaxed text-dojo-text-muted">{turn.messagePhonetic}</p>
                       )}
                       {!isAi && turn.corrections && turn.corrections.length > 0 && (
                         <div className="mt-2 border-t border-dojo-border/30 pt-2 space-y-1">
                           {turn.corrections.map((c, i) => (
-                            <p key={i} className="text-[11px] text-dojo-text-muted leading-relaxed">
-                              <span className="line-through">{c.originalText}</span>
+                            <p key={i} className="text-sm text-dojo-text-muted leading-relaxed">
+                              <span translate="no" className="line-through">{c.originalText}</span>
                               {' → '}
-                              <span className="font-medium text-dojo-text-primary">{c.correctedText}</span>
+                              <span translate="no" className="font-medium text-dojo-text-primary">{c.correctedText}</span>
                             </p>
                           ))}
                         </div>
@@ -806,14 +839,14 @@ export default function AvatarModePage() {
                     </div>
                     {isAi && (
                       <div className="flex items-center gap-2 mt-1 px-1">
-                        <button onClick={() => handleReplay(turn)} aria-label="Replay audio message" className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted/60 hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors">
+                        <button onClick={() => handleReplay(turn)} aria-label="Replay audio message" className="flex h-6 w-6 items-center justify-center rounded-full text-dojo-text-muted hover:text-dojo-accent hover:bg-dojo-accent/10 transition-colors">
                           <Volume2 className="h-3 w-3" />
                         </button>
                       </div>
                     )}
                     {!isAi && (
                       <div className="flex items-center gap-1 mt-1 px-1">
-                        <span className="text-[10px] text-dojo-accent">✓ Delivered</span>
+                        <span className="text-xs text-dojo-accent">✓ Delivered</span>
                       </div>
                     )}
                   </div>
@@ -822,17 +855,17 @@ export default function AvatarModePage() {
             })}
             {streamingText && chatTab !== 'notes' && (
               <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-md ring-2 ring-white/10" style={{ backgroundColor: charColor }}>
                   {charName[0]}
                 </div>
                 <div className="flex max-w-[80%] flex-col items-start">
                   <div className="flex items-center gap-2 px-1 mb-1">
                     <span className="text-xs font-semibold text-dojo-text-primary">{charName}</span>
                   </div>
-                  <div className="rounded-2xl rounded-tl-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
-                    <p className="text-sm text-dojo-text-primary leading-relaxed">
+                  <div className="rounded-2xl rounded-ss-sm bg-dojo-surface-raised/90 border border-dojo-border/60 px-4 py-3 shadow-sm">
+                    <p className="text-base text-dojo-text-primary leading-relaxed">
                       {streamingText}
-                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ml-0.5 animate-pulse align-middle" />
+                      <span className="inline-block w-0.5 h-4 bg-dojo-accent ms-0.5 animate-pulse align-middle" />
                     </p>
                   </div>
                 </div>
@@ -851,7 +884,7 @@ export default function AvatarModePage() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
                 placeholder="Type a message..."
                 disabled={!isActive || sending}
-                className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted/50 outline-none"
+                className="flex-1 bg-transparent border-none px-4 py-2 text-sm text-dojo-text-primary placeholder:text-dojo-text-muted outline-none"
               />
               <button
                 onClick={handleChatSend}
@@ -864,7 +897,7 @@ export default function AvatarModePage() {
             </div>
             {suggestedReplies.length > 0 && chatTab !== 'notes' && (
               <div className="mt-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-dojo-text-muted mb-2">You could say</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-dojo-text-muted mb-2">You could say</p>
                 <div className="flex flex-wrap gap-2">
                   {suggestedReplies.map((r, i) => (
                     <button
@@ -872,7 +905,7 @@ export default function AvatarModePage() {
                       type="button"
                       disabled={!isActive || sending}
                       onClick={() => handleUserUtterance(r)}
-                      className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-3 py-2 text-[11px] font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 active:scale-95 disabled:opacity-40 transition-all duration-200"
+                      className="rounded-full border border-dojo-accent/30 bg-dojo-accent/10 px-3 py-2 text-sm font-medium text-dojo-text-primary hover:border-dojo-accent hover:bg-dojo-accent/20 active:scale-95 disabled:opacity-40 transition-all duration-200"
                     >
                       {r}
                     </button>
@@ -885,7 +918,7 @@ export default function AvatarModePage() {
 
         {/* Desktop coach panel (hidden when chat is open) */}
         {!chatOpen && (
-          <aside className="hidden lg:flex w-80 shrink-0 flex-col gap-4 border-l border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
+          <aside className="hidden lg:flex w-80 shrink-0 flex-col gap-4 border-s border-dojo-border/60 bg-dojo-surface/70 backdrop-blur-md p-4 overflow-y-auto no-scrollbar">
             <VoiceCoachPanel
               corrections={coachOpen ? lastCorrections : []}
               suggestedReplies={coachOpen ? suggestedReplies : []}
@@ -903,18 +936,18 @@ export default function AvatarModePage() {
       <div className="relative z-20 flex items-center justify-between px-4 sm:px-6 py-2 border-t border-dojo-border/40 bg-dojo-surface/60 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-dojo-text-muted/60" />
-            <span className="text-xs text-dojo-text-primary font-medium">{elapsed}</span>
-            <span className="text-[10px] text-dojo-text-muted/60">Session Time</span>
+            <Clock className="h-3.5 w-3.5 text-dojo-text-muted" />
+            <span className="text-xs text-dojo-text-primary font-medium">{elapsedLabel}</span>
+            <span className="text-xs text-dojo-text-muted">Session Time</span>
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
             <span className="text-xs text-dojo-text-primary font-medium">{skillLevelLabel ?? '—'}</span>
-            <span className="text-[10px] text-dojo-text-muted/60">Your Level</span>
+            <span className="text-xs text-dojo-text-muted">Your Level</span>
           </div>
           <div className="hidden sm:flex items-center gap-1.5">
-            <Globe className="h-3.5 w-3.5 text-dojo-text-muted/60" />
+            <Globe className="h-3.5 w-3.5 text-dojo-text-muted" />
             <span className="text-xs text-dojo-text-primary font-medium">{langLabel}</span>
-            <span className="text-[10px] text-dojo-text-muted/60">Target Language</span>
+            <span className="text-xs text-dojo-text-muted">Target Language</span>
           </div>
         </div>
         <button
@@ -949,7 +982,7 @@ export default function AvatarModePage() {
         isActive={isActive} isCompleted={isCompleted}
         targetLanguage={targetLanguage} nativeLanguage={nativeLanguage}
         correctionCount={conversations.reduce((s, c) => s + (c.corrections?.length ?? 0), 0)}
-        onEnd={leaveSession}
+        onEnd={handleEndSession}
         onViewReport={() => { stopTts(); router.push(`/sessions/${sessionId}/report`); }}
       />
 
@@ -959,11 +992,6 @@ export default function AvatarModePage() {
           onDismiss={() => {
             setCelebration(null);
             acknowledgeCompletion();
-          }}
-          onRepeat={() => {
-            setCelebration(null);
-            acknowledgeCompletion();
-            router.push(`/session/${sessionId}`);
           }}
         />
       )}
@@ -975,8 +1003,8 @@ export default function AvatarModePage() {
             metrics={sessionMetrics}
             xpGained={completionResult.xpGained}
             newStreak={completionResult.newStreak}
-            onContinue={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
-            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
+            onContinue={handleContinue}
+            onViewReport={handleViewReport}
           />
         ) : (
           <LessonIncompleteScreen
@@ -984,9 +1012,9 @@ export default function AvatarModePage() {
             compositeScore={completionResult.compositeScore}
             metrics={sessionMetrics}
             whatWentWrong={whatWentWrong}
-            onRepeat={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(`/session/${sessionId}`); }}
-            onNext={() => { setCompletionResult(null); acknowledgeCompletion(); router.push(continueHref(nextLesson, { targetLanguage, nativeLanguage })); }}
-            onLeave={() => { setCompletionResult(null); acknowledgeCompletion(); leaveSession(); }}
+            onRepeat={handleRepeat}
+            onNext={handleContinue}
+            onViewReport={handleViewReport}
           />
         )
       )}

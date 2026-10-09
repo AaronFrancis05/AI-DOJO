@@ -42,7 +42,7 @@ export function AvatarMicOverlay({
   }, [isAiResponding, isListening, isHeld, stop]);
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center gap-3 pb-8 safe-bottom">
+    <div className="absolute bottom-0 start-0 end-0 z-30 flex flex-col items-center gap-3 pb-8 safe-bottom">
       {voice.partialTranscript && (
         <div className="px-4 py-2 rounded-xl bg-dojo-surface/80 backdrop-blur-md border border-dojo-border border-dashed max-w-md">
           <p className="text-sm text-dojo-text-primary/70 italic">{voice.partialTranscript}</p>

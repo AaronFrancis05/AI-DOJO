@@ -1,8 +1,11 @@
 import { db } from '../../../../src/db';
+import { dbPool } from '../../../../src/db-pool';
 import { domains, situations, scenarios, scenarioGoals, vocabulary, sessions, characters } from '../../../../src/schema';
 import { requireRole, roleErrorResponse } from '../../../../lib/auth/server';
 import { getAIProvider } from '../../../../lib/ai-providers';
-import { getTargetLangConfig } from '../../../../lib/language';
+import { getTargetLangConfig, DEFAULT_TARGET_LANGUAGE } from '../../../../lib/language';
+import { isRecord } from '../../../../lib/roleplay/api-types';
+import { parseGeneratedVocab, type VocabRow } from '../../../../lib/roleplay/generated-vocab';
 import { eq, and, count } from 'drizzle-orm';
 
 interface VocabInput {
@@ -10,6 +13,7 @@ interface VocabInput {
   translation: string;
   phonetic?: string;
 }
+
 
 function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'custom';
@@ -20,8 +24,8 @@ function slugify(text: string): string {
  *
  * Admin-only, which is a narrowing: it used to accept any signed-in learner.
  * The rows it writes are not private to the caller — `domains`, `situations`
- * and `scenarios` are the *shared* catalogue every learner's hub lists and the
- * Catalogue tab curates. A learner inventing a scenario for themselves was
+ * and `scenarios` are the *shared* library every learner's Library page lists and the
+ * Library tab curates. A learner inventing a scenario for themselves was
  * therefore publishing it to everyone, with an LLM-generated vocabulary list
  * and no review, and `domains.displayOrder = 999` only kept it last rather than
  * out of sight.
@@ -70,8 +74,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const session = await db.transaction(async (tx) => {
-    let domainSlug = baseSlug.slice(0, 40);
+  const session = await dbPool.transaction(async (tx) => {
+    const domainSlug = baseSlug.slice(0, 40);
     const dmnValues = {
       name: domainName,
       description: situationTitle,
@@ -89,8 +93,8 @@ export async function POST(req: Request) {
         const [d] = await tx.insert(domains).values({ ...dmnValues, slug: candidate }).returning();
         domain = d;
         break;
-      } catch (err: any) {
-        if (err?.code === '23505' && attempt < 4) continue;
+      } catch (err: unknown) {
+        if (isRecord(err) && err.code === '23505' && attempt < 4) continue;
         throw err;
       }
     }
@@ -122,10 +126,10 @@ export async function POST(req: Request) {
       displayOrder: 1,
     }).returning();
 
-    const lang = targetLanguage ?? 'ja';
+    const lang = targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
     const langName = getTargetLangConfig(lang).name;
 
-    let vocabRows: Array<{ targetText: string; phonetic: string; translation: string; category: string; usageTip: string; formalityLevel: string }> = [];
+    let vocabRows: VocabRow[] = [];
 
     if (vocabItems && Array.isArray(vocabItems)) {
       const valid = vocabItems.slice(0, 8).filter((v: VocabInput) => v.targetText && v.translation);
@@ -159,16 +163,12 @@ Each item must be a single ${langName} word or short phrase directly relevant to
   "formalityLevel": "casual, polite, or formal"
 }`;
         const raw = await provider.generateJSON(vocabSystemPrompt, []);
-        const parsed = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          vocabRows = parsed.slice(0, 8).map((v: any) => ({
-            targetText: String(v.targetText ?? ''),
-            phonetic: String(v.phonetic ?? ''),
-            translation: String(v.translation ?? ''),
-            category: String(v.category ?? 'general'),
-            usageTip: String(v.usageTip ?? ''),
-            formalityLevel: ['casual', 'polite', 'formal'].includes(v.formalityLevel) ? v.formalityLevel : 'polite',
-          })).filter((v: any) => v.targetText && v.translation);
+          vocabRows = parsed
+            .slice(0, 8)
+            .map(parseGeneratedVocab)
+            .filter((v): v is VocabRow => v !== null);
         }
       } catch {
         // AI call failed — leave vocabRows empty; the defensive fix in the
@@ -178,7 +178,7 @@ Each item must be a single ${langName} word or short phrase directly relevant to
 
     if (vocabRows.length > 0) {
       await tx.insert(vocabulary).values(
-        vocabRows.map((v: any) => ({
+        vocabRows.map((v) => ({
           scenarioId: scenario.id,
           targetText: v.targetText,
           phonetic: v.phonetic ?? '',
@@ -234,7 +234,7 @@ Each item must be a single ${langName} word or short phrase directly relevant to
       situationId: situation.id,
       characterId: numericCharacterId,
       behaviorMode: behaviorMode ?? 'standard',
-      targetLanguage: targetLanguage ?? 'ja',
+      targetLanguage: targetLanguage ?? DEFAULT_TARGET_LANGUAGE,
       nativeLanguage: nativeLanguage ?? 'en',
       voiceGender,
       sessionNumber,

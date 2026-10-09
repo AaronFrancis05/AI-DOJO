@@ -34,6 +34,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = getStoredTheme();
+    // The persisted client preference is unavailable during server rendering.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(stored);
     applyTheme(stored);
     setMounted(true);

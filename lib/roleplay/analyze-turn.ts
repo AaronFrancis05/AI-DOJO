@@ -11,20 +11,18 @@ import {
   countries,
 } from '../../src/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
-import { analyzeUserTurn, type UserTurnAnalysis } from '../ai-engine';
+import { analyzeUserTurn, type AnalyzeUserTurnInput, type UserTurnAnalysis } from '../ai-engine';
 import { getAIProvider, type ChatTurn } from '../ai-providers';
 import { buildConversationHistory } from './conversation-history';
 import { getLearnerProficiency, resolveDifficulty } from './proficiency';
-import { getTargetLangConfig, getNativeLangName } from '../language';
+import { getTargetLangConfig, getNativeLangName, BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '../language';
 import type { SessionPhase } from './phase-engine';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../cache';
 import {
   getScenarioLocalization,
-  getScenarioVocabLocalizations,
   applyScenarioLocalization,
   getTargetScenarioLocalization,
-  getTargetVocabLocalizations,
-  applyTargetLanguageVocab,
+  localizeVocabularyForLearner,
   getSituationLocalization,
   getTargetSituationLocalization,
   applySituationLocalization,
@@ -62,7 +60,7 @@ async function generateAndPersistMissingVocabulary(
 
   const targetLangName = getTargetLangConfig(targetLanguage).name;
   const nativeLangName = getNativeLangName(nativeLanguage);
-  const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === 'ja';
+  const showPhonetic = getTargetLangConfig(targetLanguage).hasPhonetic && targetLanguage === BASE_CONTENT_LANGUAGE;
 
   try {
     const provider = await getAIProvider();
@@ -174,7 +172,7 @@ export interface SessionTurnData {
  */
 export async function loadSessionTurnData(session: SessionRow): Promise<SessionTurnData> {
   const { scenarioId } = session;
-  const targetLanguage = session.targetLanguage ?? 'ja';
+  const targetLanguage = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage = session.nativeLanguage ?? 'en';
   const currentPhase = session.phase as SessionPhase;
 
@@ -197,8 +195,6 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
     goalLocs,
     nativeScenarioLoc,
     targetScenarioLoc,
-    nativeVocabLoc,
-    targetVocabLoc,
     proficiency,
     baseVocab,
   ] = await Promise.all([
@@ -277,14 +273,6 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
 
     targetLanguage ? getTargetScenarioLocalization(scenarioId, targetLanguage) : Promise.resolve(null),
 
-    nativeLanguage !== 'en'
-      ? getScenarioVocabLocalizations(scenarioId, nativeLanguage)
-      : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
-
-    targetLanguage
-      ? getTargetVocabLocalizations(scenarioId, targetLanguage)
-      : Promise.resolve(new Map<number, { translation: string | null; usageTip: string | null }>()),
-
     getLearnerProficiency(session.userId, targetLanguage),
 
     // Vocabulary is only consulted in the phases that actually teach words.
@@ -299,7 +287,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
           // target-language session sees those plus any rows already generated
           // for its own language. Other languages' generated rows are excluded so
           // a French session's AI-generated words never leak into a Japanese one.
-          const languages = targetLanguage === 'ja' ? ['ja'] : ['ja', targetLanguage];
+          const languages = targetLanguage === BASE_CONTENT_LANGUAGE ? [BASE_CONTENT_LANGUAGE] : [BASE_CONTENT_LANGUAGE, targetLanguage];
           const rows = await db.select().from(vocabulary)
             .where(and(eq(vocabulary.scenarioId, scenarioId), inArray(vocabulary.languageCode, languages)))
             .orderBy(vocabulary.id);
@@ -329,7 +317,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
     // content the learner actually practices wins.
     if (nativeSituationLoc) situationResult = applySituationLocalization(situationResult, nativeSituationLoc);
     if (targetSituationLoc) situationResult = applySituationLocalization(situationResult, targetSituationLoc);
-    if (!targetSituationLoc && targetLanguage && targetLanguage !== 'ja') {
+    if (!targetSituationLoc && targetLanguage && targetLanguage !== BASE_CONTENT_LANGUAGE) {
       console.warn(
         `[LOCALIZATION] Situation ${situationResult.id} has no ${targetLanguage} localization — the ` +
           `scenario setting may fall back to the Japan-shaped base text. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage}`,
@@ -346,7 +334,7 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
       });
     }
     const missing = goals.filter((g) => !goalLocs.has(g.id)).length;
-    if (missing > 0 && targetLanguage !== 'ja') {
+    if (missing > 0 && targetLanguage !== BASE_CONTENT_LANGUAGE) {
       console.warn(
         `[LOCALIZATION] Scenario ${scenarioId} has ${missing} goal(s) without ${targetLanguage} ` +
           `localization — targetPhrase may fall back to Japanese. Run: npm run db:backfill-target-localizations -- --lang=${targetLanguage} --only=goals`,
@@ -421,41 +409,11 @@ export async function loadSessionTurnData(session: SessionRow): Promise<SessionT
   }
 
   if (currentScenario && vocabRows.length > 0) {
-    if (nativeVocabLoc.size > 0) {
-      // Native-language meaning shown alongside the word being learned.
-      vocabRows = vocabRows.map((v) => {
-        const localized = nativeVocabLoc.get(v.id);
-        if (!localized) return v;
-        return {
-          ...v,
-          translation: localized.translation ?? v.translation,
-          usageTip: localized.usageTip ?? v.usageTip,
-        };
-      });
-    }
-
-    if (targetVocabLoc.size > 0) {
-      // Target-language word/phrase replaces the Japanese base targetText so
-      // a French (or English, etc.) course drills the correct words.
-      vocabRows = applyTargetLanguageVocab(vocabRows, targetVocabLoc);
-    } else if (targetLanguage === 'en') {
-      // The base vocabulary rows are Japanese but their `translation` column
-      // is English (the seed's meaning). For an English-target course with no
-      // curated 'en' localizations, drill the English translation directly
-      // instead of falling back to the Japanese base text.
-      vocabRows = vocabRows.map((v) => ({
-        ...v,
-        targetText: v.translation,
-        usageTip: v.usageTip,
-      }));
-    } else if (targetLanguage && targetLanguage !== 'ja') {
-      // Loud, not silent: a non-Japanese target with no vocab localizations
-      // would otherwise drill the base Japanese words with no signal.
-      console.warn(
-        `[LOCALIZATION] Scenario ${scenarioId} has ${vocabRows.length} vocabulary item(s) but NO ${targetLanguage} ` +
-          `localizations — the lesson will drill the base Japanese text. Run: npm run db:localize -- --lang=${targetLanguage}`,
-      );
-    }
+    // Target word, native-language meaning and native-language usage tip,
+    // resolved per (target, native) pair — the same resolver the session
+    // route uses, so the AI teaches exactly what the learner's screen shows.
+    // It logs any missing localization itself.
+    vocabRows = await localizeVocabularyForLearner(scenarioId, vocabRows, targetLanguage, nativeLanguage);
   }
 
   if (currentScenario && !scenarioLocalized && nativeLanguage !== 'en') {
@@ -497,8 +455,9 @@ export async function analyzeTurn(input: {
   aiReplyText?: string;
   scenario: ScenarioRow;
   data: SessionTurnData;
+  onUsage?: AnalyzeUserTurnInput['onUsage'];
 }): Promise<UserTurnAnalysis> {
-  const { userInput, aiReplyText, scenario, data } = input;
+  const { userInput, aiReplyText, scenario, data, onUsage } = input;
   const situationContext = data.situation && !data.scenarioLocalized ? data.situation.context : scenario.context;
   const situationLearningGoals = data.situation && !data.scenarioLocalized ? data.situation.learningGoals : scenario.learningGoals;
 
@@ -524,5 +483,6 @@ export async function analyzeTurn(input: {
     // the analyzer must be told which output contract to expect.
     phase: data.currentPhase,
     isSameLanguage: data.isSameLanguage,
+    onUsage,
   });
 }

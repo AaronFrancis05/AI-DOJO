@@ -1,7 +1,7 @@
 /**
  * Loaders and queue mechanics for the two group room types.
  *
- * The counterpart of `bookings.ts` for classes and assessments: every route
+ * The counterpart of `bookings.ts` for live lessons and assessments: every route
  * needs the same three answers — does it exist, is the caller party to it,
  * and are they the tutor. Collapsing "not found" and "not yours" into one
  * null is deliberate and matches `loadBookingForUser`: the API answers 404
@@ -15,25 +15,25 @@ import {
   assessmentQueue,
   assessmentSessions,
   chatRoomMembers,
-  classEnrollments,
-  classSessions,
+  liveLessonEnrollments,
+  liveLessons,
   tutors,
   users,
 } from '@/src/schema';
 
-/* ── Classes ─────────────────────────────────────────────────────────── */
+/* ── Live lessons ────────────────────────────────────────────────────── */
 
-export async function loadClassForUser(classId: number, userId: string) {
+export async function loadLiveLessonForUser(lessonId: number, userId: string) {
   const [row] = await db
     .select({
-      classSession: classSessions,
+      liveLesson: liveLessons,
       tutorUserId: tutors.userId,
       tutorName: users.name,
     })
-    .from(classSessions)
-    .innerJoin(tutors, eq(classSessions.tutorId, tutors.id))
+    .from(liveLessons)
+    .innerJoin(tutors, eq(liveLessons.tutorId, tutors.id))
     .innerJoin(users, eq(tutors.userId, users.id))
-    .where(eq(classSessions.id, classId));
+    .where(eq(liveLessons.id, lessonId));
 
   if (!row) return null;
 
@@ -41,10 +41,10 @@ export async function loadClassForUser(classId: number, userId: string) {
 
   const [enrollment] = await db
     .select()
-    .from(classEnrollments)
+    .from(liveLessonEnrollments)
     .where(and(
-      eq(classEnrollments.classSessionId, classId),
-      eq(classEnrollments.learnerId, userId),
+      eq(liveLessonEnrollments.liveLessonId, lessonId),
+      eq(liveLessonEnrollments.learnerId, userId),
     ))
     .limit(1);
 
@@ -54,73 +54,73 @@ export async function loadClassForUser(classId: number, userId: string) {
 export type EnrolResult = { ok: true } | { ok: false; reason: string };
 
 /**
- * Puts a learner on a class roster.
+ * Puts a learner on a live-lesson roster.
  *
  * Capacity is enforced inside a transaction under an advisory lock rather than
  * by a count-then-insert: two learners taking the last seat at the same moment
  * would both read the same count and both be admitted.
  *
- * Lives here rather than in the enrol route because joining an instant class
- * enrols on the way in — see the class token route. Two implementations of
- * "take a seat" would be two capacity rules, and only one of them would be the
- * one under the lock.
+ * Lives here rather than in the enrol route because joining an instant live
+ * lesson enrols on the way in — see the live-lesson token route. Two
+ * implementations of "take a seat" would be two capacity rules, and only one
+ * of them would be the one under the lock.
  */
 export async function enrolLearner(
-  classId: number,
+  lessonId: number,
   learnerId: string,
-  classSession: { capacity: number; chatRoomId: number | null; instructionLanguage: string | null },
+  liveLesson: { capacity: number; chatRoomId: number | null; instructionLanguage: string | null },
 ): Promise<EnrolResult> {
   return dbPool.transaction(async (tx): Promise<EnrolResult> => {
     // Namespaced away from the session lock the roleplay writer takes: both
-    // use pg_advisory_xact_lock with a bare integer, and a class id colliding
-    // with a session id would serialise two unrelated things.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${classId}, 1)`);
+    // use pg_advisory_xact_lock with a bare integer, and a live-lesson id
+    // colliding with a session id would serialise two unrelated things.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${lessonId}, 1)`);
 
     const [{ taken }] = await tx
       .select({ taken: sql<number>`count(*)::int` })
-      .from(classEnrollments)
+      .from(liveLessonEnrollments)
       .where(and(
-        eq(classEnrollments.classSessionId, classId),
-        sql`${classEnrollments.status} <> 'cancelled'`,
+        eq(liveLessonEnrollments.liveLessonId, lessonId),
+        sql`${liveLessonEnrollments.status} <> 'cancelled'`,
       ));
 
     const [existing] = await tx
       .select()
-      .from(classEnrollments)
+      .from(liveLessonEnrollments)
       .where(and(
-        eq(classEnrollments.classSessionId, classId),
-        eq(classEnrollments.learnerId, learnerId),
+        eq(liveLessonEnrollments.liveLessonId, lessonId),
+        eq(liveLessonEnrollments.learnerId, learnerId),
       ))
       .limit(1);
 
     if (existing && existing.status !== 'cancelled') return { ok: true };
-    if (Number(taken) >= classSession.capacity) {
-      return { ok: false, reason: 'This class is full' };
+    if (Number(taken) >= liveLesson.capacity) {
+      return { ok: false, reason: 'This live lesson is full' };
     }
 
     await tx
-      .insert(classEnrollments)
-      .values({ classSessionId: classId, learnerId, status: 'enrolled' })
+      .insert(liveLessonEnrollments)
+      .values({ liveLessonId: lessonId, learnerId, status: 'enrolled' })
       .onConflictDoUpdate({
-        target: [classEnrollments.classSessionId, classEnrollments.learnerId],
+        target: [liveLessonEnrollments.liveLessonId, liveLessonEnrollments.learnerId],
         set: { status: 'enrolled', enrolledAt: new Date() },
       });
 
-    // The classroom's chat sidebar is a normal chat room, so enrolling has to
+    // The room's chat sidebar is a normal chat room, so enrolling has to
     // add the learner to it — otherwise the sidebar 403s inside the room.
     //
-    // `preferredLanguage` is seeded from the class's instruction language, so
-    // the sidebar arrives translated into the language the class is actually
+    // `preferredLanguage` is seeded from the live lesson's instruction language,
+    // so the sidebar arrives translated into the language the lesson is actually
     // taught in rather than each learner's own. Null leaves the column null,
     // which is the pre-existing behaviour: fall back to users.nativeLanguage.
     // The learner can still override it per room.
-    if (classSession.chatRoomId) {
+    if (liveLesson.chatRoomId) {
       await tx
         .insert(chatRoomMembers)
         .values({
-          roomId: classSession.chatRoomId,
+          roomId: liveLesson.chatRoomId,
           userId: learnerId,
-          preferredLanguage: classSession.instructionLanguage,
+          preferredLanguage: liveLesson.instructionLanguage,
         })
         .onConflictDoNothing();
     }
@@ -130,23 +130,23 @@ export async function enrolLearner(
 }
 
 /** Learners currently enrolled, for the roster and for notifications. */
-export async function loadClassRoster(classId: number) {
+export async function loadLiveLessonRoster(lessonId: number) {
   return db
     .select({
-      learnerId: classEnrollments.learnerId,
+      learnerId: liveLessonEnrollments.learnerId,
       name: users.name,
       avatarSrc: users.avatarSrc,
       nativeLanguage: users.nativeLanguage,
-      status: classEnrollments.status,
-      enrolledAt: classEnrollments.enrolledAt,
+      status: liveLessonEnrollments.status,
+      enrolledAt: liveLessonEnrollments.enrolledAt,
     })
-    .from(classEnrollments)
-    .innerJoin(users, eq(classEnrollments.learnerId, users.id))
+    .from(liveLessonEnrollments)
+    .innerJoin(users, eq(liveLessonEnrollments.learnerId, users.id))
     .where(and(
-      eq(classEnrollments.classSessionId, classId),
-      sql`${classEnrollments.status} <> 'cancelled'`,
+      eq(liveLessonEnrollments.liveLessonId, lessonId),
+      sql`${liveLessonEnrollments.status} <> 'cancelled'`,
     ))
-    .orderBy(asc(classEnrollments.enrolledAt));
+    .orderBy(asc(liveLessonEnrollments.enrolledAt));
 }
 
 /* ── Assessments ─────────────────────────────────────────────────────── */

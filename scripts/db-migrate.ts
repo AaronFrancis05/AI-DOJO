@@ -29,6 +29,11 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
  * Neon HTTP/websocket drivers reject multi-command prepared statements.
  * Drizzle SQL may use `--> statement-breakpoint`, plain `;`, or both
  * (0016–0018 are hand-written multi-statement files without breakpoints).
+ *
+ * Splits on `;` and strips `--` comments only OUTSIDE quotes. The previous
+ * version split on every `;` and cut every line at `--`, so a default like
+ * `DEFAULT 'a;b'`, a comment text such as `'see -- note'`, or a `$$` function
+ * body would have been torn into broken statements.
  */
 function splitStatements(query: string): string[] {
   const chunks = query.includes('--> statement-breakpoint')
@@ -37,18 +42,58 @@ function splitStatements(query: string): string[] {
 
   const statements: string[] = [];
   for (const chunk of chunks) {
-    const withoutLineComments = chunk
-      .split('\n')
-      .map((line) => {
-        const idx = line.indexOf('--');
-        return idx >= 0 ? line.slice(0, idx) : line;
-      })
-      .join('\n');
-
-    for (const part of withoutLineComments.split(';')) {
-      const trimmed = part.trim();
+    let current = '';
+    let i = 0;
+    const flush = () => {
+      const trimmed = current.trim();
       if (trimmed) statements.push(trimmed);
+      current = '';
+    };
+    while (i < chunk.length) {
+      const ch = chunk[i];
+      const next = chunk[i + 1];
+      if (ch === '-' && next === '-') {
+        // Line comment: dropped up to (not including) the newline.
+        while (i < chunk.length && chunk[i] !== '\n') i++;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        const close = chunk.indexOf('*/', i + 2);
+        i = close < 0 ? chunk.length : close + 2;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        // Quoted literal or identifier; a doubled quote is an escaped quote.
+        let j = i + 1;
+        while (j < chunk.length) {
+          if (chunk[j] === ch && chunk[j + 1] === ch) { j += 2; continue; }
+          if (chunk[j] === ch) break;
+          j++;
+        }
+        current += chunk.slice(i, j + 1);
+        i = j + 1;
+        continue;
+      }
+      if (ch === '$') {
+        // Dollar-quoted body: $$ ... $$ or $tag$ ... $tag$.
+        const tag = /^\$[A-Za-z_]*\$/.exec(chunk.slice(i))?.[0];
+        if (tag) {
+          const close = chunk.indexOf(tag, i + tag.length);
+          const stop = close < 0 ? chunk.length : close + tag.length;
+          current += chunk.slice(i, stop);
+          i = stop;
+          continue;
+        }
+      }
+      if (ch === ';') {
+        flush();
+        i++;
+        continue;
+      }
+      current += ch;
+      i++;
     }
+    flush();
   }
   return statements;
 }
@@ -161,13 +206,19 @@ async function main() {
     const statements = splitStatements(query);
 
     process.stdout.write(`Applying ${entry.tag} (${statements.length} statements)... `);
-    for (const statement of statements) {
-      await sql.query(statement, []);
-    }
-    await sql`
-      INSERT INTO drizzle.__drizzle_migrations ("hash", "created_at")
-      VALUES (${hash}, ${entry.when})
-    `;
+    // One transaction per file, history row included. Statement-by-statement
+    // execution left a failed file half-applied and unrecorded, so the rerun
+    // then failed on the objects its first half had already created. Postgres
+    // DDL is transactional, so now a file lands whole or not at all.
+    // (A future migration needing CREATE INDEX CONCURRENTLY, which cannot run
+    // in a transaction, must be applied by hand.)
+    await sql.transaction([
+      ...statements.map((statement) => sql.query(statement, [])),
+      sql`
+        INSERT INTO drizzle.__drizzle_migrations ("hash", "created_at")
+        VALUES (${hash}, ${entry.when})
+      `,
+    ]);
     console.log('done');
   }
 

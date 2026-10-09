@@ -17,7 +17,7 @@ import { usePageTitle } from '@/lib/hooks/PageTitleContext';
 import { useUser } from '@/lib/auth/user-context';
 import { TUTORS_ENABLED } from '@/lib/tutors/config';
 import { cn } from '@/lib/design-tokens';
-import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
+import { getTargetLangConfig, getNativeLangName, DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 import {
   ArrowLeft,
   Check,
@@ -93,14 +93,14 @@ interface CourseProgressRow {
 }
 
 /**
- * A live room pinned to a unit — a class or an assessment.
+ * A live room pinned to a unit — a live lesson or an assessment.
  *
  * One shape for both because the footer treats them the same way: a meeting
  * with this unit's name on it, either running now or coming up. `kind` is what
  * decides the wording and where the link goes.
  */
 interface UnitRoomRow {
-  kind: 'class' | 'assessment';
+  kind: 'live_lesson' | 'assessment';
   id: number;
   title: string;
   unitId: number | null;
@@ -145,7 +145,7 @@ export default function CourseDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useUser();
-  const targetLanguage = searchParams.get('target') || user?.preferredTargetLanguage || 'ja';
+  const targetLanguage = searchParams.get('target') || user?.preferredTargetLanguage || DEFAULT_TARGET_LANGUAGE;
   const nativeLanguage = searchParams.get('native') || user?.nativeLanguage || 'en';
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
@@ -207,14 +207,14 @@ export default function CourseDetailPage() {
     };
   }, [slug, targetLanguage]);
 
-  // Live rooms pinned to a unit — classes and assessments both. Two requests
+  // Live rooms pinned to a unit — live lessons and assessments both. Two requests
   // for the whole course rather than one per unit: each API already answers
   // "what is coming up" in a single query.
   useEffect(() => {
     if (!TUTORS_ENABLED) return;
     let cancelled = false;
     Promise.all([
-      fetch('/api/classes', { credentials: 'include' })
+      fetch('/api/live-lessons', { credentials: 'include' })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
       fetch('/api/assessments', { credentials: 'include' })
@@ -223,8 +223,8 @@ export default function CourseDetailPage() {
     ]).then(([c, a]) => {
       if (cancelled) return;
       const rooms: UnitRoomRow[] = [];
-      if (Array.isArray(c?.classes)) {
-        for (const row of c.classes) rooms.push({ ...row, kind: 'class' as const });
+      if (Array.isArray(c?.liveLessons)) {
+        for (const row of c.liveLessons) rooms.push({ ...row, kind: 'live_lesson' as const });
       }
       if (Array.isArray(a?.assessments)) {
         for (const row of a.assessments) rooms.push({ ...row, kind: 'assessment' as const });
@@ -372,7 +372,7 @@ export default function CourseDetailPage() {
       <div className="mx-auto max-w-5xl p-6 lg:p-10">
         <h1 className="text-2xl font-bold text-dojo-text-primary">Course not found</h1>
         <Link href="/courses" className="text-dojo-accent mt-2 inline-block text-sm hover:underline">
-          Back to Learning Paths
+          Back to Courses
         </Link>
       </div>
     );
@@ -386,7 +386,7 @@ export default function CourseDetailPage() {
           className="inline-flex items-center gap-1.5 text-sm text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Learning Paths
+          Back to Courses
         </Link>
         <Link
           href={`/courses/${slug}/grades?target=${encodeURIComponent(targetLanguage)}`}
@@ -399,8 +399,8 @@ export default function CourseDetailPage() {
 
       {/* ── Hero ── */}
       <div className="relative overflow-hidden rounded-3xl border border-dojo-border bg-dojo-surface-raised p-8 shadow-2xl mb-10">
-        <div className="absolute -top-20 -right-20 h-56 w-56 rounded-full bg-dojo-accent/15 blur-[80px]" />
-        <div className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-dojo-success/10 blur-[80px]" />
+        <div className="absolute -top-20 -end-20 h-56 w-56 rounded-full bg-dojo-accent/15 blur-[80px]" />
+        <div className="absolute -bottom-20 -start-20 h-56 w-56 rounded-full bg-dojo-success/10 blur-[80px]" />
         <div className="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-3">
@@ -489,7 +489,7 @@ export default function CourseDetailPage() {
               <div className="space-y-4">
                 {level.units.map((unit, unitIdx) => (
                   // `id` is the anchor a finished session lands on — see
-                  // continueHref in lib/curriculum/continue-href.ts. scroll-mt
+                  // continueHref in lib/courses/continue-href.ts. scroll-mt
                   // keeps the heading clear of the sticky app header.
                   <Card key={unit.id} id={`unit-${unit.id}`} className="!p-5 scroll-mt-24">
                     <div className="mb-3">
@@ -583,7 +583,7 @@ export default function CourseDetailPage() {
 
                     {/* Two separate things, deliberately gated differently.
                         Signing a unit off needs every lesson in it done. A
-                        meeting for the unit does not: a class running right now
+                        meeting for the unit does not: a live lesson running right now
                         is only joinable right now, and hiding it until the last
                         lesson is finished is how a learner misses it. */}
                     {(() => {
@@ -602,8 +602,8 @@ export default function CourseDetailPage() {
                       if (!room && !unitComplete) return null;
 
                       const roomHref = room
-                        ? room.kind === 'class'
-                          ? `/live/class/${room.id}`
+                        ? room.kind === 'live_lesson'
+                          ? `/live/lesson/${room.id}`
                           : `/live/assessment/${room.id}`
                         : null;
 
@@ -647,22 +647,22 @@ export default function CourseDetailPage() {
                                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
                                     <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
                                   </span>
-                                  {room.kind === 'class' ? 'Join the class now' : 'Join the assessment now'}
+                                  {room.kind === 'live_lesson' ? 'Join the live lesson now' : 'Join the assessment now'}
                                 </>
                               ) : (
                                 <>
-                                  {room.kind === 'class' ? (
+                                  {room.kind === 'live_lesson' ? (
                                     <Users className="h-3.5 w-3.5" />
                                   ) : (
                                     <ClipboardList className="h-3.5 w-3.5" />
                                   )}
-                                  {room.kind === 'class' ? 'Live lesson' : 'Assessment'} ·{' '}
+                                  {room.kind === 'live_lesson' ? 'Live lesson' : 'Assessment'} ·{' '}
                                   {new Date(room.scheduledAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </>
                               )}
                             </Link>
                           ) : (
-                            unitComplete && TUTORS_ENABLED && (
+                            unitComplete && TUTORS_ENABLED && user?.canBrowseTutors && (
                               <Link
                                 href="/tutors"
                                 className="inline-flex items-center gap-2 rounded-(--radius-md) border border-dojo-border bg-dojo-surface px-4 py-2 text-sm text-dojo-text-primary transition-colors hover:bg-dojo-surface-raised"

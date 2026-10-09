@@ -9,7 +9,14 @@
    whose drilled vocabulary (or scenario context) still contains
    Japanese script — a sign the localization rows are missing.
 
+   Then, native coverage: for the target language (--target, default
+   English) and every enabled native language, how many scenarios,
+   situations, goals and words have a (target, native) explanation row.
+   Anything below 100% fails — this is the release gate for "serve all
+   nations" (PLAN.md 2.3).
+
    Usage: npm run db:check-localization
+          npm run db:check-localization -- --target=en --native-only
    ───────────────────────────────────────────────────────────── */
 import { db } from '../src/db';
 import {
@@ -20,10 +27,17 @@ import {
   vocabulary,
   scenarioLocalizations,
   vocabularyLocalizations,
+  scenarios,
+  situations,
+  scenarioGoals,
+  scenarioNativeLocalizations,
+  situationNativeLocalizations,
+  scenarioGoalNativeLocalizations,
+  vocabularyNativeNotes,
 } from '../src/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { applyTargetLanguageVocab } from '../lib/localization';
-import { TARGET_LANGUAGES } from '../lib/language';
+import { TARGET_LANGUAGES, NATIVE_LANGUAGES, BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '../lib/language';
 import { loadLanguageCatalog } from '../lib/language-registry';
 
 const JAPANESE_SCRIPT = /[\u3040-\u309F\u30A0-\u30FF\uFF66-\uFF9D]/;
@@ -32,7 +46,7 @@ const JAPANESE_SCRIPT = /[\u3040-\u309F\u30A0-\u30FF\uFF66-\uFF9D]/;
 // A function, not a module-level constant: the catalogue is hydrated from the
 // `languages` table inside main(), which runs after this module is evaluated,
 // so a constant here would only ever list the compiled-in languages.
-const targetCodes = () => TARGET_LANGUAGES.map((l) => l.code).filter((c) => c !== 'ja');
+const targetCodes = () => TARGET_LANGUAGES.map((l) => l.code).filter((c) => c !== BASE_CONTENT_LANGUAGE);
 
 // Loads target-language localizations straight from the DB (bypassing the
 // Upstash cache) so the check asserts ground truth, not cached state.
@@ -141,11 +155,78 @@ async function checkTemplateLang(course: typeof courses.$inferSelect, lang: stri
   return { ok: true, message: `${vocabChecked} vocab items localized across ${scenarioIds.length} scenarios` };
 }
 
+function argValue(name: string): string | null {
+  const prefix = `--${name}=`;
+  return process.argv.find((a) => a.startsWith(prefix))?.slice(prefix.length) ?? null;
+}
+
+// Counts distinct covered ids per native language in one query per table.
+async function coveredByNative(
+  table: typeof scenarioNativeLocalizations | typeof situationNativeLocalizations
+    | typeof scenarioGoalNativeLocalizations | typeof vocabularyNativeNotes,
+  idColumn: typeof scenarioNativeLocalizations.scenarioId | typeof situationNativeLocalizations.situationId
+    | typeof scenarioGoalNativeLocalizations.scenarioGoalId | typeof vocabularyNativeNotes.vocabularyId,
+  targetLanguage: string,
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ native: table.nativeLanguage, n: sql<number>`count(distinct ${idColumn})` })
+    .from(table)
+    .where(eq(table.targetLanguage, targetLanguage))
+    .groupBy(table.nativeLanguage);
+  return new Map(rows.map((r) => [r.native, Number(r.n)]));
+}
+
+async function checkNativeCoverage(targetLanguage: string): Promise<number> {
+  console.log(`\n=== Native-language coverage for ${targetLanguage} learners ===\n`);
+  const count = async (t: typeof scenarios | typeof situations | typeof scenarioGoals) =>
+    Number((await db.select({ n: sql<number>`count(*)` }).from(t))[0]?.n ?? 0);
+  const [scenarioTotal, situationTotal, goalTotal, vocabTotal] = await Promise.all([
+    count(scenarios),
+    count(situations),
+    count(scenarioGoals),
+    db.select({ n: sql<number>`count(*)` }).from(vocabulary)
+      .where(eq(vocabulary.languageCode, BASE_CONTENT_LANGUAGE)).then((r) => Number(r[0]?.n ?? 0)),
+  ]);
+  const [sc, st, go, vo] = await Promise.all([
+    coveredByNative(scenarioNativeLocalizations, scenarioNativeLocalizations.scenarioId, targetLanguage),
+    coveredByNative(situationNativeLocalizations, situationNativeLocalizations.situationId, targetLanguage),
+    coveredByNative(scenarioGoalNativeLocalizations, scenarioGoalNativeLocalizations.scenarioGoalId, targetLanguage),
+    coveredByNative(vocabularyNativeNotes, vocabularyNativeNotes.vocabularyId, targetLanguage),
+  ]);
+  const pct = (n: number, total: number) => (total === 0 ? 100 : Math.floor((n / total) * 100));
+  const cell = (n: number, total: number) => `${String(pct(n, total)).padStart(3)}% (${n}/${total})`;
+
+  let failing = 0;
+  console.log('  native  scenarios           situations          goals               word tips');
+  for (const native of NATIVE_LANGUAGES) {
+    // An English speaker learning English needs no explanation layer.
+    if (native.code === targetLanguage) continue;
+    const counts = [
+      [sc.get(native.code) ?? 0, scenarioTotal],
+      [st.get(native.code) ?? 0, situationTotal],
+      [go.get(native.code) ?? 0, goalTotal],
+      [vo.get(native.code) ?? 0, vocabTotal],
+    ] as const;
+    const ok = counts.every(([n, total]) => n >= total);
+    if (!ok) failing++;
+    console.log(`  ${ok ? '[ok]  ' : '[FAIL]'} ${native.code.padEnd(5)} ${counts.map(([n, total]) => cell(n, total).padEnd(20)).join('')}`);
+  }
+  console.log(`\n=== ${failing} native language(s) below full coverage. Fill with: npm run db:backfill-target-localizations -- --only=native --target=${targetLanguage} ===`);
+  return failing;
+}
+
 async function main(): Promise<void> {
   // Hydrates lib/language.ts from the `languages` table, so this script covers
   // languages an admin added as well as the compiled-in ones. Without it the
   // module-level constants are all a CLI process ever sees.
   await loadLanguageCatalog();
+
+  const nativeTarget = argValue('target') ?? DEFAULT_TARGET_LANGUAGE;
+  if (process.argv.includes('--native-only')) {
+    const failing = await checkNativeCoverage(nativeTarget);
+    if (failing > 0) process.exit(1);
+    return;
+  }
 
   console.log('=== Course Localization Check ===\n');
 
@@ -170,7 +251,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`\n=== Checked ${checked} course/language combos, ${failures} failing. ===`);
-  if (failures > 0) process.exit(1);
+  const nativeFailing = await checkNativeCoverage(nativeTarget);
+  if (failures > 0 || nativeFailing > 0) process.exit(1);
 }
 
 main().catch((err) => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Crown, ShieldCheck, Flame, Target, MessagesSquare, Mic, Star, PartyPopper, RotateCcw } from 'lucide-react';
+import { Crown, ShieldCheck, Flame, Target, MessagesSquare, Mic, Star, PartyPopper, ClipboardList } from 'lucide-react';
 import { useCelebrationConfetti } from '@/lib/hooks/useCelebrationConfetti';
 import { ResultsAvatarBackdrop } from '@/components/roleplay/ResultsAvatarBackdrop';
 import { qualitativeTag, type SessionMetrics } from '@/lib/roleplay/session-metrics';
@@ -12,7 +12,7 @@ interface LessonCompleteScreenProps {
   xpGained?: number;
   newStreak?: number;
   onContinue: () => void;
-  onRepeat: () => void;
+  onViewReport: () => void;
 }
 
 const METRIC_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeof Target; iconClass: string; iconBgClass: string }> = [
@@ -22,7 +22,7 @@ const METRIC_ROWS: Array<{ key: keyof SessionMetrics; label: string; icon: typeo
   { key: 'vocabulary', label: 'Vocabulary', icon: Star, iconClass: 'text-dojo-streak', iconBgClass: 'bg-dojo-streak/15' },
 ];
 
-export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStreak, onContinue, onRepeat }: LessonCompleteScreenProps) {
+export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStreak, onContinue, onViewReport }: LessonCompleteScreenProps) {
   const { fireBurst, prefersReducedMotion } = useCelebrationConfetti();
   const reduced = prefersReducedMotion();
 
@@ -62,7 +62,7 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
               {typeof xpGained === 'number' && (
                 <div className="flex flex-col items-center rounded-xl border border-dojo-border bg-dojo-surface px-6 py-2">
                   <span className="text-lg font-extrabold text-dojo-streak">+{xpGained} XP</span>
-                  <span className="text-[10px] text-dojo-text-muted">Experience Earned</span>
+                  <span className="text-xs text-dojo-text-muted">Experience Earned</span>
                 </div>
               )}
             </div>
@@ -86,7 +86,7 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
                         <p className="text-xs text-dojo-text-muted">{label}</p>
                         <p className="text-base font-bold text-dojo-success">{value}%</p>
                       </div>
-                      <span className="rounded-full bg-dojo-success/15 px-2.5 py-1 text-[11px] font-semibold text-dojo-success">
+                      <span className="rounded-full bg-dojo-success/15 px-2.5 py-1 text-xs font-semibold text-dojo-success">
                         {qualitativeTag(value as number)}
                       </span>
                     </div>
@@ -111,14 +111,14 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
                 <Flame className="h-5 w-5 text-dojo-streak" />
                 <div>
                   <p className="text-sm font-bold text-dojo-text-primary">{newStreak} Day Streak!</p>
-                  <p className="text-[11px] text-dojo-text-muted">Keep it up!</p>
+                  <p className="text-sm text-dojo-text-muted">Keep it up!</p>
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        <p className="mx-auto mt-6 max-w-md text-center text-xs italic text-dojo-text-muted">
+        <p className="mx-auto mt-6 max-w-md text-center text-sm italic leading-relaxed text-dojo-text-muted">
           &ldquo;Consistency today, fluency tomorrow.&rdquo; You&apos;re one step closer to your goal!
         </p>
 
@@ -133,11 +133,11 @@ export function LessonCompleteScreen({ scenarioTitle, metrics, xpGained, newStre
           </button>
           <button
             type="button"
-            onClick={onRepeat}
+            onClick={onViewReport}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dojo-border bg-dojo-surface-raised/85 py-2.5 text-sm font-semibold text-dojo-text-primary backdrop-blur-md transition-colors hover:bg-dojo-surface-hover"
           >
-            <RotateCcw className="h-4 w-4" />
-            Try Another Lesson
+            <ClipboardList className="h-4 w-4" />
+            View Report
           </button>
         </div>
       </div>

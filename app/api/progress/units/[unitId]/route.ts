@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '@/src/db';
 import { courseLevels, studentProgress, units } from '@/src/schema';
 import { getAuthUser } from '@/lib/auth/server';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 export const runtime = 'nodejs';
 
@@ -49,7 +50,7 @@ export async function POST(
   } catch {
     body = {};
   }
-  const targetLanguage = String(body.targetLanguage ?? '').trim() || 'ja';
+  const targetLanguage = String(body.targetLanguage ?? '').trim() || DEFAULT_TARGET_LANGUAGE;
 
   // The unit tells us which course row to write on, so the client never gets
   // to name the course itself.

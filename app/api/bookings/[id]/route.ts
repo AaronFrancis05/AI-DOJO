@@ -2,6 +2,7 @@ import { db } from '@/src/db';
 import { tutorBookings } from '@/src/schema';
 import { eq } from 'drizzle-orm';
 import { getAuthUser, requireRole, roleErrorResponse } from '@/lib/auth/server';
+import { hybridEnabledForLearner } from '@/lib/tutors/hybrid';
 import { loadBookingForUser } from '@/lib/tutors/bookings';
 import { createNotification } from '@/lib/notifications';
 
@@ -21,6 +22,9 @@ export async function GET(
   if (!found) return Response.json({ error: 'Booking not found' }, { status: 404 });
 
   const { booking, tutorName, isTutor } = found;
+  // Whether this lesson gets the hybrid tools (briefing, plan, panel,
+  // captions) — decided by the LEARNER's organization (lib/tutors/hybrid.ts).
+  const hybrid = await hybridEnabledForLearner(booking.learnerId);
   return Response.json({
     success: true,
     booking: {
@@ -35,7 +39,9 @@ export async function GET(
       purpose: booking.purpose,
       learnerNote: booking.learnerNote,
       chatRoomId: booking.chatRoomId,
+      learnerId: booking.learnerId,
       isTutor,
+      hybrid,
     },
   });
 }

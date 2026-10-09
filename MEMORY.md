@@ -994,3 +994,361 @@ Follow-up to the commit above. Every finding was a check-then-act I had written 
 - **`class_enrollments.status` describes the seat, not the account.** A suspended learner keeps their enrolment row (that is the point of not hard-deleting), so the roster passed to `announceLive` as `extraLearnerIds` was reaching people who cannot sign in. Now filtered through the same `activeLearners()` that `resolveAudience` uses — exported from `lib/tutors/audience.ts` for it rather than reimplemented.
 - **Auto-enrol did not publish `class.updated`.** The explicit enrol route does, so a tutor's open register updated for one path and not the other.
 - Verified the suspended/deleted exclusion with three throwaway `users` rows inserted and deleted in a `finally` — the DB had no non-active accounts, so the filter was otherwise a no-op and the fix would have looked verified without being exercised.
+
+## 2026-09-08 (README rewrite)
+
+- `README.md` was truncated mid-install block, pointed at a stale clone URL (`AaronFrancis05`), and described a Japanese-only Gemini + three-table app. Rewrote it as the human architecture/setup overview: Next.js BFF, Neon Postgres + Neon Auth, Drizzle, multi-provider LLM, Azure Speech, Gemini Live, Stream.io, Upstash, Inngest. Setup now matches `.env.example` and `package.json` scripts. Product copy aligned with `PRODUCT.md`.
+
+## 2026-09-09 (duplicate sign-up was labelled a network error)
+
+Existing-email sign-up showed "Network error. Please try again." Neon returns 422 `USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL`; the Neon Auth SDK does not know that spelling and remaps it to `validation_failed`, then throws. `getAuthErrorMessage` trusted the generic code and never read the "already exists" text, so the catch fallback won. Mapping now prefers the message over generic codes, collapses the long code onto `user_already_exists` (so tutor signup can still recover), and treats an unclassified sign-up 409/422 as "check what you entered, then try signing in" rather than a network failure. Copy still does not say the address is taken.
+
+## 2026-09-09 (neon-http cannot run transactions)
+
+`db` in `src/db.ts` is the neon-http driver — one HTTPS request per query, so `db.transaction()` throws `No transactions support in neon-http driver`. Writes that must be atomic already go through `dbPool` (`src/db-pool.ts`, WebSocket Pool). Two remaining callers were still on `db.transaction`: `app/api/domains/create-custom/route.ts` (custom domain + situation + scenario + session) and `app/api/admin/catalogue/[entity]/route.ts` (domain slug rename + scenario denormalised copy). Both now use `dbPool.transaction`; plain reads/writes stay on `db`.
+
+## 2026-09-09 (Google can claim admin)
+
+Admin sign-in/sign-up hid the Google button because the OAuth callback never ran the allowlist claim — only the password form called `POST /api/auth/admin/claim`. Operators on Google-only accounts had no frontend path to promotion.
+
+- `AuthScreen` now shows Continue with Google on the admin door as well.
+- The OAuth callback shares `promoteAllowlistedAdmin` with the claim route. An allowlisted address is promoted on Google return (existing account or first Google signup); everyone else is unchanged (existing role, or onboarding).
+- `ADMIN_EMAILS` remains the gate. The button grants nothing by itself.
+
+## 2026-09-10 (Catalogue Published did not hide from the hub)
+
+Admin Catalogue's Published toggle writes `domains.isActive` / `situations.isActive`, but the learner listing APIs never filtered on it — so turning a domain off left it on `/hub`. The console copy already said archiving removes it from the hub; the APIs had not caught up.
+
+- Learner reads now filter `isActive = true`: `GET /api/domains`, `/api/domains/[slug]`, `/api/situations`, `/api/situations/[id]`. A saved URL to an unpublished domain or situation 404s the same as a missing one.
+- Empty live results must not fall back to fixtures. `getDomains` / `getSituationsByDomain` treated `length > 0` as "the API worked", so unpublishing every domain would have refilled the hub from `lib/mock-data`. Success is now `Array.isArray`.
+- Admins still see unpublished rows, faded (`opacity-40` + the same `archived` badge as EntityTree). The listing routes include archived only when `getUserRole() === 'admin'` — client `useUser().role` is display-only and is not the gate. Clicking through still works for preview; learners never receive the rows.
+
+## 2026-09-14 (`no-explicit-any` boundary typing)
+
+- Removed all 120 `@typescript-eslint/no-explicit-any` violations without changing the ESLint configuration or adding suppressions.
+- Added `lib/roleplay/api-types.ts` as the shared client/API boundary: JSON-safe Drizzle row DTOs, session/share response types, the chat SSE discriminated union, and runtime guards for untrusted JSON.
+- Session, report, share, roleplay panels, API/data helpers, database maintenance scripts, and SDK error paths now use existing schema inference, provider types, concrete DTOs, or `unknown` narrowed at the boundary.
+- Added boundary tests for valid and malformed session/share/SSE payloads. `npm test` passes; TypeScript reports only the pre-existing duplicate Three.js type-definition errors in `AnimatedModel.tsx`.
+
+## 2026-09-17 (`no-img-element` for local assets)
+
+Replaced hardcoded local `<img>` with `next/image` (logos, marketing `/landing/*` decorations, catalog thumbnails, lesson-result character art). Remote/user-supplied URLs (Unsplash domain cards, Dicebear, `Avatar`, settings `thumbnailUrl`) were left as `<img>` — they need `images.remotePatterns` or `unoptimized`, which was out of scope.
+
+## 2026-09-17 (Unsplash via next/image)
+
+Unsplash domain photos now use `next/image` with `unoptimized`. `images.unsplash.com` is listed in `next.config.ts` `images.remotePatterns` (Hub cards, marketing scenario tiles, `EnvironmentBackdrop`). Dicebear / user avatars remain `<img>`.
+
+## 2026-09-17 (Dicebear SVG via next/image)
+
+Session info character portrait (`api.dicebear.com` bottts SVG) now uses `next/image` with `unoptimized`. `dangerouslyAllowSVG` was not enabled — `unoptimized` serves the original URL and skips the optimizer. User-supplied avatars remain `<img>`.
+
+## 2026-09-17 (remaining img: settings vs Avatar)
+
+Settings "My Avatars" thumbnails are catalog `/ai-avatars/thumbnails/*.webp`, so they use `next/image` like `AvatarPicker`. `components/ui/Avatar` keeps `<img>` with a targeted `no-img-element` disable: `src` mixes local paths, OAuth hosts, and data URIs.
+
+## 2026-09-17 (CI tests on push/PR)
+
+`.github/workflows/test.yml` mirrors `lint.yml`: Node 20, `npm ci`, `npm test` on `push`/`pull_request` to `main`. Unit tests need no DB or secrets.
+
+## 2026-09-17 (CI build on push/PR)
+
+`.github/workflows/build.yml` mirrors `lint.yml` / `test.yml`: Node 20, `npm ci`, `npm run build` on `push`/`pull_request` to `main`. Build-time env uses the same placeholders as the Dockerfile builder stage (`DATABASE_URL`, `APP_ORIGIN`, Neon Auth). Not GitHub Secrets — this job compiles, it does not deploy, and `NEXT_PUBLIC_*` is what would be inlined into the browser.
+
+## 2026-09-17 (build type errors)
+
+Two typecheck failures blocked `tsc` / `next build`:
+
+- `POST /api/sessions` persisted `behaviorMode` but never read it from the JSON body (`Cannot find name 'behaviorMode'`). The client already sends it; the handler now destructures it and still defaults to `'standard'`.
+- `AnimatedModel` failed because this workspace has two `@types/three` copies (npm 0.185.1 and pnpm 0.185.3), so r3f's `directionalLight` props recurse until TS2321 and `cloneSkeleton` rejects `useGLTF`'s `Group`. Emotion light is a `THREE.DirectionalLight` via `<primitive>`; the clone argument is asserted to `cloneSkeleton`'s own parameter type.
+
+## 2026-09-17 (tests must not require DATABASE_URL)
+
+`npm test` is unit tests with no DB. CI failed because `lib/tutors/languages.ts` imported `language-registry` (and therefore `src/db`) at module load; `src/db` throws when `DATABASE_URL` is unset. Parse/validate stays in `languages.ts`. Catalogue membership (`unknownLanguageCodes`) moved to `lib/tutors/language-catalog.ts`. `src/db` still fails fast in the running app.
+
+## 2026-09-18 (CI Node 20 deprecation)
+
+Lint / test / build workflows now use `actions/checkout@v7` and `actions/setup-node@v7` (Node 24 action runtime; Node 20 is removed from runners on 2026-09-23). App Node is 22 to match the production Dockerfile. `ubuntu-latest` left as-is.
+
+## 2026-09-18 (GHCR image on main)
+
+`lint.yml` / `test.yml` still run on push and PR to `main`. Standalone `build.yml` is gone. `.github/workflows/image.yml` runs only on push to `main`: lint, test, and `next build` in parallel, then (if all three pass) builds the existing production `Dockerfile` and pushes `ghcr.io/<owner>/<repo>:latest` and `:sha-<git-sha>`. Lint/test duplicate on `main` by design. Image job uses `packages: write` and `GITHUB_TOKEN`; Dockerfile build-time env stays the placeholder defaults. No deploy.
+
+## 2026-09-18 (lint/test on every branch)
+
+`lint.yml` and `test.yml` now run on every branch push (`**`) and on every pull-request open/update, not only `main`. Image publish stays `main`-only.
+
+## 2026-09-18 (class → live lesson)
+
+The marketplace group live is not a 学級. Product copy already said "Live lesson"; schema/API still said `class`. Renamed in one pass:
+
+- Tables `class_sessions` / `class_enrollments` → `live_lessons` / `live_lesson_enrollments` (`live_lesson_id`). Migration `drizzle/0050_class_to_live_lessons.sql` is `RENAME` plus data backfill (`chat_rooms.kind`, cohort `audience_key` `class|` → `live_lesson|`, announcement `audience_kind`, notification `type`). Do not apply until asked — `db:migrate` has historically stalled at 0002.
+- Routes `/api/classes` → `/api/live-lessons`, `/live/class/[id]` → `/live/lesson/[id]`, token `/api/live/lesson/[lessonId]/token`. `next.config.ts` 301s the old page path.
+- Chat kind / audience / realtime: `live_lesson`, topic `lesson:{id}`, event `lesson.updated`. `ClassRoom` → `LiveLessonRoom`. Booking tables stay `tutor_bookings`.
+- `class` is now free for a future standing 学級. Org features (Friends / School) were not started.
+
+## 2026-09-24 (organizations and groups)
+
+Learners belong to exactly one organization. Groups are named subsets of that organization and do not cross it. Tutors stay outside this tree. Cohort chat rooms are unchanged.
+
+- Tables: `organizations`, `organization_memberships` (`user_id` unique), `groups`, `group_memberships`, `organization_invitations`. Migration `drizzle/0051_clear_rictor.sql` also inserts the default organization `ai-dojo` and a `member` row for every existing `learner`.
+- Sign-up is unchanged on screen. `syncUser` and `POST /api/admin/users/create` call `ensureLearnerMembership`, which places a learner with no row into `ai-dojo`.
+- Movement: an organization admin retires a member (they return to `ai-dojo` and leave their groups). A destination admin may then invite by email, and only a learner currently in `ai-dojo` can be invited. Acceptance moves them. The invite error for anyone else does not name their current organization.
+- The first administrator of an organization is appointed by a platform admin (`POST /api/admin/organizations/[id]/admins`), without an invitation.
+- Organization admin is a membership role, not `users.role`. `/organization` re-checks it. Progress on that page reads existing `student_progress` for members of that organization.
+
+## 2026-09-24 (sidebar profile link)
+
+The display-name editor lived at `/auth/profile` on the old top-bar page (`NavBar`, neutral white). It now lives at `/profile` inside the app shell, styled like Settings. `/auth/profile` redirects there. The sidebar identity row — avatar, name, organization and groups — links to `/profile`. The level/XP bar and the tutor badge stay static, because that page does not show them. Sign Out stays on the sidebar; the old page's second sign-out block was not carried over. `components/NavBar.tsx` is unused and removed.
+
+## 2026-09-24 (sessions back link)
+
+Home's Recent Sessions "View Full History" is always shown and opens `/sessions?from=home`, which is the only entry that renders "Back to Home". The sidebar opens `/sessions` with no return link, because that page is a top-level destination there.
+
+## 2026-09-25 (profile email)
+
+`/profile` shows the signed-in address and whether Neon Auth has verified it. An unverified address can be confirmed with the same email OTP used at sign-up. `authClient.changeEmail` sends a confirmation before the address changes. `syncUser` and `resolveDbId` match the auth id first and then the email, and write the new address onto the existing row — an email-only lookup would miss that row and insert a second account.
+
+## 2026-09-25 (group removal notice)
+
+Removing a learner from a group writes a `group_removal` notification (bell, link to Settings). Nothing is sent when they were not actually in the group.
+
+## 2026-09-25 (retire confirmation)
+
+People → Retire asks for confirmation before the member leaves the organization. The last administrator's button stays disabled, with the same sentence the API already returns: appoint another administrator first. The server check in `retireLearner` is unchanged.
+
+## 2026-09-25 (invitation accept refreshes the sidebar)
+
+Accepting an organization invitation moves the learner and clears their groups, but the sidebar reads `organizationName` / `groupNames` from the server layout. The invitations page only refetched its own list, so the default organization stayed on screen. Accept now calls `router.refresh()`.
+
+## 2026-09-25 (group assignment notice)
+
+Adding a learner to a group writes a `group_assignment` notification (bell, link to Settings). Removing them asks for confirmation. Deleting a group asks for confirmation and is allowed only when it has no members; otherwise the button stays disabled. Both membership changes are assignments, not invitations they accept. The sidebar shows the organization name only. Settings lists Organization and Groups as separate rows. `groupNames` is no longer on the layout user.
+
+## 2026-09-28 (organization tutor permissions)
+
+Private organizations choose which tutors their members may start a new booking, live lesson or assessment with. The table is `organization_tutor_permissions`. Zero rows means nobody, and the Tutors menu stays hidden even when `TUTORS_ENABLED` is on. The public organization `ai-dojo` has no rows and no tutor tab: its learners can start with any verified tutor who is accepting bookings and whose account is active. Tutors are still not organization members.
+
+Permission is checked only when something new starts. Joining a booking, an existing live-lesson seat, or an assessment queue place does not read the table again. A suspended, deleted or unverified tutor account can still refuse that join. Turning off `isAcceptingBookings` does not.
+
+## 2026-09-29 (admin Courses absorbs Curriculum)
+
+The admin console no longer has a Curriculum tab. Courses is the tree (`courses → levels → units → lessons → phases`), and publishing a course is the Published toggle on the course row — the same control Catalogue already uses. `courses.isActive` is written only by `PATCH /api/admin/curriculum/courses`. The publish board (`CoursesPanel`, `GET`/`PATCH /api/admin/courses`) is gone, so the two writers noted on 2026-08-27 are one.
+
+## 2026-09-30 (skip CI on draft PRs)
+
+`lint.yml` and `test.yml` skip their work while a pull request is draft. `pull_request` includes `ready_for_review`, so marking the PR ready runs lint and test without another push. Push events do not include draft state, so a short `draft-check` job lists open PRs for that head branch and skips lint/test when every open PR is a draft. Branch pushes with no PR still run. `image.yml` stays push-to-`main` only.
+
+## 2026-09-30 (CI is pull_request only)
+
+Replaced the push trigger and `draft-check` job. `lint.yml` and `test.yml` run only on `pull_request` (`opened`, `synchronize`, `reopened`, `ready_for_review`) when `github.event.pull_request.draft` is false. A branch push runs them only when it updates a non-draft PR (`synchronize`). Pushes with no PR, and pushes that only update a draft PR, do not start a runner. `image.yml` is unchanged and still runs on push to `main`.
+
+## 2026-09-30 (course create with a blank description)
+
+Creating a course with title and slug only 500'd. The form omits a blank optional field, and `courses.description` is NOT NULL with no column default, so the insert sent SQL DEFAULT (null). `POST /api/admin/curriculum/courses` now stores `''` when description is omitted. Levels and units stay nullable and still omit a blank description.
+
+## 2026-09-30 (Hub and Catalogue become Library)
+
+The learner sidebar's Hub and the admin console's Catalogue tab were the same tree (`domains → situations → scenarios`) under two names, and the Hub page's heading was a third ("Choose a Scenario"). All three are now **Library**. Renamed with no redirects: `/hub` → `/library`, admin tab id `catalogue` → `library`, `CataloguePanel` → `LibraryPanel`, `/api/admin/catalogue/[entity]` → `/api/admin/library/[entity]`. Old links and bookmarks to `/hub` now 404. Earlier entries above still say Hub and Catalogue; they are left as written. "Catalogue" in the language registry (`language-registry.ts`, `LanguageCatalog`, the admin Languages tab) is a different thing and is unchanged, as is the avatar picker's Catalog tab.
+
+## 2026-09-30 (curriculum becomes courses)
+
+"Curriculum" is gone from the code and docs; the course tree (`courses → levels → units → lessons → phases`) is now just Courses, matching the learner nav and the admin tab. Renamed with no redirects: `lib/curriculum/` → `lib/courses/`, `lib/admin/curriculum.ts` → `lib/admin/courses.ts` (`CURRICULUM_ENTITIES` / `CurriculumEntity` / `isCurriculumEntity` → `COURSE_TREE_ENTITIES` / `CourseTreeEntity` / `isCourseTreeEntity`), `CurriculumPanel` → `CoursesPanel`, `/api/admin/curriculum/[entity]` → `/api/admin/courses/[entity]`. The API path now reads `/api/admin/courses/courses` for the root node; that is the accepted cost of one name. `/api/admin/courses` here is not the publish board removed on 2026-09-29. `drizzle/0024_curriculum.sql` and its journal tag keep their name: applied migrations are history. Earlier entries above still say Curriculum.
+
+## 2026-09-30 (app-shell page titles are text-3xl)
+
+Sidebar destination headings are `h1` everywhere, but size comes from Tailwind. Courses, Admin, Home, Organization used `text-3xl font-bold tracking-tight leading-none`; Tutors, Library, Review, Sessions, Progress, Leaderboard, Calendar, Settings, Teaching, and Profile had drifted to `text-2xl`. Aligned the drifted pages to the `text-3xl` scale. Nested pages (course detail, live rooms, reports) are unchanged.
+
+The same destinations also disagreed on page padding: Courses / Admin / Home used `p-6 lg:p-10` (40px top inset at `lg`), the rest used `p-6` (24px). Aligned those wrappers to `p-6 lg:p-10` so the heading sits at the same distance from the top when walking the sidebar.
+
+Page width was a third drift: each destination had its own `max-w-*` (`2xl`–`7xl`) and `mx-auto`, so the heading's left edge jumped when switching pages. Outer wrappers are now all `mx-auto w-full max-w-7xl`. Settings, Profile, Invitations keep an inner `max-w-3xl`; Review (and the Tutors coming-soon card) keep an inner `max-w-2xl` — no `mx-auto` on the inner, so the column sits under the heading. Messages is a split-pane and was left alone.
+
+## 2026-09-30 (learner sidebar grouped under Practice / Results)
+
+The learner sidebar is no longer a flat list. Destinations are unchanged; unlabeled Home sits above **Practice** (Library, Courses, Tutors, Review) and **Results** (Sessions, Progress, Leaderboard), then unlabeled Messages, Calendar, role-gated Teaching / Admin / Organization, and Settings last. Headings are labels only (`text-xs font-semibold uppercase tracking-wide text-dojo-text-muted`, same as `RoomDetailsPanel`), not collapsible. Tutor nav stays a flat four-item list. Tutors lives in Practice (another way to start practice), not grouped with Messages/Calendar.
+
+## 2026-09-30 (Settings is always last in the learner sidebar)
+
+Role-gated Teaching / Admin / Organization used to append after Settings because admin kept the learner nav and bolted consoles onto the end. Settings is account chrome, so those consoles now insert *before* it. Tutor-only nav was already Teaching → Messages → Calendar → Settings and is unchanged.
+
+## 2026-09-30 (Review heading on every state)
+
+`/review` only rendered the page `h1` during an in-progress drill. Loading, error, empty, and complete returned early without it. The heading is now in the shared page wrapper so every state matches the app-shell destination pattern.
+
+## 2026-09-30 (Practice heading descriptions)
+
+Library's blurb was `mt-1 text-sm`; Courses used `mt-2 text-base leading-relaxed`. Library, Tutors, and Review now match Courses. Tutors: "Book a live tutor, join a group lesson, or sit an assessment." Review: "Revisit words from your sessions. Rate how well you knew each one and they will come back when it is time."
+
+## 2026-09-30 (heading blurbs on Progress, Leaderboard, Settings)
+
+Those three still used `mt-1 text-sm`. They now match Courses (`mt-2 text-base leading-relaxed`). Sessions stays a `text-sm` live count, not a feature blurb. Profile matched on the same pass.
+
+## 2026-09-30 (heading blurbs rewritten)
+
+Page blurbs now match Courses' register (one or two full sentences) rather than the shorter drafts. Calendar gained one. Sessions heading is a blurb; the `N total · M in progress` count sits above the list.
+
+## 2026-09-30 (Calendar above Messages)
+
+Learner chrome and the tutor nav now list Calendar before Messages. Settings is still last.
+
+## 2026-09-30 (admin nav leads with Admin, Teaching, Home)
+
+An admin still sees the learner destinations, but Admin then Teaching now sit above Home instead of before Settings. Organization stays before Settings. `/tutor` no longer matches `/tutors` as active.
+
+## 2026-10-01 (Teaching no longer flashes for a non-tutor admin)
+
+Production image inlines `NEXT_PUBLIC_TUTORS_ENABLED` at docker build (usually unset → false) while the Node server reads it at runtime (true). The sidebar used the client constant, so SSR painted Teaching for every admin and hydration removed it. Nav now takes `tutorsEnabled` from `UserProvider` (server-resolved). Teaching is shown for an admin only when they have a `tutors` row.
+
+## 2026-10-01 (bake NEXT_PUBLIC flags into the production image)
+
+The sidebar no longer reads the client-inlined flag, but Tutors pages and Stream still do. Dockerfile / compose / `image.yml` now pass `NEXT_PUBLIC_TUTORS_ENABLED` and `NEXT_PUBLIC_STREAM_API_KEY` as build-args so `next build` inlines the same values the runtime server sees. Changing those flags still requires a rebuild.
+
+## 2026-10-01 (End Session vs Save Session, accumulated clock)
+
+Session Time is no longer `now - startedAt`. `sessions.activeDurationSeconds` accumulates only while the voice/avatar view is mounted and the tab is visible. Header leave is **Save Session** (`paused`); info-panel **End Session** is **abandoned** (not `completed`) and does not credit the lesson. Abandoned sessions open a dedicated report with optional preset reasons and a Save Session restore back to `paused`. Scored finishes stay `completed` + `passed`. Migration: `drizzle/0053_parallel_millenium_guard.sql`.
+
+## 2026-10-01 (unified session-exit buttons)
+
+Complete: **Continue Learning** (`continueHref` → next lesson or `/library`) + **View Report**. Incomplete: **Repeat Lesson** creates a new session (same lesson/avatar/languages) and opens the same Voice/Avatar mode; **Next Lesson** stays even on fail; **View Report** replaces Leave Session. Abandoned report drops **Back to Home**; **Back to Sessions** is the leave-abandoned path. Repeat must not reopen the completed session id.
+
+## 2026-10-02 (Start conversation CTA centering)
+
+Greeting overlay CTA sat left of center for two reasons: the button used `flex` (block-level, so `text-center` on the parent did not center it) and the overlay was `absolute inset-0` on the left stage column only, ignoring the `lg` `w-80` coach panel. CTA is now `inline-flex`; session voice/avatar overlays cover the full main area. Same `inline-flex` change on tryout voice/avatar.
+
+## 2026-10-02 (tryout character is Sam, not Tanaka)
+
+The preview chrome already said Sam; the roleplay prompt did not name the partner, so the model often introduced itself as Tanaka. UI and turn prompt now share `TRYOUT_CHARACTER_NAME` (`Sam`) and the model is told not to invent a local name.
+
+## 2026-10-02 (tryout TTS switches voice for English glosses)
+
+Undelimited CJK replies were one target span, so 「Nice to meet you」 inside a Japanese line was read by the Japanese voice. Latin-letter runs of 3+ letters now use the native voice; short tokens like OK stay on the target voice. Session ⟦ ⟧ lines are unchanged.
+
+## 2026-10-02 (tryout TTS follows the target line)
+
+Tryout replies have no ⟦ ⟧ markers. Mixed TTS treated unmarked text as native, so a Japanese target line with an English native gloss was synthesized with the English voice and mangled. Undelimited speech now uses the target voice unless a CJK target's script is absent from the line.
+
+## 2026-10-02 (tryout phase advances without Redis)
+
+Guest tryout icebreaker/roleplay/closing was keyed only on a Redis turn counter. Local `.env` has Upstash commented out, so every turn looked like phrase 1, the roleplay prompt never ran, and Nice work! never fired. Redis remains the budget when configured; without it, phase and the 8-turn cap follow the posted history's user-turn count. Advancement is still by attempt, not by whether the phrase was correct.
+
+## 2026-10-02 (tryout icebreaker no longer ends on feedback)
+
+The icebreaker prompt told the model to give a 5-word note and wait for the *next* HTTP turn to teach the next phrase. The server advanced, but the learner saw only 「とても上手です！」 and had nothing to say. Feedback and the next phrase (or the roleplay opener after phrase 5) now go in the same reply. Same-language tryouts omit the duplicated native line.
+
+## 2026-10-02 (onboarding is signed-in setup, not a guest questionnaire)
+
+Sign-up used to drop a new learner straight onto "What's your current level?" with no greeting, while tryout's Nice work / used-your-preview screens sent guests into the same wizard and created the account at the end ("Almost there!"). Two doors, two first impressions, and the last step only existed for the guest path.
+
+- Tryout complete and blocked screens now go to `/auth/signup`. The language pair stays in sessionStorage and still prefills the wizard after they have an account.
+- Learner `/onboarding` requires a session (`app/onboarding/[step]/layout.tsx` → `/auth/signup`; tutors still get their own wizard). `/onboarding` and the `(app)` gate land on `/onboarding/welcome`.
+- First step is a welcome interstitial ("Let's set up your learning"). The account-creation step is gone; `plan-ready` POSTs `/api/user/onboarding` and hands off to the Library domain they picked (`/dojo/{slug}`). Course enrolment still runs in that POST. The OAuth resume flag that existed only for Google-from-the-last-step is gone with it.
+
+## 2026-10-02 (onboarding lands on the chosen Library domain)
+
+"What do you want to practice first?" is a Library domain, but finish used to open a course. The POST now returns `domainSlug` and the wizard goes to `/dojo/{slug}`. Enrolment and lesson-plan seeding are unchanged; course is the fallback when the domain row is missing.
+
+## 2026-10-05 (onboarding ends in a first practice)
+
+- Dropped the fake `personalizing` / `plan-ready` screens. After "Great! Let's get you started!" the learner does a 5-phrase icebreaker on `/onboarding/practice` against `/api/onboarding/turn` (JSON, native gloss, Tryout-like rate limit). Chat mode = Voice with the transcript open. Situation = chosen domain + `skillLevel`, else first active row. The sitting teaches that scenario's vocabulary one phrase at a time and does not open the scene.
+- Finish (or skip) is the only `POST /api/user/onboarding`; landing is still `/dojo/{slug}` else course else `/home`. Preview never writes. Back remounts the sample.
+- Tryout signup carries `targetLanguage` / `nativeLanguage` on `/auth/signup` and through to `/onboarding`; context prefills from the query then sessionStorage.
+
+## 2026-10-05 (tryout/onboarding wait for last TTS)
+
+Nice work used to replace the stage as soon as the last turn JSON arrived, which unmounted TTS before the closing line was shown or heard. Both hooks now paint the last AI bubble and await `speaker.finish()` before setting `completed` / `limitReached`. Mid-sitting turns still fire-and-forget speech so barge-in keeps working.
+
+## 2026-10-05 (Google OAuth lands like email)
+
+Google's callback used to skip `syncUser` for new learners and send them to `/onboarding` with no `users` row. The wizard's stamp then had nothing to write, so they saw onboarding again next visit. The exchange now always `syncUser()`s, then `roleHome` (`/home` for learners, `/admin` after allowlist promotion). The `(app)` layout still sends `onboardingCompletedAt === null` to the wizard.
+
+## 2026-10-06 (signed-in dark mode lives in Settings)
+
+The marketing navbar had the only theme toggle. Signed-in chrome now uses Settings → Preferences (`Toggle`, same `ThemeProvider` / `ai-dojo-theme` key). Not a sidebar row — the learner nav already overflows on short laptops.
+
+## 2026-10-05 (readable floor on learning surfaces)
+
+Muted and border tokens were lifted (light muted `#584F44`, dark `#B8AB9A`; borders `#D4C5A8` / `#524033`) so secondary copy and cards separate without changing the warm palette. Learning speech in sitting bubbles is `text-base`; gloss and home body copy are `text-sm`; nothing in session/tryout/onboarding/home goes below `text-xs`, and `text-dojo-text-muted/60` restacks are gone. Marketing and admin were left for a later pass.
+
+## 2026-10-05 (onboarding DATABASE_URL client throw)
+
+`OnboardingPractice` (client) imported `lib/onboarding/practice.ts`, which loads `src/db.ts`. Next inlines non-`NEXT_PUBLIC_` env as `undefined` in the client bundle, so every onboarding step threw `DATABASE_URL is not defined` even with `.env` set. UI helpers/types live in `lib/onboarding/practice-shared.ts`; DB/cache stay in `practice.ts`.
+
+## 2026-10-06 (session TTS clip cache)
+
+Chat-bubble replay was re-synthesizing every press. Live Azure PCM + visemes are now copied into an in-tab array per turn (`lib/roleplay/tts-cache.ts`) and replayed through the same PCM sink. Mute still skips TTS; a muted or barged-in turn is not stored (truncated last sentence). Cache miss (never heard) falls back to `speakMixedText` and stores that. Cleared on session/tryout/onboarding unmount. Voice mute now calls `stop()` like avatar so the current line actually goes silent. `audioJobs` / `conversations.audioUrl` stay dormant.
+
+Mute still left the current line running: TTS schedules the next utterance while this one plays, and `stop()` only held the LAST sink. `stopAllSinks()` now silences every live PCM source; the mute button also calls `stop()` on click rather than waiting for the effect.
+
+Replay could swap sentences: two utterances synthesize in parallel (`PREPARE_AHEAD`) and clips were pushed when Azure finished, so a short later sentence could land in the array before a long earlier one. Slots are now reserved in queue order before any `await`, and filled on completion.
+
+## 2026-10-08 (empty learner bubble after English-only input)
+
+Chat bubbles rendered only `messageTarget`. Analysis stores target-language spans there and the full utterance in `messageNative`, so a Japanese-speaking learner typing English got `messageTarget: ''` and the optimistic bubble went blank after the stream finished. `displayedUtterance` / `persistableUserUtterance` in `lib/roleplay/conversation-history.ts` keep the raw input in `messageNative` and show `target || native` for learner turns.
+
+## 2026-10-08 (onboarding practice lost the picked domain)
+
+Practice showed "Pick a domain first so we know what to practise" even after a domain click. Two causes: (1) a persist `useEffect` wrote the empty initial state to sessionStorage as soon as a ref flipped to hydrated, so Strict Mode / layout remounts restored a blank wizard; (2) practice skips `OnboardingShell`'s mount gate, so the first paint always saw `preferredDomainId: null`. Answers now persist synchronously inside `dispatch`, HYDRATE merges instead of replacing, and practice waits for hydration before treating a missing domain as an error.
+
+
+
+
+
+
+
+## 2026-10-09 (security + performance pass, branch fix/security-and-performance)
+
+- backups/ (user emails, bcrypt hashes, share tokens) untracked and gitignored. STILL IN GIT HISTORY on GitHub — needs a coordinated `git filter-repo` purge + force-push, and rotation of share tokens / affected passwords. Not done.
+- clientIp (lib/tryout/gate.ts) now reads X-Forwarded-For from the RIGHT (TRUSTED_PROXY_HOPS, default 1 = Traefik). The first hop is client-controlled; trusting it made every per-IP limit spoofable. tts + speech/token reuse clientIp. NOTE: docker-compose publishes port 3000 directly — if reachable without Traefik, headers are spoofable regardless.
+- rateLimitIncrement = MULTI(INCR, EXPIRE NX): a failed separate EXPIRE left keys with no TTL (permanent lockout). rateLimitUnavailable(count) is the one fail-closed rule for guest/billed routes (configured-but-erroring OR production-without-Redis = deny).
+- chat/stream: 1000-char input cap, per-user 60 turns / 10 min (fails open — signed-in only). accuracyScore is client-measured (Azure runs in browser) so it is only clamped; it only gates a retry prompt.
+- Guest history (tryout + onboarding) bounded by boundGuestHistory (24 turns, 1000 chars each).
+- Migration 0054 = nine FK indexes (sessions, conversations, corrections, evaluations, goal_completions, vocabulary_encounters, chat_messages, vocabulary, scenario_goals). GENERATED, NOT APPLIED.
+- db-migrate: each file runs in one Neon HTTP transaction with its history row; splitter is quote/$$-aware. Verified identical output on all 348 existing statements.
+- syncUser no longer UPDATEs an unchanged name on every request; membership check cached 5 min (cacheKeys.membershipChecked).
+- Leaderboard uses computeCompositeScore on per-dimension averages (linear ⇒ equal to average of composites), learners/active/non-deleted only, cached 60s. Friends/School tabs were already "coming soon" (audit claim of fake data was wrong).
+- Removed dead /api/chat + analyzeAndGenerateTurn + AIResponseAnalysis, lib/test-ai.ts, RoleplayInputBar, unused fixture getters, unreferenced sunset.hdr x2. /api/chat/analyze left (no in-app caller, may be external).
+- Bookings: learner-side overlap check (409 "You already have a lesson booked at that time"). App-level only; a DB exclusion constraint on learner_id is a follow-up.
+- review/due localizes targetText/usageTip to preferredTargetLanguage; phonetic only for ja.
+- Build trap: stale `.next/dev/types` (old /hub, /api/classes routes) fails `npm run build` / tsc — `rm -rf .next` first.
+
+## 2026-10-09 (product decisions resolved)
+
+- Share links: share_tokens.expires_at (migration 0055). New links expire after 90 days (SHARE_LINK_TTL_DAYS in app/api/sessions/[id]/share/route.ts); pre-existing rows are NULL = never expire, so no sent link broke. Re-sharing an expired session issues a fresh token. Expired GET → 410.
+- Home WelcomeBanner shows the avatar's webp portrait (useCurrentAvatarThumbnail, falls back to thumbnailForModelUrl) and only mounts three.js + the GLB on tap, then bows.
+- Git LFS: .gitattributes tracks *.glb *.fbx *.hdr *.mp4 *.exe (65 files, ~260 MB) via renormalize — no history rewrite; old blobs remain in history. image.yml's image job checks out with lfs: true; lint/test/build jobs don't fetch LFS. Everyone needs `git lfs install` once. Watch the org's GitHub LFS storage/bandwidth quota.
+- Learner double-booking: custom migration 0056 adds EXCLUDE constraint tutor_bookings_learner_no_overlap with a DO $$ pre-flight that aborts listing the clash count. bookings route maps that constraint's 23P01 to the learner 409. Migrations 0054–0056 are generated, NOT applied — the user applies all migrations + docker together after all phases.
+
+## 2026-10-09 (Phase 2 English-first pivot, branch feat/english-first-pivot)
+
+- Defaults: DEFAULT_TARGET_LANGUAGE='en' and BASE_CONTENT_LANGUAGE='ja' in lib/language.ts. They are DIFFERENT things — 'ja' is a fact about the seeded data (vocabulary rows are Japanese), not a default. Compare against the constants, never a literal. getTargetLangConfig's unknown-code fallback is now English. Schema defaults for users/sessions/student_progress/student_lesson_progress target_language → 'en' (migration 0057, column defaults only).
+- Onboarding infers nativeLanguage when not given: Accept-Language, then the picked country's default.
+- DESIGN CHANGE vs PLAN.md 2.2/2.3: *_localizations rows are TARGET content (the backfill re-sets scenes per language). Reading scenario_localizations[native] as the native explanation showed a French speaker learning English a French café scene. New tables scenario_/situation_/scenario_goal_native_localizations + vocabulary_native_notes are keyed (row, target, native). Resolvers in lib/localization.ts: resolveNativeScenarioLocalization / resolveNativeSituationLocalization / localizeGoalsForLearner / localizeVocabularyForLearner (fallback native → English → base, warns once per pair). Target 'ja' keeps reading the legacy single-key rows (they were literal translations of the base scene, correct there).
+- resolveNativeGloss (lib/native-gloss.ts, pure): meaning in native X = the word in X (vocabulary_localizations[X].translation); en → base translation; row's own language → base word. ~31 languages of meanings with no generation.
+- The usage-tip overwrite (English tip replacing the native one) is gone: localizeVocabularyForLearner never lets a target-row tip beat a native note. sessions/[id], review/due and analyze-turn all use it.
+- Fill: `npm run db:backfill-target-localizations -- --only=native [--target=en] [--lang=ja]` (one AI call per scenario covers description + goals + word tips). Gate: `npm run db:check-localization` now prints per-native coverage and fails below 100% (`-- --native-only` for just that). Fixture export/seed replay carry the new tables (optional `nativeLocalizations` section). NOTHING GENERATED OR APPLIED YET.
+- 2.5: EN appropriateness rubric + L1 pronunciation targets (lib/language-packs/en/) feed the turn prompt for target en. assessPronunciation now returns words[]/phonemes (lib/roleplay/pronunciation-detail.ts) — it still has NO caller; the live pipeline never runs Azure pronunciation assessment (accuracyScore only comes from the icebreaker drill). Wire it in 4.6 (clarity check) rather than into the capture path.
+- 2.6: 14 culture-neutral English situations (stand-ups, support calls, interviews, IELTS/TOEIC) + domains careers and speaking_exams in scripts/seed-domain-data.ts, which now inserts missing domain slugs into an existing DB. Run `tsx scripts/seed-domain-data.ts`. Domains/situations have no per-target-language filter, so Japanese learners will also see "IELTS Speaking" — follow-up.
+- 2.4: in-house i18n (see ui-registry "Interface language"). DELIBERATE DEVIATION from PLAN.md's order: the ui-locale cookie outranks the profile's nativeLanguage, because only the switcher writes it and a Japanese speaker who picks an English UI must get it. Geo is read in lib/i18n/server.ts, not proxy.ts (the proxy's protected branch returns its own response, so request headers can't be injected there). Root layout is async now (cookies/headers) — every page is dynamic; it already effectively was.
+- 2.4 NOT DONE: string extraction beyond wave 1 (shell only), SEO /ja /ko routes + hreflang (deferred until wave 2 — prefixed routes serving English would be duplicate content), `npm run i18n:translate` not run (no catalogs but en.json yet). Root metadata still says "practice Japanese" — copy change needs a PRODUCT.md pass.
+- Directional Tailwind classes → logical across 64 files by codemod (centring/percent offsets excluded).
+
+
+## 2026-10-09 (Phase 3 personalized learning, branch feat/personalized-study-packs)
+
+- Flag NEXT_PUBLIC_STUDY_PACKS_ENABLED (lib/study-packs/config.ts). Off = sessions complete exactly as before: no event, no batch AI cost. Migration 0058 (additive: 4 tables, nullable columns, srs_cards.vocabulary_id DROP NOT NULL). GENERATED, NOT APPLIED.
+- Loop: completion (chat/stream after the commit, and PATCH sessions/[id]) → announceSessionCompleted → Inngest `session/completed` (event id per session = dedupe) → generateStudyPack: load → classify → generate → save → notify. Idempotent on study_packs.session_id UNIQUE. Known gap: a session with NO pack (nothing to practise, or quota) still updates weak points without that guard, so a save step that commits and then dies before Inngest records it could count one session twice. Rare and off by one.
+- Weak points: the classifier is handed the learner's existing labels and told to reuse them verbatim. Verified live on gemini-2.5-flash-lite: two irregular-verb errors collapsed onto the existing "past simple of irregular verbs" label.
+- DEVIATIONS from PLAN.md 3.x: (1) srs_cards.payload and users.interests are JSON-in-text, not jsonb, matching ai_interviews.transcript. (2) "per-call model" is GenerateOptions.modelTier 'fast'|'batch' + *_BATCH_MODEL env, not a model id, because failover crosses providers. (3) The quota counts batch routes only. Live turns are recorded in ai_usage but never blocked until Phase 5 prices plans. (4) The dialogue drill checks answers locally (token F1), not with an AI call.
+- QuickExchangeDrill was unusable as built: nothing set its transcript, so Respond never submitted, and Next left it stuck on the result screen. It is now a typed reply plus a check, reset per drill, and used by DialoguePractice.
+- parseGeneratedVocab was duplicated verbatim in /api/sessions and /api/domains/create-custom; it is now lib/roleplay/generated-vocab.ts, used by both and by personalized scenarios.
+- Owned scenarios (scenarios.owner_user_id) are filtered out of /api/scenarios, the export and the localization backfill. An owned row is a 404 to anyone else in POST /api/sessions and /api/scenario/[id].
+- FIXED (found during Phase 3): (1) the onboarding page posted `preferredTargetLanguage` but /api/user/onboarding reads `targetLanguage`, so the wizard's target-language pick was never saved. The page now sends `targetLanguage`, and the route checks both language codes with isLanguageEnabled, dropping an unknown code instead of returning a 400 that would strand the wizard. (2) Five client components (courses grades page, EvaluationForm, AiInterviewResults/Room/Stage) value-imported SCORE_DIMENSIONS from lib/ai-engine, which pulled every provider SDK into the client graph; `next build --webpack` failed on node:fs. The list now lives in dependency-free lib/roleplay/score-dimensions.ts and ai-engine re-exports it. Rule: client code must never value-import lib/ai-engine (`import type` is fine).
+
+## 2026-10-09 (Phase 4 hybrid tutoring, branch feat/hybrid-tutoring, cut from feat/personalized-study-packs)
+
+- Flag NEXT_PUBLIC_HYBRID_ENABLED (HYBRID_ENABLED in lib/tutors/config.ts). The lesson tools are also per-organization: organizations.hybrid_tutoring_enabled, default FALSE for every org including the public `ai-dojo` one. With the flag on but no org switched on, learners still get /placement, ranking and trust badges, and tutors get vetting. Briefings, plans, the panel, captions and explain all 404. Migration 0059: additive apart from study_packs.session_id DROP NOT NULL. GENERATED, NOT APPLIED. The English syllabus is not seeded either: `npm run db:seed-english-syllabus` after migrating.
+- DEVIATIONS from PLAN.md 4.x: (1) the plan says `tutor_profiles`; the table is `tutors`. Vetting columns are there. (2) The placement is a standalone /placement page, not a step inside the positional onboarding wizard: a microphone + Gemini Live step mid-wizard would block sign-up on a mic permission. (3) The placement and vetting interviews are a new `cefr_placements` table, not `ai_interviews`, whose rows are anchored to an assessment queue slot (unique, NOT NULL). (4) "partial captions at A2" is implemented as English-only captions (transcript mode), translated A0–A1, off by default from B1. (5) The English course is seeded is_active=false because it is draft content needing teacher review and its self-study lessons have no scenarios linked. Before activating it, /courses must lock the card's target to courses.target_language: the card still lets a learner pick any target, and the API does not filter by it yet.
+- The clarity score is CLIENT-MEASURED (Azure pronunciation assessment runs in the browser, like the transcript of the Live interview), bounds-checked, and labelled self-measured for the admin. The trial lesson the admin watches is the human check on it. Proficiency is server-graded from a client-reported transcript, the same trust model as ai_interviews.
+- Re-test confirmation: a graded placement sets can_do_progress.confirmed_at for tutor-marked "achieved" rows in units at or below the new level. AI SESSIONS DO NOT CONFIRM can-dos yet (no session↔unit link is used); follow-up.
+- Captions: Azure TranslationRecognizer on the tutor's remote MediaStream (Stream `useRemoteParticipants()[0].audioStream`, `AudioConfig.fromStreamInput(MediaStream)`). NOT TESTED IN A REAL CALL. In particular, check that Azure translation accepts every native code we pass as-is (e.g. `lg`, `zh`) and that the stream still delivers audio when Stream mutes or replaces the track. ai_usage rows for route `lesson/captions` hold audio SECONDS in input_tokens.
+- Group live lessons follow the syllabus only, as the plan says. Nothing new was built for them: no per-learner panel or captions in LiveLessonRoom yet (4.8 "Group live lessons" is a follow-up).
+- Not built from 4.6: recording the trial lesson (the admin enters the scores from wherever it was recorded).

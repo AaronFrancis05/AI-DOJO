@@ -9,18 +9,23 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { cleanDisplay } from '@/lib/roleplay/clean-display';
+import { displayedUtterance } from '@/lib/roleplay/conversation-history';
 import { sessionCompositePct } from '@/lib/roleplay/session-metrics';
-import { ArrowLeft, Lock } from 'lucide-react';
+import {
+  isRecord,
+  isSharedSessionResponse,
+  type SharedSessionResponse,
+} from '@/lib/roleplay/api-types';
+import { Lock } from 'lucide-react';
 
 export default function SharedSessionPage() {
   const params = useParams();
   const token = params.token as string;
 
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<SharedSessionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -28,11 +33,15 @@ export default function SharedSessionPage() {
     async function load() {
       try {
         const res = await fetch(`/api/share/${token}`);
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Not found'); }
-        const d = await res.json();
-        setData(d);
-      } catch (e: any) {
-        setError(e.message);
+        if (!res.ok) {
+          const body: unknown = await res.json();
+          throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'Not found');
+        }
+        const body: unknown = await res.json();
+        if (!isSharedSessionResponse(body)) throw new Error('Invalid shared session response');
+        setData(body);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load session');
       } finally {
         setLoading(false);
       }
@@ -129,7 +138,7 @@ export default function SharedSessionPage() {
           </div>
           <p className="text-xs text-dojo-text-muted mt-4 pt-3 border-t border-dojo-border">
             Session #{session.sessionNumber} · {session.totalTurns} turns ·
-            {session.completedAt ? ` Completed ${new Date(session.completedAt).toLocaleDateString()}` : ' In progress'}
+            {session.completedAt ? ` ${session.status === 'abandoned' ? 'Ended' : 'Completed'} ${new Date(session.completedAt).toLocaleDateString()}` : ' In progress'}
           </p>
         </Card>
 
@@ -166,7 +175,7 @@ export default function SharedSessionPage() {
           <Card>
             <h3 className="text-sm font-semibold text-dojo-text-muted uppercase tracking-wider mb-3">Goals Completed</h3>
             <div className="space-y-2">
-              {goalCompletions.map((gc: any, i: number) => (
+              {goalCompletions.map((gc, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm">
                   <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold
                     ${gc.achieved ?? true ? 'bg-dojo-success text-white' : 'border border-dojo-border text-dojo-text-muted'}`}>
@@ -189,29 +198,31 @@ export default function SharedSessionPage() {
           ) : (
             <div className="space-y-4">
               {conversations
-                .sort((a: any, b: any) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
-                .map((msg: any, i: number) => {
-                  const isUser = msg.speaker === 'user';
-                  return (
+                .sort((a, b) => (a.turnNo ?? 0) - (b.turnNo ?? 0))
+                .map((msg, i) => {
+                const isUser = msg.speaker === 'user';
+                const text = displayedUtterance(msg);
+                const native = (msg.messageNative ?? '').trim();
+                return (
                     <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
                       <Avatar name={isUser ? 'You' : scenario.aiCharacterName}
                         color={isUser ? '#2D3BC5' : '#D14343'} size="sm" />
                       <div className={`max-w-[75%]`}>
                         <div className={`rounded-2xl px-4 py-3 ${
                           isUser
-                            ? 'rounded-br-none bg-dojo-accent'
-                            : 'rounded-tl-none bg-dojo-surface-raised border border-dojo-border'
+                            ? 'rounded-ee-none bg-dojo-accent'
+                            : 'rounded-ss-none bg-dojo-surface-raised border border-dojo-border'
                         }`}>
-                          {msg.messageTarget && (
+                          {text && (
                             <p className={`text-sm font-medium ${isUser ? 'text-white' : 'text-dojo-text-primary'}`}>
-                              {cleanDisplay(msg.messageTarget)}
+                              {cleanDisplay(text)}
                             </p>
                           )}
-                          {(msg.messagePhonetic || msg.messageNative) && (
+                          {(msg.messagePhonetic || (native && native !== text)) && (
                             <div className={`mt-1 text-xs ${isUser ? 'text-white/70' : 'text-dojo-text-muted'}`}>
                               {msg.messagePhonetic && <i>{msg.messagePhonetic}</i>}
-                              {msg.messagePhonetic && msg.messageNative && <br />}
-                              {msg.messageNative}
+                              {msg.messagePhonetic && native && native !== text && <br />}
+                              {native && native !== text ? msg.messageNative : null}
                             </div>
                           )}
                         </div>
@@ -222,7 +233,7 @@ export default function SharedSessionPage() {
                         )}
                         {msg.corrections?.length > 0 && (
                           <div className="mt-1 space-y-1">
-                            {msg.corrections.map((c: any, j: number) => (
+                            {msg.corrections.map((c, j) => (
                               <div key={j} className="rounded-lg bg-dojo-warning/10 border border-dojo-warning/30 px-3 py-2 text-xs">
                                 <Badge variant="accent" className="mb-1">{c.correctionType}</Badge>
                                 <p className="text-dojo-text-primary">

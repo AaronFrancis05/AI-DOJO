@@ -4,14 +4,24 @@ import { getAuthUser } from '../../../../lib/auth/server';
 import { eq, asc, inArray, and, isNotNull, sql } from 'drizzle-orm';
 import { cacheGet, cacheSet, cacheKeys, TTL } from '../../../../lib/cache';
 import { AVATAR_SOURCES, applySessionAvatarIdentity } from '../../../../lib/avatar/catalog';
-import { recordLessonActivity, resolveNextLesson } from '../../../../lib/curriculum/lesson-progress';
+import { recordLessonActivity, resolveNextLesson } from '../../../../lib/courses/lesson-progress';
+import { announceSessionCompleted } from '../../../../lib/study-packs/server';
 import {
-  getScenarioLocalization,
-  getScenarioVocabLocalizations,
-  getTargetVocabLocalizations,
+  isAbandonmentReason,
+} from '../../../../lib/roleplay/session-lifecycle';
+import {
+  getTargetScenarioLocalization,
+  getTargetSituationLocalization,
+  getTargetGoalLocalizations,
   applyScenarioLocalization,
-  applyTargetLanguageVocab,
+  applySituationLocalization,
+  applyGoalLocalization,
+  resolveNativeScenarioLocalization,
+  resolveNativeSituationLocalization,
+  localizeGoalsForLearner,
+  localizeVocabularyForLearner,
 } from '../../../../lib/localization';
+import { BASE_CONTENT_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from '../../../../lib/language';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
 type SituationRow = typeof situations.$inferSelect;
@@ -137,11 +147,11 @@ export async function GET(
   const [vocabItems, goals, domainResult] = await Promise.all([
     scenario
       ? (async (): Promise<VocabRow[]> => {
-          const lang = session.targetLanguage ?? 'ja';
+          const lang = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
           const k = cacheKeys.vocabulary(scenario.id, lang);
           const c = await cacheGet<VocabRow[]>(k);
           if (c) return c;
-          const languages = lang === 'ja' ? ['ja'] : ['ja', lang];
+          const languages = lang === BASE_CONTENT_LANGUAGE ? [BASE_CONTENT_LANGUAGE] : [BASE_CONTENT_LANGUAGE, lang];
           const r = await db.select().from(vocabulary).where(and(eq(vocabulary.scenarioId, scenario.id), inArray(vocabulary.languageCode, languages)));
           await cacheSet(k, r, TTL.VOCABULARY);
           return r;
@@ -191,37 +201,40 @@ export async function GET(
     corrections: correctionsByConvId.get(conv.id) ?? [],
   }));
 
-  // Localize the scenario into the learner's NATIVE language so the
-  // icebreaker and chat screens show an explanation they can understand,
-  // then overlay any target-language content on top (mirrors analyze-turn).
-  // The base scenario rows are English; scenario_localizations hold the
-  // native-language instructional text.
+  // What the learner reads is the TARGET scene (the one the AI plays, see
+  // analyze-turn) explained in their NATIVE language. Target layer first —
+  // setting, character names, the phrases to say — then the native
+  // explanation over it, resolved per (target, native) pair. Each resolver
+  // falls back native → English → base on its own, so a missing row never
+  // mixes languages silently (it logs).
   let localizedScenario = scenario;
-  let localizedVocab = vocabItems;
+  let localizedSituation = situation;
+  let localizedGoals = goals;
   const nativeLang = session.nativeLanguage ?? 'en';
-  const targetLang = session.targetLanguage ?? 'ja';
+  const targetLang = session.targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
+  const isBaseTarget = targetLang === BASE_CONTENT_LANGUAGE;
+  const [targetScenarioLoc, nativeScenarioLoc, targetSituationLoc, nativeSituationLoc, targetGoalLocs] = await Promise.all([
+    scenario && !isBaseTarget ? getTargetScenarioLocalization(scenario.id, targetLang) : Promise.resolve(null),
+    scenario ? resolveNativeScenarioLocalization(scenario.id, targetLang, nativeLang) : Promise.resolve(null),
+    situation && !isBaseTarget ? getTargetSituationLocalization(situation.id, targetLang) : Promise.resolve(null),
+    situation ? resolveNativeSituationLocalization(situation.id, targetLang, nativeLang) : Promise.resolve(null),
+    scenario && !isBaseTarget ? getTargetGoalLocalizations(scenario.id, targetLang) : Promise.resolve(new Map()),
+  ]);
   if (localizedScenario) {
-    // Native-language scenario text is the final state for the shared
-    // instructional fields (title/context/goals/character names). The base
-    // rows are English; applyScenarioLocalization never overwrites an
-    // existing value, so a missing native row falls back to English cleanly.
-    const nativeLoc = await getScenarioLocalization(localizedScenario.id, nativeLang);
-    if (nativeLoc) localizedScenario = applyScenarioLocalization(localizedScenario, nativeLoc);
+    localizedScenario = applyScenarioLocalization(localizedScenario, targetScenarioLoc);
+    localizedScenario = applyScenarioLocalization(localizedScenario, nativeScenarioLoc);
   }
-  if (localizedVocab.length > 0) {
-    const [nativeVocabLoc, targetVocabLoc] = await Promise.all([
-      getScenarioVocabLocalizations(localizedScenario!.id, nativeLang),
-      getTargetVocabLocalizations(localizedScenario!.id, targetLang),
-    ]);
-    if (nativeVocabLoc.size > 0) {
-      localizedVocab = localizedVocab.map((v) => {
-        const localized = nativeVocabLoc.get(v.id);
-        if (!localized) return v;
-        return { ...v, translation: localized.translation ?? v.translation, usageTip: localized.usageTip ?? v.usageTip };
-      });
-    }
-    if (targetVocabLoc.size > 0) localizedVocab = applyTargetLanguageVocab(localizedVocab, targetVocabLoc);
+  if (localizedSituation) {
+    localizedSituation = applySituationLocalization(localizedSituation, targetSituationLoc);
+    localizedSituation = applySituationLocalization(localizedSituation, nativeSituationLoc);
   }
+  if (scenario && localizedGoals.length > 0) {
+    localizedGoals = localizedGoals.map((g) => applyGoalLocalization(g, targetGoalLocs.get(g.id) ?? null));
+    localizedGoals = await localizeGoalsForLearner(scenario.id, localizedGoals, targetLang, nativeLang);
+  }
+  const localizedVocab = scenario
+    ? await localizeVocabularyForLearner(scenario.id, vocabItems, targetLang, nativeLang)
+    : vocabItems;
 
   // Per-session avatar override — resolves the catalog entry the user picked
   // in the two-card picker. Keeps historical sessions isolated even when the
@@ -234,7 +247,7 @@ export async function GET(
     ? applySessionAvatarIdentity(localizedScenario, selectedAvatarId)
     : null;
 
-  // Where "Continue" should go when this session finishes. Only a curriculum
+  // Where "Continue" should go when this session finishes. Only a course
   // lesson has an answer; a free-form session returns null and the completion
   // screen keeps its /home exit.
   const nextLesson = session.lessonId
@@ -246,12 +259,12 @@ export async function GET(
     session,
     nextLesson,
     scenario: scenarioForClient,
-    situation,
+    situation: localizedSituation,
     domain: domainResult,
     character,
     selectedAvatar,
     vocabulary: localizedVocab,
-    goals,
+    goals: localizedGoals,
     conversations: conversationWithCorrections,
     evaluation: evaluationResult,
     goalCompletions: goalCompletionList,
@@ -332,15 +345,49 @@ export async function PATCH(
     updateData.completionAcknowledged = body.completionAcknowledged;
   }
 
+  if (body.activeDurationSeconds !== undefined) {
+    if (typeof body.activeDurationSeconds !== 'number' || !Number.isFinite(body.activeDurationSeconds) || body.activeDurationSeconds < 0) {
+      return Response.json({ error: 'activeDurationSeconds must be a non-negative number' }, { status: 400 });
+    }
+    const incoming = Math.min(Math.floor(body.activeDurationSeconds), 7 * 24 * 3600);
+    updateData.activeDurationSeconds = Math.max(session.activeDurationSeconds ?? 0, incoming);
+  }
+
+  if (body.abandonmentReason !== undefined) {
+    if (body.abandonmentReason !== null && !isAbandonmentReason(body.abandonmentReason)) {
+      return Response.json({ error: 'Invalid abandonmentReason' }, { status: 400 });
+    }
+    if (session.status !== 'abandoned' && status !== 'abandoned') {
+      return Response.json({ error: 'abandonmentReason can only be set on an abandoned session' }, { status: 400 });
+    }
+    updateData.abandonmentReason = body.abandonmentReason;
+  }
+
   if (status) {
-    if (!['active', 'paused', 'completed'].includes(status)) {
+    if (!['active', 'paused', 'completed', 'abandoned'].includes(status)) {
       return Response.json({ error: 'Invalid status value' }, { status: 400 });
     }
+
+    // A scored finish cannot be undone or converted into a quit.
+    if (session.status === 'completed' && status !== 'completed') {
+      return Response.json({ error: 'Completed sessions cannot change status' }, { status: 400 });
+    }
+    // Quit → Save Session is allowed. Quit → scored complete is not.
+    if (session.status === 'abandoned' && status !== 'abandoned' && status !== 'paused') {
+      return Response.json({ error: 'Abandoned sessions can only be restored to paused' }, { status: 400 });
+    }
+    if (status === 'abandoned' && session.status === 'completed') {
+      return Response.json({ error: 'Completed sessions cannot be abandoned' }, { status: 400 });
+    }
+
     updateData.status = status;
-    if (status === 'completed') {
+    if (status === 'completed' || status === 'abandoned') {
       updateData.completedAt = new Date();
     } else if (status === 'active' || status === 'paused') {
       updateData.completedAt = null;
+    }
+    if (status === 'paused' && session.status === 'abandoned') {
+      updateData.abandonmentReason = null;
     }
   }
 
@@ -352,7 +399,11 @@ export async function PATCH(
 
   await db.update(sessions).set(updateData).where(eq(sessions.id, sessionId));
 
-  // A curriculum lesson is complete when its linked session completes.
+  if (status === 'completed' && session.status !== 'completed') {
+    await announceSessionCompleted({ sessionId, userId: user.id });
+  }
+
+  // A course lesson is complete when its linked session completes.
   if (status === 'completed' && session.lessonId) {
     try {
       await recordLessonActivity({

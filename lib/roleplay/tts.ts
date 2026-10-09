@@ -1,14 +1,19 @@
 import {
   containsTargetScript,
   hasDetectableScript,
-  splitIntoLangSpans,
-  detectSpeechLang as detectLang,
+  resolveSpeechSpans,
 } from './lang-detect';
 import { resolveAzureVoice } from '../language';
 import { getToken } from './pronunciation';
 import { markFirstAudio } from './voice-latency';
 import { findSentenceEnd } from './sentence-split';
-import { createPcmSink, resetCursor, whenDrained, type PcmSink } from './pcm-player';
+import { createPcmSink, resetCursor, stopAllSinks, whenDrained, type PcmSink } from './pcm-player';
+import {
+  concatPcmChunks,
+  ttsTurnCache,
+  type TtsClip,
+  type VisemeFrame,
+} from './tts-cache';
 
 /* ── Overview ───────────────────────────────────────────────────────────
    Speech output for the roleplay session.
@@ -323,8 +328,6 @@ export function prewarmTts(): void {
    silence after every sentence.
    ────────────────────────────────────────────────────────────────────── */
 
-type VisemeFrame = { id: number; offsetMs: number };
-
 interface PreparedUtterance {
   /**
    * Hands this utterance's audio to the shared playback cursor.
@@ -350,6 +353,10 @@ interface PreparedUtterance {
  * can fall back.
  */
 async function prepareSsmlDirect(ssml: string, generation: number): Promise<PreparedUtterance> {
+  // Before any await: two utterances prepare in parallel (PREPARE_AHEAD),
+  // and Azure can finish the later one first. The slot is the queue
+  // position; filling it on completion does not change replay order.
+  const captureSlot = ttsTurnCache.reserve();
   const sdk = await loadSdk();
   const speechConfig = await getSpeechConfig();
 
@@ -375,6 +382,9 @@ async function prepareSsmlDirect(ssml: string, generation: number): Promise<Prep
   // and that split is what keeps the next sentences buffering while the current
   // one is spoken.
   const buffered: ArrayBuffer[] = [];
+  // Copies, not the SDK's buffers — Azure is free to reuse those, and the
+  // session cache has to outlive this synthesizer.
+  const capturedChunks: ArrayBuffer[] = [];
   let sink: PcmSink | null = null;
   let receivedAudio = false;
   let closed = false;
@@ -386,6 +396,7 @@ async function prepareSsmlDirect(ssml: string, generation: number): Promise<Prep
     const data = e.result?.audioData;
     if (!data || data.byteLength === 0 || closed) return;
     receivedAudio = true;
+    capturedChunks.push(data.slice(0));
     if (sink) sink.push(data);
     else buffered.push(data);
   };
@@ -399,6 +410,9 @@ async function prepareSsmlDirect(ssml: string, generation: number): Promise<Prep
   const settleSynth = (err: Error | null) => {
     synthSettled = true;
     synthError = err;
+    if (!err && receivedAudio) {
+      ttsTurnCache.fill(captureSlot, concatPcmChunks(capturedChunks), visemes);
+    }
     onSynthSettled?.();
   };
 
@@ -617,7 +631,7 @@ async function speakViaServer(
   });
 }
 
-export function stop(): void {
+export function stop(options?: { keepCapture?: boolean }): void {
   currentGeneration++;
   stopStreamingTts();
   cancelQueuedUtterances();
@@ -625,6 +639,10 @@ export function stop(): void {
     azureStopCallback();
     azureStopCallback = null;
   }
+  // Synthesis queues the next utterance while the current one is still
+  // audible, so azureStopCallback is the LAST sink, not the one in the
+  // speakers. Stop the whole live set or mute leaves the current line running.
+  stopAllSinks();
   window.speechSynthesis.cancel();
   // Every sink has now been stopped, so nothing is scheduled ahead any more.
   // Leaving the cursor out in the future would make the next reply wait out the
@@ -632,6 +650,98 @@ export function stop(): void {
   resetCursor();
   // Barge-in must silence the character immediately — no settle grace period.
   resetSpeakingState();
+  // An interrupted turn is a truncated clip. Drop it rather than storing a
+  // last sentence that ends mid-word. `keepCapture` is for speakMixedText
+  // interrupting leftover audio without throwing away a capture that just
+  // started for this same line.
+  if (!options?.keepCapture) ttsTurnCache.discard();
+}
+
+export function startTurnCapture(): void {
+  ttsTurnCache.start();
+}
+
+export function discardTurnCapture(): void {
+  ttsTurnCache.discard();
+}
+
+export function commitTurnCapture(text: string): void {
+  ttsTurnCache.commit(text);
+}
+
+export function clearTurnCache(): void {
+  ttsTurnCache.clear();
+}
+
+/**
+ * Schedules one already-copied PCM clip onto the shared cursor and walks its
+ * viseme timeline against that sink's playback clock. Does not wait for the
+ * audio to finish — same contract as PreparedUtterance.play, so a run of clips
+ * stays gapless.
+ */
+function schedulePcmClip(
+  clip: TtsClip,
+  generation: number,
+  registerStop: (stop: () => void) => void,
+): void {
+  if (generation !== currentGeneration) return;
+
+  const audioCtx = getAudioContext();
+  const activeSink = createPcmSink(audioCtx, (source) => connectToOutput(source, audioCtx));
+  holdAnalyser();
+  currentVisemeId = -1;
+  notifySpeaking(true);
+
+  void activeSink.finished.then(() => {
+    releaseAnalyser();
+    notifySpeaking(false);
+  });
+
+  registerStop(() => activeSink.stop());
+
+  let visemeIndex = 0;
+  let visemesDone = false;
+  void activeSink.finished.then(() => { visemesDone = true; });
+  const tick = () => {
+    if (visemesDone || generation !== currentGeneration) return;
+    const elapsedMs = activeSink.elapsedMs();
+    while (visemeIndex < clip.visemes.length && clip.visemes[visemeIndex].offsetMs <= elapsedMs) {
+      currentVisemeId = clip.visemes[visemeIndex].id;
+      visemeIndex++;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+
+  if (clip.pcm.byteLength) activeSink.push(clip.pcm);
+  activeSink.end();
+}
+
+/**
+ * Plays a turn's cached clip array. Returns false on a miss so the caller
+ * can synthesize. True means this call owned playback — including the case
+ * where barge-in cut it short.
+ */
+async function playTurnCache(text: string): Promise<boolean> {
+  const clips = ttsTurnCache.get(text);
+  if (!clips) return false;
+
+  stop();
+  resetStreamingTts();
+  const generation = currentGeneration;
+  const stops: Array<() => void> = [];
+  azureStopCallback = () => {
+    for (const stopClip of stops) stopClip();
+  };
+
+  for (const clip of clips) {
+    if (generation !== currentGeneration) break;
+    schedulePcmClip(clip, generation, (stopClip) => stops.push(stopClip));
+  }
+
+  await whenDrained();
+  azureStopCallback = null;
+  return true;
 }
 
 /* ── Span-based mixed-language speech ──────────────────── */
@@ -807,20 +917,13 @@ function buildMixedSsml(
   const cleaned = cleanTextForTTS(raw);
   if (!cleaned) return null;
 
-  // Same language on both sides: one voice, no span splitting needed.
-  const spans = targetBcp47 === nativeBcp47 ? [] : splitIntoLangSpans(raw);
-
-  const ssmlSpans = spans.length > 0
-    ? spans.map(span => ({
-        text: cleanTextForTTS(span.text),
-        voice: spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase, span.text),
-      })).filter(s => s.text)
-    : [{
-        text: cleaned,
-        voice: targetBcp47 === nativeBcp47
-          ? targetBcp47
-          : detectLang(raw, targetBcp47, nativeBcp47),
-      }];
+  const spans = resolveSpeechSpans(raw, targetBcp47, nativeBcp47);
+  const ssmlSpans = spans
+    .map((span) => ({
+      text: cleanTextForTTS(span.text),
+      voice: spanVoiceFor(span.lang, targetBcp47, nativeBcp47, phase, span.text),
+    }))
+    .filter((s) => s.text);
 
   if (ssmlSpans.length === 0) return null;
 
@@ -862,9 +965,32 @@ export async function speakMixedText(
   const built = buildMixedSsml(raw, targetBcp47, nativeBcp47, phase);
   if (!built) return;
 
-  stop();
+  stop({ keepCapture: ttsTurnCache.isCapturing() });
   resetStreamingTts();
   await enqueueSsml(built.ssml, built.plainText, built.fallbackLang);
+}
+
+/**
+ * Chat-bubble replay: cached clips if this turn was heard, otherwise a
+ * fresh synthesis that itself becomes the cache.
+ */
+export async function replayMixedText(
+  raw: string,
+  targetBcp47: string,
+  nativeBcp47: string,
+  phase: string = 'guided',
+): Promise<void> {
+  if (!raw.trim()) return;
+  if (await playTurnCache(raw)) return;
+
+  ttsTurnCache.start();
+  try {
+    await speakMixedText(raw, targetBcp47, nativeBcp47, phase);
+    ttsTurnCache.commit(raw);
+  } catch (err) {
+    ttsTurnCache.discard();
+    throw err;
+  }
 }
 
 /* ── Streaming TTS ──────────────────────────────────────────────────────

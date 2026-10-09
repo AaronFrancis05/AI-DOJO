@@ -1,11 +1,18 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, CheckCircle2, XCircle, ArrowRight, Volume2, RotateCcw, Shuffle } from 'lucide-react';
+import { CheckCircle2, XCircle, ArrowRight, Volume2, RotateCcw, Shuffle, Send } from 'lucide-react';
 import { speakWithVisemes, speak as ttsSpeak, setVoiceGender } from '@/lib/roleplay/tts';
 import { getBCP47 } from '@/lib/language';
 
-interface QuickDrillItem {
+/**
+ * One prompt-and-answer exchange. Field names follow the `quick_drills`
+ * table; a study pack maps its dialogue lines onto the same shape
+ * (components/study-packs/DialoguePractice.tsx). `promptJa` is the prompt in
+ * the target language whatever that language is, and `promptEn` its gloss in
+ * the learner's own language.
+ */
+export interface QuickDrillItem {
   id: number;
   domainSlug: string;
   promptJa: string;
@@ -23,7 +30,7 @@ interface QuickExchangeDrillProps {
   accentColor: string;
   voiceGender?: string | null;
   onComplete: () => void;
-  onSubmitResponse: (text: string) => Promise<{ correct: boolean; feedback: string }>;
+  onSubmitResponse: (text: string, drill: QuickDrillItem) => Promise<{ correct: boolean; feedback: string }>;
 }
 
 export function QuickExchangeDrill({
@@ -36,7 +43,6 @@ export function QuickExchangeDrill({
   onSubmitResponse,
 }: QuickExchangeDrillProps) {
   const [drillIndex, setDrillIndex] = useState(0);
-  const [exchangeStep, setExchangeStep] = useState(0);
   const [phase, setPhase] = useState<'intro' | 'listening' | 'result'>('intro');
   const [transcript, setTranscript] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -44,7 +50,8 @@ export function QuickExchangeDrill({
   const [busy, setBusy] = useState(false);
   const [responseTime, setResponseTime] = useState(0);
   const bcp47 = getBCP47(targetLanguage, 'tts');
-  const exchangeStartRef = useRef<number>(Date.now());
+  const exchangeStartRef = useRef<number | null>(null);
+  const hasAutoPlayed = useRef(false);
 
   const currentDrill = drills[drillIndex];
 
@@ -52,18 +59,13 @@ export function QuickExchangeDrill({
     if (voiceGender) setVoiceGender(voiceGender);
   }, [voiceGender]);
 
-  if (drills.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center p-6">
-        <p className="text-dojo-text-muted text-sm">No drills available for this session.</p>
-      </div>
-    );
-  }
-
+  // Only the target-language prompt is spoken. The gloss is in the learner's
+  // own language and is read, not voiced in a target-language voice.
   const handlePlayPrompt = useCallback(async () => {
+    if (!currentDrill) return;
+
     setBusy(true);
     try {
-      await ttsSpeak(currentDrill.promptEn, 'en-US');
       await speakWithVisemes(currentDrill.promptJa, bcp47).catch(() => ttsSpeak(currentDrill.promptJa, bcp47));
     } catch {
       // Keep the drill usable when audio playback fails.
@@ -74,25 +76,27 @@ export function QuickExchangeDrill({
     }
   }, [currentDrill, bcp47]);
 
-  const hasAutoPlayed = useRef(false);
   useEffect(() => {
-    if (phase === 'intro' && !hasAutoPlayed.current && !busy) {
-      hasAutoPlayed.current = true;
-      handlePlayPrompt();
+    if (phase !== 'intro') {
+      hasAutoPlayed.current = false;
+      return;
     }
-    if (phase !== 'intro') hasAutoPlayed.current = false;
-  }, [phase, handlePlayPrompt, busy]);
+    if (!currentDrill || hasAutoPlayed.current || busy) return;
+
+    hasAutoPlayed.current = true;
+    void handlePlayPrompt();
+  }, [currentDrill, phase, handlePlayPrompt, busy]);
 
   const handleResponse = useCallback(async () => {
-    if (busy) return;
+    if (busy || !currentDrill) return;
     const input = transcript.trim();
     if (!input) return;
     setBusy(true);
-    const elapsed = Date.now() - exchangeStartRef.current;
+    const elapsed = exchangeStartRef.current === null ? 0 : Date.now() - exchangeStartRef.current;
     setResponseTime(elapsed);
 
     try {
-      const result = await onSubmitResponse(input);
+      const result = await onSubmitResponse(input, currentDrill);
       setCorrect(result.correct);
       setFeedback(result.feedback);
       setPhase('result');
@@ -103,29 +107,41 @@ export function QuickExchangeDrill({
     } finally {
       setBusy(false);
     }
-  }, [transcript, currentDrill, onSubmitResponse, busy]);
+  }, [transcript, onSubmitResponse, busy, currentDrill]);
 
-  const handleNext = useCallback(() => {
-    if (drillIndex + 1 >= drills.length) {
-      onComplete();
-    } else {
-      setDrillIndex(i => i + 1);
-    }
-  }, [drillIndex, drills.length, onComplete]);
-
-  const handleRetry = useCallback(() => {
+  const resetExchange = useCallback(() => {
     setPhase('intro');
     setTranscript('');
     setFeedback('');
     setCorrect(false);
   }, []);
 
+  const handleNext = useCallback(() => {
+    if (drillIndex + 1 >= drills.length) {
+      onComplete();
+    } else {
+      setDrillIndex(i => i + 1);
+      resetExchange();
+    }
+  }, [drillIndex, drills.length, onComplete, resetExchange]);
+
   const handleShuffle = useCallback(() => {
     const next = Math.floor(Math.random() * drills.length);
     setDrillIndex(next);
-  }, [drills.length]);
+    resetExchange();
+  }, [drills.length, resetExchange]);
 
   const totalExchanges = drills.length;
+
+  if (!currentDrill) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <p className="text-dojo-text-muted text-sm">No drills available for this session.</p>
+      </div>
+    );
+  }
+
+  const formattedTime = responseTime < 1000 ? `${responseTime}ms` : `${(responseTime / 1000).toFixed(1)}s`;
 
   return (
     <div className="flex h-full flex-col">
@@ -136,23 +152,25 @@ export function QuickExchangeDrill({
             <span className="text-xs font-medium text-dojo-text-muted">
               Drill {drillIndex + 1} of {totalExchanges}
             </span>
-            <div className="flex-1 h-1 rounded-full bg-dojo-border overflow-hidden min-w-[60px]">
+            <div className="flex-1 h-1 rounded-full bg-dojo-border overflow-hidden min-w-16">
               <div
                 className="h-full rounded-full bg-dojo-accent transition-all duration-300"
                 style={{ width: `${((drillIndex + 1) / totalExchanges) * 100}%` }}
               />
             </div>
           </div>
-          <button
-            onClick={handleShuffle}
-            className="flex items-center gap-1 text-xs text-dojo-text-muted hover:text-dojo-accent transition-colors"
-          >
-            <Shuffle className="h-3 w-3" /> Shuffle
-          </button>
+          {totalExchanges > 1 && (
+            <button
+              onClick={handleShuffle}
+              className="flex items-center gap-1 text-xs text-dojo-text-muted hover:text-dojo-accent transition-colors"
+            >
+              <Shuffle className="h-3 w-3" /> Shuffle
+            </button>
+          )}
         </div>
 
         {/* Main card */}
-        <div className="rounded-xl border border-dojo-border bg-dojo-surface-raised/80 p-6 text-center">
+        <div className="rounded-xl border border-dojo-border bg-dojo-surface-raised p-6 text-center">
           {/* AI Character prompt */}
           <div className="mb-4 flex items-center justify-center gap-2">
             <div
@@ -164,41 +182,47 @@ export function QuickExchangeDrill({
             <span className="text-sm font-medium text-dojo-text-primary">{characterName}</span>
           </div>
 
-          <div className="rounded-xl bg-dojo-surface p-4 mb-6 text-left">
-            <p className="text-sm text-dojo-text-primary">{currentDrill.promptJa}</p>
+          <div className="rounded-xl bg-dojo-surface p-4 mb-6 text-start">
+            <p translate="no" className="text-base text-dojo-text-primary leading-relaxed">{currentDrill.promptJa}</p>
             {currentDrill.promptPhonetic && (
-              <p className="text-xs text-dojo-text-muted italic mt-1">{currentDrill.promptPhonetic}</p>
+              <p translate="no" className="text-sm text-dojo-text-muted italic mt-1 leading-relaxed">{currentDrill.promptPhonetic}</p>
             )}
-            <p className="text-xs text-dojo-text-muted mt-1">{currentDrill.promptEn}</p>
+            <p className="text-sm text-dojo-text-muted mt-1 leading-relaxed">{currentDrill.promptEn}</p>
           </div>
 
           {phase === 'listening' && (
             <div className="space-y-4">
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  onClick={handlePlayPrompt}
-                  className="flex items-center gap-2 text-xs text-dojo-accent hover:underline"
-                >
-                  <Volume2 className="h-3 w-3" /> Hear it again
-                </button>
-              </div>
+              <button
+                onClick={handlePlayPrompt}
+                className="mx-auto flex items-center gap-2 text-xs text-dojo-accent hover:underline"
+              >
+                <Volume2 className="h-3 w-3" /> Hear it again
+              </button>
 
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  onClick={handleResponse}
+              <form
+                className="flex items-center gap-2 rounded-xl border border-dojo-border bg-dojo-surface px-3 py-1 transition-colors focus-within:border-dojo-accent"
+                onSubmit={(e) => { e.preventDefault(); void handleResponse(); }}
+              >
+                <input
+                  type="text"
+                  translate="no"
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder="Type your reply…"
+                  aria-label="Your reply"
+                  autoFocus
                   disabled={busy}
-                  className={`flex h-20 w-20 items-center justify-center rounded-full transition-all duration-300 ${
-                    busy
-                      ? 'bg-dojo-danger scale-110 shadow-[0_0_30px_rgba(209,67,67,0.6)]'
-                      : 'bg-dojo-accent hover:scale-105 shadow-[0_10px_25px_rgba(45,59,197,0.5)]'
-                  } disabled:opacity-40`}
+                  className="flex-1 border-none bg-transparent px-1 py-2 text-base text-dojo-text-primary outline-none placeholder:text-dojo-text-muted"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || !transcript.trim()}
+                  aria-label="Check reply"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-dojo-accent text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
-                  <Mic className="h-8 w-8 text-white" />
+                  <Send className="h-4 w-4" />
                 </button>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-dojo-text-muted">
-                  {busy ? 'Processing...' : 'Respond'}
-                </span>
-              </div>
+              </form>
             </div>
           )}
 
@@ -208,23 +232,20 @@ export function QuickExchangeDrill({
                 <div className="flex flex-col items-center gap-3">
                   <CheckCircle2 className="h-12 w-12 text-dojo-success" />
                   <p className="text-lg font-semibold text-dojo-success">Great response!</p>
-                  <p className="text-xs text-dojo-text-muted">
-                    Response time: {responseTime < 1000 ? `${responseTime}ms` : `${(responseTime / 1000).toFixed(1)}s`}
-                  </p>
+                  {feedback && <p translate="no" className="text-sm text-dojo-text-muted">{feedback}</p>}
+                  <p className="text-xs text-dojo-text-muted">Response time: {formattedTime}</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-3">
                   <XCircle className="h-12 w-12 text-dojo-warning" />
                   <p className="text-lg font-semibold text-dojo-warning">Keep practicing</p>
-                  <p className="text-sm text-dojo-text-muted">{feedback}</p>
-                  <p className="text-xs text-dojo-text-muted">
-                    Response time: {responseTime < 1000 ? `${responseTime}ms` : `${(responseTime / 1000).toFixed(1)}s`}
-                  </p>
+                  <p translate="no" className="text-sm text-dojo-text-muted">{feedback}</p>
+                  <p className="text-xs text-dojo-text-muted">Response time: {formattedTime}</p>
                 </div>
               )}
               <div className="flex items-center justify-center gap-3">
                 <button
-                  onClick={handleRetry}
+                  onClick={resetExchange}
                   className="flex items-center gap-2 rounded-full border border-dojo-border px-4 py-2 text-xs text-dojo-text-muted hover:text-dojo-text-primary transition-colors"
                 >
                   <RotateCcw className="h-3 w-3" /> Retry

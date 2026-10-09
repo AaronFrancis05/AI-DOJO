@@ -14,6 +14,7 @@
 import { getAIProvider, type ChatTurn } from '@/lib/ai-providers';
 import { normalizeScores, type TurnScores } from '@/lib/ai-engine';
 import { buildGradingInstruction, type GradingPromptInput } from './prompt';
+import { parseCefrVerdict, type CefrVerdict } from './cefr';
 import { transcriptToText, type InterviewTurn } from './transcript';
 
 export interface InterviewGrade {
@@ -22,6 +23,8 @@ export interface InterviewGrade {
   feedback: string;
   /** One line for the tutor. */
   summary: string;
+  /** Set only when the input asked for it (`cefr: true`). */
+  cefr: CefrVerdict | null;
 }
 
 export interface GradeInterviewInput extends GradingPromptInput {
@@ -64,8 +67,10 @@ export async function gradeInterview(input: GradeInterviewInput): Promise<Interv
   const rawText = await provider.generateJSON(systemInstruction, history);
   const parsed = parseGradeJson(rawText);
 
+  const scores = normalizeScores(parsed.scores);
   return {
-    scores: normalizeScores(parsed.scores),
+    scores,
+    cefr: promptInput.cefr ? parseCefrVerdict(parsed.cefr, scores) : null,
     feedback: typeof parsed.feedback === 'string' ? parsed.feedback.slice(0, 4000) : '',
     summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : '',
   };

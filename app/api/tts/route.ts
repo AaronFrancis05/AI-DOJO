@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { SpeechSynthesisResult } from 'microsoft-cognitiveservices-speech-sdk';
 import { resolveAzureVoice } from '../../../lib/language';
 import { getAuthUser } from '@/lib/auth/server';
 import { rateLimitIncrement, cacheKeys, TTL } from '@/lib/cache';
+import { clientIp } from '@/lib/tryout/gate';
 
 export const runtime = 'nodejs';
 
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      const ip = clientIp(req);
       const rateLimitKey = cacheKeys.tryoutRateLimit(`tts:${ip}`);
       // Fails closed: with no counter to increment there is no way to bound
       // guest spend, and an unmetered relay is the worse failure mode.
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
     };
 
     return new Promise<NextResponse>((resolve) => {
-      const synthesisHandler = (result: any) => {
+      const synthesisHandler = (result: SpeechSynthesisResult) => {
         synthesizer.close();
         if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
           const audioBase64 = Buffer.from(result.audioData).toString('base64');
@@ -103,7 +105,8 @@ export async function POST(req: NextRequest) {
         synthesizer.speakTextAsync(text, synthesisHandler, errorHandler);
       }
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Speech synthesis failed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

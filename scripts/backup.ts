@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { db } from '../src/db';
 import * as schema from '../src/schema';
+import { is } from 'drizzle-orm';
+import { PgTable } from 'drizzle-orm/pg-core';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,13 +19,12 @@ async function backup() {
 
   const result: Record<string, unknown[]> = {};
 
-  const tableNames = Object.keys(schema).filter(
-    (k) => (schema as Record<string, unknown>)[k]?.constructor?.name === 'PgTable'
+  const tableEntries = Object.entries(schema).filter(
+    (entry): entry is [string, PgTable] => is(entry[1], PgTable)
   );
 
-  for (const name of tableNames) {
-    const table = (schema as Record<string, unknown>)[name];
-    const rows = await db.select().from(table as any);
+  for (const [name, table] of tableEntries) {
+    const rows = await db.select().from(table);
     result[name] = rows;
     console.log(`  ${name}: ${rows.length} rows`);
   }
@@ -32,7 +33,7 @@ async function backup() {
   const stats = fs.statSync(filePath);
   console.log(`\nBackup saved to: ${filePath}`);
   console.log(`File size: ${(stats.size / 1024).toFixed(1)} KB`);
-  console.log(`Tables backed up: ${tableNames.length}`);
+  console.log(`Tables backed up: ${tableEntries.length}`);
 
   if (stats.size === 0) {
     console.error('ERROR: Backup file is empty!');

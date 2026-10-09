@@ -31,8 +31,8 @@ export async function GET() {
       enabledTargetLanguages: sql<number>`(select count(*)::int from languages where is_target_enabled = true)`,
       // "This week" is the next seven days, not the last: an admin looking at
       // an operations overview wants to know what is about to happen.
-      upcomingClasses: sql<number>`(
-        select count(*)::int from class_sessions
+      upcomingLiveLessons: sql<number>`(
+        select count(*)::int from live_lessons
         where status <> 'cancelled'
           and scheduled_at between now() and now() + interval '7 days'
       )`,
@@ -56,7 +56,7 @@ export async function GET() {
       activeCourses: Number(row?.activeCourses ?? 0),
       activeDomains: Number(row?.activeDomains ?? 0),
       enabledTargetLanguages: Number(row?.enabledTargetLanguages ?? 0),
-      upcomingClasses: Number(row?.upcomingClasses ?? 0),
+      upcomingLiveLessons: Number(row?.upcomingLiveLessons ?? 0),
       upcomingAssessments: Number(row?.upcomingAssessments ?? 0),
     },
   });

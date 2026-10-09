@@ -344,6 +344,76 @@
       "when": 1787996573859,
       "tag": "0049_unknown_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789727846158,
+      "tag": "0050_class_to_live_lessons",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790226737293,
+      "tag": "0051_clear_rictor",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790585246875,
+      "tag": "0052_sparkling_vance_astro",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1790843968742,
+      "tag": "0053_parallel_millenium_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791516300910,
+      "tag": "0054_neat_ken_ellis",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1791517705287,
+      "tag": "0055_sloppy_marvel_boy",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1791517712549,
+      "tag": "0056_learner_booking_no_overlap",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1791519772240,
+      "tag": "0057_complex_hammerhead",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1791522241756,
+      "tag": "0058_sticky_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791525449081,
+      "tag": "0059_rainy_the_executioner",
+      "breakpoints": true
     }
   ]
 }

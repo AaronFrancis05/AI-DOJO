@@ -2,10 +2,13 @@ import { db } from '@/src/db';
 import { tutors, users } from '@/src/schema';
 import { and, eq, ne } from 'drizzle-orm';
 import { requireRole, roleErrorResponse } from '@/lib/auth/server';
+import { unknownLanguageCodes } from '@/lib/tutors/language-catalog';
+import { HYBRID_ENABLED } from '@/lib/tutors/config';
+import { loadVetting } from '@/lib/tutors/vetting';
+import { normalizeTrialScores } from '@/lib/tutors/quality-rules';
 import {
   parseLanguageCodes,
   serializeLanguageCodes,
-  unknownLanguageCodes,
 } from '@/lib/tutors/languages';
 
 export const runtime = 'nodejs';
@@ -56,6 +59,24 @@ export async function PATCH(
   }
   if (typeof isAcceptingBookings === 'boolean') {
     update.isAcceptingBookings = isAcceptingBookings;
+  }
+
+  // Vetting (PLAN.md 4.6): the admin scores the recorded trial lesson, and
+  // clears a quality flag once they have re-reviewed the tutor.
+  if (body?.trialLessonScores !== undefined) {
+    if (body.trialLessonScores === null) {
+      update.trialLessonScores = null;
+    } else {
+      const trial = normalizeTrialScores(body.trialLessonScores);
+      if (!trial) {
+        return Response.json({ error: 'Each trial-lesson score must be a whole number from 1 to 5' }, { status: 400 });
+      }
+      update.trialLessonScores = JSON.stringify(trial);
+    }
+  }
+  if (body?.clearReviewFlag === true) {
+    update.reviewFlaggedAt = null;
+    update.reviewFlagReason = null;
   }
 
   // The profile itself is editable here too. An admin correcting a tutor's
@@ -119,6 +140,21 @@ export async function PATCH(
   const [tutor] = await db.select().from(tutors).where(eq(tutors.id, tutorId));
   if (!tutor) {
     return Response.json({ error: 'Tutor not found' }, { status: 404 });
+  }
+
+  // Approval rests on evidence, not on nationality: with vetting on, a tutor
+  // is verified only once every check has passed — the CEFR C1 interview, the
+  // clarity read-aloud, the teaching module and the scored trial lesson.
+  // Checked against the row as it will be after this update, so scoring the
+  // trial lesson and verifying can be one request.
+  if (HYBRID_ENABLED && update.verificationStatus === 'verified' && tutor.verificationStatus !== 'verified') {
+    const vetting = (await loadVetting([{ ...tutor, ...update }])).get(tutor.id);
+    if (vetting && vetting.gaps.length > 0) {
+      return Response.json(
+        { error: `Vetting is incomplete: ${vetting.gaps.join(' ')}`, gaps: vetting.gaps },
+        { status: 409 },
+      );
+    }
   }
 
   const [updated] = await db.update(tutors).set(update).where(eq(tutors.id, tutorId)).returning();

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '@/src/db';
 import {
   aiInterviews,
@@ -122,7 +122,7 @@ export async function GET(
     });
 
   // The human side. Not filtered by course: a tutor grades a learner, not a
-  // curriculum row, and hiding a verdict because it was given in a standalone
+  // course row, and hiding a verdict because it was given in a standalone
   // assessment would defeat the comparison this page exists for.
   const tutorRows = await db
     .select({

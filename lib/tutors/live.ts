@@ -1,7 +1,7 @@
 /**
  * Announcing that a room has opened.
  *
- * One module so a class and an assessment reach the same people the same way.
+ * One module so a live lesson and an assessment reach the same people the same way.
  * A tutor who starts a room on the spot has no roster to notify — that is the
  * whole point of a drop-in — so the recipients are resolved from the cohort the
  * room is pinned to, through the same `resolveAudience` the announcements
@@ -16,18 +16,18 @@ import { createNotifications } from '@/lib/notifications';
 import { activeLearners, resolveAudience } from '@/lib/tutors/audience';
 
 export interface LiveAnnouncement {
-  kind: 'class' | 'assessment';
+  kind: 'live_lesson' | 'assessment';
   /** `tutors.id`, not the user id — that is what resolveAudience is scoped by. */
   tutorId: number;
   tutorName: string;
   title: string;
   courseId: number | null;
   targetLanguage: string;
-  /** Where the bell sends them: /live/class/:id or /live/assessment/:id. */
+  /** Where the bell sends them: /live/lesson/:id or /live/assessment/:id. */
   href: string;
   /**
    * Learners to notify regardless of the cohort — the enrolled roster of a
-   * class that was scheduled ahead. Someone who signed up for this one class
+   * live lesson that was scheduled ahead. Someone who signed up for this one lesson
    * may not otherwise be one of this tutor's learners yet, and missing them
    * would be the worst possible omission.
    */
@@ -49,7 +49,7 @@ export async function announceLive(room: LiveAnnouncement): Promise<void> {
 
     // The roster is filtered through the same criterion, not trusted as given.
     // `resolveAudience` already drops suspended and soft-deleted accounts, but
-    // a class roster does not: `class_enrollments.status` describes the seat,
+    // `live_lesson_enrollments.status` describes the seat,
     // not the account behind it, so a suspended learner keeps their row — that
     // is the whole point of not hard-deleting them — and would otherwise be
     // notified about a room they cannot sign in to join.
@@ -64,7 +64,7 @@ export async function announceLive(room: LiveAnnouncement): Promise<void> {
     await createNotifications(recipients, {
       type: room.kind,
       title: `${room.tutorName} is live now`,
-      body: room.kind === 'class'
+      body: room.kind === 'live_lesson'
         ? `${room.title} — join while it is running.`
         : `${room.title} — take your place in the queue.`,
       href: room.href,

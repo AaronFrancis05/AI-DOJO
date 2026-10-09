@@ -10,6 +10,27 @@ const nextConfig: NextConfig = {
   // A stray lockfile in the parent directory makes Next infer the wrong
   // workspace root; pin tracing to this project so standalone output is correct.
   outputFileTracingRoot: projectRoot,
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "api.dicebear.com",
+      },
+    ],
+  },
+  async redirects() {
+    return [
+      {
+        source: "/live/class/:id",
+        destination: "/live/lesson/:id",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

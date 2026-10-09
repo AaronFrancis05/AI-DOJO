@@ -197,8 +197,8 @@ export async function PATCH(req: Request) {
 /**
  * Soft-deletes an account.
  *
- * Not a row delete: `users.id` is referenced by sessions, evaluations, class
- * rosters, chat messages and grades, so removing the row would rewrite other
+ * Not a row delete: `users.id` is referenced by sessions, evaluations, live-lesson
+ * enrolments, chat messages and grades, so removing the row would rewrite other
  * people's history — a tutor's roster would lose a learner retroactively, and
  * `/courses/[slug]/grades` would lose the verdicts filed against them.
  *

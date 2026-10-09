@@ -19,13 +19,15 @@
 
 'use client';
 
-import { useEffect, useRef } from 'react';
+import Image from 'next/image';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAiInterview } from '@/lib/hooks/useAiInterview';
 import type { InterviewerPersona } from '@/lib/interview/persona';
-import { SCORE_DIMENSIONS } from '@/lib/ai-engine';
+import { SCORE_DIMENSIONS } from '@/lib/roleplay/score-dimensions';
+import { CEFR_LABELS } from '@/lib/interview/cefr';
 import { cn } from '@/lib/design-tokens';
 import { Mic, MicOff, Loader2, PhoneOff, Play, RotateCcw, ShieldCheck } from 'lucide-react';
 
@@ -39,7 +41,10 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 interface AiInterviewStageProps {
-  assessmentId: number;
+  /** The start/finish route — see useAiInterview. */
+  endpoint: string;
+  /** Sent with the start request (e.g. `{ purpose: 'placement' }`). */
+  startBody?: Record<string, unknown>;
   interviewer: InterviewerPersona;
   minutesPerLearner: number;
   /** False when the room's own window is shut. */
@@ -49,6 +54,8 @@ interface AiInterviewStageProps {
   alreadyTaken: boolean;
   /** Called when an interview is submitted, so the page can refresh its result. */
   onSubmitted?: () => void;
+  /** Replaces the default line under a graded result, which speaks of a tutor. */
+  resultNote?: ReactNode;
 }
 
 function formatClock(seconds: number): string {
@@ -56,15 +63,17 @@ function formatClock(seconds: number): string {
 }
 
 export function AiInterviewStage({
-  assessmentId,
+  endpoint,
+  startBody,
   interviewer,
   minutesPerLearner,
   canJoin,
   joinBlockedReason,
   alreadyTaken,
   onSubmitted,
+  resultNote,
 }: AiInterviewStageProps) {
-  const interview = useAiInterview(assessmentId);
+  const interview = useAiInterview(endpoint, startBody);
   const { phase, result } = interview;
 
   // The transcript scrolls itself so the newest line is the one in view — a
@@ -96,10 +105,11 @@ export function AiInterviewStage({
               interview.examinerSpeaking ? 'bg-dojo-accent' : 'bg-dojo-border',
             )}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- catalogue portrait, fixed local asset */}
-            <img
+            <Image
               src={interviewer.imageSrc}
               alt={interviewer.name}
+              width={96}
+              height={96}
               className="h-24 w-24 rounded-full object-cover"
             />
             {interview.examinerSpeaking && (
@@ -107,7 +117,7 @@ export function AiInterviewStage({
             )}
           </div>
 
-          <div className="min-w-0 flex-1 text-center sm:text-left">
+          <div className="min-w-0 flex-1 text-center sm:text-start">
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <h2 className="text-lg font-bold leading-none tracking-tight text-dojo-text-primary">
                 {interviewer.name}
@@ -248,6 +258,14 @@ export function AiInterviewStage({
 
           {result.graded && result.scores ? (
             <>
+              {result.cefr && (
+                <p className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold leading-none tracking-tight text-dojo-text-primary">
+                    {result.cefr.overall}
+                  </span>
+                  <span className="text-sm text-dojo-text-muted">{CEFR_LABELS[result.cefr.overall]}</span>
+                </p>
+              )}
               <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {SCORE_DIMENSIONS.map((dimension) => (
                   <div key={dimension}>
@@ -265,8 +283,12 @@ export function AiInterviewStage({
                 </p>
               )}
               <p className="mt-4 text-xs leading-relaxed text-dojo-text-muted">
-                This is the AI examiner&apos;s verdict. Your tutor sees the same transcript and may
-                mark it themselves — both appear on your course grades.
+                {resultNote ?? (
+                  <>
+                    This is the AI examiner&apos;s verdict. Your tutor sees the same transcript and may
+                    mark it themselves — both appear on your course grades.
+                  </>
+                )}
               </p>
             </>
           ) : (

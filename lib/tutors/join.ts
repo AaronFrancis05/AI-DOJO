@@ -1,7 +1,7 @@
 /**
  * The one shape a client needs to join any of the three room types.
  *
- * Bookings, classes and assessments differ entirely in who may join and
+ * Bookings, live lessons and assessments differ entirely in who may join and
  * when, and not at all in what a joiner then needs. Keeping the payload in
  * one place is what lets `components/tutors/CallStage.tsx` be a single
  * component the three room pages configure, rather than three near-copies.

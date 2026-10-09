@@ -22,6 +22,7 @@ import {
   BookOpen,
   Sparkles,
 } from 'lucide-react';
+import { DEFAULT_TARGET_LANGUAGE } from '@/lib/language';
 
 interface CourseRecord {
   id: number;
@@ -43,7 +44,7 @@ const DIFFICULTY_LABEL: Record<string, string> = {
 };
 
 export default function CoursesPage() {
-  usePageTitle('Learning Paths');
+  usePageTitle('Courses');
   const user = useUser();
   const [courses, setCourses] = useState<CourseRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +52,7 @@ export default function CoursesPage() {
   // Per-course language pair (pre-filled from profile, editable on the card).
   const [pair, setPair] = useState<Record<number, { target: string; native: string }>>({});
 
-  const preferredTarget = user?.preferredTargetLanguage ?? 'ja';
+  const preferredTarget = user?.preferredTargetLanguage ?? DEFAULT_TARGET_LANGUAGE;
   const preferredNative = user?.nativeLanguage ?? 'en';
 
   useEffect(() => {
@@ -85,10 +86,10 @@ export default function CoursesPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-6 lg:p-10">
+    <div className="mx-auto w-full max-w-7xl p-6 lg:p-10">
       <div className="mb-8">
         <h1 className="hidden md:block text-3xl font-bold text-dojo-text-primary tracking-tight leading-none">
-          Learning Paths
+          Courses
         </h1>
         <p className="mt-2 text-base text-dojo-text-muted leading-relaxed">
           Pick a course, choose your languages, and follow a structured path from
@@ -133,7 +134,7 @@ export default function CoursesPage() {
             const p = getPair(course.id);
             return (
               <Card key={course.id} className="group h-full !p-8 relative overflow-hidden border-dojo-border">
-                <div className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-dojo-accent/10 blur-[60px]" />
+                <div className="absolute -top-16 -end-16 h-40 w-40 rounded-full bg-dojo-accent/10 blur-[60px]" />
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
                     <Badge variant={course.difficulty as 'beginner'}>
@@ -190,8 +191,8 @@ export default function CoursesPage() {
       <div className="mt-10 flex items-center gap-2 text-sm text-dojo-text-muted">
         <Sparkles className="h-4 w-4 text-dojo-warning" />
         Prefer freeform practice? Visit the
-        <Link href="/hub" className="font-semibold text-dojo-accent hover:underline">
-          Hub
+        <Link href="/library" className="font-semibold text-dojo-accent hover:underline">
+          Library
         </Link>
         to jump into any scenario directly.
       </div>
