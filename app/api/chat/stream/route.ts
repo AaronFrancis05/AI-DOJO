@@ -19,6 +19,7 @@ import { buildEvaluationSummary } from '../../../../lib/roleplay/evaluation-summ
 import { recordLessonActivity } from '../../../../lib/courses/lesson-progress';
 import { eq, and, sql } from 'drizzle-orm';
 import { getAuthUser } from '../../../../lib/auth/server';
+import { rateLimitIncrement, cacheKeys, TTL } from '../../../../lib/cache';
 import { validateDelimiters } from '../../../../lib/roleplay/lang-detect';
 import { sanitizeStreamedChunk, createStreamTextSanitizer, parseVocabMarker } from '../../../../lib/roleplay/stream-sanitizer';
 import { userAttemptsVocabWord } from '../../../../lib/roleplay/vocab-match';
@@ -64,6 +65,10 @@ import {
 
 export const runtime = 'nodejs';
 
+const MAX_USER_INPUT_CHARS = 1000;
+/** Turns per user per CHAT_TURN_RATE_LIMIT window — about one every 10s, far above real speech. */
+const MAX_TURNS_PER_USER_PER_WINDOW = 60;
+
 export async function POST(req: Request) {
   try {
     const user = await getAuthUser();
@@ -81,7 +86,13 @@ export async function POST(req: Request) {
     const rawSessionId = body.sessionId;
     const rawUserInput = body.userRawInput;
     const isRetryOfPreviousMistake = body.isRetryOfPreviousMistake === true;
-    const accuracyScore = typeof body.accuracyScore === 'number' ? body.accuracyScore : null;
+    // Measured in the browser (Azure assessment runs client-side, the server
+    // never has the audio), so it can't be re-derived here. It only decides
+    // whether to ask for a retry, so clamping is enough: a forged score
+    // cheats no one but the learner sending it.
+    const accuracyScore = typeof body.accuracyScore === 'number' && Number.isFinite(body.accuracyScore)
+      ? Math.min(100, Math.max(0, body.accuracyScore))
+      : null;
     const responseTimeMs = typeof body.responseTimeMs === 'number' ? body.responseTimeMs : null;
 
     if (!rawSessionId || !rawUserInput) {
@@ -90,6 +101,20 @@ export async function POST(req: Request) {
 
     const sessionId = String(rawSessionId);
     const userRawInput = String(rawUserInput);
+    // One spoken or typed turn; anything longer is a pasted document, and
+    // every character is sent to the model again on every later turn.
+    if (userRawInput.length > MAX_USER_INPUT_CHARS) {
+      return Response.json({ error: 'That message is too long. Please keep it to a few sentences.' }, { status: 413 });
+    }
+
+    // Each turn is several billed model calls. Signed-in users only, so a
+    // cache outage fails open here (unlike the guest routes): blocking every
+    // learner because Redis blinked is the worse failure.
+    const turnCount = await rateLimitIncrement(cacheKeys.chatTurnRateLimit(user.id), TTL.CHAT_TURN_RATE_LIMIT);
+    if (turnCount !== null && turnCount > MAX_TURNS_PER_USER_PER_WINDOW) {
+      return Response.json({ error: 'You are sending messages very quickly. Please wait a moment.' }, { status: 429 });
+    }
+
     const numericSessionId = Number(sessionId);
     if (isNaN(numericSessionId)) {
       return Response.json({ error: 'Invalid sessionId' }, { status: 400 });

@@ -81,6 +81,35 @@ export function guestTryoutPhase(
   return { phase: 'closing', wordIndex: null, nextWordIndex: null };
 }
 
+/**
+ * Most turns a guest history may carry: 8 user turns plus the replies to them
+ * and the greeting, with a little slack. Covers onboarding practice (5 turns) too.
+ */
+export const MAX_GUEST_HISTORY_TURNS = 24;
+
+/** Longest single turn kept — the same ceiling the signed-in chat route uses. */
+export const MAX_GUEST_TURN_CHARS = 1000;
+
+/**
+ * The posted guest history, cut down to what a real preview could contain.
+ *
+ * The turn budget lives server-side, but the history itself still comes from
+ * the client and is replayed to the model on every request. Unbounded, one
+ * request could carry a novel-length transcript (or invented AI turns) and
+ * multiply the token bill by orders of magnitude. Keeps the most recent turns,
+ * drops malformed entries, and truncates over-long text.
+ */
+export function boundGuestHistory<T extends { speaker: 'user' | 'ai'; text: string }>(history: unknown): T[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((t): t is T =>
+      typeof t === 'object' && t !== null
+      && (t.speaker === 'user' || t.speaker === 'ai')
+      && typeof t.text === 'string')
+    .slice(-MAX_GUEST_HISTORY_TURNS)
+    .map((t) => ({ ...t, text: t.text.slice(0, MAX_GUEST_TURN_CHARS) }));
+}
+
 /** User utterances already in the posted history (the current message is not in it). */
 export function countGuestUserTurns(history: { speaker?: string; text?: string }[]): number {
   return history.filter((t) => t.speaker === 'user' && typeof t.text === 'string' && t.text.trim()).length;
@@ -133,10 +162,33 @@ export function readUsedCookieValue(raw: string | undefined): number | null {
   return Number.isFinite(at) ? at : null;
 }
 
+/**
+ * Reverse proxies between the internet and this app, each of which appends the
+ * address it received from to `X-Forwarded-For`. Production sits behind one
+ * (Traefik); set TRUSTED_PROXY_HOPS=2 if a CDN is added in front of it.
+ */
+function trustedProxyHops(): number {
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
+  return Number.isInteger(hops) && hops >= 1 ? hops : 1;
+}
+
+/**
+ * The caller's address as seen by our outermost trusted proxy.
+ *
+ * Read from the RIGHT of `X-Forwarded-For`: the leftmost entries are whatever
+ * the client sent, so taking the first hop let any guest reset every per-IP
+ * limit by sending a fresh made-up address on each request. The entry our own
+ * proxy appended is the only one the client cannot choose.
+ */
 export function clientIp(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || req.headers.get('x-real-ip')?.trim()
-    || 'unknown';
+  const forwarded = req.headers.get('x-forwarded-for')
+    ?.split(',')
+    .map((hop) => hop.trim())
+    .filter(Boolean);
+  if (forwarded?.length) {
+    return forwarded[Math.max(0, forwarded.length - trustedProxyHops())];
+  }
+  return req.headers.get('x-real-ip')?.trim() || 'unknown';
 }
 
 /**

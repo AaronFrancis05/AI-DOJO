@@ -17,6 +17,7 @@ SESSION: 60,         // 1 min (session state changes often)
   SPEECH_TOKEN: 540,   // 9 min (Azure issueToken lifetime is 10 min)
   PROFICIENCY: 300,    // 5 min (only changes when a session completes)
   LANGUAGE_CATALOG: 3600, // 1 hr — languages change rarely, and every admin write invalidates the key
+  CHAT_TURN_RATE_LIMIT: 600, // 10 min window for the per-user roleplay turn limit
 } as const;
 
 let redis: Redis | null = null;
@@ -41,6 +42,17 @@ function getRedis(): Redis | null {
  */
 export function isCacheConfigured(): boolean {
   return Boolean(process.env.UPSTASH_REDIS_URL && process.env.UPSTASH_REDIS_TOKEN);
+}
+
+/**
+ * Whether a `rateLimitIncrement` result means "the limit could not be
+ * checked, so deny". True for a configured cache that errored, and for
+ * production with no cache at all — an unconfigured production deploy would
+ * otherwise be an unmetered relay. Only a dev machine without Upstash
+ * credentials is let through.
+ */
+export function rateLimitUnavailable(count: number | null): boolean {
+  return count === null && (isCacheConfigured() || process.env.NODE_ENV === 'production');
 }
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
@@ -77,10 +89,12 @@ export async function rateLimitIncrement(key: string, ttl: number): Promise<numb
   const r = getRedis();
   if (!r) return null;
   try {
-    const count = await r.incr(key);
-    // Only the request that created the key sets the window, so the window
+    // One MULTI/EXEC round trip, so the counter can never exist without a TTL.
+    // A separate `expire` that failed after a successful `incr` left a key
+    // that never expired — a permanent lockout for that IP or user.
+    // `NX` sets the window only when the key has none yet, so the window still
     // rolls forward from the first request rather than the most recent one.
-    if (count === 1) await r.expire(key, ttl);
+    const [count] = await r.multi().incr(key).expire(key, ttl, 'NX').exec<[number, number]>();
     return count;
   } catch {
     return null;
@@ -124,6 +138,8 @@ export const cacheKeys = {
   onboardingTurns: (budgetId: string) => key('onboarding-turns', budgetId),
   onboardingPracticeRateLimit: (id: string) => key('onboarding-practice-rate', id),
   speechToken: (region: string) => key('speech-token', region),
+  /** Roleplay turns one signed-in user has sent in the current window. */
+  chatTurnRateLimit: (userId: string) => key('chat-turn-rate', userId),
   /** The whole `languages` table — one key, because it is always read whole. */
   languageCatalog: () => key('language-catalog', 'v1'),
 };

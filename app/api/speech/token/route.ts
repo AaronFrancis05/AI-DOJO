@@ -1,19 +1,23 @@
 import { getAuthUser } from '@/lib/auth/server';
-import { cacheGet, cacheSet, cacheKeys, TTL } from '@/lib/cache';
+import { cacheGet, cacheSet, cacheKeys, rateLimitIncrement, rateLimitUnavailable, TTL } from '@/lib/cache';
+import { clientIp } from '@/lib/tryout/gate';
 
 const MAX_SPEECH_TOKENS_PER_IP_PER_HOUR = 30;
 
 export async function GET(req: Request) {
   const user = await getAuthUser();
   if (!user) {
-    // Allow unauthenticated tryout guests with rate limiting (same window as tryout)
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const rateLimitKey = cacheKeys.tryoutRateLimit(`speech:${ip}`);
-    const currentCount = (await cacheGet<number>(rateLimitKey)) ?? 0;
-    if (currentCount >= MAX_SPEECH_TOKENS_PER_IP_PER_HOUR) {
+    // Allow unauthenticated tryout guests with rate limiting (same window as tryout).
+    // Atomic increment, not read-then-write: a burst of concurrent reads all
+    // saw the same count and all passed. Fails closed: a token is a billed
+    // Azure credential (see rateLimitUnavailable).
+    const count = await rateLimitIncrement(
+      cacheKeys.tryoutRateLimit(`speech:${clientIp(req)}`),
+      TTL.TRYOUT_RATE_LIMIT,
+    );
+    if (rateLimitUnavailable(count) || (count !== null && count > MAX_SPEECH_TOKENS_PER_IP_PER_HOUR)) {
       return Response.json({ error: 'Too many speech requests. Please try again later.' }, { status: 429 });
     }
-    await cacheSet(rateLimitKey, currentCount + 1, TTL.TRYOUT_RATE_LIMIT);
   }
 
   const region = process.env.AZURE_SPEECH_REGION;

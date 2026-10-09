@@ -133,11 +133,17 @@ test('without Redis, the ninth user turn is exhausted', { skip: redisConfigured 
   assert.equal(ninth.exhausted, true);
 });
 
-test('clientIp takes the first hop of x-forwarded-for', () => {
+test('clientIp takes the hop our proxy appended, not the one the client sent', () => {
+  // The client spoofed 203.0.113.99; Traefik appended the address it really saw.
   const req = new Request('https://example.test/', {
-    headers: { 'x-forwarded-for': '198.51.100.7, 10.0.0.1, 10.0.0.2' },
+    headers: { 'x-forwarded-for': '203.0.113.99, 198.51.100.7' },
   });
   assert.equal(clientIp(req), '198.51.100.7');
+
+  const single = new Request('https://example.test/', {
+    headers: { 'x-forwarded-for': '198.51.100.7' },
+  });
+  assert.equal(clientIp(single), '198.51.100.7');
 
   assert.equal(clientIp(new Request('https://example.test/')), 'unknown');
   assert.equal(

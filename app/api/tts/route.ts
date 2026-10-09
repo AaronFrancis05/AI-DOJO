@@ -3,6 +3,7 @@ import type { SpeechSynthesisResult } from 'microsoft-cognitiveservices-speech-s
 import { resolveAzureVoice } from '../../../lib/language';
 import { getAuthUser } from '@/lib/auth/server';
 import { rateLimitIncrement, cacheKeys, TTL } from '@/lib/cache';
+import { clientIp } from '@/lib/tryout/gate';
 
 export const runtime = 'nodejs';
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+      const ip = clientIp(req);
       const rateLimitKey = cacheKeys.tryoutRateLimit(`tts:${ip}`);
       // Fails closed: with no counter to increment there is no way to bound
       // guest spend, and an unmetered relay is the worse failure mode.

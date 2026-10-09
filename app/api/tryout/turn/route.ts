@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getAIProvider } from '@/lib/ai-providers';
 import { getTargetLangConfig, getNativeLangName } from '@/lib/language';
-import { cacheKeys, isCacheConfigured, rateLimitIncrement, TTL } from '@/lib/cache';
+import { cacheKeys, rateLimitIncrement, rateLimitUnavailable, TTL } from '@/lib/cache';
 import {
+  MAX_GUEST_TURN_CHARS,
   MAX_GUEST_TURNS,
   MAX_TRYOUT_REQUESTS_PER_IP_PER_HOUR,
   TRYOUT_COOKIE,
   TRYOUT_SESSION_COOKIE,
   checkTryoutGate,
+  boundGuestHistory,
   clientIp,
   consumeTurn,
   countGuestUserTurns,
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
   // concurrent request and so let a burst straight through. lib/cache.ts
   // documents that pattern as explicitly not being a rate limit.
   const requests = await rateLimitIncrement(cacheKeys.tryoutRateLimit(ip), TTL.TRYOUT_RATE_LIMIT);
-  if (requests === null && isCacheConfigured()) {
+  if (rateLimitUnavailable(requests)) {
     // A configured cache that is down is an outage, not a licence to hand out
     // an unmetered LLM relay to anonymous callers.
     return NextResponse.json({ error: 'Tryout is briefly unavailable. Please try again.' }, { status: 503 });
@@ -152,7 +154,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const safeHistory = Array.isArray(history) ? history : [];
+  const safeHistory = boundGuestHistory(history);
+  if (typeof userMessage === 'string' && userMessage.length > MAX_GUEST_TURN_CHARS) {
+    return NextResponse.json({ error: 'That message is too long.' }, { status: 413 });
+  }
   const isGreeting = !userMessage?.trim();
   const historyUserTurns = countGuestUserTurns(safeHistory);
 

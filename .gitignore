@@ -56,3 +56,8 @@ inngest-dev.log
 /context/**
 ui-registry.md
 MEMORY.md
+
+/docs/**
+
+# Database backups hold user PII and password hashes - never commit
+/backups/

@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth/server';
 import { getAIProvider } from '@/lib/ai-providers';
 import type { ChatTurn } from '@/lib/ai-providers';
-import { cacheKeys, isCacheConfigured, rateLimitIncrement, TTL } from '@/lib/cache';
-import { clientIp, countGuestUserTurns } from '@/lib/tryout/gate';
+import { cacheKeys, rateLimitIncrement, rateLimitUnavailable, TTL } from '@/lib/cache';
+import { boundGuestHistory, clientIp, countGuestUserTurns, MAX_GUEST_TURN_CHARS } from '@/lib/tryout/gate';
 import { sanitizeLanguageCode } from '@/lib/tryout/guest-params';
 import {
   MAX_ONBOARDING_REQUESTS_PER_HOUR,
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     cacheKeys.onboardingPracticeRateLimit(rateId),
     TTL.ONBOARDING_PRACTICE,
   );
-  if (requests === null && isCacheConfigured()) {
+  if (rateLimitUnavailable(requests)) {
     return NextResponse.json({ error: 'Practice is briefly unavailable. Please try again.' }, { status: 503 });
   }
   if (requests !== null && requests > MAX_ONBOARDING_REQUESTS_PER_HOUR) {
@@ -82,7 +82,10 @@ export async function POST(req: Request) {
     await resetPracticeTurns(budgetId);
   }
 
-  const safeHistory = Array.isArray(history) ? history : [];
+  const safeHistory = boundGuestHistory(history);
+  if (typeof userMessage === 'string' && userMessage.length > MAX_GUEST_TURN_CHARS) {
+    return NextResponse.json({ error: 'That message is too long.' }, { status: 413 });
+  }
   const isGreeting = !userMessage?.trim();
   const historyUserTurns = countGuestUserTurns(safeHistory);
   const budget = await consumePracticeTurn(budgetId, !isGreeting, historyUserTurns);
