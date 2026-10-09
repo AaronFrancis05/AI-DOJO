@@ -160,7 +160,7 @@ Job interviews, offshore stand-ups, customer support, IELTS/TOEIC speaking and t
 
 ## Phase 3: Personalized learning materials (the AI-Dojo expansion)
 
-> **Status (2026-10-09):** implemented on `feat/personalized-study-packs` behind `NEXT_PUBLIC_STUDY_PACKS_ENABLED`; migration 0058 generated, not applied. Deviations: JSON-in-text instead of jsonb (codebase convention), a `modelTier` instead of a per-call model id (failover crosses providers), and the quota gates batch generation only. See MEMORY.md and the "Personalized learning" section of ui-registry.md.
+> **Status (2026-10-09):** implemented on `feat/personalized-study-packs` behind `NEXT_PUBLIC_STUDY_PACKS_ENABLED`; migration 0058 applied to the database and the branch merged to `main` (PR #89). Deviations: JSON-in-text instead of jsonb (codebase convention), a `modelTier` instead of a per-call model id (failover crosses providers), and the quota gates batch generation only. See MEMORY.md and the "Personalized learning" section of ui-registry.md.
 
 The building blocks found by the audit are `getAIProvider().generateJSON`, the vocab-gen validation (`analyze-turn.ts:104`), `corrections` and `vocabularyEncounters`, `srsCards` with SM-2, `calendarTasks`, `createNotification`, `resolveDifficulty` and the Inngest cron pattern.
 
@@ -182,7 +182,7 @@ The building blocks found by the audit are `getAIProvider().generateJSON`, the v
 
 ## Phase 4: Human-tutor hybrid layer
 
-> **Status (2026-10-09):** implemented on `feat/hybrid-tutoring` behind `NEXT_PUBLIC_HYBRID_ENABLED`, plus a per-organization switch for the lesson tools; migration 0059 generated, not applied; English syllabus seed written, not run, and seeded inactive pending teacher review. Not built: AI sessions confirming can-do statements, panel/captions in group live lessons, and recording the trial lesson. Deviations and caveats (the clarity score is client-measured; captions are untested in a real call) are in MEMORY.md and the "Hybrid tutoring" section of ui-registry.md.
+> **Status (2026-10-09):** implemented on `feat/hybrid-tutoring` behind `NEXT_PUBLIC_HYBRID_ENABLED`, plus a per-organization switch for the lesson tools (off for every org); merged to `main` (PR #89). Migration 0059 applied; the English syllabus is seeded but inactive pending teacher review; tutor instruction languages backfilled. Native-language explanations are filled for all 31 languages except 20 Luganda situations (regenerated on gemini-2.5-pro; the run stopped when the Gemini prepaid credit ran out — re-run `--only=native --lang=lg` to fill them). Not built: AI sessions confirming can-do statements, panel/captions in group live lessons, and recording the trial lesson. Deviations and caveats (the clarity score is client-measured; captions are untested in a real call) are in MEMORY.md and the "Hybrid tutoring" section of ui-registry.md.
 
 - **4.1 Pre-lesson briefing:**
   - A new `app/api/tutor/learners/[id]/briefing` route returns the top weak points, the last 3 session scores with key corrections, CEFR level and the study-pack status.
